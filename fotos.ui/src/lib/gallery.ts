@@ -1,5 +1,5 @@
 import {cosineSimilarity, EMBEDDING_DIM} from '../../../fotos.core/src/index.js';
-import type {PhotoEntry} from '../types/fotos.js';
+import type {PhotoEntry, SemanticInfo} from '../types/fotos.js';
 
 export interface DayGroup<TPhoto extends PhotoEntry = PhotoEntry> {
     date: string;
@@ -10,7 +10,10 @@ export interface GalleryFilterOptions {
     activeTag?: string | null;
     searchQuery?: string;
     searchFace?: Float32Array | null;
+    searchEmbedding?: SemanticInfo | null;
 }
+
+const SEMANTIC_SIMILARITY_THRESHOLD = 0.18;
 
 export function photoDate(photo: PhotoEntry): string {
     const raw = photo.capturedAt ?? photo.exif?.date ?? photo.addedAt;
@@ -114,11 +117,30 @@ function scorePhotosByFaceSimilarity(photos: PhotoEntry[], searchFace: Float32Ar
     return scored.map(entry => entry.photo);
 }
 
+function scorePhotosBySemanticSimilarity(photos: PhotoEntry[], searchEmbedding: SemanticInfo): PhotoEntry[] {
+    const scored: Array<{photo: PhotoEntry; similarity: number}> = [];
+
+    for (const photo of photos) {
+        const semantic = photo.semantic;
+        if (!semantic || semantic.modelId !== searchEmbedding.modelId) {
+            continue;
+        }
+
+        const similarity = cosineSimilarity(searchEmbedding.embedding, semantic.embedding);
+        if (similarity > SEMANTIC_SIMILARITY_THRESHOLD) {
+            scored.push({photo, similarity});
+        }
+    }
+
+    scored.sort((left, right) => right.similarity - left.similarity);
+    return scored.map(entry => entry.photo);
+}
+
 export function filterGalleryPhotos(
     photos: PhotoEntry[],
     options: GalleryFilterOptions = {}
 ): PhotoEntry[] {
-    const {activeTag, searchQuery, searchFace} = options;
+    const {activeTag, searchQuery, searchFace, searchEmbedding} = options;
 
     if (searchFace) {
         const clusterId = findMatchingClusterId(photos, searchFace);
@@ -129,12 +151,18 @@ export function filterGalleryPhotos(
         return scorePhotosByFaceSimilarity(photos, searchFace);
     }
 
+    const candidates = activeTag
+        ? photos.filter(photo => photo.tags.includes(activeTag))
+        : photos;
     const query = searchQuery?.trim().toLowerCase() ?? '';
-    const filtered = photos.filter(photo => {
-        if (activeTag && !photo.tags.includes(activeTag)) {
-            return false;
+    if (searchEmbedding) {
+        const semanticMatches = scorePhotosBySemanticSimilarity(candidates, searchEmbedding);
+        if (semanticMatches.length > 0) {
+            return semanticMatches;
         }
+    }
 
+    const filtered = candidates.filter(photo => {
         if (!query) {
             return true;
         }

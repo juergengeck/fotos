@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { PhotoEntry, ExifData, FaceInfo } from '@/types/fotos';
+import { fromByteArray as toBase64, toByteArray as fromBase64 } from 'base64-js';
+import type { PhotoEntry, ExifData, FaceInfo, SemanticInfo } from '@/types/fotos';
 import {
     dataAttrsToFaces,
     facesToDataAttrs,
@@ -17,6 +18,7 @@ import type {
 } from '@refinio/fotos.core';
 import { ingestDirectory, ingestFiles, type IngestProgress, type FaceWorkerHandle } from '@/lib/browserIngest';
 import { createFaceWorker } from '@/lib/faceWorkerClient';
+import { createSemanticWorker } from '@/lib/semanticWorkerClient';
 import { isMobile } from '@/lib/platform';
 import {
     syncPhotosToOneCore,
@@ -27,88 +29,153 @@ import {
 import { traceHang } from '@/lib/hangTrace';
 import type { FaceWorkerProgress } from '@/lib/faceWorkerClient';
 import faceWorkerUrl from '@/workers/face.worker.ts?worker&url';
+import semanticWorkerUrl from '@/workers/semantic.worker.ts?worker&url';
+
+type IndexHtmlNamespace = 'face' | 'semantic';
+
+let indexHtmlWriteChain = Promise.resolve();
+
+function queueIndexHtmlWrite<T>(operation: () => Promise<T>): Promise<T> {
+    const next = indexHtmlWriteChain.then(operation, operation);
+    indexHtmlWriteChain = next.then(() => undefined, () => undefined);
+    return next;
+}
+
+function encodeFloat32Base64(values: Float32Array): string {
+    return toBase64(new Uint8Array(values.buffer, values.byteOffset, values.byteLength));
+}
+
+function decodeFloat32Base64(value: string): Float32Array {
+    const bytes = fromBase64(value);
+    if (bytes.byteLength % Float32Array.BYTES_PER_ELEMENT !== 0) {
+        throw new Error('Invalid Float32 embedding payload');
+    }
+
+    return new Float32Array(
+        bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    );
+}
+
+function semanticToDataAttrs(semantic: SemanticInfo): Record<string, string> {
+    return {
+        'semantic-model-id': semantic.modelId,
+        'semantic-embedding': encodeFloat32Base64(semantic.embedding),
+    };
+}
+
+function dataAttrsToSemanticInfo(dataAttrs: Record<string, string>): SemanticInfo | null {
+    const modelId = dataAttrs['semantic-model-id'];
+    const embedding = dataAttrs['semantic-embedding'];
+    if (!modelId || !embedding) {
+        return null;
+    }
+
+    return {
+        modelId,
+        embedding: decodeFloat32Base64(embedding),
+    };
+}
 
 /**
- * Update a one/index.html file to add face data-* attributes for a specific photo.
+ * Update a one/index.html file to add data-* attributes for a specific photo.
  */
+async function updateIndexHtmlData(
+    rootHandle: FileSystemDirectoryHandle,
+    photo: PhotoEntry,
+    namespace: IndexHtmlNamespace,
+    dataAttrs: Record<string, string>,
+): Promise<void> {
+    await queueIndexHtmlWrite(async () => {
+        const segments = (photo.sourcePath ?? '').split('/').filter(Boolean);
+        let dirHandle = rootHandle;
+        for (let i = 0; i < segments.length - 1; i++) {
+            dirHandle = await dirHandle.getDirectoryHandle(segments[i]);
+        }
+
+        const oneDir = await dirHandle.getDirectoryHandle('one');
+        const indexHandle = await oneDir.getFileHandle('index.html');
+        const file = await indexHandle.getFile();
+        const html = await file.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const photoName = segments[segments.length - 1];
+
+        const rows = Array.from(doc.querySelectorAll<HTMLTableRowElement>('tr.fs-entry'));
+        const row = rows.find(candidate => {
+            const streamId = candidate.getAttribute('data-stream-id');
+            const contentHash = candidate.getAttribute('data-content-hash') ?? candidate.getAttribute('data-hash');
+            if (photo.hash && (streamId === photo.hash || contentHash === photo.hash)) {
+                return true;
+            }
+
+            const linkName = candidate.querySelector('.fs-name a:last-of-type')?.textContent?.trim();
+            return linkName === photoName;
+        });
+
+        if (!row) {
+            console.warn(`[fotos-${namespace}-meta] write-miss`, {
+                photo: photo.sourcePath ?? photo.name,
+                hash: photo.hash,
+            });
+            if (namespace === 'face') {
+                traceHang('face-metadata-write-miss', {
+                    photo: photo.sourcePath ?? photo.name,
+                    hash: photo.hash,
+                    faceCount: dataAttrs['face-count'] ?? null,
+                });
+            }
+            return;
+        }
+
+        for (const attr of [...row.getAttributeNames()]) {
+            if (attr.startsWith(`data-${namespace}-`)) {
+                row.removeAttribute(attr);
+            }
+        }
+
+        for (const [key, value] of Object.entries(dataAttrs)) {
+            row.setAttribute(`data-${key}`, value);
+        }
+
+        const nextHtml = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+
+        if (namespace === 'face') {
+            console.log('[fotos-face-meta] write', {
+                photo: photo.sourcePath ?? photo.name,
+                hash: photo.hash,
+                faceCount: dataAttrs['face-count'] ?? null,
+                clusterCount: dataAttrs['face-cluster-hashes']?.split(';').filter(Boolean).length ?? 0,
+                cleared: Object.keys(dataAttrs).length === 0,
+            });
+            traceHang('face-metadata-write', {
+                photo: photo.sourcePath ?? photo.name,
+                hash: photo.hash,
+                faceCount: dataAttrs['face-count'] ?? null,
+                clusterCount: dataAttrs['face-cluster-hashes']?.split(';').filter(Boolean).length ?? 0,
+                cleared: Object.keys(dataAttrs).length === 0,
+            });
+        }
+
+        const writable = await indexHandle.createWritable();
+        await writable.write(nextHtml);
+        await writable.close();
+    });
+}
+
 async function updateIndexHtmlFaceData(
     rootHandle: FileSystemDirectoryHandle,
     photo: PhotoEntry,
-    dataAttrs: Record<string, string>
+    dataAttrs: Record<string, string>,
 ): Promise<void> {
-    // Navigate to the photo's parent directory
-    const segments = (photo.sourcePath ?? '').split('/').filter(Boolean);
-    let dirHandle = rootHandle;
-    for (let i = 0; i < segments.length - 1; i++) {
-        dirHandle = await dirHandle.getDirectoryHandle(segments[i]);
-    }
+    await updateIndexHtmlData(rootHandle, photo, 'face', dataAttrs);
+}
 
-    // Read one/index.html
-    const oneDir = await dirHandle.getDirectoryHandle('one');
-    const indexHandle = await oneDir.getFileHandle('index.html');
-    const file = await indexHandle.getFile();
-    const html = await file.text();
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    const photoName = segments[segments.length - 1];
-
-    const rows = Array.from(doc.querySelectorAll<HTMLTableRowElement>('tr.fs-entry'));
-    const row = rows.find(candidate => {
-        const streamId = candidate.getAttribute('data-stream-id');
-        const contentHash = candidate.getAttribute('data-content-hash') ?? candidate.getAttribute('data-hash');
-        if (photo.hash && (streamId === photo.hash || contentHash === photo.hash)) {
-            return true;
-        }
-
-        const linkName = candidate.querySelector('.fs-name a:last-of-type')?.textContent?.trim();
-        return linkName === photoName;
-    });
-
-    if (!row) {
-        console.warn('[fotos-face-meta] write-miss', {
-            photo: photo.sourcePath ?? photo.name,
-            hash: photo.hash,
-            faceCount: dataAttrs['face-count'] ?? null,
-        });
-        traceHang('face-metadata-write-miss', {
-            photo: photo.sourcePath ?? photo.name,
-            hash: photo.hash,
-            faceCount: dataAttrs['face-count'] ?? null,
-        });
-        return;
-    }
-
-    for (const attr of [...row.getAttributeNames()]) {
-        if (attr.startsWith('data-face-')) {
-            row.removeAttribute(attr);
-        }
-    }
-
-    for (const [key, value] of Object.entries(dataAttrs)) {
-        row.setAttribute(`data-${key}`, value);
-    }
-
-    const nextHtml = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
-
-    console.log('[fotos-face-meta] write', {
-        photo: photo.sourcePath ?? photo.name,
-        hash: photo.hash,
-        faceCount: dataAttrs['face-count'] ?? null,
-        clusterCount: dataAttrs['face-cluster-hashes']?.split(';').filter(Boolean).length ?? 0,
-        cleared: Object.keys(dataAttrs).length === 0,
-    });
-    traceHang('face-metadata-write', {
-        photo: photo.sourcePath ?? photo.name,
-        hash: photo.hash,
-        faceCount: dataAttrs['face-count'] ?? null,
-        clusterCount: dataAttrs['face-cluster-hashes']?.split(';').filter(Boolean).length ?? 0,
-        cleared: Object.keys(dataAttrs).length === 0,
-    });
-
-    // Write back
-    const writable = await indexHandle.createWritable();
-    await writable.write(nextHtml);
-    await writable.close();
+async function updateIndexHtmlSemanticData(
+    rootHandle: FileSystemDirectoryHandle,
+    photo: PhotoEntry,
+    dataAttrs: Record<string, string>,
+): Promise<void> {
+    await updateIndexHtmlData(rootHandle, photo, 'semantic', dataAttrs);
 }
 
 /**
@@ -160,6 +227,7 @@ function parseOneIndex(html: string, relPath: string): PhotoEntry[] {
 
         // Parse face data
         let faces: FaceInfo | undefined;
+        let semantic: SemanticInfo | null | undefined;
         const faceCount = row.getAttribute('data-face-count');
         if (faceCount !== null) {
             const parsedCount = parseInt(faceCount, 10);
@@ -206,6 +274,25 @@ function parseOneIndex(html: string, relPath: string): PhotoEntry[] {
             }
         }
 
+        if (mime.startsWith('image/')) {
+            try {
+                const semanticInfo = dataAttrsToSemanticInfo({
+                    'semantic-model-id': row.getAttribute('data-semantic-model-id') ?? '',
+                    'semantic-embedding': row.getAttribute('data-semantic-embedding') ?? '',
+                });
+                if (semanticInfo) {
+                    semantic = semanticInfo;
+                }
+            } catch (error) {
+                console.warn('[fotos-semantic-meta] failed to parse semantic embedding', {
+                    photo: relPath ? `${relPath}/${name}` : name,
+                    error,
+                });
+            }
+        } else {
+            semantic = null;
+        }
+
         // Parse size from display text (e.g., "4.2 MB")
         let size = 0;
         const sizeMatch = sizeText.match(/([\d.]+)\s*(B|KB|MB|GB|TB)/i);
@@ -230,6 +317,7 @@ function parseOneIndex(html: string, relPath: string): PhotoEntry[] {
             managed: 'metadata',
             sourcePath: relPath ? `${relPath}/${name}` : name,
             folderPath: relPath || undefined,
+            mimeType: mime || undefined,
             thumb: thumb ? (relPath ? `${relPath}/one/${thumb}` : `one/${thumb}`) : undefined,
             tags: relPath ? [relPath.split('/')[0]] : [],
             capturedAt: exif.date ?? scannedAt,
@@ -238,6 +326,7 @@ function parseOneIndex(html: string, relPath: string): PhotoEntry[] {
             addedAt: exif.date ?? scannedAt,
             size,
             faces,
+            semantic,
         });
     }
 
@@ -450,6 +539,8 @@ export interface FolderAccess {
     rescan: () => Promise<void>;
     /** Force rerun of face detection/recognition for the current folder */
     reanalyzeFaces: () => Promise<void>;
+    /** Ensure photo-level semantic embeddings exist for the current folder */
+    ensureSemanticEmbeddings: () => Promise<void>;
     /** Get an object URL for a file (for display). Caller must revoke. */
     getFileUrl: (relativePath: string) => Promise<string>;
     /** Get an object URL for a thumbnail */
@@ -593,12 +684,17 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     // Face worker — initialized lazily, persists across ingests
     const faceWorkerRef = useRef<{ handle: FaceWorkerHandle; terminate: () => void } | null>(null);
     const facePassProgressRef = useRef<{ total: number; current: number; fileName?: string } | null>(null);
+    const semanticWorkerRef = useRef<ReturnType<typeof createSemanticWorker> | null>(null);
+    const semanticPassPromiseRef = useRef<Promise<void> | null>(null);
     // Face cluster dimension — loaded lazily, persists across face passes
     const clusterDimRef = useRef<FaceClusterDimension | null>(null);
     const clusterThresholdRef = useRef<number | null>(null);
 
     useEffect(() => {
-        return () => { faceWorkerRef.current?.terminate(); };
+        return () => {
+            faceWorkerRef.current?.terminate();
+            semanticWorkerRef.current?.terminate();
+        };
     }, []);
 
     useEffect(() => {
@@ -761,6 +857,17 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         faceWorkerRef.current = { handle: fw.handle, terminate: fw.terminate };
         return fw.handle;
     }, [updateFacePreparationProgress]);
+
+    const getSemanticWorker = useCallback(async () => {
+        if (semanticWorkerRef.current) {
+            return semanticWorkerRef.current.handle;
+        }
+
+        const worker = createSemanticWorker(semanticWorkerUrl);
+        await worker.ready;
+        semanticWorkerRef.current = worker;
+        return worker.handle;
+    }, []);
 
     const rebuildClustersFromEntries = useCallback(async (
         handle: FileSystemDirectoryHandle,
@@ -1066,6 +1173,76 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         }
     }, [clusterThreshold, ensureClusterDimension, getFaceWorker]);
 
+    const runBackgroundSemanticPass = useCallback(async (
+        handle: FileSystemDirectoryHandle,
+        photos: PhotoEntry[],
+    ) => {
+        const pending = photos.filter(photo => photo.semantic === undefined);
+        if (pending.length === 0) {
+            return;
+        }
+
+        let semanticHandle;
+        try {
+            semanticHandle = await getSemanticWorker();
+        } catch (error) {
+            console.warn('[SemanticPass] Semantic search unavailable:', error);
+            return;
+        }
+
+        for (const photo of pending) {
+            let semantic: SemanticInfo | null = null;
+
+            try {
+                const isEmbeddable = !photo.mimeType || photo.mimeType.startsWith('image/');
+                if (photo.sourcePath && isEmbeddable) {
+                    const file = await readFileFromHandle(handle, photo.sourcePath);
+                    const result = await semanticHandle.embedImage(file);
+                    semantic = {
+                        modelId: result.modelId,
+                        embedding: result.embedding,
+                    };
+                    await updateIndexHtmlSemanticData(handle, photo, semanticToDataAttrs(semantic));
+                }
+            } catch (error) {
+                console.warn(`[SemanticPass] Failed for ${photo.name}:`, error);
+            }
+
+            setEntries(prev => prev.map(entry => {
+                if (entry.hash !== photo.hash) {
+                    return entry;
+                }
+                return {
+                    ...entry,
+                    semantic,
+                };
+            }));
+        }
+    }, [getSemanticWorker]);
+
+    const ensureSemanticEmbeddings = useCallback(async () => {
+        const handle = rootHandleRef.current;
+        if (!handle) {
+            return;
+        }
+
+        const hasPending = entries.some(photo => photo.semantic === undefined);
+        if (!hasPending) {
+            return;
+        }
+
+        if (semanticPassPromiseRef.current) {
+            return semanticPassPromiseRef.current;
+        }
+
+        const promise = runBackgroundSemanticPass(handle, entries)
+            .finally(() => {
+                semanticPassPromiseRef.current = null;
+            });
+        semanticPassPromiseRef.current = promise;
+        return promise;
+    }, [entries, runBackgroundSemanticPass]);
+
     const clearUrlCache = useCallback(() => {
         for (const url of urlCacheRef.current.values()) {
             URL.revokeObjectURL(url);
@@ -1079,6 +1256,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         rootHandleRef.current = handle;
         clusterDimRef.current = null;
         clusterThresholdRef.current = null;
+        semanticPassPromiseRef.current = null;
         setFolderName(handle.name);
         setIsOpen(true);
         clearUrlCache();
@@ -1159,6 +1337,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             rootHandleRef.current = null;
             clusterDimRef.current = null;
             clusterThresholdRef.current = null;
+            semanticPassPromiseRef.current = null;
             clearUrlCache();
             setFolderName('shared');
             setIsOpen(true);
@@ -1177,6 +1356,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                     managed: m.managed,
                     sourcePath: m.sourcePath,
                     folderPath: m.folderPath,
+                    mimeType: m.mimeType,
                     thumb: m.thumb ? `thumb:${m.hash}` : undefined,
                     tags: m.tags,
                     capturedAt: m.capturedAt,
@@ -1218,6 +1398,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             rootHandleRef.current = null;
             clusterDimRef.current = null;
             clusterThresholdRef.current = null;
+            semanticPassPromiseRef.current = null;
             clearUrlCache();
 
             setFolderName('photos');
@@ -1238,6 +1419,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                     managed: m.managed,
                     sourcePath: m.sourcePath,
                     folderPath: m.folderPath,
+                    mimeType: m.mimeType,
                     thumb: m.thumb ? `thumb:${m.hash}` : undefined,
                     tags: m.tags,
                     capturedAt: m.capturedAt,
@@ -1259,6 +1441,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     const rescan = useCallback(async () => {
         if (!rootHandleRef.current) return;
         const handle = rootHandleRef.current;
+        semanticPassPromiseRef.current = null;
         clearUrlCache();
         try {
             await ingestDirectory(handle, setIngestProgress);
@@ -1289,6 +1472,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         }
 
         const handle = rootHandleRef.current;
+        semanticPassPromiseRef.current = null;
         traceHang('face-reanalyze-start', {
             folderName,
             entries: entries.length,
@@ -1438,6 +1622,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         openFolder,
         rescan,
         reanalyzeFaces,
+        ensureSemanticEmbeddings,
         getFileUrl,
         getThumbUrl,
         readFile,

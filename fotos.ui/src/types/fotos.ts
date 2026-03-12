@@ -13,12 +13,18 @@ export interface FaceInfo {
     qrPaths?: string[];
 }
 
+export interface SemanticInfo {
+    modelId: string;
+    embedding: Float32Array;
+}
+
 export interface PhotoEntry {
     hash: string;
     name: string;
     managed: StorageMode;
     sourcePath?: string;
     folderPath?: string;
+    mimeType?: string;
     thumb?: string;
     tags: string[];
     capturedAt?: string;
@@ -28,6 +34,7 @@ export interface PhotoEntry {
     size: number;
     copies?: string[];
     faces?: FaceInfo;
+    semantic?: SemanticInfo | null;
 }
 
 export interface ExifData {

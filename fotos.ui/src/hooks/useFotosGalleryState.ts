@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useMemo, useState} from 'react';
-import type {PhotoEntry} from '../types/fotos.js';
+import type {PhotoEntry, SemanticInfo} from '../types/fotos.js';
 import {
     collectTagCounts,
     filterGalleryPhotos,
@@ -36,6 +36,7 @@ export function useFotosGalleryState<TPhoto extends PhotoEntry = PhotoEntry>({
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
     const [searchFace, setSearchFace] = useState<Float32Array | null>(null);
+    const [searchEmbedding, setSearchEmbedding] = useState<SemanticInfo | null>(null);
     const [resolvedDayGroups, setResolvedDayGroups] = useState<Array<DayGroup<TPhoto>> | null>(null);
 
     const photos = source.entries;
@@ -44,7 +45,8 @@ export function useFotosGalleryState<TPhoto extends PhotoEntry = PhotoEntry>({
         activeTag,
         searchQuery,
         searchFace,
-    }) as TPhoto[], [photos, activeTag, searchQuery, searchFace]);
+        searchEmbedding,
+    }) as TPhoto[], [photos, activeTag, searchQuery, searchFace, searchEmbedding]);
     const fallbackDayGroups = useMemo(
         () => groupPhotosByDay(filtered) as Array<DayGroup<TPhoto>>,
         [filtered]
@@ -116,6 +118,8 @@ export function useFotosGalleryState<TPhoto extends PhotoEntry = PhotoEntry>({
         setSearchQuery,
         searchFace,
         setSearchFace,
+        searchEmbedding,
+        setSearchEmbedding,
         selectedIndex,
         setSelectedIndex,
         addPhoto: handleAddPhoto,

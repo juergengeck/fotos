@@ -389,7 +389,7 @@ async function writeFile(
     await writable.close();
 }
 
-async function loadPreservedFaceAttrs(
+async function loadPreservedIndexAttrs(
     oneDir: FileSystemDirectoryHandle,
 ): Promise<PreservedAttrsByHash> {
     try {
@@ -407,7 +407,7 @@ async function loadPreservedFaceAttrs(
 
             const attrs: Record<string, string> = {};
             for (const attrName of row.getAttributeNames()) {
-                if (!attrName.startsWith('data-face-')) {
+                if (!attrName.startsWith('data-face-') && !attrName.startsWith('data-semantic-')) {
                     continue;
                 }
 
@@ -472,7 +472,7 @@ export async function ingestDirectory(
     for (const bucket of buckets) {
         const oneDir = await getOrCreateDir(bucket.dirHandle, ONE_DIR);
         const thumbsDir = await getOrCreateDir(oneDir, THUMBS_DIR);
-        const preservedFaceAttrs = await loadPreservedFaceAttrs(oneDir);
+        const preservedIndexAttrs = await loadPreservedIndexAttrs(oneDir);
 
         const entries: FsEntry[] = [];
 
@@ -507,7 +507,7 @@ export async function ingestDirectory(
             const streamId = await computeStreamId(contentHash, exif.date, img.mime);
             data['stream-id'] = streamId;
 
-            const preserved = preservedFaceAttrs.get(contentHash);
+            const preserved = preservedIndexAttrs.get(contentHash);
             if (preserved) {
                 Object.assign(data, preserved);
             }
@@ -589,6 +589,7 @@ export interface MobilePhotoEntry {
     managed: 'metadata';
     sourcePath: string;
     folderPath?: string;
+    mimeType?: string;
     /** Object URL for thumbnail */
     thumb?: string;
     /** Object URL for full image */
@@ -649,6 +650,7 @@ export async function ingestFiles(
             managed: 'metadata',
             sourcePath: relPath,
             folderPath: folder || undefined,
+            mimeType: file.type || mimeFromName(file.name),
             thumb,
             objectUrl: URL.createObjectURL(file),
             tags: folder ? [folder.split('/')[0]] : [],

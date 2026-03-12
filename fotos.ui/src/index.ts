@@ -1,6 +1,7 @@
 export type {
     StorageMode,
     FaceInfo,
+    SemanticInfo,
     PhotoEntry,
     ExifData,
     FotosSettings,

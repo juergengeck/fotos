@@ -1,9 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { GalleryTrieManager } from '@refinio/fotos.core';
 import { groupPhotosByDay, useFotosGalleryState } from '@refinio/fotos.ui';
 import type { PhotoEntry } from '@/types/fotos';
 import { buildFaceClusterSummaries, buildSimilarFaceMatches } from '@/lib/cluster-gallery';
+import { createSemanticWorker } from '@/lib/semanticWorkerClient';
 import { useFolderAccess } from './useFolderAccess';
+import semanticWorkerUrl from '@/workers/semantic.worker.ts?worker&url';
 
 export type FotosGalleryMode = 'images' | 'clusters';
 
@@ -39,6 +41,8 @@ export function useGallery(options: UseGalleryOptions = {}) {
     });
     const [galleryMode, setGalleryMode] = useState<FotosGalleryMode>('images');
     const [activeClusterId, setActiveClusterId] = useState<string | null>(null);
+    const semanticWorkerRef = useRef<ReturnType<typeof createSemanticWorker> | null>(null);
+    const semanticRequestIdRef = useRef(0);
 
     const clusters = useMemo(() => buildFaceClusterSummaries(folder.entries), [folder.entries]);
     const activeCluster = useMemo(
@@ -109,6 +113,64 @@ export function useGallery(options: UseGalleryOptions = {}) {
 
         return clusters.filter(cluster => clusterIds.has(cluster.clusterId));
     }, [gallery.searchFace, similarFaces, clusters]);
+
+    const semanticSearchQuery = galleryMode === 'images' && !gallery.searchFace
+        ? gallery.searchQuery.trim()
+        : '';
+    const ensureSemanticEmbeddings = folder.ensureSemanticEmbeddings;
+    const setSearchEmbedding = gallery.setSearchEmbedding;
+
+    useEffect(() => {
+        return () => {
+            semanticWorkerRef.current?.terminate();
+        };
+    }, []);
+
+    useEffect(() => {
+        const requestId = ++semanticRequestIdRef.current;
+        if (!semanticSearchQuery) {
+            setSearchEmbedding(null);
+            return;
+        }
+
+        setSearchEmbedding(null);
+
+        let cancelled = false;
+        void (async () => {
+            try {
+                let worker = semanticWorkerRef.current;
+                if (!worker) {
+                    worker = createSemanticWorker(semanticWorkerUrl);
+                    await worker.ready;
+                    semanticWorkerRef.current = worker;
+                }
+
+                const semantic = await worker.handle.embedText(semanticSearchQuery);
+                if (cancelled || semanticRequestIdRef.current !== requestId) {
+                    return;
+                }
+
+                setSearchEmbedding(semantic);
+            } catch (error) {
+                if (!cancelled && semanticRequestIdRef.current === requestId) {
+                    console.warn('[semantic-search] Failed to embed query:', error);
+                    setSearchEmbedding(null);
+                }
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [semanticSearchQuery, setSearchEmbedding]);
+
+    useEffect(() => {
+        if (!semanticSearchQuery) {
+            return;
+        }
+
+        void ensureSemanticEmbeddings();
+    }, [ensureSemanticEmbeddings, semanticSearchQuery, folder.entries]);
 
     return {
         ...gallery,

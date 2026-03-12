@@ -204,7 +204,7 @@ export default defineConfig({
         'process.platform': '"browser"',
     },
     optimizeDeps: {
-        entries: ['src/workers/face.worker.ts'],
+        entries: ['src/workers/face.worker.ts', 'src/workers/semantic.worker.ts'],
         include: [
             'react',
             'react-dom',

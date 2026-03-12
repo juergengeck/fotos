@@ -88,4 +88,36 @@ describe('gallery helpers', () => {
         expect(filterGalleryPhotos(photos, {searchFace}).map(photo => photo.hash)).toEqual(['a', 'b']);
         expect(filterGalleryPhotos(photos, {activeTag: 'travel', searchQuery: 'ber'}).map(photo => photo.hash)).toEqual(['c']);
     });
+
+    it('prefers semantic matches for text search when embeddings are available', () => {
+        const photos = [
+            makePhoto('a', '2026-03-10T10:00:00.000Z', {
+                name: 'shoe-rack.jpg',
+                semantic: {
+                    modelId: 'clip-vit-base-patch32',
+                    embedding: new Float32Array([1, 0, 0]),
+                },
+            }),
+            makePhoto('b', '2026-03-09T10:00:00.000Z', {
+                name: 'street.jpg',
+                semantic: {
+                    modelId: 'clip-vit-base-patch32',
+                    embedding: new Float32Array([0.1, 1, 0]),
+                },
+            }),
+            makePhoto('c', '2026-03-08T10:00:00.000Z', {
+                name: 'schuhe-notes.jpg',
+            }),
+        ];
+
+        const searchEmbedding = {
+            modelId: 'clip-vit-base-patch32',
+            embedding: new Float32Array([1, 0, 0]),
+        };
+
+        expect(filterGalleryPhotos(photos, {
+            searchQuery: 'schuhe',
+            searchEmbedding,
+        }).map(photo => photo.hash)).toEqual(['a']);
+    });
 });
