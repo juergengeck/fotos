@@ -295,7 +295,20 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onFa
     // --- IMAGE VIEW MODE ---
     return (
         <div className="fixed inset-0 z-[60] flex bg-black">
-            {viewport}
+            <div className="flex-1 min-w-0 relative">
+                {viewport}
+                <button
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        onClose();
+                    }}
+                    className="absolute top-4 right-4 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-black/70 text-white/55 backdrop-blur-sm transition-colors hover:text-white/80"
+                    aria-label="Close image view"
+                    title="Close image view (Esc)"
+                >
+                    <X className="w-4 h-4" />
+                </button>
+            </div>
 
             <aside className="w-72 h-full flex flex-col bg-[#0d0d0d] border-l border-white/10 shrink-0 max-md:w-64">
                 {/* Header — matches gallery sidebar tab bar shape */}
@@ -304,14 +317,6 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onFa
                         <div className="text-[11px] font-medium tracking-wide uppercase text-white/90">{photo.name}</div>
                         <div className="text-[10px] text-white/25 tabular-nums mt-0.5">{index + 1} of {photos.length}</div>
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="px-3 py-2 text-white/30 hover:text-white/70 transition-colors"
-                        aria-label="Back to gallery"
-                        title="Back to gallery (Esc)"
-                    >
-                        <X className="w-4 h-4" />
-                    </button>
                 </div>
 
                 {/* Scrollable content */}
