@@ -1,0 +1,25 @@
+# Security headers for Cloudflare Pages deployment
+# https://developers.cloudflare.com/pages/configuration/headers/
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), microphone=(), camera=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  Content-Security-Policy: default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src 'self' ws: wss: http: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:;
+
+# Service worker must not be edge/browser-cached aggressively,
+# otherwise update detection can lag for hours on Cloudflare Pages.
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/workbox-*.js
+  Cache-Control: no-cache, must-revalidate
+
+# Long cache for hashed build output.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Short cache for HTML so the shell updates quickly.
+/*.html
+  Cache-Control: public, max-age=300, must-revalidate

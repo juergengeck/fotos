@@ -1,0 +1,16 @@
+{
+  "name": "@one/fotos.browser",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "browser-ui/src/main.tsx",
+  "dependencies": {
+    "@refinio/fotos.core": "workspace:*",
+    "one.fotos": "workspace:*"
+  },
+  "scripts": {
+    "dev": "cd browser-ui && npm run dev",
+    "build": "cd browser-ui && npm run build",
+    "typecheck": "cd browser-ui && tsc --noEmit"
+  }
+}

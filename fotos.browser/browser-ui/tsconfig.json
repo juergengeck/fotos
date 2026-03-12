@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@refinio/fotos.ui": ["../../fotos.ui/src/index.ts"]
+    }
+  },
+  "include": [
+    "src",
+    "../../local.core/src/transformers.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "src/sw.ts",
+    "src/workers/**/*",
+    "node_modules/@refinio/one.core/lib/system/expo/**/*",
+    "node_modules/@refinio/one.core/lib/system/nodejs/**/*",
+    "node_modules/@refinio/one.core/src/system/expo/**/*",
+    "node_modules/@refinio/one.core/src/system/nodejs/**/*"
+  ]
+}

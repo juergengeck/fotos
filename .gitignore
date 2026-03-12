@@ -1,0 +1,19 @@
+.DS_Store
+node_modules/
+dist/
+_deploy/
+*.log
+
+# Local dependency shims for sibling VGER/ONE packages
+auth.core
+connection.core
+glue.core
+local.core
+meaning.core
+one.core
+one.models
+refinio.api
+settings.core
+trie.core
+trust.core
+vger
