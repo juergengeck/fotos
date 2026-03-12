@@ -185,6 +185,9 @@ export default defineConfig({
         alias: [
             {find: '@', replacement: path.resolve(__dirname, './src')},
             {find: '@refinio/fotos.ui', replacement: path.resolve(__dirname, '../../fotos.ui/src/index.ts')},
+            {find: '@refinio/local.core/BrowserMultimodalEmbeddingProvider.js', replacement: path.resolve(__dirname, '../../../vger/packages/local.core/dist/BrowserMultimodalEmbeddingProvider.js')},
+            {find: '@vger/vger.core', replacement: path.resolve(__dirname, '../../../vger/packages/vger.core/dist')},
+            {find: '@vger/vger.glue', replacement: path.resolve(__dirname, '../../../vger/packages/vger.glue/dist')},
             // Stub out Node-only modules that ONE.core dependency tree pulls in
             {find: '@anthropic-ai/sdk', replacement: path.resolve(__dirname, './src/stubs/empty.ts')},
             {find: '@whiskeysockets/baileys', replacement: path.resolve(__dirname, './src/stubs/empty.ts')},
