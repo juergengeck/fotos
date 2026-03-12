@@ -348,35 +348,6 @@ async function clearClusterState(dirHandle: FileSystemDirectoryHandle): Promise<
     }
 }
 
-function shouldRetryFaceAnalysis(photo: PhotoEntry): boolean {
-    return photo.faces?.count === 0;
-}
-
-function needsAutoRetryOnOpen(photos: PhotoEntry[]): boolean {
-    return photos.some(shouldRetryFaceAnalysis)
-        && !photos.some(photo => (photo.faces?.count ?? 0) > 0);
-}
-
-async function clearFaceMetadataForRetry(
-    rootHandle: FileSystemDirectoryHandle,
-    photos: PhotoEntry[],
-): Promise<PhotoEntry[]> {
-    const retryable = photos.filter(shouldRetryFaceAnalysis);
-    if (retryable.length === 0) {
-        return photos;
-    }
-
-    for (const photo of retryable) {
-        await updateIndexHtmlFaceData(rootHandle, photo, {});
-    }
-
-    return photos.map(photo => (
-        shouldRetryFaceAnalysis(photo)
-            ? { ...photo, faces: undefined }
-            : photo
-    ));
-}
-
 const DEFAULT_CLUSTER_SENSITIVITY = 50;
 const CLUSTER_THRESHOLD_MIN = 0.35;
 const CLUSTER_THRESHOLD_MAX = 0.75;
@@ -919,6 +890,8 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         handle: FileSystemDirectoryHandle,
         photos: PhotoEntry[]
     ) => {
+        // Trust any face metadata already materialized in one/index.html and
+        // only enrich entries that are still missing face results.
         const missing = photos.filter(p => p.faces === undefined);
         if (missing.length === 0) return;
 
@@ -1141,9 +1114,6 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             });
             let currentEntries = found;
             if (allowsLocalFaceEnrichment) {
-                if (needsAutoRetryOnOpen(currentEntries)) {
-                    currentEntries = await clearFaceMetadataForRetry(handle, currentEntries);
-                }
                 const ensured = await ensureClusterDimension(handle, currentEntries, clusterThreshold);
                 currentEntries = ensured.entries;
                 setEntries(currentEntries);
@@ -1294,7 +1264,6 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             await ingestDirectory(handle, setIngestProgress);
             let found = await scan(handle);
             if (allowsLocalFaceEnrichment) {
-                found = await clearFaceMetadataForRetry(handle, found);
                 const ensured = await ensureClusterDimension(handle, found, clusterThreshold);
                 found = ensured.entries;
                 setEntries(found);
