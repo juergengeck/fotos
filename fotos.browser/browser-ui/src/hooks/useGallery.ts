@@ -37,6 +37,7 @@ export function useGallery(options: UseGalleryOptions = {}) {
     const folder = useFolderAccess({
         clusterSensitivity: options.clusterSensitivity,
         faceAnalyticsEnabled: options.faceAnalyticsEnabled,
+        semanticSearchEnabled: options.semanticSearchEnabled,
     });
     const gallery = useFotosGalleryState<PhotoEntry>({
         source: folder,

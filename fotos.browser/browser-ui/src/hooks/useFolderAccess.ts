@@ -537,7 +537,7 @@ export interface FolderAccess {
     openFolder: () => Promise<void>;
     /** Rescan the current folder */
     rescan: () => Promise<void>;
-    /** Force rerun of face detection/recognition for the current folder */
+    /** Force rerun of enabled analysis for the current folder */
     reanalyzeFaces: () => Promise<void>;
     /** Ensure photo-level semantic embeddings exist for the current folder */
     ensureSemanticEmbeddings: () => Promise<void>;
@@ -662,11 +662,13 @@ function faceWorkerStatusLabel(progress: FaceWorkerProgress): string | null {
 export interface UseFolderAccessOptions {
     clusterSensitivity?: number;
     faceAnalyticsEnabled?: boolean;
+    semanticSearchEnabled?: boolean;
 }
 
 export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAccess {
     const clusterSensitivity = options.clusterSensitivity ?? DEFAULT_CLUSTER_SENSITIVITY;
     const faceAnalyticsEnabled = options.faceAnalyticsEnabled ?? false;
+    const semanticSearchEnabled = options.semanticSearchEnabled ?? false;
     const clusterThreshold = clusterSensitivityToThreshold(clusterSensitivity);
     const [isOpen, setIsOpen] = useState(false);
     const [folderName, setFolderName] = useState<string | null>(null);
@@ -1526,44 +1528,106 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     ]);
 
     const reanalyzeFaces = useCallback(async () => {
-        if (!rootHandleRef.current || !allowsLocalFaceEnrichment) {
+        if (!rootHandleRef.current) {
             return;
         }
 
         const handle = rootHandleRef.current;
+        const shouldReanalyzeFaces = allowsLocalFaceEnrichment;
+        const shouldReanalyzeSemantic = semanticSearchEnabled;
+        if (!shouldReanalyzeFaces && !shouldReanalyzeSemantic) {
+            return;
+        }
+
         semanticPassPromiseRef.current = null;
-        traceHang('face-reanalyze-start', {
+        traceHang('analysis-reanalyze-start', {
             folderName,
             entries: entries.length,
+            faces: shouldReanalyzeFaces,
+            semantic: shouldReanalyzeSemantic,
         });
-        console.log('[fotos-face-meta] reanalyze-start', {
+        console.log('[fotos-analysis] reanalyze-start', {
             folder: folderName,
             entries: entries.length,
+            faces: shouldReanalyzeFaces,
+            semantic: shouldReanalyzeSemantic,
         });
 
-        setLoading(true);
         try {
-            for (const photo of entries) {
-                await updateIndexHtmlFaceData(handle, photo, {});
+            for (let index = 0; index < entries.length; index++) {
+                const photo = entries[index];
+                setIngestProgress({
+                    phase: shouldReanalyzeFaces ? 'preparing-faces' : 'preparing-semantic',
+                    current: index,
+                    total: entries.length,
+                    fileName: photo.name,
+                    statusLabel: 'Clearing saved analysis...',
+                });
+                if (shouldReanalyzeFaces) {
+                    await updateIndexHtmlFaceData(handle, photo, {});
+                }
+                if (shouldReanalyzeSemantic) {
+                    await updateIndexHtmlSemanticData(handle, photo, {});
+                }
             }
-            await clearClusterState(handle);
-            clusterDimRef.current = null;
-            clusterThresholdRef.current = null;
+
+            if (entries.length > 0) {
+                setIngestProgress({
+                    phase: shouldReanalyzeFaces ? 'preparing-faces' : 'preparing-semantic',
+                    current: entries.length,
+                    total: entries.length,
+                    statusLabel: 'Saved analysis cleared.',
+                });
+            }
+
+            if (shouldReanalyzeFaces) {
+                await clearClusterState(handle);
+                clusterDimRef.current = null;
+                clusterThresholdRef.current = null;
+            }
 
             const cleared = entries.map(photo => ({
                 ...photo,
-                faces: undefined,
+                faces: shouldReanalyzeFaces ? undefined : photo.faces,
+                semantic: shouldReanalyzeSemantic ? undefined : photo.semantic,
             }));
             setEntries(cleared);
-            await runBackgroundFacePass(handle, cleared);
+
+            if (cleared.length === 0) {
+                setIngestProgress(null);
+                return;
+            }
+
+            if (shouldReanalyzeFaces) {
+                await runBackgroundFacePass(handle, cleared);
+            }
+            if (shouldReanalyzeSemantic) {
+                let semanticPass: Promise<void>;
+                semanticPass = runBackgroundSemanticPass(handle, cleared)
+                    .finally(() => {
+                        if (semanticPassPromiseRef.current === semanticPass) {
+                            semanticPassPromiseRef.current = null;
+                        }
+                    });
+                semanticPassPromiseRef.current = semanticPass;
+                await semanticPass;
+            }
         } finally {
-            setLoading(false);
-            traceHang('face-reanalyze-complete', {
+            traceHang('analysis-reanalyze-complete', {
                 folderName,
                 entries: entries.length,
+                faces: shouldReanalyzeFaces,
+                semantic: shouldReanalyzeSemantic,
             });
         }
-    }, [allowsLocalFaceEnrichment, entries, folderName, runBackgroundFacePass]);
+    }, [
+        allowsLocalFaceEnrichment,
+        entries,
+        folderName,
+        runBackgroundFacePass,
+        runBackgroundSemanticPass,
+        semanticSearchEnabled,
+    ]);
 
     useEffect(() => {
         const handle = rootHandleRef.current;

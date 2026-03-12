@@ -92,6 +92,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
     const intakePlan = gallery.folder.defaultIntakePlan;
     const canRunFaceAnalytics = settings.analysis.faceAnalyticsEnabled
         && intakePlan.faceEnrichment === 'local';
+    const canReanalyze = canRunFaceAnalytics || settings.analysis.semanticSearchEnabled;
 
     // On mobile, tap a photo → share via native share sheet (opens in photo app)
     const handlePhotoClick = useCallback(async (index: number) => {
@@ -539,7 +540,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 folderName={gallery.folder.folderName}
                 onOpenFolder={gallery.folder.openFolder}
                 onRescan={gallery.folder.rescan}
-                onReanalyze={canRunFaceAnalytics ? gallery.folder.reanalyzeFaces : undefined}
+                onReanalyze={canReanalyze ? gallery.folder.reanalyzeFaces : undefined}
                 faceSearchActive={gallery.searchFace !== null}
                 onClearFaceSearch={() => gallery.setSearchFace(null)}
                 fotosModel={fotosModel}

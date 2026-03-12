@@ -237,7 +237,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onFa
     const viewport = (
         <div
             ref={vpRef}
-            className={`flex-1 overflow-hidden relative ${scale !== null ? 'cursor-grab active:cursor-grabbing' : ''}`}
+            className={`flex-1 h-full overflow-hidden relative ${scale !== null ? 'cursor-grab active:cursor-grabbing' : ''}`}
             onMouseDown={onMouseDown}
             onDoubleClick={onDblClick}
             onClick={onViewportClick}
