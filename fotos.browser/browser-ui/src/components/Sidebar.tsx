@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Search, FolderOpen, Download, SlidersHorizontal, ChevronLeft, ChevronRight, ChevronDown, Trash2, Pencil } from 'lucide-react';
+import { Search, FolderOpen, Download, SlidersHorizontal, ChevronLeft, ChevronRight, ChevronDown, Trash2 } from 'lucide-react';
 import type { FotosSettings, StorageMode, DisplaySettings } from '@/types/fotos';
 import type { FotosModel } from '@/lib/onecore-boot';
 import type { FaceClusterSummary, SimilarFaceMatch } from '@/lib/cluster-gallery';
 import type { FotosHistoryBranchNode } from '@/lib/fotosHistorySettings';
 import { FotosSettings as FotosSettingsPanel } from './FotosSettings';
 import { ClusterCard } from './ClusterGallery';
+import { InlineRenameField } from './InlineRenameField';
 
 type Tab = 'browse' | 'manage' | 'settings';
 
@@ -61,7 +62,7 @@ interface SidebarProps {
     onSelectClusterAvatar: (avatarKey: string) => void;
     onOpenSimilarFace: (match: SimilarFaceMatch) => void;
     onDeletePhoto: (hash: string) => void;
-    onEditFace: (clusterId: string) => void;
+    onRenameFace: (clusterId: string, name: string) => Promise<void> | void;
     onDeleteFace: (clusterId: string) => void;
 }
 
@@ -88,7 +89,7 @@ export function Sidebar({
     onSelectClusterAvatar,
     onOpenSimilarFace,
     onDeletePhoto,
-    onEditFace,
+    onRenameFace,
     onDeleteFace,
 }: SidebarProps) {
     const [tab, setTab] = useState<Tab>('browse');
@@ -166,7 +167,7 @@ export function Sidebar({
                             onSelectClusterAvatar={onSelectClusterAvatar}
                             onOpenSimilarFace={onOpenSimilarFace}
                             onDeletePhoto={onDeletePhoto}
-                            onEditFace={onEditFace}
+                            onRenameFace={onRenameFace}
                             onDeleteFace={onDeleteFace}
                         />
                     )}
@@ -192,6 +193,7 @@ export function Sidebar({
                             clusters={clusters}
                             getFileUrl={getFileUrl}
                             onClusterSelect={id => onClusterSelect(id)}
+                            onRenameFace={onRenameFace}
                         />
                     )}
                 </div>
@@ -295,7 +297,7 @@ export function Sidebar({
                         onSelectClusterAvatar={onSelectClusterAvatar}
                         onOpenSimilarFace={onOpenSimilarFace}
                         onDeletePhoto={onDeletePhoto}
-                        onEditFace={onEditFace}
+                        onRenameFace={onRenameFace}
                         onDeleteFace={onDeleteFace}
                     />
                 )}
@@ -322,6 +324,7 @@ export function Sidebar({
                         clusters={clusters}
                         getFileUrl={getFileUrl}
                         onClusterSelect={id => onClusterSelect(id)}
+                        onRenameFace={onRenameFace}
                     />
                 )}
             </div>
@@ -454,7 +457,7 @@ function BrowseTab({
     getFileUrl,
     selectedClusterAvatarKey, onSelectClusterAvatar,
     onOpenSimilarFace, onDeletePhoto,
-    onEditFace, onDeleteFace,
+    onRenameFace, onDeleteFace,
 }: {
     tags: [string, number][];
     activeTag: string | null;
@@ -482,7 +485,7 @@ function BrowseTab({
     onSelectClusterAvatar: (avatarKey: string) => void;
     onOpenSimilarFace: (match: SimilarFaceMatch) => void;
     onDeletePhoto: (hash: string) => void;
-    onEditFace: (clusterId: string) => void;
+    onRenameFace: (clusterId: string, name: string) => Promise<void> | void;
     onDeleteFace: (clusterId: string) => void;
 }) {
     return (
@@ -542,7 +545,7 @@ function BrowseTab({
                                         active={cluster.clusterId === activeClusterId}
                                         onClick={() => onClusterSelect(cluster.clusterId)}
                                         getFileUrl={getFileUrl}
-                                        onEdit={onEditFace}
+                                        onRename={onRenameFace}
                                         onDelete={onDeleteFace}
                                     />
                                 ))}
@@ -561,7 +564,7 @@ function BrowseTab({
                                         active={cluster.clusterId === activeClusterId}
                                         onClick={() => onClusterSelect(cluster.clusterId)}
                                         getFileUrl={getFileUrl}
-                                        onEdit={onEditFace}
+                                        onRename={onRenameFace}
                                         onDelete={onDeleteFace}
                                     />
                                 ))}
@@ -584,6 +587,8 @@ function BrowseTab({
                                         active={cluster.clusterId === activeClusterId}
                                         onClick={() => onClusterSelect(cluster.clusterId)}
                                         getFileUrl={getFileUrl}
+                                        onRename={onRenameFace}
+                                        onDelete={onDeleteFace}
                                     />
                                 ))}
                             </div>
@@ -603,6 +608,7 @@ function BrowseTab({
                                         checked={selectedClusterAvatarKey === avatarKey}
                                         onCheck={() => onSelectClusterAvatar(avatarKey)}
                                         onOpen={() => onOpenSimilarFace(match)}
+                                        onRename={match.clusterId ? name => onRenameFace(match.clusterId!, name) : undefined}
                                         onDelete={() => onDeletePhoto(match.photo.hash)}
                                     />
                                 );
@@ -687,7 +693,7 @@ function BrowseTab({
                                             onClusterSelect(cluster.clusterId);
                                         }}
                                         getFileUrl={getFileUrl}
-                                        onEdit={onEditFace}
+                                        onRename={onRenameFace}
                                         onDelete={onDeleteFace}
                                     />
                                 ))}
@@ -730,19 +736,26 @@ function TogglePill({ active, onClick, label }: { active: boolean; onClick: () =
     );
 }
 
+function handleButtonLikeKeyDown(event: React.KeyboardEvent, onActivate: () => void) {
+    if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        onActivate();
+    }
+}
+
 function ClusterBrowseRow({
     cluster,
     active,
     onClick,
     getFileUrl,
-    onEdit,
+    onRename,
     onDelete,
 }: {
     cluster: FaceClusterSummary;
     active: boolean;
     onClick: () => void;
     getFileUrl: (relativePath: string) => Promise<string>;
-    onEdit?: (clusterId: string) => void;
+    onRename?: (clusterId: string, name: string) => Promise<void> | void;
     onDelete?: (clusterId: string) => void;
 }) {
     const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -772,34 +785,42 @@ function ClusterBrowseRow({
     }, [cluster.avatarPath, getFileUrl]);
 
     return (
-        <div className={`flex w-full items-center gap-2 rounded-md border px-2 py-1.5 transition-colors ${
-            active
-                ? 'border-[#e94560]/50 bg-[#e94560]/10'
-                : 'border-white/10 bg-white/5 hover:bg-white/10'
-        }`}>
-            <button onClick={onClick} className="flex min-w-0 flex-1 items-center gap-2 text-left">
-                {avatarUrl ? (
-                    <img src={avatarUrl} alt={cluster.label} className="h-7 w-7 rounded-full object-cover border border-white/10" />
-                ) : (
-                    <div className="h-7 w-7 rounded-full bg-white/10 border border-white/10" />
-                )}
-                <div className="min-w-0 flex-1">
-                    <div className="truncate text-[11px] text-white/75">{cluster.label}</div>
-                    <div className="text-[10px] text-white/25">{cluster.faceCount} faces · {cluster.photoCount} photos</div>
-                </div>
-            </button>
-            {onEdit && (
-                <button
-                    onClick={() => onEdit(cluster.clusterId)}
-                    className="text-white/20 hover:text-white/60 transition-colors"
-                    title="Rename cluster"
-                >
-                    <Pencil className="h-3 w-3" />
-                </button>
+        <div
+            role="button"
+            tabIndex={0}
+            onClick={onClick}
+            onKeyDown={event => handleButtonLikeKeyDown(event, onClick)}
+            className={`group flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left transition-colors ${
+                active
+                    ? 'border-[#e94560]/50 bg-[#e94560]/10'
+                    : 'border-white/10 bg-white/5 hover:bg-white/10'
+            }`}
+        >
+            {avatarUrl ? (
+                <img src={avatarUrl} alt={cluster.label} className="h-7 w-7 rounded-full object-cover border border-white/10 shrink-0" />
+            ) : (
+                <div className="h-7 w-7 rounded-full bg-white/10 border border-white/10 shrink-0" />
             )}
+            <div className="min-w-0 flex-1">
+                {onRename ? (
+                    <InlineRenameField
+                        value={cluster.personName}
+                        fallback={cluster.label}
+                        placeholder="Name this cluster"
+                        onSubmit={name => onRename(cluster.clusterId, name)}
+                    />
+                ) : (
+                    <div className="truncate text-[11px] text-white/75">{cluster.label}</div>
+                )}
+                <div className="text-[10px] text-white/25">{cluster.faceCount} faces · {cluster.photoCount} photos</div>
+            </div>
             {onDelete && (
                 <button
-                    onClick={() => onDelete(cluster.clusterId)}
+                    onClick={event => {
+                        event.stopPropagation();
+                        onDelete(cluster.clusterId);
+                    }}
+                    onKeyDown={event => event.stopPropagation()}
                     className="text-white/20 hover:text-red-400 transition-colors"
                     title="Delete cluster"
                 >
@@ -816,6 +837,7 @@ function SimilarFaceRow({
     checked,
     onCheck,
     onOpen,
+    onRename,
     onDelete,
 }: {
     match: SimilarFaceMatch;
@@ -823,6 +845,7 @@ function SimilarFaceRow({
     checked: boolean;
     onCheck: () => void;
     onOpen: () => void;
+    onRename?: (name: string) => Promise<void> | void;
     onDelete: () => void;
 }) {
     const [src, setSrc] = useState<string | null>(null);
@@ -852,34 +875,50 @@ function SimilarFaceRow({
     }, [match.cropPath, getFileUrl]);
 
     return (
-        <div className="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2 py-1.5">
+        <div
+            role="button"
+            tabIndex={0}
+            onClick={onOpen}
+            onKeyDown={event => handleButtonLikeKeyDown(event, onOpen)}
+            className="group flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2 py-1.5 text-left transition-colors hover:bg-white/10"
+        >
             <input
                 type="checkbox"
                 checked={checked}
                 onChange={onCheck}
+                onClick={event => event.stopPropagation()}
+                onKeyDown={event => event.stopPropagation()}
                 className="h-3.5 w-3.5 accent-[#e94560]"
                 title="Use as cluster avatar"
             />
-            <button
-                onClick={onOpen}
-                className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                title={`Open ${match.photo.name}`}
-            >
-                {src ? (
-                    <img src={src} alt={match.photo.name} className="h-8 w-8 rounded-full object-cover border border-white/10" />
-                ) : (
-                    <div className="h-8 w-8 rounded-full bg-white/10 border border-white/10" />
-                )}
-                <div className="min-w-0 flex-1">
-                    <div className="truncate text-[11px] text-white/75">{match.photo.name}</div>
-                    <div className="text-[10px] text-white/25">
-                        {(match.similarity * 100).toFixed(0)}% match
-                        {match.personName ? ` · ${match.personName}` : ''}
+            {src ? (
+                <img src={src} alt={match.photo.name} className="h-8 w-8 rounded-full object-cover border border-white/10 shrink-0" />
+            ) : (
+                <div className="h-8 w-8 rounded-full bg-white/10 border border-white/10 shrink-0" />
+            )}
+            <div className="min-w-0 flex-1" title={`Open ${match.photo.name}`}>
+                <div className="truncate text-[11px] text-white/75">{match.photo.name}</div>
+                <div className="text-[10px] text-white/25">{(match.similarity * 100).toFixed(0)}% match</div>
+                {match.clusterId && onRename ? (
+                    <div className="mt-1">
+                        <InlineRenameField
+                            value={match.personName}
+                            fallback={match.personName?.trim() || 'Unknown'}
+                            onSubmit={onRename}
+                            labelClassName="truncate text-[10px] text-white/38"
+                            inputClassName="min-w-0 flex-1 rounded-md border border-[#e94560]/35 bg-[#1a1115] px-2 py-1 text-[10px] text-white placeholder:text-white/20 focus:border-[#ff9db0]/60 focus:outline-none"
+                        />
                     </div>
-                </div>
-            </button>
+                ) : (
+                    <div className="text-[10px] text-white/25">{match.personName?.trim() || 'Unknown'}</div>
+                )}
+            </div>
             <button
-                onClick={onDelete}
+                onClick={event => {
+                    event.stopPropagation();
+                    onDelete();
+                }}
+                onKeyDown={event => event.stopPropagation()}
                 className="text-white/25 hover:text-red-400 transition-colors"
                 title={`Delete ${match.photo.name}`}
             >
@@ -960,6 +999,7 @@ function SettingsTab({
     clusters,
     getFileUrl,
     onClusterSelect,
+    onRenameFace,
 }: {
     settings: FotosSettings;
     onUpdateStorage: (updates: Partial<FotosSettings['storage']>) => void;
@@ -979,6 +1019,7 @@ function SettingsTab({
     clusters: FaceClusterSummary[];
     getFileUrl: (relativePath: string) => Promise<string>;
     onClusterSelect: (clusterId: string) => void;
+    onRenameFace: (clusterId: string, name: string) => Promise<void> | void;
 }) {
     return (
         <>
@@ -1153,6 +1194,7 @@ function SettingsTab({
                             active={false}
                             onClick={() => onClusterSelect(cluster.clusterId)}
                             getFileUrl={getFileUrl}
+                            onRename={onRenameFace}
                         />
                     ))}
                 </CollapsibleSection>

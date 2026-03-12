@@ -72,6 +72,14 @@ export function App({ fotosModel: initialModel }: AppProps) {
         gallery.setSearchFace(embedding);
     }, [gallery]);
 
+    const handleRenameFace = useCallback((clusterId: string, name: string) => {
+        void gallery.folder.renameFace(clusterId, name);
+    }, [gallery.folder]);
+
+    const handleDeleteFace = useCallback((clusterId: string) => {
+        void gallery.folder.deleteFace(clusterId);
+    }, [gallery.folder]);
+
     useEffect(() => {
         if (!gallery.searchFace || gallery.similarFaces.length === 0) {
             setSelectedClusterAvatarKey(null);
@@ -487,6 +495,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                             activeClusterId={gallery.activeClusterId}
                             onSelectCluster={gallery.setActiveClusterId}
                             getFileUrl={gallery.folder.getFileUrl}
+                            onRenameCluster={handleRenameFace}
                         />
                     ) : (
                         <PhotoGrid
@@ -560,15 +569,8 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 onSelectClusterAvatar={setSelectedClusterAvatarKey}
                 onOpenSimilarFace={handleOpenSimilarFace}
                 onDeletePhoto={handleDelete}
-                onEditFace={clusterId => {
-                    const name = prompt('Name this face:');
-                    if (name) {
-                        void gallery.folder.renameFace(clusterId, name);
-                    }
-                }}
-                onDeleteFace={clusterId => {
-                    void gallery.folder.deleteFace(clusterId);
-                }}
+                onRenameFace={handleRenameFace}
+                onDeleteFace={handleDeleteFace}
             />
         </div>
 
@@ -580,15 +582,8 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 onClose={() => gallery.setSelectedIndex(null)}
                 onDelete={handleDelete}
                 onFaceSearch={handleFaceSearch}
-                onEditFace={clusterId => {
-                    const name = prompt('Name this face:');
-                    if (name) {
-                        void gallery.folder.renameFace(clusterId, name);
-                    }
-                }}
-                onDeleteFace={clusterId => {
-                    void gallery.folder.deleteFace(clusterId);
-                }}
+                onRenameFace={handleRenameFace}
+                onDeleteFace={handleDeleteFace}
                 getFileUrl={gallery.folder.getFileUrl}
             />
         )}

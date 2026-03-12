@@ -1744,14 +1744,19 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     const renameFace = useCallback(async (clusterId: string, name: string) => {
         const dim = clusterDimRef.current;
         if (!dim || !rootHandleRef.current) throw new Error('No cluster state');
-        dim.nameCluster(clusterId, name);
+        const normalizedName = normalizeClusterName(name) ?? '';
+        dim.nameCluster(clusterId, normalizedName);
         await saveClusterState(rootHandleRef.current, dim);
         setEntries(prev => prev.map(entry => {
             if (!entry.faces?.clusterIds) return entry;
-            const idx = entry.faces.clusterIds.indexOf(clusterId);
-            if (idx < 0) return entry;
+            const hasCluster = entry.faces.clusterIds.includes(clusterId);
+            if (!hasCluster) return entry;
             const names = [...(entry.faces.names ?? entry.faces.clusterIds.map(() => 'Unknown'))];
-            names[idx] = name;
+            entry.faces.clusterIds.forEach((id, index) => {
+                if (id === clusterId) {
+                    names[index] = normalizedName || 'Unknown';
+                }
+            });
             return { ...entry, faces: { ...entry.faces, names } };
         }));
     }, []);

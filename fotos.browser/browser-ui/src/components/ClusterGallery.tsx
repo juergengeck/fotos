@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import type { FaceClusterSummary } from '@/lib/cluster-gallery';
+import { InlineRenameField } from './InlineRenameField';
 
 interface ClusterGalleryProps {
     clusters: FaceClusterSummary[];
     activeClusterId: string | null;
     onSelectCluster: (clusterId: string) => void;
     getFileUrl: (relativePath: string) => Promise<string>;
+    onRenameCluster?: (clusterId: string, name: string) => Promise<void> | void;
 }
 
 export function ClusterGallery({
@@ -13,6 +15,7 @@ export function ClusterGallery({
     activeClusterId,
     onSelectCluster,
     getFileUrl,
+    onRenameCluster,
 }: ClusterGalleryProps) {
     if (clusters.length === 0) {
         return (
@@ -35,6 +38,7 @@ export function ClusterGallery({
                         active={cluster.clusterId === activeClusterId}
                         onClick={() => onSelectCluster(cluster.clusterId)}
                         getFileUrl={getFileUrl}
+                        onRename={onRenameCluster}
                     />
                 ))}
             </div>
@@ -47,11 +51,13 @@ export function ClusterCard({
     active,
     onClick,
     getFileUrl,
+    onRename,
 }: {
     cluster: FaceClusterSummary;
     active: boolean;
     onClick: () => void;
     getFileUrl: (relativePath: string) => Promise<string>;
+    onRename?: (clusterId: string, name: string) => Promise<void> | void;
 }) {
     const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
@@ -80,9 +86,16 @@ export function ClusterCard({
     }, [cluster.avatarPath, getFileUrl]);
 
     return (
-        <button
-            type="button"
+        <div
+            role="button"
+            tabIndex={0}
             onClick={onClick}
+            onKeyDown={event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onClick();
+                }
+            }}
             className={`group flex flex-col gap-3 rounded-2xl border p-4 text-left transition-colors ${
                 active
                     ? 'border-[#e94560]/70 bg-[#1f1015]'
@@ -102,7 +115,18 @@ export function ClusterCard({
                     </div>
                 )}
                 <div className="min-w-0">
-                    <div className="text-sm font-medium text-white/85 truncate">{cluster.label}</div>
+                    {onRename ? (
+                        <InlineRenameField
+                            value={cluster.personName}
+                            fallback={cluster.label}
+                            placeholder="Name this cluster"
+                            onSubmit={name => onRename(cluster.clusterId, name)}
+                            labelClassName="truncate text-sm font-medium text-white/85"
+                            inputClassName="min-w-0 flex-1 rounded-md border border-[#e94560]/35 bg-[#1a1115] px-2 py-1.5 text-sm text-white placeholder:text-white/20 focus:border-[#ff9db0]/60 focus:outline-none"
+                        />
+                    ) : (
+                        <div className="text-sm font-medium text-white/85 truncate">{cluster.label}</div>
+                    )}
                     <div className="text-[11px] text-white/35">
                         {cluster.personName ? 'Person cluster' : 'Face group'}
                     </div>
@@ -115,6 +139,6 @@ export function ClusterCard({
             <div className="text-[10px] uppercase tracking-[0.2em] text-white/25 group-hover:text-white/45 transition-colors">
                 Open cluster gallery
             </div>
-        </button>
+        </div>
     );
 }

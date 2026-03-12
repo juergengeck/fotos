@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, RotateCcw, FlipHorizontal, FlipVertical, Trash2, Maximize, Minimize, X, Pencil } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, RotateCcw, FlipHorizontal, FlipVertical, Trash2, Maximize, Minimize, X } from 'lucide-react';
 import type { PhotoEntry } from '@/types/fotos';
 import { EMBEDDING_DIM } from '@refinio/fotos.core';
+import { InlineRenameField } from './InlineRenameField';
 
 interface LightboxProps {
     photos: PhotoEntry[];
@@ -10,12 +11,12 @@ interface LightboxProps {
     onClose: () => void;
     onDelete?: (hash: string) => void;
     onFaceSearch?: (embedding: Float32Array) => void;
-    onEditFace?: (clusterId: string) => void;
+    onRenameFace?: (clusterId: string, name: string) => Promise<void> | void;
     onDeleteFace?: (clusterId: string) => void;
     getFileUrl: (relativePath: string) => Promise<string>;
 }
 
-export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onFaceSearch, onEditFace, onDeleteFace, getFileUrl }: LightboxProps) {
+export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onFaceSearch, onRenameFace, onDeleteFace, getFileUrl }: LightboxProps) {
     const photo = photos[index];
     const [fullscreen, setFullscreen] = useState(false);
     const [chevronVisible, setChevronVisible] = useState(false);
@@ -348,7 +349,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onFa
                     {/* Faces */}
                     {photo.faces && photo.faces.count > 0 && (
                         <Section label="Faces">
-                            <FaceCrops photo={photo} getFileUrl={getFileUrl} onFaceSearch={onFaceSearch} onEditFace={onEditFace} onDeleteFace={onDeleteFace} />
+                            <FaceCrops photo={photo} getFileUrl={getFileUrl} onFaceSearch={onFaceSearch} onRenameFace={onRenameFace} onDeleteFace={onDeleteFace} />
                         </Section>
                     )}
 
@@ -434,11 +435,11 @@ function CtrlBtn({ onClick, active, title, children }: {
     );
 }
 
-function FaceCrops({ photo, getFileUrl, onFaceSearch, onEditFace, onDeleteFace }: {
+function FaceCrops({ photo, getFileUrl, onFaceSearch, onRenameFace, onDeleteFace }: {
     photo: PhotoEntry;
     getFileUrl: (path: string) => Promise<string>;
     onFaceSearch?: (embedding: Float32Array) => void;
-    onEditFace?: (clusterId: string) => void;
+    onRenameFace?: (clusterId: string, name: string) => Promise<void> | void;
     onDeleteFace?: (clusterId: string) => void;
 }) {
     const faces = photo.faces!;
@@ -455,7 +456,7 @@ function FaceCrops({ photo, getFileUrl, onFaceSearch, onEditFace, onDeleteFace }
                     embeddings={faces.embeddings}
                     getFileUrl={getFileUrl}
                     onFaceSearch={onFaceSearch}
-                    onEdit={onEditFace}
+                    onRename={onRenameFace}
                     onDelete={onDeleteFace}
                 />
             ))}
@@ -463,7 +464,7 @@ function FaceCrops({ photo, getFileUrl, onFaceSearch, onEditFace, onDeleteFace }
     );
 }
 
-function FaceCropRow({ cropPath, index, score, name, clusterId, embeddings, getFileUrl, onFaceSearch, onEdit, onDelete }: {
+function FaceCropRow({ cropPath, index, score, name, clusterId, embeddings, getFileUrl, onFaceSearch, onRename, onDelete }: {
     cropPath: string;
     index: number;
     score: number;
@@ -472,7 +473,7 @@ function FaceCropRow({ cropPath, index, score, name, clusterId, embeddings, getF
     embeddings: Float32Array | null;
     getFileUrl: (path: string) => Promise<string>;
     onFaceSearch?: (embedding: Float32Array) => void;
-    onEdit?: (clusterId: string) => void;
+    onRename?: (clusterId: string, name: string) => Promise<void> | void;
     onDelete?: (clusterId: string) => void;
 }) {
     const [src, setSrc] = useState('');
@@ -506,21 +507,24 @@ function FaceCropRow({ cropPath, index, score, name, clusterId, embeddings, getF
                 )}
             </button>
             <div className="min-w-0 flex-1">
-                <div className="truncate text-[11px] text-white/75">{name && name !== 'Unknown' ? name : `Face ${index + 1}`}</div>
+                {clusterId && onRename ? (
+                    <InlineRenameField
+                        value={name}
+                        fallback={`Face ${index + 1}`}
+                        onSubmit={nextName => onRename(clusterId, nextName)}
+                    />
+                ) : (
+                    <div className="truncate text-[11px] text-white/75">{name && name !== 'Unknown' ? name : `Face ${index + 1}`}</div>
+                )}
                 <div className="text-[10px] text-white/25">{(score * 100).toFixed(0)}% confidence</div>
             </div>
-            {onEdit && clusterId && (
-                <button
-                    onClick={() => onEdit(clusterId)}
-                    className="text-white/20 hover:text-white/60 transition-colors"
-                    title="Rename face"
-                >
-                    <Pencil className="h-3 w-3" />
-                </button>
-            )}
             {onDelete && clusterId && (
                 <button
-                    onClick={() => onDelete(clusterId)}
+                    onClick={event => {
+                        event.stopPropagation();
+                        onDelete(clusterId);
+                    }}
+                    onKeyDown={event => event.stopPropagation()}
                     className="text-white/20 hover:text-red-400 transition-colors"
                     title="Delete face"
                 >
