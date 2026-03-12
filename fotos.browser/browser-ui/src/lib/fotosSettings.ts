@@ -13,6 +13,8 @@ import {
 export const FOTOS_SETTINGS_MODULE_ID = 'fotos';
 
 export interface FotosSettingsSectionValues extends SectionValues {
+  faceAnalyticsEnabled: boolean;
+  semanticSearchEnabled: boolean;
   defaultMode: StorageMode;
   blobDir: string;
   thumbDir: string;
@@ -28,6 +30,8 @@ export interface FotosSettingsSectionValues extends SectionValues {
 }
 
 export const DEFAULT_FOTOS_SECTION_VALUES: FotosSettingsSectionValues = {
+  faceAnalyticsEnabled: DEFAULT_SETTINGS.analysis.faceAnalyticsEnabled,
+  semanticSearchEnabled: DEFAULT_SETTINGS.analysis.semanticSearchEnabled,
   defaultMode: DEFAULT_SETTINGS.storage.defaultMode,
   blobDir: DEFAULT_SETTINGS.storage.blobDir,
   thumbDir: DEFAULT_SETTINGS.storage.thumbDir,
@@ -54,6 +58,20 @@ export const FotosSettingsSection = defineSection({
   module: 'fotos.browser',
   order: 40,
   fields: [
+    defineField({
+      key: 'faceAnalyticsEnabled',
+      type: 'boolean',
+      label: 'Enable Face Analytics',
+      description: 'Allow on-device face detection and recognition downloads when needed.',
+      default: DEFAULT_FOTOS_SECTION_VALUES.faceAnalyticsEnabled,
+    }),
+    defineField({
+      key: 'semanticSearchEnabled',
+      type: 'boolean',
+      label: 'Enable Semantic Search',
+      description: 'Allow multimodal search model downloads when needed.',
+      default: DEFAULT_FOTOS_SECTION_VALUES.semanticSearchEnabled,
+    }),
     defineField({
       key: 'defaultMode',
       type: 'select',
@@ -167,6 +185,8 @@ export function registerFotosSettings(): void {
 
 export function serializeFotosSettings(settings: FotosSettings): FotosSettingsSectionValues {
   return {
+    faceAnalyticsEnabled: settings.analysis.faceAnalyticsEnabled,
+    semanticSearchEnabled: settings.analysis.semanticSearchEnabled,
     defaultMode: settings.storage.defaultMode,
     blobDir: settings.storage.blobDir,
     thumbDir: settings.storage.thumbDir,
@@ -208,6 +228,12 @@ export function deserializeFotosSettings(
     },
     analysis: {
       ...DEFAULT_SETTINGS.analysis,
+      ...(values?.faceAnalyticsEnabled !== undefined
+        ? { faceAnalyticsEnabled: values.faceAnalyticsEnabled }
+        : {}),
+      ...(values?.semanticSearchEnabled !== undefined
+        ? { semanticSearchEnabled: values.semanticSearchEnabled }
+        : {}),
       ...(values?.clusterSensitivity !== undefined
         ? { clusterSensitivity: values.clusterSensitivity }
         : {}),

@@ -78,6 +78,8 @@ export interface DisplaySettings {
 }
 
 export interface AnalysisSettings {
+    faceAnalyticsEnabled: boolean;
+    semanticSearchEnabled: boolean;
     clusterSensitivity: number;
 }
 
@@ -100,6 +102,8 @@ export const DEFAULT_SETTINGS: FotosSettings = {
         sortOrder: 'desc',
     },
     analysis: {
+        faceAnalyticsEnabled: false,
+        semanticSearchEnabled: false,
         clusterSensitivity: 50,
     },
 };

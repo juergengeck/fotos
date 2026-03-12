@@ -11,6 +11,8 @@ export type FotosGalleryMode = 'images' | 'clusters';
 
 export interface UseGalleryOptions {
     clusterSensitivity?: number;
+    faceAnalyticsEnabled?: boolean;
+    semanticSearchEnabled?: boolean;
 }
 
 async function resolveCaptureDayGroups(photos: PhotoEntry[]) {
@@ -34,6 +36,7 @@ async function resolveCaptureDayGroups(photos: PhotoEntry[]) {
 export function useGallery(options: UseGalleryOptions = {}) {
     const folder = useFolderAccess({
         clusterSensitivity: options.clusterSensitivity,
+        faceAnalyticsEnabled: options.faceAnalyticsEnabled,
     });
     const gallery = useFotosGalleryState<PhotoEntry>({
         source: folder,
@@ -117,6 +120,7 @@ export function useGallery(options: UseGalleryOptions = {}) {
     const semanticSearchQuery = galleryMode === 'images' && !gallery.searchFace
         ? gallery.searchQuery.trim()
         : '';
+    const semanticSearchEnabled = options.semanticSearchEnabled ?? false;
     const ensureSemanticEmbeddings = folder.ensureSemanticEmbeddings;
     const setSearchEmbedding = gallery.setSearchEmbedding;
 
@@ -127,8 +131,18 @@ export function useGallery(options: UseGalleryOptions = {}) {
     }, []);
 
     useEffect(() => {
+        if (semanticSearchEnabled) {
+            return;
+        }
+
+        semanticWorkerRef.current?.terminate();
+        semanticWorkerRef.current = null;
+        setSearchEmbedding(null);
+    }, [semanticSearchEnabled, setSearchEmbedding]);
+
+    useEffect(() => {
         const requestId = ++semanticRequestIdRef.current;
-        if (!semanticSearchQuery) {
+        if (!semanticSearchEnabled || !semanticSearchQuery) {
             setSearchEmbedding(null);
             return;
         }
@@ -162,15 +176,15 @@ export function useGallery(options: UseGalleryOptions = {}) {
         return () => {
             cancelled = true;
         };
-    }, [semanticSearchQuery, setSearchEmbedding]);
+    }, [semanticSearchEnabled, semanticSearchQuery, setSearchEmbedding]);
 
     useEffect(() => {
-        if (!semanticSearchQuery) {
+        if (!semanticSearchEnabled || !semanticSearchQuery) {
             return;
         }
 
         void ensureSemanticEmbeddings();
-    }, [ensureSemanticEmbeddings, semanticSearchQuery, folder.entries]);
+    }, [ensureSemanticEmbeddings, semanticSearchEnabled, semanticSearchQuery, folder.entries]);
 
     return {
         ...gallery,

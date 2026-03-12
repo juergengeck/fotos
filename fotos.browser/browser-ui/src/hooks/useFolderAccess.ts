@@ -661,10 +661,12 @@ function faceWorkerStatusLabel(progress: FaceWorkerProgress): string | null {
 
 export interface UseFolderAccessOptions {
     clusterSensitivity?: number;
+    faceAnalyticsEnabled?: boolean;
 }
 
 export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAccess {
     const clusterSensitivity = options.clusterSensitivity ?? DEFAULT_CLUSTER_SENSITIVITY;
+    const faceAnalyticsEnabled = options.faceAnalyticsEnabled ?? false;
     const clusterThreshold = clusterSensitivityToThreshold(clusterSensitivity);
     const [isOpen, setIsOpen] = useState(false);
     const [folderName, setFolderName] = useState<string | null>(null);
@@ -677,7 +679,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     const surfaceProfile = getGallerySurfaceProfile(surface);
     const defaultIntakePlan = planGalleryIntake(surface, surfaceProfile.defaultSource);
     const shareIntakePlan = planGalleryIntake(surface, 'shared-files');
-    const allowsLocalFaceEnrichment = defaultIntakePlan.faceEnrichment === 'local';
+    const allowsLocalFaceEnrichment = faceAnalyticsEnabled && defaultIntakePlan.faceEnrichment === 'local';
     const usesWritableLibraryAttach = defaultIntakePlan.mode === 'attach-library';
     // Cache object URLs to avoid re-reading files
     const urlCacheRef = useRef<Map<string, string>>(new Map());
@@ -689,6 +691,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     // Face cluster dimension — loaded lazily, persists across face passes
     const clusterDimRef = useRef<FaceClusterDimension | null>(null);
     const clusterThresholdRef = useRef<number | null>(null);
+    const previousAllowsLocalFaceEnrichmentRef = useRef(allowsLocalFaceEnrichment);
 
     useEffect(() => {
         return () => {
@@ -1529,6 +1532,40 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                 console.warn('[FacePass] Failed to rebuild clusters for new sensitivity:', err);
             });
     }, [allowsLocalFaceEnrichment, clusterThreshold, entries, ensureClusterDimension, isOpen]);
+
+    useEffect(() => {
+        const handle = rootHandleRef.current;
+        const wasEnabled = previousAllowsLocalFaceEnrichmentRef.current;
+        previousAllowsLocalFaceEnrichmentRef.current = allowsLocalFaceEnrichment;
+
+        if (!allowsLocalFaceEnrichment || wasEnabled || !handle || !isOpen) {
+            return;
+        }
+        if (facePassProgressRef.current) {
+            return;
+        }
+        if (!entries.some(entry => entry.faces === undefined)) {
+            return;
+        }
+
+        void ensureClusterDimension(handle, entries, clusterThreshold)
+            .then(result => {
+                if (result.entries !== entries) {
+                    setEntries(result.entries);
+                }
+                return runBackgroundFacePass(handle, result.entries);
+            })
+            .catch(error => {
+                console.warn('[FacePass] Failed to start after enabling face analytics:', error);
+            });
+    }, [
+        allowsLocalFaceEnrichment,
+        clusterThreshold,
+        entries,
+        ensureClusterDimension,
+        isOpen,
+        runBackgroundFacePass,
+    ]);
 
     const getFileUrl = useCallback(async (relativePath: string): Promise<string> => {
         const cached = urlCacheRef.current.get(relativePath);

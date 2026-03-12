@@ -31,6 +31,8 @@ export function App({ fotosModel: initialModel }: AppProps) {
     }, []);
     const { settings, updateStorage, updateDisplay, updateDeviceName, updateAnalysis } = useSettings(fotosModel);
     const gallery = useGallery({
+        faceAnalyticsEnabled: settings.analysis.faceAnalyticsEnabled,
+        semanticSearchEnabled: settings.analysis.semanticSearchEnabled,
         clusterSensitivity: settings.analysis.clusterSensitivity,
     });
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -88,6 +90,8 @@ export function App({ fotosModel: initialModel }: AppProps) {
 
     const mobile = gallery.folder.mobile;
     const intakePlan = gallery.folder.defaultIntakePlan;
+    const canRunFaceAnalytics = settings.analysis.faceAnalyticsEnabled
+        && intakePlan.faceEnrichment === 'local';
 
     // On mobile, tap a photo → share via native share sheet (opens in photo app)
     const handlePhotoClick = useCallback(async (index: number) => {
@@ -402,6 +406,37 @@ export function App({ fotosModel: initialModel }: AppProps) {
             <div className="h-screen flex flex-col bg-[#111]" style={{ fontFamily: "'Figtree', system-ui, sans-serif" }}>
                 <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-6 p-6">
                     <img src="/cam.svg" className="flex-1 min-h-0 invert opacity-20" style={{ maxWidth: '80vw', objectFit: 'contain' }} />
+                    <div className="w-full max-w-lg space-y-3 rounded-2xl border border-white/10 bg-white/[0.035] p-4 backdrop-blur-sm">
+                        <label className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+                            <input
+                                type="checkbox"
+                                checked={settings.analysis.faceAnalyticsEnabled}
+                                onChange={event => updateAnalysis({ faceAnalyticsEnabled: event.target.checked })}
+                                className="mt-0.5 h-4 w-4 accent-[#e94560]"
+                            />
+                            <div className="space-y-1">
+                                <div className="text-sm font-medium text-white/80">Enable face analytics</div>
+                                <p className="text-xs leading-relaxed text-white/38">
+                                    Downloads on-device face detection and recognition weights when needed for people clustering and similar-face search.
+                                </p>
+                            </div>
+                        </label>
+
+                        <label className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+                            <input
+                                type="checkbox"
+                                checked={settings.analysis.semanticSearchEnabled}
+                                onChange={event => updateAnalysis({ semanticSearchEnabled: event.target.checked })}
+                                className="mt-0.5 h-4 w-4 accent-[#e94560]"
+                            />
+                            <div className="space-y-1">
+                                <div className="text-sm font-medium text-white/80">Enable semantic search</div>
+                                <p className="text-xs leading-relaxed text-white/38">
+                                    Downloads the multimodal search model when you search by meaning instead of exact words.
+                                </p>
+                            </div>
+                        </label>
+                    </div>
                     <button
                         onClick={gallery.folder.openFolder}
                         className="px-5 py-2.5 rounded-lg bg-[#e94560] text-white text-sm font-medium hover:bg-[#d13354] transition-colors"
@@ -486,7 +521,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 folderName={gallery.folder.folderName}
                 onOpenFolder={gallery.folder.openFolder}
                 onRescan={gallery.folder.rescan}
-                onReanalyze={gallery.folder.reanalyzeFaces}
+                onReanalyze={canRunFaceAnalytics ? gallery.folder.reanalyzeFaces : undefined}
                 faceSearchActive={gallery.searchFace !== null}
                 onClearFaceSearch={() => gallery.setSearchFace(null)}
                 fotosModel={fotosModel}

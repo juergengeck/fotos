@@ -942,8 +942,38 @@ function SettingsTab({
             </CollapsibleSection>
 
             <CollapsibleSection label="Image AI">
+                <label className="flex items-start gap-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-2">
+                    <input
+                        type="checkbox"
+                        checked={settings.analysis.faceAnalyticsEnabled}
+                        onChange={event => onUpdateAnalysis({ faceAnalyticsEnabled: event.target.checked })}
+                        className="mt-0.5 h-3.5 w-3.5 accent-[#e94560]"
+                    />
+                    <div className="space-y-1">
+                        <div className="text-[11px] text-white/72">Enable face analytics</div>
+                        <p className="text-[10px] leading-relaxed text-white/30">
+                            Download face models only when you choose to use people clustering and similar-face search.
+                        </p>
+                    </div>
+                </label>
+
+                <label className="flex items-start gap-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-2">
+                    <input
+                        type="checkbox"
+                        checked={settings.analysis.semanticSearchEnabled}
+                        onChange={event => onUpdateAnalysis({ semanticSearchEnabled: event.target.checked })}
+                        className="mt-0.5 h-3.5 w-3.5 accent-[#e94560]"
+                    />
+                    <div className="space-y-1">
+                        <div className="text-[11px] text-white/72">Enable semantic search</div>
+                        <p className="text-[10px] leading-relaxed text-white/30">
+                            Download the multimodal search model only when you want meaning-based search.
+                        </p>
+                    </div>
+                </label>
+
                 <SmallField label="Cluster sensitivity">
-                    <div className="space-y-1.5">
+                    <div className={`space-y-1.5 ${settings.analysis.faceAnalyticsEnabled ? '' : 'opacity-45'}`}>
                         <div className="flex items-center gap-2">
                             <input
                                 type="range"
@@ -952,6 +982,7 @@ function SettingsTab({
                                 step={1}
                                 value={settings.analysis.clusterSensitivity}
                                 onChange={e => onUpdateAnalysis({ clusterSensitivity: parseInt(e.target.value, 10) || 0 })}
+                                disabled={!settings.analysis.faceAnalyticsEnabled}
                                 className="flex-1 accent-[#e94560] h-1"
                             />
                             <span className="w-8 text-right text-[10px] text-white/35 tabular-nums">
