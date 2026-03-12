@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Impressum } from '@/components/Impressum';
+import { GalleryBreadcrumbs } from '@/components/GalleryBreadcrumbs';
 import { PhotoGrid } from '@/components/PhotoGrid';
 import { Lightbox } from '@/components/Lightbox';
 import { Sidebar } from '@/components/Sidebar';
 import { TimelineScrubber } from '@/components/TimelineScrubber';
 import { ClusterGallery } from '@/components/ClusterGallery';
 import { useGallery } from '@/hooks/useGallery';
+import { useBreadcrumbHistory } from '@/hooks/useBreadcrumbHistory';
 import { useSettings } from '@/hooks/useSettings';
 import { shareFile } from '@/lib/platform';
 import { UpdatePrompt } from '@/components/UpdatePrompt';
@@ -13,6 +15,7 @@ import type { FotosModel } from './lib/onecore-boot';
 import { setModelUpdater } from './lib/onecore-boot';
 import { traceHang } from './lib/hangTrace';
 import type { SimilarFaceMatch } from '@/lib/cluster-gallery';
+import { isSnapshotEqual, type FotosBreadcrumbSnapshot } from '@/lib/fotosHistorySettings';
 
 interface AppProps {
     fotosModel?: FotosModel;
@@ -39,6 +42,12 @@ export function App({ fotosModel: initialModel }: AppProps) {
         ? gallery.clusterDayGroups
         : gallery.dayGroups;
     const showClusterGallery = gallery.galleryMode === 'clusters' && !gallery.activeClusterId;
+    const trimmedSearchQuery = gallery.searchQuery.trim();
+    const hasGalleryDetail = gallery.galleryMode === 'clusters'
+        || gallery.activeTag !== null
+        || trimmedSearchQuery.length > 0
+        || gallery.searchFace !== null
+        || gallery.activeClusterId !== null;
 
     const handleDelete = useCallback((hash: string) => {
         gallery.deletePhoto(hash);
@@ -135,6 +144,207 @@ export function App({ fotosModel: initialModel }: AppProps) {
         }
         return null;
     })();
+    const breadcrumbItems = useMemo(() => {
+        const items: Array<{ key: string; label: string; onClick?: () => void }> = [
+            {
+                key: 'folder',
+                label: gallery.folder.folderName ?? 'Library',
+                onClick: hasGalleryDetail
+                    ? () => {
+                        gallery.setGalleryMode('images');
+                        gallery.setActiveClusterId(null);
+                        gallery.setActiveTag(null);
+                        gallery.setSearchQuery('');
+                        gallery.setSearchFace(null);
+                    }
+                    : undefined,
+            },
+        ];
+
+        if (gallery.galleryMode === 'clusters') {
+            items.push({
+                key: 'mode',
+                label: 'Faces',
+                onClick: gallery.activeClusterId !== null || trimmedSearchQuery.length > 0
+                    ? () => {
+                        gallery.setActiveClusterId(null);
+                        gallery.setSearchQuery('');
+                    }
+                    : undefined,
+            });
+
+            if (trimmedSearchQuery.length > 0) {
+                items.push({
+                    key: 'query',
+                    label: `Search: ${trimmedSearchQuery}`,
+                    onClick: gallery.activeClusterId !== null
+                        ? () => {
+                            gallery.setActiveClusterId(null);
+                        }
+                        : undefined,
+                });
+            }
+
+            if (gallery.activeCluster) {
+                items.push({
+                    key: 'cluster',
+                    label: gallery.activeCluster.label,
+                });
+            }
+        } else {
+            items.push({
+                key: 'mode',
+                label: 'Photos',
+                onClick: gallery.activeTag !== null || trimmedSearchQuery.length > 0 || gallery.searchFace !== null
+                    ? () => {
+                        gallery.setActiveTag(null);
+                        gallery.setSearchQuery('');
+                        gallery.setSearchFace(null);
+                    }
+                    : undefined,
+            });
+
+            if (gallery.activeTag !== null) {
+                items.push({
+                    key: 'tag',
+                    label: gallery.activeTag,
+                    onClick: trimmedSearchQuery.length > 0 || gallery.searchFace !== null
+                        ? () => {
+                            gallery.setSearchQuery('');
+                            gallery.setSearchFace(null);
+                        }
+                        : undefined,
+                });
+            }
+
+            if (trimmedSearchQuery.length > 0) {
+                items.push({
+                    key: 'query',
+                    label: `Search: ${trimmedSearchQuery}`,
+                    onClick: gallery.searchFace !== null
+                        ? () => {
+                            gallery.setSearchFace(null);
+                        }
+                        : undefined,
+                });
+            }
+
+            if (gallery.searchFace !== null) {
+                items.push({
+                    key: 'face-search',
+                    label: 'Similar faces',
+                });
+            }
+        }
+
+        return items;
+    }, [
+        gallery.activeCluster,
+        gallery.activeClusterId,
+        gallery.activeTag,
+        gallery.folder.folderName,
+        gallery.galleryMode,
+        gallery.searchFace,
+        gallery.setActiveClusterId,
+        gallery.setActiveTag,
+        gallery.setGalleryMode,
+        gallery.setSearchFace,
+        gallery.setSearchQuery,
+        trimmedSearchQuery.length,
+        trimmedSearchQuery,
+        hasGalleryDetail,
+    ]);
+    const breadcrumbSummary = useMemo(() => {
+        if (showClusterGallery) {
+            return `${gallery.clusters.length} clusters`;
+        }
+        if (gallery.galleryMode === 'clusters' && gallery.activeCluster) {
+            return `${gallery.clusterPhotos.length} photos`;
+        }
+        if (gallery.searchFace !== null) {
+            return `${visiblePhotos.length} matches`;
+        }
+        return `${visiblePhotos.length} photos`;
+    }, [
+        gallery.activeCluster,
+        gallery.clusterPhotos.length,
+        gallery.clusters.length,
+        gallery.galleryMode,
+        gallery.searchFace,
+        showClusterGallery,
+        visiblePhotos.length,
+    ]);
+    const historySnapshot = useMemo<FotosBreadcrumbSnapshot | null>(() => {
+        if (!gallery.folder.isOpen) {
+            return null;
+        }
+
+        return {
+            version: 1,
+            ...(gallery.folder.folderName ? { folderName: gallery.folder.folderName } : {}),
+            galleryMode: gallery.galleryMode,
+            ...(gallery.activeTag ? { activeTag: gallery.activeTag } : {}),
+            ...(gallery.activeClusterId ? { activeClusterId: gallery.activeClusterId } : {}),
+            ...(trimmedSearchQuery.length > 0 ? { searchQuery: trimmedSearchQuery } : {}),
+            ...(gallery.searchFace ? { searchFace: Array.from(gallery.searchFace) } : {}),
+        };
+    }, [
+        gallery.activeClusterId,
+        gallery.activeTag,
+        gallery.folder.folderName,
+        gallery.folder.isOpen,
+        gallery.galleryMode,
+        gallery.searchFace,
+        trimmedSearchQuery,
+    ]);
+    const historyBreadcrumbs = useMemo(
+        () => breadcrumbItems.map(item => item.label),
+        [breadcrumbItems],
+    );
+    const breadcrumbHistory = useBreadcrumbHistory({
+        model: fotosModel,
+        snapshot: historySnapshot,
+        breadcrumbs: historyBreadcrumbs,
+    });
+
+    useEffect(() => {
+        const restoreEntry = breadcrumbHistory.restoreEntry;
+        if (!restoreEntry || !gallery.folder.isOpen) {
+            return;
+        }
+
+        const currentFolderName = gallery.folder.folderName ?? '';
+        const targetFolderName = restoreEntry.folderName ?? restoreEntry.state.folderName ?? '';
+        if (targetFolderName !== currentFolderName) {
+            return;
+        }
+
+        const targetState = restoreEntry.state;
+        const currentSnapshot = historySnapshot;
+        if (currentSnapshot && isSnapshotEqual(currentSnapshot, targetState)) {
+            return;
+        }
+
+        gallery.setSelectedIndex(null);
+        gallery.setGalleryMode(targetState.galleryMode);
+        gallery.setActiveTag(targetState.activeTag ?? null);
+        gallery.setActiveClusterId(targetState.activeClusterId ?? null);
+        gallery.setSearchQuery(targetState.searchQuery ?? '');
+        gallery.setSearchFace(targetState.searchFace?.length
+            ? new Float32Array(targetState.searchFace)
+            : null);
+    }, [
+        breadcrumbHistory.restoreEntry,
+        gallery.folder.isOpen,
+        gallery.folder.folderName,
+        gallery.setActiveClusterId,
+        gallery.setActiveTag,
+        gallery.setGalleryMode,
+        gallery.setSearchFace,
+        gallery.setSearchQuery,
+        gallery.setSelectedIndex,
+        historySnapshot,
+    ]);
 
     useEffect(() => {
         traceHang('app-state', {
@@ -224,26 +434,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
             {/* Main content area */}
             <div className="flex-1 min-w-0 min-h-0 relative">
                 <div ref={scrollRef} className="h-full overflow-y-auto hide-scrollbar">
-                    {gallery.galleryMode === 'clusters' && gallery.activeCluster && (
-                        <button
-                            onClick={() => gallery.setActiveClusterId(null)}
-                            className="sticky top-0 z-20 w-full flex items-center gap-2 px-3 py-1.5 bg-[#e94560]/12 backdrop-blur-sm text-[11px] text-[#ff9db0] hover:text-white transition-colors"
-                        >
-                            <span>&larr;</span>
-                            <span>{gallery.activeCluster.label}</span>
-                            <span className="text-white/35 ml-auto">{gallery.clusterPhotos.length} photos</span>
-                        </button>
-                    )}
-                    {gallery.searchFace !== null && gallery.galleryMode === 'images' && (
-                        <button
-                            onClick={() => gallery.setSearchFace(null)}
-                            className="sticky top-0 z-20 w-full flex items-center gap-2 px-3 py-1.5 bg-blue-500/15 backdrop-blur-sm text-[11px] text-blue-300/80 hover:text-blue-200 transition-colors"
-                        >
-                            <span>&larr;</span>
-                            <span>Showing similar faces</span>
-                            <span className="text-blue-300/40 ml-auto">click to clear</span>
-                        </button>
-                    )}
+                    <GalleryBreadcrumbs items={breadcrumbItems} summary={breadcrumbSummary} />
                     {showClusterGallery ? (
                         <ClusterGallery
                             clusters={gallery.clusters}
@@ -289,6 +480,16 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 onUpdateDisplay={updateDisplay}
                 onUpdateDeviceName={updateDeviceName}
                 onUpdateAnalysis={updateAnalysis}
+                historyEnabled={breadcrumbHistory.enabled}
+                historyReady={breadcrumbHistory.ready}
+                historyCurrentEventId={breadcrumbHistory.currentEventId}
+                historyBranchTree={breadcrumbHistory.branchTree}
+                historyVisibleEntryCount={breadcrumbHistory.visibleEntryCount}
+                historyBranchCount={breadcrumbHistory.branchCount}
+                onHistoryEnabledChange={breadcrumbHistory.setEnabled}
+                onHistoryNavigate={breadcrumbHistory.navigateTo}
+                onHistoryDelete={breadcrumbHistory.deleteEntry}
+                currentFolderName={gallery.folder.folderName}
                 folderName={gallery.folder.folderName}
                 onOpenFolder={gallery.folder.openFolder}
                 onRescan={gallery.folder.rescan}

@@ -49,6 +49,7 @@ import { getLocalInstanceOfPerson } from '@refinio/one.models/lib/misc/instance.
 import { getDefaultKeys } from '@refinio/one.core/lib/keychain/keychain.js';
 
 import { ensureStartupGlueIdentity } from './glueIdentity.js';
+import { registerFotosHistorySettings } from './fotosHistorySettings.js';
 import { registerFotosSettings } from './fotosSettings.js';
 import { grantFotosAccess } from './fotos-manifest.js';
 import { API_BASE, COMM_SERVER_URL } from '../config.js';
@@ -163,6 +164,7 @@ async function initModules(
   registerSubscriptionSettings();
   registerGlueSettings();
   registerFotosSettings();
+  registerFotosHistorySettings();
 
   const storage = new InstanceSettingsStorage({
     instanceIdHash: getInstanceIdHash()!,

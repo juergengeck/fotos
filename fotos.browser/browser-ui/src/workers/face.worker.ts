@@ -17,7 +17,7 @@ import {
     type FacePlatform,
     type FaceAnalysisResult,
 } from '@refinio/fotos.core';
-import { MODELS } from '@refinio/local.core';
+import { getModelUrl } from '@refinio/local.core';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -68,25 +68,6 @@ const FACE_MODEL_IDS = {
 } as const;
 
 type FaceModelId = (typeof FACE_MODEL_IDS)[keyof typeof FACE_MODEL_IDS];
-
-const FACE_MODEL_FALLBACKS: Record<FaceModelId, { huggingFaceRepo: string; modelFile: string }> = {
-    'insightface-det-10g': {
-        huggingFaceRepo: 'immich-app/buffalo_l',
-        modelFile: 'detection/model.onnx',
-    },
-    'insightface-w600k-r50': {
-        huggingFaceRepo: 'immich-app/buffalo_l',
-        modelFile: 'recognition/model.onnx',
-    },
-};
-
-function getModelUrl(modelId: FaceModelId): string {
-    const registeredModel = (MODELS as Record<string, { huggingFaceRepo?: string; modelFile?: string }>)[modelId];
-    const fallback = FACE_MODEL_FALLBACKS[modelId];
-    const huggingFaceRepo = registeredModel?.huggingFaceRepo ?? fallback.huggingFaceRepo;
-    const modelFile = registeredModel?.modelFile ?? fallback.modelFile;
-    return `https://huggingface.co/${huggingFaceRepo}/resolve/main/${modelFile}`;
-}
 
 // ── Image store (virtual filesystem for fotos.core) ──────────────────
 

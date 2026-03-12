@@ -3,6 +3,7 @@ import { Search, FolderOpen, Download, SlidersHorizontal, ChevronLeft, ChevronRi
 import type { FotosSettings, StorageMode, DisplaySettings } from '@/types/fotos';
 import type { FotosModel } from '@/lib/onecore-boot';
 import type { FaceClusterSummary, SimilarFaceMatch } from '@/lib/cluster-gallery';
+import type { FotosHistoryBranchNode } from '@/lib/fotosHistorySettings';
 import { FotosSettings as FotosSettingsPanel } from './FotosSettings';
 import { ClusterCard } from './ClusterGallery';
 
@@ -20,6 +21,16 @@ interface SidebarProps {
     onUpdateDisplay: (updates: Partial<DisplaySettings>) => void;
     onUpdateDeviceName: (name: string) => void;
     onUpdateAnalysis: (updates: Partial<FotosSettings['analysis']>) => void;
+    historyEnabled: boolean;
+    historyReady: boolean;
+    historyCurrentEventId: string;
+    historyBranchTree: FotosHistoryBranchNode[];
+    historyVisibleEntryCount: number;
+    historyBranchCount: number;
+    onHistoryEnabledChange: (enabled: boolean) => void;
+    onHistoryNavigate: (eventId: string) => void;
+    onHistoryDelete: (eventId: string) => void;
+    currentFolderName?: string | null;
     folderName?: string | null;
     onOpenFolder?: () => void;
     onRescan?: () => void;
@@ -52,6 +63,9 @@ export function Sidebar({
     searchQuery, onSearchChange,
     browseSummary,
     settings, onUpdateStorage, onUpdateDisplay, onUpdateDeviceName, onUpdateAnalysis,
+    historyEnabled, historyReady, historyCurrentEventId, historyBranchTree,
+    historyVisibleEntryCount, historyBranchCount,
+    onHistoryEnabledChange, onHistoryNavigate, onHistoryDelete, currentFolderName,
     folderName, onOpenFolder, onRescan, onReanalyze,
     faceSearchActive, onClearFaceSearch,
     fotosModel,
@@ -114,6 +128,16 @@ export function Sidebar({
                             settings={settings} onUpdateStorage={onUpdateStorage}
                             onUpdateDeviceName={onUpdateDeviceName}
                             onUpdateAnalysis={onUpdateAnalysis}
+                            historyEnabled={historyEnabled}
+                            historyReady={historyReady}
+                            historyCurrentEventId={historyCurrentEventId}
+                            historyBranchTree={historyBranchTree}
+                            historyVisibleEntryCount={historyVisibleEntryCount}
+                            historyBranchCount={historyBranchCount}
+                            onHistoryEnabledChange={onHistoryEnabledChange}
+                            onHistoryNavigate={onHistoryNavigate}
+                            onHistoryDelete={onHistoryDelete}
+                            currentFolderName={currentFolderName}
                             fotosModel={fotosModel ?? null}
                             clusters={clusters}
                             getFileUrl={getFileUrl}
@@ -230,6 +254,16 @@ export function Sidebar({
                         onUpdateStorage={onUpdateStorage}
                         onUpdateDeviceName={onUpdateDeviceName}
                         onUpdateAnalysis={onUpdateAnalysis}
+                        historyEnabled={historyEnabled}
+                        historyReady={historyReady}
+                        historyCurrentEventId={historyCurrentEventId}
+                        historyBranchTree={historyBranchTree}
+                        historyVisibleEntryCount={historyVisibleEntryCount}
+                        historyBranchCount={historyBranchCount}
+                        onHistoryEnabledChange={onHistoryEnabledChange}
+                        onHistoryNavigate={onHistoryNavigate}
+                        onHistoryDelete={onHistoryDelete}
+                        currentFolderName={currentFolderName}
                         fotosModel={fotosModel ?? null}
                         clusters={clusters}
                         getFileUrl={getFileUrl}
@@ -812,11 +846,40 @@ function SourceRow({ icon, label }: { icon: React.ReactNode; label: string }) {
     );
 }
 
-function SettingsTab({ settings, onUpdateStorage, onUpdateDeviceName, onUpdateAnalysis, fotosModel, clusters, getFileUrl, onClusterSelect }: {
+function SettingsTab({
+    settings,
+    onUpdateStorage,
+    onUpdateDeviceName,
+    onUpdateAnalysis,
+    historyEnabled,
+    historyReady,
+    historyCurrentEventId,
+    historyBranchTree,
+    historyVisibleEntryCount,
+    historyBranchCount,
+    onHistoryEnabledChange,
+    onHistoryNavigate,
+    onHistoryDelete,
+    currentFolderName,
+    fotosModel,
+    clusters,
+    getFileUrl,
+    onClusterSelect,
+}: {
     settings: FotosSettings;
     onUpdateStorage: (updates: Partial<FotosSettings['storage']>) => void;
     onUpdateDeviceName: (name: string) => void;
     onUpdateAnalysis: (updates: Partial<FotosSettings['analysis']>) => void;
+    historyEnabled: boolean;
+    historyReady: boolean;
+    historyCurrentEventId: string;
+    historyBranchTree: FotosHistoryBranchNode[];
+    historyVisibleEntryCount: number;
+    historyBranchCount: number;
+    onHistoryEnabledChange: (enabled: boolean) => void;
+    onHistoryNavigate: (eventId: string) => void;
+    onHistoryDelete: (eventId: string) => void;
+    currentFolderName?: string | null;
     fotosModel: FotosModel | null;
     clusters: FaceClusterSummary[];
     getFileUrl: (relativePath: string) => Promise<string>;
@@ -906,6 +969,55 @@ function SettingsTab({ settings, onUpdateStorage, onUpdateDeviceName, onUpdateAn
                 </SmallField>
             </CollapsibleSection>
 
+            <CollapsibleSection label="Breadcrumb History" defaultOpen={historyEnabled || historyVisibleEntryCount > 0}>
+                <label className="flex items-start gap-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-2">
+                    <input
+                        type="checkbox"
+                        checked={historyEnabled}
+                        onChange={event => onHistoryEnabledChange(event.target.checked)}
+                        className="mt-0.5 h-3.5 w-3.5 accent-[#e94560]"
+                    />
+                    <div className="space-y-1">
+                        <div className="text-[11px] text-white/72">Record breadcrumb history</div>
+                        <p className="text-[10px] leading-relaxed text-white/30">
+                            Keep branchable gallery places in synced settings so trusted instances can resume where you left off.
+                        </p>
+                    </div>
+                </label>
+
+                <div className="rounded-md bg-white/[0.035] px-2.5 py-2 text-[10px] text-white/30">
+                    {historyReady
+                        ? `${historyVisibleEntryCount} saved place${historyVisibleEntryCount === 1 ? '' : 's'} across ${historyBranchCount} branch${historyBranchCount === 1 ? '' : 'es'}`
+                        : 'Loading synced history...'}
+                </div>
+
+                {!historyEnabled && historyVisibleEntryCount > 0 && (
+                    <div className="text-[10px] leading-relaxed text-white/24">
+                        Recording is paused. Existing branches stay available until you delete them.
+                    </div>
+                )}
+
+                {historyVisibleEntryCount === 0 ? (
+                    <div className="rounded-md border border-dashed border-white/10 px-2.5 py-2 text-[10px] text-white/24">
+                        {historyEnabled ? 'Open folders and follow breadcrumbs to start a shared history.' : 'Enable recording to save breadcrumb branches here.'}
+                    </div>
+                ) : (
+                    <div className="space-y-1.5">
+                        {historyBranchTree.map(node => (
+                            <HistoryBranchRow
+                                key={node.entry.eventId}
+                                node={node}
+                                depth={0}
+                                currentEventId={historyCurrentEventId}
+                                currentFolderName={currentFolderName ?? null}
+                                onNavigate={onHistoryNavigate}
+                                onDelete={onHistoryDelete}
+                            />
+                        ))}
+                    </div>
+                )}
+            </CollapsibleSection>
+
             {clusters.length > 0 && (
                 <CollapsibleSection label="Detected Faces">
                     {clusters.map(cluster => (
@@ -940,5 +1052,96 @@ function SmallField({ label, children }: { label: string; children: React.ReactN
             <span className="text-[10px] text-white/30 mb-0.5 block">{label}</span>
             {children}
         </label>
+    );
+}
+
+function HistoryBranchRow({
+    node,
+    depth,
+    currentEventId,
+    currentFolderName,
+    onNavigate,
+    onDelete,
+}: {
+    node: FotosHistoryBranchNode;
+    depth: number;
+    currentEventId: string;
+    currentFolderName: string | null;
+    onNavigate: (eventId: string) => void;
+    onDelete: (eventId: string) => void;
+}) {
+    const label = node.entry.breadcrumbs[node.entry.breadcrumbs.length - 1]
+        ?? node.entry.folderName
+        ?? node.entry.state.folderName
+        ?? 'Library';
+    const trail = node.entry.breadcrumbs.join(' / ');
+    const folderName = node.entry.folderName ?? node.entry.state.folderName ?? '';
+    const canNavigate = folderName.length > 0
+        ? folderName === (currentFolderName ?? '')
+        : currentFolderName === null;
+    const isCurrent = node.entry.eventId === currentEventId;
+
+    return (
+        <div className="space-y-1">
+            <div
+                className="rounded-md border border-white/8 bg-white/[0.035] px-2.5 py-2"
+                style={{ marginLeft: `${depth * 14}px` }}
+            >
+                <div className="flex items-start gap-2">
+                    <div className="min-w-0 flex-1 space-y-1">
+                        <div className="truncate text-[11px] text-white/72">
+                            {label}
+                        </div>
+                        <div className="truncate text-[9px] text-white/25">
+                            {trail || folderName || 'Library'}
+                        </div>
+                        <div className="text-[9px] text-white/18">
+                            {new Date(node.entry.createdAt).toLocaleString()}
+                        </div>
+                        {!canNavigate && (
+                            <div className="text-[9px] leading-relaxed text-white/18">
+                                Open {folderName || 'this folder'} to restore this branch.
+                            </div>
+                        )}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                        <button
+                            type="button"
+                            onClick={() => onNavigate(node.entry.eventId)}
+                            disabled={!canNavigate || isCurrent}
+                            className={`rounded-md px-2 py-1 text-[10px] transition-colors ${
+                                isCurrent
+                                    ? 'bg-[#e94560]/15 text-[#ff9db0]'
+                                    : canNavigate
+                                        ? 'bg-white/6 text-white/55 hover:bg-white/10 hover:text-white/72'
+                                        : 'bg-white/4 text-white/20 cursor-not-allowed'
+                            }`}
+                        >
+                            {isCurrent ? 'Current' : 'Open'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => onDelete(node.entry.eventId)}
+                            className="rounded-md p-1.5 text-white/24 transition-colors hover:bg-white/8 hover:text-white/52"
+                            aria-label={`Delete history entry ${label}`}
+                        >
+                            <Trash2 className="w-3 h-3" />
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {node.children.map(child => (
+                <HistoryBranchRow
+                    key={child.entry.eventId}
+                    node={child}
+                    depth={depth + 1}
+                    currentEventId={currentEventId}
+                    currentFolderName={currentFolderName}
+                    onNavigate={onNavigate}
+                    onDelete={onDelete}
+                />
+            ))}
+        </div>
     );
 }
