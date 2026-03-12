@@ -145,21 +145,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
         return null;
     })();
     const breadcrumbItems = useMemo(() => {
-        const items: Array<{ key: string; label: string; onClick?: () => void }> = [
-            {
-                key: 'folder',
-                label: gallery.folder.folderName ?? 'Library',
-                onClick: hasGalleryDetail
-                    ? () => {
-                        gallery.setGalleryMode('images');
-                        gallery.setActiveClusterId(null);
-                        gallery.setActiveTag(null);
-                        gallery.setSearchQuery('');
-                        gallery.setSearchFace(null);
-                    }
-                    : undefined,
-            },
-        ];
+        const items: Array<{ key: string; label: string; onClick?: () => void }> = [];
 
         if (gallery.galleryMode === 'clusters') {
             items.push({
@@ -192,6 +178,10 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 });
             }
         } else {
+            if (!hasGalleryDetail) {
+                return items;
+            }
+
             items.push({
                 key: 'mode',
                 label: 'Photos',
@@ -301,6 +291,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
         () => breadcrumbItems.map(item => item.label),
         [breadcrumbItems],
     );
+    const showBreadcrumbs = breadcrumbItems.length > 0;
     const breadcrumbHistory = useBreadcrumbHistory({
         model: fotosModel,
         snapshot: historySnapshot,
@@ -434,7 +425,9 @@ export function App({ fotosModel: initialModel }: AppProps) {
             {/* Main content area */}
             <div className="flex-1 min-w-0 min-h-0 relative">
                 <div ref={scrollRef} className="h-full overflow-y-auto hide-scrollbar">
-                    <GalleryBreadcrumbs items={breadcrumbItems} summary={breadcrumbSummary} />
+                    {showBreadcrumbs ? (
+                        <GalleryBreadcrumbs items={breadcrumbItems} summary={breadcrumbSummary} />
+                    ) : null}
                     {showClusterGallery ? (
                         <ClusterGallery
                             clusters={gallery.clusters}
