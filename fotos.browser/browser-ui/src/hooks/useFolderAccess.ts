@@ -1403,10 +1403,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             setFolderName('shared');
             setIsOpen(true);
             setIngestProgress({ phase: 'scanning', current: 0, total: files.length });
-            // Build a FileList-like for ingestFiles
-            const dt = new DataTransfer();
-            for (const f of files) dt.items.add(f);
-            const mobileEntries = await ingestFiles(dt.files, setIngestProgress);
+            const mobileEntries = await ingestFiles(files, setIngestProgress);
             setIngestProgress(null);
             const photoEntries: PhotoEntry[] = mobileEntries.map(m => {
                 if (m.objectUrl) urlCacheRef.current.set(m.sourcePath, m.objectUrl);
@@ -1443,18 +1440,35 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         }
 
         // Selection capture fallback: pick photos from the system library.
-        // Attach to DOM so the element survives GC while the native picker is open
+        // Keep the input attached and capture files before cleanup; Safari/iOS
+        // can otherwise come back from the picker with an empty FileList.
         const input = document.createElement('input');
         input.type = 'file';
         input.multiple = true;
-        input.accept = 'image/*';
-        input.style.display = 'none';
+        input.accept = 'image/*,.heic,.heif';
+        input.style.position = 'fixed';
+        input.style.left = '-9999px';
+        input.style.width = '1px';
+        input.style.height = '1px';
+        input.style.opacity = '0';
+        input.style.pointerEvents = 'none';
         document.body.appendChild(input);
 
+        const cleanup = () => {
+            input.value = '';
+            if (input.parentNode) {
+                input.parentNode.removeChild(input);
+            }
+        };
+        input.addEventListener('cancel', cleanup, { once: true });
+
         input.onchange = async () => {
-            document.body.removeChild(input);
-            const files = input.files;
-            if (!files || files.length === 0) return;
+            const files = input.files ? Array.from(input.files) : [];
+            if (files.length === 0) {
+                console.warn('[openFolder] Mobile picker returned no files');
+                cleanup();
+                return;
+            }
 
             rootHandleRef.current = null;
             clusterDimRef.current = null;
@@ -1465,35 +1479,41 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             setFolderName('photos');
             setIsOpen(true);
 
-            // Ingest files directly (no one/ write on mobile — read-only)
-            setIngestProgress({ phase: 'scanning', current: 0, total: files.length });
-            const mobileEntries = await ingestFiles(files, setIngestProgress);
-            setIngestProgress(null);
+            try {
+                // Ingest files directly (no one/ write on mobile — read-only)
+                setIngestProgress({ phase: 'scanning', current: 0, total: files.length });
+                const mobileEntries = await ingestFiles(files, setIngestProgress);
 
-            // Convert to PhotoEntry and cache object URLs
-            const photoEntries: PhotoEntry[] = mobileEntries.map(m => {
-                if (m.objectUrl) urlCacheRef.current.set(m.sourcePath, m.objectUrl);
-                if (m.thumb) urlCacheRef.current.set(`thumb:${m.hash}`, m.thumb);
-                return {
-                    hash: m.hash,
-                    name: m.name,
-                    managed: m.managed,
-                    sourcePath: m.sourcePath,
-                    folderPath: m.folderPath,
-                    mimeType: m.mimeType,
-                    thumb: m.thumb ? `thumb:${m.hash}` : undefined,
-                    tags: m.tags,
-                    capturedAt: m.capturedAt,
-                    updatedAt: m.updatedAt,
-                    exif: m.exif,
-                    addedAt: m.addedAt,
-                    size: m.size,
-                };
-            });
-            setEntries(photoEntries);
-            // Fire-and-forget ONE.core sync (no rootHandle on mobile — no thumbnails)
-            syncPhotosToOneCore(photoEntries, null).catch(err =>
-                console.warn('[fotos-sync]', err));
+                // Convert to PhotoEntry and cache object URLs
+                const photoEntries: PhotoEntry[] = mobileEntries.map(m => {
+                    if (m.objectUrl) urlCacheRef.current.set(m.sourcePath, m.objectUrl);
+                    if (m.thumb) urlCacheRef.current.set(`thumb:${m.hash}`, m.thumb);
+                    return {
+                        hash: m.hash,
+                        name: m.name,
+                        managed: m.managed,
+                        sourcePath: m.sourcePath,
+                        folderPath: m.folderPath,
+                        mimeType: m.mimeType,
+                        thumb: m.thumb ? `thumb:${m.hash}` : undefined,
+                        tags: m.tags,
+                        capturedAt: m.capturedAt,
+                        updatedAt: m.updatedAt,
+                        exif: m.exif,
+                        addedAt: m.addedAt,
+                        size: m.size,
+                    };
+                });
+                setEntries(photoEntries);
+                // Fire-and-forget ONE.core sync (no rootHandle on mobile — no thumbnails)
+                syncPhotosToOneCore(photoEntries, null).catch(err =>
+                    console.warn('[fotos-sync]', err));
+            } catch (err) {
+                console.warn('[openFolder] Failed to import mobile photos:', err);
+            } finally {
+                setIngestProgress(null);
+                cleanup();
+            }
         };
 
         input.click();

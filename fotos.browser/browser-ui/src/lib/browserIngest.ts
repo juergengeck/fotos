@@ -11,7 +11,7 @@ import ExifReader from 'exifreader';
 // ── Constants ──────────────────────────────────────────────────────────
 
 const IMAGE_EXTS = new Set([
-    '.jpg', '.jpeg', '.png', '.webp', '.gif', '.tiff', '.tif', '.avif',
+    '.jpg', '.jpeg', '.png', '.webp', '.gif', '.tiff', '.tif', '.avif', '.heic', '.heif',
 ]);
 const THUMB_MAX = 400;
 const THUMB_QUALITY = 0.8;
@@ -608,12 +608,13 @@ export interface MobilePhotoEntry {
  * No filesystem writes — works on mobile browsers without FSA API.
  */
 export async function ingestFiles(
-    fileList: FileList,
+    fileList: FileList | readonly File[],
     onProgress?: (p: IngestProgress) => void
 ): Promise<MobilePhotoEntry[]> {
     const files: File[] = [];
-    for (let i = 0; i < fileList.length; i++) {
-        const f = fileList[i];
+    const selectedFiles = Array.from(fileList);
+    for (let i = 0; i < selectedFiles.length; i++) {
+        const f = selectedFiles[i];
         if (f.type.startsWith('image/') || IMAGE_EXTS.has(extOf(f.name))) {
             files.push(f);
         }
