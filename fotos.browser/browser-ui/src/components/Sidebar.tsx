@@ -40,6 +40,13 @@ interface SidebarProps {
     fotosModel?: FotosModel | null;
     mobile?: boolean;
     footerMarquee?: string | null;
+    analysisProgress?: {
+        phase?: string;
+        current: number;
+        total: number;
+        fileName?: string;
+        statusLabel?: string;
+    } | null;
     galleryMode: 'images' | 'clusters';
     onGalleryModeChange: (mode: 'images' | 'clusters') => void;
     clusters: FaceClusterSummary[];
@@ -71,6 +78,7 @@ export function Sidebar({
     fotosModel,
     mobile,
     footerMarquee,
+    analysisProgress,
     galleryMode, onGalleryModeChange,
     clusters, people, groups,
     similarFaces, searchClusters,
@@ -128,6 +136,10 @@ export function Sidebar({
                             <button onClick={onClearFaceSearch} className="text-[10px] text-white/30 hover:text-white/60">clear</button>
                         )}
                     </div>
+                )}
+
+                {analysisProgress && analysisProgress.total > 0 && (
+                    <SidebarProgress progress={analysisProgress} />
                 )}
 
                 <div className="min-h-0 flex-1 overflow-y-auto p-3 space-y-4">
@@ -249,6 +261,10 @@ export function Sidebar({
                 </div>
             )}
 
+            {analysisProgress && analysisProgress.total > 0 && (
+                <SidebarProgress progress={analysisProgress} />
+            )}
+
             {/* Content */}
             <div className="min-h-0 flex-1 overflow-y-auto p-3 space-y-4">
                 {tab === 'browse' && (
@@ -344,6 +360,47 @@ function SidebarMarquee({ text }: { text: string }) {
                 <span className="px-4">Image AI: {text}</span>
                 <span className="px-4">Image AI: {text}</span>
             </div>
+        </div>
+    );
+}
+
+function SidebarProgress({ progress }: {
+    progress: NonNullable<SidebarProps['analysisProgress']>;
+}) {
+    const label = (() => {
+        switch (progress.phase) {
+            case 'preparing-faces':
+            case 'faces':
+                return 'Face analytics';
+            case 'preparing-semantic':
+            case 'semantic':
+                return 'Semantic indexing';
+            default:
+                return 'Analysis';
+        }
+    })();
+    const percent = progress.total > 0
+        ? Math.max(0, Math.min(100, Math.round((progress.current / progress.total) * 100)))
+        : 0;
+
+    return (
+        <div className="border-b border-white/10 px-3 py-2">
+            <div className="flex items-center gap-2">
+                <div className="flex-1 h-1 rounded-full bg-white/10 overflow-hidden">
+                    <div
+                        className="h-full rounded-full bg-[#e94560]/70 transition-all duration-500"
+                        style={{ width: `${percent}%` }}
+                    />
+                </div>
+                <span className="text-[10px] text-white/40 whitespace-nowrap">
+                    {label} {progress.current}/{progress.total}
+                </span>
+            </div>
+            {(progress.statusLabel || progress.fileName) && (
+                <div className="mt-1 truncate text-[10px] text-white/25">
+                    {progress.statusLabel ?? progress.fileName}
+                </div>
+            )}
         </div>
     );
 }

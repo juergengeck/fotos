@@ -127,7 +127,6 @@ export function App({ fotosModel: initialModel }: AppProps) {
         0,
     );
     const analysisProgress = progress
-        && visiblePhotos.length > 0
         && (
             progress.phase === 'faces'
             || progress.phase === 'preparing-faces'
@@ -546,6 +545,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 fotosModel={fotosModel}
                 mobile={mobile}
                 footerMarquee={configMarquee}
+                analysisProgress={analysisProgress}
                 galleryMode={gallery.galleryMode}
                 onGalleryModeChange={gallery.setGalleryMode}
                 clusters={gallery.clusters}
