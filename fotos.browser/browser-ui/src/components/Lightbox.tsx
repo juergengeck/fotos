@@ -310,7 +310,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onFa
                 </button>
             </div>
 
-            <aside className="w-72 h-full flex flex-col bg-[#0d0d0d] border-l border-white/10 shrink-0 max-md:w-64">
+            <aside className="w-72 h-full min-h-0 overflow-hidden flex flex-col bg-[#0d0d0d] border-l border-white/10 shrink-0 max-md:w-64">
                 {/* Header — matches gallery sidebar tab bar shape */}
                 <div className="flex items-center border-b border-white/10">
                     <div className="flex-1 px-3 py-2">
@@ -320,7 +320,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onFa
                 </div>
 
                 {/* Scrollable content */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-5">
+                <div className="min-h-0 flex-1 overflow-y-auto p-4 space-y-5">
                     {/* EXIF */}
                     {photo.exif && (
                         <Section label="Details">

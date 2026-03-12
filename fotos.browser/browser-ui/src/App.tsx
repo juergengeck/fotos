@@ -493,7 +493,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         <PhotoGrid
                             dayGroups={visibleDayGroups}
                             photos={visiblePhotos}
-                            thumbScale={mobile ? 100 : settings.display.thumbScale}
+                            thumbScale={settings.display.thumbScale}
                             onPhotoClick={handlePhotoClick}
                             loading={gallery.loading}
                             getThumbUrl={gallery.folder.getThumbUrl}

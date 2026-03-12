@@ -89,20 +89,55 @@ export function Sidebar({
     // Mobile: inline panel, no overlay/drawer
     if (mobile) {
         return (
-            <aside className="shrink-0 bg-[#0d0d0d] border-t landscape:border-t-0 landscape:border-l border-white/10 flex flex-col overflow-y-auto landscape:w-64 landscape:h-full">
+            <aside className="shrink-0 min-h-0 overflow-hidden bg-[#0d0d0d] border-t landscape:border-t-0 landscape:border-l border-white/10 flex flex-col landscape:w-64 landscape:h-full">
                 <div className="flex items-center border-b border-white/10">
                     <div className="flex flex-1">
                         <TabBtn active={tab === 'browse'} onClick={() => setTab('browse')}>Browse</TabBtn>
+                        <TabBtn active={tab === 'manage'} onClick={() => setTab('manage')}>Manage</TabBtn>
                         <TabBtn active={tab === 'settings'} onClick={() => setTab('settings')}>Settings</TabBtn>
                     </div>
                 </div>
-                <div className="flex-1 overflow-y-auto p-3 space-y-4">
+
+                <div className="px-3 py-2 border-b border-white/10">
+                    {folderName ? (
+                        <div className="flex items-center gap-2">
+                            <FolderOpen className="w-3.5 h-3.5 text-white/40 shrink-0" />
+                            <span className="text-xs text-white/60 truncate flex-1">{folderName}</span>
+                            {onRescan && (
+                                <button onClick={onRescan} className="text-[10px] text-white/30 hover:text-white/60">rescan</button>
+                            )}
+                            {onReanalyze && (
+                                <button onClick={onReanalyze} className="text-[10px] text-[#ff9db0]/50 hover:text-[#ff9db0]">reanalyze</button>
+                            )}
+                            {onOpenFolder && (
+                                <button onClick={onOpenFolder} className="text-[10px] text-white/30 hover:text-white/60">change</button>
+                            )}
+                        </div>
+                    ) : onOpenFolder ? (
+                        <button onClick={onOpenFolder} className="flex items-center gap-2 text-xs text-white/40 hover:text-white/60">
+                            <FolderOpen className="w-3.5 h-3.5" />
+                            Open folder...
+                        </button>
+                    ) : null}
+                </div>
+
+                {faceSearchActive && (
+                    <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
+                        <span className="text-[11px] text-blue-400/80 flex-1">Showing similar faces</span>
+                        {onClearFaceSearch && (
+                            <button onClick={onClearFaceSearch} className="text-[10px] text-white/30 hover:text-white/60">clear</button>
+                        )}
+                    </div>
+                )}
+
+                <div className="min-h-0 flex-1 overflow-y-auto p-3 space-y-4">
                     {tab === 'browse' && (
                         <BrowseTab
                             tags={tags} activeTag={activeTag} onTagClick={onTagClick}
                             searchQuery={searchQuery} onSearchChange={onSearchChange}
                             browseSummary={browseSummary}
-                            thumbScale={100} onThumbScaleChange={() => {}}
+                            thumbScale={settings.display.thumbScale}
+                            onThumbScaleChange={s => onUpdateDisplay({ thumbScale: s })}
                             sortBy={settings.display.sortBy} onSortByChange={sortBy => onUpdateDisplay({ sortBy })}
                             sortOrder={settings.display.sortOrder} onSortOrderChange={sortOrder => onUpdateDisplay({ sortOrder })}
                             galleryMode={galleryMode}
@@ -122,6 +157,9 @@ export function Sidebar({
                             onEditFace={onEditFace}
                             onDeleteFace={onDeleteFace}
                         />
+                    )}
+                    {tab === 'manage' && (
+                        <ManageTab settings={settings} onUpdateStorage={onUpdateStorage} />
                     )}
                     {tab === 'settings' && (
                         <SettingsTab
@@ -165,7 +203,7 @@ export function Sidebar({
         )}
 
         <aside className={`
-            w-64 h-full flex flex-col bg-[#0d0d0d] border-l border-white/10 shrink-0
+            w-64 h-full min-h-0 overflow-hidden flex flex-col bg-[#0d0d0d] border-l border-white/10 shrink-0
             ${collapsed ? 'hidden' : ''}
         `}>
             {/* Tabs */}
@@ -212,7 +250,7 @@ export function Sidebar({
             )}
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-4">
+            <div className="min-h-0 flex-1 overflow-y-auto p-3 space-y-4">
                 {tab === 'browse' && (
                     <BrowseTab
                         tags={tags}
