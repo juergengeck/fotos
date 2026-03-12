@@ -84,25 +84,35 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
     }
 
     const colStyle = `repeat(auto-fill, minmax(${thumbScale}px, 1fr))`;
-    const scannedForFaces = mobile ? photos.length : photos.filter(photo => photo.faces !== undefined).length;
-    const analyzed = analysisProgress
-        ? Math.min(photos.length, (photos.length - analysisProgress.total) + analysisProgress.current)
-        : scannedForFaces;
-    const pending = photos.length - analyzed;
+    const progressLabel = (() => {
+        switch (analysisProgress?.phase) {
+            case 'preparing-faces':
+            case 'faces':
+                return 'Face analytics';
+            case 'preparing-semantic':
+            case 'semantic':
+                return 'Semantic indexing';
+            default:
+                return 'Analysis';
+        }
+    })();
+    const progressPercent = analysisProgress && analysisProgress.total > 0
+        ? Math.max(0, Math.min(100, Math.round((analysisProgress.current / analysisProgress.total) * 100)))
+        : 0;
     let flatIndex = 0;
 
     return (
         <div>
-            {pending > 0 && (
+            {analysisProgress && analysisProgress.total > 0 && (
                 <div className="sticky top-0 z-20 px-3 py-1 bg-black/80 backdrop-blur-sm flex items-center gap-2">
                     <div className="flex-1 h-1 rounded-full bg-white/10 overflow-hidden">
                         <div
                             className="h-full rounded-full bg-[#e94560]/70 transition-all duration-500"
-                            style={{width: `${Math.round((analyzed / photos.length) * 100)}%`}}
+                            style={{width: `${progressPercent}%`}}
                         />
                     </div>
                     <span className="text-[10px] text-white/40 whitespace-nowrap">
-                        {analyzed}/{photos.length} analyzed
+                        {progressLabel} {analysisProgress.current}/{analysisProgress.total}
                     </span>
                     {(analysisProgress?.statusLabel || analysisProgress?.fileName) && (
                         <span className="max-w-[24ch] truncate text-[10px] text-white/25">

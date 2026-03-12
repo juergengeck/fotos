@@ -127,7 +127,12 @@ export function App({ fotosModel: initialModel }: AppProps) {
     );
     const analysisProgress = progress
         && visiblePhotos.length > 0
-        && (progress.phase === 'faces' || progress.phase === 'preparing-faces')
+        && (
+            progress.phase === 'faces'
+            || progress.phase === 'preparing-faces'
+            || progress.phase === 'semantic'
+            || progress.phase === 'preparing-semantic'
+        )
         ? progress
         : null;
     const configMarquee = (() => {
@@ -142,6 +147,17 @@ export function App({ fotosModel: initialModel }: AppProps) {
             const step = analysisProgress.total > 0
                 ? `Analyzing faces ${analysisProgress.current}/${analysisProgress.total}`
                 : 'Analyzing faces...';
+            return analysisProgress.fileName
+                ? `${step} ${analysisProgress.fileName}`.trim()
+                : step;
+        }
+        if (analysisProgress.phase === 'preparing-semantic') {
+            return analysisProgress.statusLabel ?? 'Loading semantic search model...';
+        }
+        if (analysisProgress.phase === 'semantic') {
+            const step = analysisProgress.total > 0
+                ? `Indexing semantic search ${analysisProgress.current}/${analysisProgress.total}`
+                : 'Indexing semantic search...';
             return analysisProgress.fileName
                 ? `${step} ${analysisProgress.fileName}`.trim()
                 : step;
@@ -392,6 +408,8 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         {progress.phase === 'processing' && `Processing ${progress.current}/${progress.total}${progress.fileName ? ` — ${progress.fileName}` : ''}`}
                         {progress.phase === 'preparing-faces' && (progress.statusLabel ?? 'Preparing face analytics...')}
                         {progress.phase === 'faces' && `Detecting faces ${progress.current}/${progress.total}${progress.fileName ? ` — ${progress.fileName}` : ''}`}
+                        {progress.phase === 'preparing-semantic' && (progress.statusLabel ?? 'Loading semantic search model...')}
+                        {progress.phase === 'semantic' && `Embedding images ${progress.current}/${progress.total}${progress.fileName ? ` — ${progress.fileName}` : ''}`}
                         {progress.phase === 'writing' && 'Writing metadata...'}
                         {progress.phase === 'done' && `Done — ${progress.total} images ingested`}
                     </p>

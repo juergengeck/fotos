@@ -121,6 +121,12 @@ export function useGallery(options: UseGalleryOptions = {}) {
         ? gallery.searchQuery.trim()
         : '';
     const semanticSearchEnabled = options.semanticSearchEnabled ?? false;
+    const ingestionPhase = folder.ingestProgress?.phase ?? null;
+    const isBlockingBackgroundWork = ingestionPhase === 'scanning'
+        || ingestionPhase === 'processing'
+        || ingestionPhase === 'writing'
+        || ingestionPhase === 'preparing-faces'
+        || ingestionPhase === 'faces';
     const ensureSemanticEmbeddings = folder.ensureSemanticEmbeddings;
     const setSearchEmbedding = gallery.setSearchEmbedding;
 
@@ -185,6 +191,20 @@ export function useGallery(options: UseGalleryOptions = {}) {
 
         void ensureSemanticEmbeddings();
     }, [ensureSemanticEmbeddings, semanticSearchEnabled, semanticSearchQuery, folder.entries]);
+
+    useEffect(() => {
+        if (!semanticSearchEnabled || !folder.isOpen || isBlockingBackgroundWork) {
+            return;
+        }
+
+        void ensureSemanticEmbeddings();
+    }, [
+        ensureSemanticEmbeddings,
+        folder.entries,
+        folder.isOpen,
+        isBlockingBackgroundWork,
+        semanticSearchEnabled,
+    ]);
 
     return {
         ...gallery,

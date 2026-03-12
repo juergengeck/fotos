@@ -433,7 +433,7 @@ async function loadPreservedIndexAttrs(
 const FACES_DIR = 'faces';
 
 export interface IngestProgress {
-    phase: 'scanning' | 'processing' | 'preparing-faces' | 'faces' | 'writing' | 'done';
+    phase: 'scanning' | 'processing' | 'preparing-faces' | 'faces' | 'preparing-semantic' | 'semantic' | 'writing' | 'done';
     current: number;
     total: number;
     fileName?: string;

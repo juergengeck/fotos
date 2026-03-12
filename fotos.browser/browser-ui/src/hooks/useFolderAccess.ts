@@ -1185,41 +1185,97 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             return;
         }
 
+        traceHang('semantic-pass-start', {
+            folderName: handle.name,
+            total: pending.length,
+            alreadyEmbedded: photos.length - pending.length,
+        });
+        setIngestProgress({
+            phase: 'preparing-semantic',
+            current: 0,
+            total: pending.length,
+            statusLabel: 'Loading semantic search model...',
+        });
+
         let semanticHandle;
         try {
             semanticHandle = await getSemanticWorker();
         } catch (error) {
             console.warn('[SemanticPass] Semantic search unavailable:', error);
+            traceHang('semantic-pass-unavailable', { message: String(error) });
+            setIngestProgress(null);
             return;
         }
 
-        for (const photo of pending) {
-            let semantic: SemanticInfo | null = null;
+        console.log(`[SemanticPass] Running semantic embeddings on ${pending.length} photos...`);
 
-            try {
-                const isEmbeddable = !photo.mimeType || photo.mimeType.startsWith('image/');
-                if (photo.sourcePath && isEmbeddable) {
-                    const file = await readFileFromHandle(handle, photo.sourcePath);
-                    const result = await semanticHandle.embedImage(file);
-                    semantic = {
-                        modelId: result.modelId,
-                        embedding: result.embedding,
+        try {
+            for (let index = 0; index < pending.length; index++) {
+                const photo = pending[index];
+                let semantic: SemanticInfo | null = null;
+
+                setIngestProgress({
+                    phase: 'semantic',
+                    current: index,
+                    total: pending.length,
+                    fileName: photo.name,
+                    statusLabel: 'Embedding images for semantic search...',
+                });
+
+                try {
+                    const isEmbeddable = !photo.mimeType || photo.mimeType.startsWith('image/');
+                    if (photo.sourcePath && isEmbeddable) {
+                        const file = await readFileFromHandle(handle, photo.sourcePath);
+                        const result = await semanticHandle.embedImage(file);
+                        semantic = {
+                            modelId: result.modelId,
+                            embedding: result.embedding,
+                        };
+                        await updateIndexHtmlSemanticData(handle, photo, semanticToDataAttrs(semantic));
+                    }
+                } catch (error) {
+                    console.warn(`[SemanticPass] Failed for ${photo.name}:`, error);
+                    traceHang('semantic-pass-photo-failed', {
+                        name: photo.name,
+                        index: index + 1,
+                        total: pending.length,
+                        message: String(error),
+                    });
+                }
+
+                setEntries(prev => prev.map(entry => {
+                    if (entry.hash !== photo.hash) {
+                        return entry;
+                    }
+                    return {
+                        ...entry,
+                        semantic,
                     };
-                    await updateIndexHtmlSemanticData(handle, photo, semanticToDataAttrs(semantic));
-                }
-            } catch (error) {
-                console.warn(`[SemanticPass] Failed for ${photo.name}:`, error);
-            }
+                }));
 
-            setEntries(prev => prev.map(entry => {
-                if (entry.hash !== photo.hash) {
-                    return entry;
-                }
-                return {
-                    ...entry,
-                    semantic,
-                };
-            }));
+                traceHang('semantic-pass-photo-complete', {
+                    name: photo.name,
+                    index: index + 1,
+                    total: pending.length,
+                    embedded: Boolean(semantic),
+                });
+                console.log(`[SemanticPass] ${index + 1}/${pending.length} ${photo.name}${semantic ? '' : ' (skipped)'}`);
+
+                setIngestProgress({
+                    phase: 'semantic',
+                    current: index + 1,
+                    total: pending.length,
+                    fileName: photo.name,
+                    statusLabel: 'Embedding images for semantic search...',
+                });
+            }
+            console.log('[SemanticPass] Complete.');
+        } finally {
+            traceHang('semantic-pass-complete', {
+                folderName: handle.name,
+                total: pending.length,
+            });
+            setIngestProgress(null);
         }
     }, [getSemanticWorker]);
 
