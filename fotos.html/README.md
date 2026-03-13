@@ -11,7 +11,10 @@ Intent:
 
 Current state:
 
-- The intended role is correct, but the repo is not fully aligned yet.
+- The intended role is correct, and the repo now has a first plugin seam.
+- `fotos.html` exports a reusable `FotosViewer` component plus source/settings interfaces from `src/index.ts`.
+- The standalone app is now a thin wrapper around that viewer with the existing server-backed access hook.
+- The repo is still not fully aligned yet.
 - `fotos.browser/browser-ui/src/lib/browserIngest.ts` still writes a hand-rolled `one/index.html` listing.
 - `fotos.html` still has a server-backed access layer from the older app split.
 
