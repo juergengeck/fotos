@@ -792,6 +792,8 @@ export interface FolderAccess {
     deleteFace: (clusterId: string) => Promise<void>;
     /** Associate one detected face with an existing cluster */
     associateFaceWithCluster: (photoHash: string, faceIndex: number, clusterId: string) => Promise<void>;
+    /** Merge source clusters into one target cluster */
+    mergeFaceClusters: (targetClusterId: string, sourceClusterIds: string[]) => Promise<void>;
 }
 
 // ── Persist last-opened folder handle via IndexedDB ──────────────────
@@ -2185,6 +2187,102 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         clusterThresholdRef.current = clusterThreshold;
     }, [clusterThreshold, entries]);
 
+    const mergeFaceClusters = useCallback(async (
+        targetClusterId: string,
+        sourceClusterIds: string[],
+    ) => {
+        const handle = rootHandleRef.current;
+        if (!handle) {
+            throw new Error('No folder open');
+        }
+
+        const sourceSet = new Set(
+            sourceClusterIds
+                .map(id => id.trim())
+                .filter(id => id && id !== targetClusterId),
+        );
+        if (sourceSet.size === 0) {
+            return;
+        }
+
+        const targetName = findClusterNameInEntries(entries, targetClusterId)
+            ?? [...sourceSet].map(clusterId => findClusterNameInEntries(entries, clusterId)).find(Boolean);
+
+        const affectedEntries: PhotoEntry[] = [];
+        let changed = false;
+
+        const nextEntries = entries.map(entry => {
+            const faces = entry.faces;
+            if (!faces?.clusterIds?.length) {
+                return entry;
+            }
+
+            const clusterIds = [...faces.clusterIds];
+            const names = faces.names
+                ? [...faces.names]
+                : Array.from({ length: faces.count }, () => 'Unknown');
+
+            while (names.length < faces.count) {
+                names.push('Unknown');
+            }
+
+            let entryChanged = false;
+
+            for (let index = 0; index < clusterIds.length; index++) {
+                const currentClusterId = clusterIds[index];
+                if (!currentClusterId) {
+                    continue;
+                }
+
+                if (sourceSet.has(currentClusterId)) {
+                    if (clusterIds[index] !== targetClusterId) {
+                        clusterIds[index] = targetClusterId;
+                        entryChanged = true;
+                        changed = true;
+                    }
+                }
+
+                if (clusterIds[index] === targetClusterId) {
+                    const nextName = targetName ?? normalizeClusterName(names[index]) ?? 'Unknown';
+                    if (names[index] !== nextName) {
+                        names[index] = nextName;
+                        entryChanged = true;
+                        changed = true;
+                    }
+                }
+            }
+
+            if (!entryChanged) {
+                return entry;
+            }
+
+            const updated = {
+                ...entry,
+                faces: {
+                    ...faces,
+                    clusterIds,
+                    names,
+                },
+            };
+            affectedEntries.push(updated);
+            return updated;
+        });
+
+        if (!changed) {
+            return;
+        }
+
+        setEntries(nextEntries);
+        await Promise.all(
+            affectedEntries.map(entry =>
+                updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry))
+            ),
+        );
+
+        clusterDimRef.current = await rebuildPersistedClusterStateFromEntries(handle, nextEntries, clusterThreshold);
+        clusterThresholdRef.current = clusterThreshold;
+    }, [clusterThreshold, entries]);
+
     return {
         isOpen,
         surface,
@@ -2206,5 +2304,6 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         renameFace,
         deleteFace,
         associateFaceWithCluster,
+        mergeFaceClusters,
     };
 }

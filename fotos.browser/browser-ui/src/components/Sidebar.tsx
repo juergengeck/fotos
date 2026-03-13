@@ -59,6 +59,7 @@ interface SidebarProps {
     onClusterSelect: (clusterId: string | null) => void;
     getFileUrl: (relativePath: string) => Promise<string>;
     onAssociateFaceWithCluster: (photoHash: string, faceIndex: number, clusterId: string) => void;
+    onMergeFaceClusters: (targetClusterId: string, sourceClusterIds: string[]) => void;
     onOpenSimilarFace: (match: SimilarFaceMatch) => void;
     onDeletePhoto: (hash: string) => void;
     onRenameFace: (clusterId: string, name: string) => Promise<void> | void;
@@ -85,6 +86,7 @@ export function Sidebar({
     activeClusterId, onClusterSelect,
     getFileUrl,
     onAssociateFaceWithCluster,
+    onMergeFaceClusters,
     onOpenSimilarFace,
     onDeletePhoto,
     onRenameFace,
@@ -147,6 +149,8 @@ export function Sidebar({
                             tags={tags} activeTag={activeTag} onTagClick={onTagClick}
                             searchQuery={searchQuery} onSearchChange={onSearchChange}
                             browseSummary={browseSummary}
+                            settings={settings}
+                            onUpdateAnalysis={onUpdateAnalysis}
                             thumbScale={settings.display.thumbScale}
                             onThumbScaleChange={s => onUpdateDisplay({ thumbScale: s })}
                             sortBy={settings.display.sortBy} onSortByChange={sortBy => onUpdateDisplay({ sortBy })}
@@ -162,6 +166,7 @@ export function Sidebar({
                             onClusterSelect={onClusterSelect}
                             getFileUrl={getFileUrl}
                             onAssociateFaceWithCluster={onAssociateFaceWithCluster}
+                            onMergeFaceClusters={onMergeFaceClusters}
                             onOpenSimilarFace={onOpenSimilarFace}
                             onDeletePhoto={onDeletePhoto}
                             onRenameFace={onRenameFace}
@@ -274,6 +279,8 @@ export function Sidebar({
                         searchQuery={searchQuery}
                         onSearchChange={onSearchChange}
                         browseSummary={browseSummary}
+                        settings={settings}
+                        onUpdateAnalysis={onUpdateAnalysis}
                         thumbScale={settings.display.thumbScale}
                         onThumbScaleChange={s => onUpdateDisplay({ thumbScale: s })}
                         sortBy={settings.display.sortBy}
@@ -291,6 +298,7 @@ export function Sidebar({
                         onClusterSelect={onClusterSelect}
                         getFileUrl={getFileUrl}
                         onAssociateFaceWithCluster={onAssociateFaceWithCluster}
+                        onMergeFaceClusters={onMergeFaceClusters}
                         onOpenSimilarFace={onOpenSimilarFace}
                         onDeletePhoto={onDeletePhoto}
                         onRenameFace={onRenameFace}
@@ -443,6 +451,7 @@ function BrowseTab({
     tags, activeTag, onTagClick,
     searchQuery, onSearchChange,
     browseSummary,
+    settings, onUpdateAnalysis,
     thumbScale, onThumbScaleChange,
     sortBy, onSortByChange,
     sortOrder, onSortOrderChange,
@@ -452,6 +461,7 @@ function BrowseTab({
     activeClusterId, onClusterSelect,
     getFileUrl,
     onAssociateFaceWithCluster,
+    onMergeFaceClusters,
     onOpenSimilarFace, onDeletePhoto,
     onRenameFace, onDeleteFace,
 }: {
@@ -461,6 +471,8 @@ function BrowseTab({
     searchQuery: string;
     onSearchChange: (q: string) => void;
     browseSummary: string;
+    settings: FotosSettings;
+    onUpdateAnalysis: (updates: Partial<FotosSettings['analysis']>) => void;
     thumbScale: number;
     onThumbScaleChange: (s: number) => void;
     sortBy: string;
@@ -478,6 +490,7 @@ function BrowseTab({
     onClusterSelect: (clusterId: string | null) => void;
     getFileUrl: (relativePath: string) => Promise<string>;
     onAssociateFaceWithCluster: (photoHash: string, faceIndex: number, clusterId: string) => void;
+    onMergeFaceClusters: (targetClusterId: string, sourceClusterIds: string[]) => void;
     onOpenSimilarFace: (match: SimilarFaceMatch) => void;
     onDeletePhoto: (hash: string) => void;
     onRenameFace: (clusterId: string, name: string) => Promise<void> | void;
@@ -486,6 +499,27 @@ function BrowseTab({
     const selectedAssociationClusterId = activeClusterId && activeClusterId !== 'current-match'
         ? activeClusterId
         : null;
+    const [selectedClusterCandidateIds, setSelectedClusterCandidateIds] = useState<string[]>([]);
+
+    useEffect(() => {
+        setSelectedClusterCandidateIds([]);
+    }, [selectedAssociationClusterId]);
+
+    const toggleClusterCandidate = (clusterId: string) => {
+        setSelectedClusterCandidateIds(current => (
+            current.includes(clusterId)
+                ? current.filter(id => id !== clusterId)
+                : [...current, clusterId]
+        ));
+    };
+
+    const applyClusterMerges = () => {
+        if (!selectedAssociationClusterId || selectedClusterCandidateIds.length === 0) {
+            return;
+        }
+        onMergeFaceClusters(selectedAssociationClusterId, selectedClusterCandidateIds);
+        setSelectedClusterCandidateIds([]);
+    };
 
     return (
         <>
@@ -524,6 +558,34 @@ function BrowseTab({
 
             {galleryMode === 'clusters' && (
                 <>
+                    <div>
+                        <SectionLabel>Sensitivity</SectionLabel>
+                        <div className={`mt-1.5 space-y-1.5 ${settings.analysis.faceAnalyticsEnabled ? '' : 'opacity-45'}`}>
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="range"
+                                    min={0}
+                                    max={100}
+                                    step={1}
+                                    value={settings.analysis.clusterSensitivity}
+                                    onChange={e => onUpdateAnalysis({ clusterSensitivity: parseInt(e.target.value, 10) || 0 })}
+                                    disabled={!settings.analysis.faceAnalyticsEnabled}
+                                    className="flex-1 accent-[#e94560] h-1"
+                                />
+                                <span className="w-8 text-right text-[10px] text-white/35 tabular-nums">
+                                    {settings.analysis.clusterSensitivity}
+                                </span>
+                            </div>
+                            <div className="flex items-center justify-between text-[10px] text-white/25">
+                                <span>Merge more</span>
+                                <span>Split more</span>
+                            </div>
+                            <div className="text-[10px] text-white/30">
+                                {clusters.length} clusters at this setting
+                            </div>
+                        </div>
+                    </div>
+
                     {activeClusterId && (
                         <button
                             onClick={() => onClusterSelect(null)}
@@ -531,6 +593,35 @@ function BrowseTab({
                         >
                             ← Back to all clusters
                         </button>
+                    )}
+
+                    {selectedAssociationClusterId && (
+                        <div className="rounded-md border border-[#e94560]/25 bg-[#1a1115] px-2.5 py-2">
+                            <div className="text-[10px] text-white/50">
+                                Check thumbnails on the right that belong to this cluster.
+                            </div>
+                            <div className="mt-2 flex items-center gap-1.5">
+                                <button
+                                    onClick={applyClusterMerges}
+                                    disabled={selectedClusterCandidateIds.length === 0}
+                                    className={`rounded-md px-2 py-1 text-[10px] uppercase tracking-[0.16em] transition-colors ${
+                                        selectedClusterCandidateIds.length > 0
+                                            ? 'bg-[#e94560] text-white hover:bg-[#d73b56]'
+                                            : 'bg-white/5 text-white/25 cursor-not-allowed'
+                                    }`}
+                                >
+                                    Add Selected {selectedClusterCandidateIds.length > 0 ? `(${selectedClusterCandidateIds.length})` : ''}
+                                </button>
+                                {selectedClusterCandidateIds.length > 0 && (
+                                    <button
+                                        onClick={() => setSelectedClusterCandidateIds([])}
+                                        className="text-[10px] text-white/35 hover:text-white/60"
+                                    >
+                                        clear
+                                    </button>
+                                )}
+                            </div>
+                        </div>
                     )}
 
                     {people.length > 0 && (
@@ -544,6 +635,9 @@ function BrowseTab({
                                         active={cluster.clusterId === activeClusterId}
                                         onClick={() => onClusterSelect(cluster.clusterId)}
                                         getFileUrl={getFileUrl}
+                                        showMergeCheckbox={Boolean(selectedAssociationClusterId) && cluster.clusterId !== selectedAssociationClusterId}
+                                        mergeSelected={selectedClusterCandidateIds.includes(cluster.clusterId)}
+                                        onToggleMergeSelected={() => toggleClusterCandidate(cluster.clusterId)}
                                         onRename={onRenameFace}
                                         onDelete={onDeleteFace}
                                     />
@@ -563,6 +657,9 @@ function BrowseTab({
                                         active={cluster.clusterId === activeClusterId}
                                         onClick={() => onClusterSelect(cluster.clusterId)}
                                         getFileUrl={getFileUrl}
+                                        showMergeCheckbox={Boolean(selectedAssociationClusterId) && cluster.clusterId !== selectedAssociationClusterId}
+                                        mergeSelected={selectedClusterCandidateIds.includes(cluster.clusterId)}
+                                        onToggleMergeSelected={() => toggleClusterCandidate(cluster.clusterId)}
                                         onRename={onRenameFace}
                                         onDelete={onDeleteFace}
                                     />
@@ -755,6 +852,9 @@ function ClusterBrowseRow({
     active,
     onClick,
     getFileUrl,
+    showMergeCheckbox,
+    mergeSelected,
+    onToggleMergeSelected,
     onRename,
     onDelete,
 }: {
@@ -762,6 +862,9 @@ function ClusterBrowseRow({
     active: boolean;
     onClick: () => void;
     getFileUrl: (relativePath: string) => Promise<string>;
+    showMergeCheckbox?: boolean;
+    mergeSelected?: boolean;
+    onToggleMergeSelected?: () => void;
     onRename?: (clusterId: string, name: string) => Promise<void> | void;
     onDelete?: (clusterId: string) => void;
 }) {
@@ -821,18 +924,36 @@ function ClusterBrowseRow({
                 )}
                 <div className="text-[10px] text-white/25">{cluster.faceCount} faces · {cluster.photoCount} photos</div>
             </div>
-            {onDelete && (
-                <button
-                    onClick={event => {
-                        event.stopPropagation();
-                        onDelete(cluster.clusterId);
-                    }}
-                    onKeyDown={event => event.stopPropagation()}
-                    className="text-white/20 hover:text-red-400 transition-colors"
-                    title="Delete cluster"
-                >
-                    <Trash2 className="h-3 w-3" />
-                </button>
+            {(showMergeCheckbox || onDelete) && (
+                <div className="flex shrink-0 items-center gap-1.5">
+                    {onDelete && (
+                        <button
+                            onClick={event => {
+                                event.stopPropagation();
+                                onDelete(cluster.clusterId);
+                            }}
+                            onKeyDown={event => event.stopPropagation()}
+                            className="text-white/20 hover:text-red-400 transition-colors"
+                            title="Delete cluster"
+                        >
+                            <Trash2 className="h-3 w-3" />
+                        </button>
+                    )}
+                    {showMergeCheckbox ? (
+                        <input
+                            type="checkbox"
+                            checked={Boolean(mergeSelected)}
+                            onChange={event => {
+                                event.stopPropagation();
+                                onToggleMergeSelected?.();
+                            }}
+                            onClick={event => event.stopPropagation()}
+                            onKeyDown={event => event.stopPropagation()}
+                            className="h-4 w-4 shrink-0 rounded-sm border border-white/20 bg-black/20 accent-[#e94560]"
+                            title={mergeSelected ? 'Marked for this cluster' : 'Mark for this cluster'}
+                        />
+                    ) : null}
+                </div>
             )}
         </div>
     );
@@ -891,31 +1012,6 @@ function SimilarFaceRow({
             onKeyDown={event => handleButtonLikeKeyDown(event, onOpen)}
             className="group flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2 py-1.5 text-left transition-colors hover:bg-white/10"
         >
-            <button
-                type="button"
-                disabled={!canAssociate || associated}
-                onClick={event => {
-                    event.stopPropagation();
-                    onAssociate?.();
-                }}
-                onKeyDown={event => event.stopPropagation()}
-                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border transition-colors ${
-                    associated
-                        ? 'border-[#e94560]/70 bg-[#e94560] text-white'
-                        : canAssociate
-                            ? 'border-white/20 bg-black/20 text-white/20 hover:border-[#ff9db0]/60 hover:bg-[#e94560]/12 hover:text-[#ff9db0]'
-                            : 'border-white/10 bg-black/10 text-transparent opacity-45 cursor-not-allowed'
-                }`}
-                title={
-                    associated
-                        ? 'Already associated with the selected cluster'
-                        : canAssociate
-                            ? 'Associate with the selected cluster'
-                            : 'Select a cluster first'
-                }
-            >
-                <Check className="h-3 w-3" />
-            </button>
             {src ? (
                 <img src={src} alt={match.photo.name} className="h-8 w-8 rounded-full object-cover border border-white/10 shrink-0" />
             ) : (
@@ -938,17 +1034,44 @@ function SimilarFaceRow({
                     <div className="text-[10px] text-white/25">{match.personName?.trim() || 'Unknown'}</div>
                 )}
             </div>
-            <button
-                onClick={event => {
-                    event.stopPropagation();
-                    onDelete();
-                }}
-                onKeyDown={event => event.stopPropagation()}
-                className="text-white/25 hover:text-red-400 transition-colors"
-                title={`Delete ${match.photo.name}`}
-            >
-                <Trash2 className="h-3.5 w-3.5" />
-            </button>
+            <div className="flex shrink-0 items-center gap-1.5">
+                <button
+                    onClick={event => {
+                        event.stopPropagation();
+                        onDelete();
+                    }}
+                    onKeyDown={event => event.stopPropagation()}
+                    className="text-white/25 hover:text-red-400 transition-colors"
+                    title={`Delete ${match.photo.name}`}
+                >
+                    <Trash2 className="h-3.5 w-3.5" />
+                </button>
+                <button
+                    type="button"
+                    disabled={!canAssociate || associated}
+                    onClick={event => {
+                        event.stopPropagation();
+                        onAssociate?.();
+                    }}
+                    onKeyDown={event => event.stopPropagation()}
+                    className={`flex h-4 w-4 items-center justify-center rounded-sm border transition-colors ${
+                        associated
+                            ? 'border-[#e94560]/70 bg-[#e94560] text-white'
+                            : canAssociate
+                                ? 'border-white/20 bg-black/20 text-white/20 hover:border-[#ff9db0]/60 hover:bg-[#e94560]/12 hover:text-[#ff9db0]'
+                                : 'border-white/10 bg-black/10 text-transparent opacity-45 cursor-not-allowed'
+                    }`}
+                    title={
+                        associated
+                            ? 'Already associated with the selected cluster'
+                            : canAssociate
+                                ? 'Associate with the selected cluster'
+                                : 'Select a cluster first'
+                    }
+                >
+                    <Check className="h-3 w-3" />
+                </button>
+            </div>
         </div>
     );
 }
@@ -1133,32 +1256,6 @@ function SettingsTab({
                     </div>
                 </label>
 
-                <SmallField label="Cluster sensitivity">
-                    <div className={`space-y-1.5 ${settings.analysis.faceAnalyticsEnabled ? '' : 'opacity-45'}`}>
-                        <div className="flex items-center gap-2">
-                            <input
-                                type="range"
-                                min={0}
-                                max={100}
-                                step={1}
-                                value={settings.analysis.clusterSensitivity}
-                                onChange={e => onUpdateAnalysis({ clusterSensitivity: parseInt(e.target.value, 10) || 0 })}
-                                disabled={!settings.analysis.faceAnalyticsEnabled}
-                                className="flex-1 accent-[#e94560] h-1"
-                            />
-                            <span className="w-8 text-right text-[10px] text-white/35 tabular-nums">
-                                {settings.analysis.clusterSensitivity}
-                            </span>
-                        </div>
-                        <div className="flex items-center justify-between text-[10px] text-white/25">
-                            <span>Merge more</span>
-                            <span>Split more</span>
-                        </div>
-                        <p className="text-[10px] leading-relaxed text-white/28">
-                            Lower values keep nearby faces together. Higher values split similar faces into separate clusters.
-                        </p>
-                    </div>
-                </SmallField>
             </CollapsibleSection>
 
             <CollapsibleSection label="Breadcrumb History" defaultOpen={historyEnabled || historyVisibleEntryCount > 0}>

@@ -54,6 +54,16 @@ export function useGallery(options: UseGalleryOptions = {}) {
         [clusters, activeClusterId],
     );
 
+    useEffect(() => {
+        if (!activeClusterId) {
+            return;
+        }
+        if (clusters.some(cluster => cluster.clusterId === activeClusterId)) {
+            return;
+        }
+        setActiveClusterId(null);
+    }, [activeClusterId, clusters]);
+
     const clusterPhotos = useMemo(() => {
         if (!activeClusterId) {
             return [] as PhotoEntry[];
