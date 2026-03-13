@@ -254,7 +254,15 @@ async function scanDirectory(
     }
 }
 
-// ── HTML renderer (inline, matching sync.core/fs/renderer.ts format) ──
+// ── HTML renderer ──────────────────────────────────────────────────────
+//
+// Temporary stopgap:
+// This hand-rolled `one/index.html` renderer predates the intended
+// `fotos.html` packaging story. The canonical fallback browser for stored
+// `one/` folders should be `fotos.html`, which also needs to serve as the
+// media plugin surface for `vger.html` / `glue.browser`; until that is
+// wired in, we still emit this portable static listing so folders remain
+// browsable without `fotos.browser`.
 
 function escapeHtml(text: string): string {
     return text.replace(/&/g, '&amp;').replace(/</g, '&lt;')
