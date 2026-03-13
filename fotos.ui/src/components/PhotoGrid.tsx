@@ -54,7 +54,6 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
     onPhotoClick,
     loading,
     getThumbUrl,
-    mobile,
     analysisProgress,
     loadingLabel = 'Scanning gallery...',
     emptyTitle = 'No photos found',

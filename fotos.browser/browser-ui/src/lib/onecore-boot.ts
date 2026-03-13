@@ -176,14 +176,18 @@ async function initModules(
 
   const coreModule = new CoreModule(commServerUrl);
   const trustModule = new TrustModule();
-  const connectionModule = new ConnectionModule(commServerUrl, API_BASE, undefined, false);
+  const connectionModule = new ConnectionModule(commServerUrl, API_BASE, undefined);
   connectionModule.enableCredentialAutoConnect = false;
   const connectionModuleWithFotos = connectionModule as ConnectionModuleType & {
     connectToGlueServer?: (personId: SHA256IdHash<Person>) => Promise<void>;
     fotosAccessGranter?: (remotePersonId: SHA256IdHash<Person>) => Promise<void>;
+    fotosTrustFilter?: (remotePersonId: SHA256IdHash<Person>) => Promise<boolean>;
   };
   connectionModuleWithFotos.fotosAccessGranter = async (remotePersonId: SHA256IdHash<Person>) => {
     await grantFotosAccess(remotePersonId);
+  };
+  connectionModuleWithFotos.fotosTrustFilter = async (remotePersonId: SHA256IdHash<Person>) => {
+    return remotePersonId === publicationIdentity;
   };
 
   // Lazy proxy for OneCore — getters resolve after module init
@@ -222,8 +226,10 @@ async function initModules(
     return () => window.removeEventListener('beforeunload', cb);
   };
   glueModule.getLocalTransportCapabilities = async () => ['webrtc', 'commserver-relay'];
-  glueModule.connectToPeerByKey = (encKey: string, ownId: string, caps?: string[]) =>
+  glueModule.connectToPeerDirectByKey = (encKey: string, ownId: string, caps?: string[]) =>
     connectionModule.connectToPeerByKey(encKey, ownId as any, caps);
+  glueModule.connectToPeerRelayByKey = (encKey: string, ownId: string, remotePersonId: string) =>
+    connectionModule.connectToPeerRelayByKey(encKey, ownId as any, remotePersonId as any);
 
   // Incoming CHUM admission boundary
   const glueModuleWithAdmission = glueModule as GlueModule & {
