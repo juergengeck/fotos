@@ -71,9 +71,10 @@ export function App({ fotosModel: initialModel }: AppProps) {
         gallery.setSearchFace(embedding);
     }, [gallery]);
 
-    const handleRenameFace = useCallback((clusterId: string, name: string) => {
-        void gallery.folder.renameFace(clusterId, name);
-    }, [gallery.folder]);
+    const handleRenameFace = useCallback(
+        (clusterId: string, name: string) => gallery.folder.renameFace(clusterId, name),
+        [gallery.folder],
+    );
 
     const handleDeleteFace = useCallback((clusterId: string) => {
         void gallery.folder.deleteFace(clusterId);
