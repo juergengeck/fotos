@@ -534,6 +534,94 @@ function buildFaceAnalysisResultFromEntry(photo: PhotoEntry): FaceAnalysisResult
     return {faces: resultFaces};
 }
 
+function buildFaceClusterInfoFromEntry(photo: PhotoEntry): FaceClusterInfo[] | undefined {
+    const faces = photo.faces;
+    if (!faces?.clusterIds?.length) {
+        return undefined;
+    }
+
+    return faces.clusterIds.map((clusterId, index) => ({
+        clusterId,
+        personName: normalizeClusterName(faces.names?.[index]),
+    }));
+}
+
+function buildFaceDataAttrsFromEntry(photo: PhotoEntry): Record<string, string> {
+    const faces = photo.faces;
+    if (!faces || faces.count <= 0) {
+        return { 'face-count': '0' };
+    }
+
+    const result = buildFaceAnalysisResultFromEntry(photo);
+    if (result) {
+        return facesToDataAttrs(result, buildFaceClusterInfoFromEntry(photo));
+    }
+
+    const data: Record<string, string> = {
+        'face-count': String(faces.count),
+    };
+
+    if (faces.bboxes.length > 0) {
+        data['face-bboxes'] = faces.bboxes
+            .slice(0, faces.count)
+            .map(bbox => bbox.map(value => Math.round(value)).join(','))
+            .join(';');
+    }
+
+    if (faces.scores.length > 0) {
+        data['face-scores'] = faces.scores
+            .slice(0, faces.count)
+            .map(score => score.toFixed(3))
+            .join(',');
+    }
+
+    if (faces.embeddings) {
+        const used = faces.embeddings.slice(0, faces.count * EMBEDDING_DIM);
+        data['face-embeddings'] = encodeFloat32Base64(used);
+    }
+
+    if (faces.crops.some(Boolean)) {
+        data['face-crops'] = faces.crops
+            .slice(0, faces.count)
+            .map(crop => stripStoredFaceCropPath(photo, crop) ?? '')
+            .join(';');
+    }
+
+    if (faces.clusterIds?.length) {
+        data['face-cluster-hashes'] = faces.clusterIds.slice(0, faces.count).join(';');
+        data['face-names'] = faces.clusterIds
+            .slice(0, faces.count)
+            .map((_, index) => normalizeClusterName(faces.names?.[index]) ?? 'Unknown')
+            .join(';');
+    }
+
+    return data;
+}
+
+function removeFaceEmbeddingAtIndex(
+    embeddings: Float32Array | null,
+    faceCount: number,
+    removeIndex: number,
+): Float32Array | null {
+    if (!embeddings || faceCount <= 1) {
+        return null;
+    }
+
+    const next = new Float32Array((faceCount - 1) * EMBEDDING_DIM);
+    let writeOffset = 0;
+    for (let index = 0; index < faceCount; index++) {
+        if (index === removeIndex) {
+            continue;
+        }
+        next.set(
+            embeddings.slice(index * EMBEDDING_DIM, (index + 1) * EMBEDDING_DIM),
+            writeOffset,
+        );
+        writeOffset += EMBEDDING_DIM;
+    }
+    return next;
+}
+
 function isSameStringArray(left: string[] | undefined, right: string[]): boolean {
     if (!left) {
         return right.length === 0;
@@ -1020,6 +1108,24 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         clusterThresholdRef.current = threshold;
         return rebuilt;
     }, [rebuildClustersFromEntries]);
+
+    const ensureClusterDimensionForEditing = useCallback(async (): Promise<FaceClusterDimension | null> => {
+        const handle = rootHandleRef.current;
+        if (!handle) {
+            return null;
+        }
+        if (clusterDimRef.current) {
+            return clusterDimRef.current;
+        }
+
+        const ensured = await ensureClusterDimension(handle, entries, clusterThreshold);
+        clusterDimRef.current = ensured.dim;
+        clusterThresholdRef.current = clusterThreshold;
+        if (ensured.entries !== entries) {
+            setEntries(ensured.entries);
+        }
+        return ensured.dim;
+    }, [clusterThreshold, ensureClusterDimension, entries]);
 
     const scan = useCallback(async (handle: FileSystemDirectoryHandle) => {
         setLoading(true);
@@ -1784,12 +1890,19 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     }, []);
 
     const renameFace = useCallback(async (clusterId: string, name: string) => {
-        const dim = clusterDimRef.current;
-        if (!dim || !rootHandleRef.current) throw new Error('No cluster state');
+        const handle = rootHandleRef.current;
+        if (!handle) throw new Error('No folder open');
+
+        const dim = await ensureClusterDimensionForEditing();
         const normalizedName = normalizeClusterName(name) ?? '';
-        dim.nameCluster(clusterId, normalizedName);
-        await saveClusterState(rootHandleRef.current, dim);
-        setEntries(prev => prev.map(entry => {
+
+        if (dim?.getCluster(clusterId)) {
+            dim.nameCluster(clusterId, normalizedName);
+            await saveClusterState(handle, dim);
+        }
+
+        const affectedEntries: PhotoEntry[] = [];
+        const nextEntries = entries.map(entry => {
             if (!entry.faces?.clusterIds) return entry;
             const hasCluster = entry.faces.clusterIds.includes(clusterId);
             if (!hasCluster) return entry;
@@ -1799,16 +1912,31 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                     names[index] = normalizedName || 'Unknown';
                 }
             });
-            return { ...entry, faces: { ...entry.faces, names } };
-        }));
-    }, []);
+            const updated = { ...entry, faces: { ...entry.faces, names } };
+            affectedEntries.push(updated);
+            return updated;
+        });
+
+        setEntries(nextEntries);
+        await Promise.all(
+            affectedEntries.map(entry =>
+                updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry))
+            ),
+        );
+    }, [ensureClusterDimensionForEditing, entries]);
 
     const deleteFace = useCallback(async (clusterId: string) => {
-        const dim = clusterDimRef.current;
-        if (!dim || !rootHandleRef.current) throw new Error('No cluster state');
-        (dim as FaceClusterDimension & { removeCluster(id: string): void }).removeCluster(clusterId);
-        await saveClusterState(rootHandleRef.current, dim);
-        setEntries(prev => prev.map(entry => {
+        const handle = rootHandleRef.current;
+        if (!handle) throw new Error('No folder open');
+
+        const dim = await ensureClusterDimensionForEditing();
+        if (dim?.getCluster(clusterId)) {
+            (dim as FaceClusterDimension & { removeCluster(id: string): void }).removeCluster(clusterId);
+            await saveClusterState(handle, dim);
+        }
+
+        const affectedEntries: PhotoEntry[] = [];
+        const nextEntries = entries.map(entry => {
             if (!entry.faces?.clusterIds) return entry;
             const idx = entry.faces.clusterIds.indexOf(clusterId);
             if (idx < 0) return entry;
@@ -1817,20 +1945,39 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             const bboxes = entry.faces.bboxes.filter((_, i) => i !== idx);
             const scores = entry.faces.scores.filter((_, i) => i !== idx);
             const crops = entry.faces.crops.filter((_, i) => i !== idx);
-            return {
+            const embeddings = removeFaceEmbeddingAtIndex(entry.faces.embeddings, entry.faces.count, idx);
+            const updated = {
                 ...entry,
-                faces: {
-                    ...entry.faces,
-                    count: clusterIds.length,
-                    clusterIds,
-                    names,
-                    bboxes,
-                    scores,
-                    crops,
-                },
+                faces: clusterIds.length > 0
+                    ? {
+                        ...entry.faces,
+                        count: clusterIds.length,
+                        clusterIds,
+                        names,
+                        bboxes,
+                        scores,
+                        crops,
+                        embeddings,
+                    }
+                    : {
+                        count: 0,
+                        bboxes: [],
+                        scores: [],
+                        embeddings: null,
+                        crops: [],
+                    },
             };
-        }));
-    }, []);
+            affectedEntries.push(updated);
+            return updated;
+        });
+
+        setEntries(nextEntries);
+        await Promise.all(
+            affectedEntries.map(entry =>
+                updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry))
+            ),
+        );
+    }, [ensureClusterDimensionForEditing, entries]);
 
     return {
         isOpen,
