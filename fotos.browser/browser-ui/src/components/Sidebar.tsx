@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Search, FolderOpen, Download, SlidersHorizontal, ChevronLeft, ChevronRight, ChevronDown, Trash2 } from 'lucide-react';
+import { Search, FolderOpen, Download, SlidersHorizontal, ChevronLeft, ChevronRight, ChevronDown, Trash2, Check } from 'lucide-react';
 import type { FotosSettings, StorageMode, DisplaySettings } from '@/types/fotos';
 import type { FotosModel } from '@/lib/onecore-boot';
 import type { FaceClusterSummary, SimilarFaceMatch } from '@/lib/cluster-gallery';
@@ -58,8 +58,7 @@ interface SidebarProps {
     activeClusterId: string | null;
     onClusterSelect: (clusterId: string | null) => void;
     getFileUrl: (relativePath: string) => Promise<string>;
-    selectedClusterAvatarKey: string | null;
-    onSelectClusterAvatar: (avatarKey: string) => void;
+    onAssociateFaceWithCluster: (photoHash: string, faceIndex: number, clusterId: string) => void;
     onOpenSimilarFace: (match: SimilarFaceMatch) => void;
     onDeletePhoto: (hash: string) => void;
     onRenameFace: (clusterId: string, name: string) => Promise<void> | void;
@@ -85,8 +84,7 @@ export function Sidebar({
     similarFaces, searchClusters,
     activeClusterId, onClusterSelect,
     getFileUrl,
-    selectedClusterAvatarKey,
-    onSelectClusterAvatar,
+    onAssociateFaceWithCluster,
     onOpenSimilarFace,
     onDeletePhoto,
     onRenameFace,
@@ -163,8 +161,7 @@ export function Sidebar({
                             activeClusterId={activeClusterId}
                             onClusterSelect={onClusterSelect}
                             getFileUrl={getFileUrl}
-                            selectedClusterAvatarKey={selectedClusterAvatarKey}
-                            onSelectClusterAvatar={onSelectClusterAvatar}
+                            onAssociateFaceWithCluster={onAssociateFaceWithCluster}
                             onOpenSimilarFace={onOpenSimilarFace}
                             onDeletePhoto={onDeletePhoto}
                             onRenameFace={onRenameFace}
@@ -293,8 +290,7 @@ export function Sidebar({
                         activeClusterId={activeClusterId}
                         onClusterSelect={onClusterSelect}
                         getFileUrl={getFileUrl}
-                        selectedClusterAvatarKey={selectedClusterAvatarKey}
-                        onSelectClusterAvatar={onSelectClusterAvatar}
+                        onAssociateFaceWithCluster={onAssociateFaceWithCluster}
                         onOpenSimilarFace={onOpenSimilarFace}
                         onDeletePhoto={onDeletePhoto}
                         onRenameFace={onRenameFace}
@@ -455,7 +451,7 @@ function BrowseTab({
     similarFaces, searchClusters,
     activeClusterId, onClusterSelect,
     getFileUrl,
-    selectedClusterAvatarKey, onSelectClusterAvatar,
+    onAssociateFaceWithCluster,
     onOpenSimilarFace, onDeletePhoto,
     onRenameFace, onDeleteFace,
 }: {
@@ -481,13 +477,16 @@ function BrowseTab({
     activeClusterId: string | null;
     onClusterSelect: (clusterId: string | null) => void;
     getFileUrl: (relativePath: string) => Promise<string>;
-    selectedClusterAvatarKey: string | null;
-    onSelectClusterAvatar: (avatarKey: string) => void;
+    onAssociateFaceWithCluster: (photoHash: string, faceIndex: number, clusterId: string) => void;
     onOpenSimilarFace: (match: SimilarFaceMatch) => void;
     onDeletePhoto: (hash: string) => void;
     onRenameFace: (clusterId: string, name: string) => Promise<void> | void;
     onDeleteFace: (clusterId: string) => void;
 }) {
+    const selectedAssociationClusterId = activeClusterId && activeClusterId !== 'current-match'
+        ? activeClusterId
+        : null;
+
     return (
         <>
             {/* Stats */}
@@ -596,7 +595,12 @@ function BrowseTab({
                     )}
 
                     <div>
-                        <SectionLabel>Similar Faces</SectionLabel>
+                            <SectionLabel>Similar Faces</SectionLabel>
+                            {selectedAssociationClusterId ? (
+                                <div className="mt-1 text-[10px] text-white/30">
+                                    Check faces to add them to the selected cluster.
+                                </div>
+                            ) : null}
                         <div className="mt-1.5 space-y-1">
                             {similarFaces.slice(0, 12).map(match => {
                                 const avatarKey = `${match.photo.hash}:${match.faceIndex}`;
@@ -605,8 +609,11 @@ function BrowseTab({
                                         key={avatarKey}
                                         match={match}
                                         getFileUrl={getFileUrl}
-                                        checked={selectedClusterAvatarKey === avatarKey}
-                                        onCheck={() => onSelectClusterAvatar(avatarKey)}
+                                        canAssociate={selectedAssociationClusterId !== null}
+                                        associated={selectedAssociationClusterId !== null && match.clusterId === selectedAssociationClusterId}
+                                        onAssociate={selectedAssociationClusterId
+                                            ? () => onAssociateFaceWithCluster(match.photo.hash, match.faceIndex, selectedAssociationClusterId)
+                                            : undefined}
                                         onOpen={() => onOpenSimilarFace(match)}
                                         onRename={match.clusterId ? name => onRenameFace(match.clusterId!, name) : undefined}
                                         onDelete={() => onDeletePhoto(match.photo.hash)}
@@ -834,16 +841,18 @@ function ClusterBrowseRow({
 function SimilarFaceRow({
     match,
     getFileUrl,
-    checked,
-    onCheck,
+    canAssociate,
+    associated,
+    onAssociate,
     onOpen,
     onRename,
     onDelete,
 }: {
     match: SimilarFaceMatch;
     getFileUrl: (relativePath: string) => Promise<string>;
-    checked: boolean;
-    onCheck: () => void;
+    canAssociate: boolean;
+    associated: boolean;
+    onAssociate?: () => void;
     onOpen: () => void;
     onRename?: (name: string) => Promise<void> | void;
     onDelete: () => void;
@@ -882,15 +891,31 @@ function SimilarFaceRow({
             onKeyDown={event => handleButtonLikeKeyDown(event, onOpen)}
             className="group flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2 py-1.5 text-left transition-colors hover:bg-white/10"
         >
-            <input
-                type="checkbox"
-                checked={checked}
-                onChange={onCheck}
-                onClick={event => event.stopPropagation()}
+            <button
+                type="button"
+                disabled={!canAssociate || associated}
+                onClick={event => {
+                    event.stopPropagation();
+                    onAssociate?.();
+                }}
                 onKeyDown={event => event.stopPropagation()}
-                className="h-3.5 w-3.5 accent-[#e94560]"
-                title="Use as cluster avatar"
-            />
+                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border transition-colors ${
+                    associated
+                        ? 'border-[#e94560]/70 bg-[#e94560] text-white'
+                        : canAssociate
+                            ? 'border-white/20 bg-black/20 text-white/20 hover:border-[#ff9db0]/60 hover:bg-[#e94560]/12 hover:text-[#ff9db0]'
+                            : 'border-white/10 bg-black/10 text-transparent opacity-45 cursor-not-allowed'
+                }`}
+                title={
+                    associated
+                        ? 'Already associated with the selected cluster'
+                        : canAssociate
+                            ? 'Associate with the selected cluster'
+                            : 'Select a cluster first'
+                }
+            >
+                <Check className="h-3 w-3" />
+            </button>
             {src ? (
                 <img src={src} alt={match.photo.name} className="h-8 w-8 rounded-full object-cover border border-white/10 shrink-0" />
             ) : (

@@ -64,8 +64,6 @@ export function App({ fotosModel: initialModel }: AppProps) {
         }
     }, [gallery, visiblePhotos.length]);
 
-    const [selectedClusterAvatarKey, setSelectedClusterAvatarKey] = useState<string | null>(null);
-
     const handleFaceSearch = useCallback((embedding: Float32Array) => {
         gallery.setSelectedIndex(null);
         gallery.setGalleryMode('images');
@@ -81,21 +79,9 @@ export function App({ fotosModel: initialModel }: AppProps) {
         void gallery.folder.deleteFace(clusterId);
     }, [gallery.folder]);
 
-    useEffect(() => {
-        if (!gallery.searchFace || gallery.similarFaces.length === 0) {
-            setSelectedClusterAvatarKey(null);
-            return;
-        }
-
-        setSelectedClusterAvatarKey(prev => {
-            if (prev && gallery.similarFaces.some(match => `${match.photo.hash}:${match.faceIndex}` === prev)) {
-                return prev;
-            }
-
-            const first = gallery.similarFaces[0];
-            return `${first.photo.hash}:${first.faceIndex}`;
-        });
-    }, [gallery.searchFace, gallery.similarFaces]);
+    const handleAssociateFaceWithCluster = useCallback((photoHash: string, faceIndex: number, clusterId: string) => {
+        void gallery.folder.associateFaceWithCluster(photoHash, faceIndex, clusterId);
+    }, [gallery.folder]);
 
     const mobile = gallery.folder.mobile;
     const intakePlan = gallery.folder.defaultIntakePlan;
@@ -566,8 +552,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 activeClusterId={gallery.activeClusterId}
                 onClusterSelect={gallery.setActiveClusterId}
                 getFileUrl={gallery.folder.getFileUrl}
-                selectedClusterAvatarKey={selectedClusterAvatarKey}
-                onSelectClusterAvatar={setSelectedClusterAvatarKey}
+                onAssociateFaceWithCluster={handleAssociateFaceWithCluster}
                 onOpenSimilarFace={handleOpenSimilarFace}
                 onDeletePhoto={handleDelete}
                 onRenameFace={handleRenameFace}
