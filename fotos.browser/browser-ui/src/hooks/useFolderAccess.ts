@@ -178,6 +178,25 @@ async function updateIndexHtmlSemanticData(
     await updateIndexHtmlData(rootHandle, photo, 'semantic', dataAttrs);
 }
 
+function inferFaceInfoCount({
+    parsedCount,
+    detailedFaceCount,
+    clusterIds,
+    names,
+}: {
+    parsedCount: number;
+    detailedFaceCount: number;
+    clusterIds?: string[];
+    names?: string[];
+}): number {
+    return Math.max(
+        parsedCount,
+        detailedFaceCount,
+        clusterIds?.filter(Boolean).length ?? 0,
+        names?.length ?? 0,
+    );
+}
+
 /**
  * Parse a one/index.html DOM to extract photo entries from data-* attributes.
  */
@@ -233,12 +252,22 @@ function parseOneIndex(html: string, relPath: string): PhotoEntry[] {
             const parsedCount = parseInt(faceCount, 10);
             if (!Number.isNaN(parsedCount) && parsedCount >= 0) {
                 faceMetaRows += 1;
-                if (parsedCount === 0) {
+                const clusterHashes = row.getAttribute('data-face-cluster-hashes');
+                const faceNames = row.getAttribute('data-face-names');
+                const clusterIds = clusterHashes ? clusterHashes.split(';') : undefined;
+                const names = faceNames ? faceNames.split(';') : undefined;
+                const inferredCount = inferFaceInfoCount({
+                    parsedCount,
+                    detailedFaceCount: 0,
+                    clusterIds,
+                    names,
+                });
+
+                if (inferredCount === 0) {
                     zeroFaceRows += 1;
                     faces = { count: 0, bboxes: [], scores: [], embeddings: null, crops: [] };
                 } else {
                     const dataMap: Record<string, string> = {};
-                    dataMap['face-count'] = faceCount;
                     const bboxes = row.getAttribute('data-face-bboxes');
                     if (bboxes) dataMap['face-bboxes'] = bboxes;
                     const scores = row.getAttribute('data-face-scores');
@@ -248,24 +277,37 @@ function parseOneIndex(html: string, relPath: string): PhotoEntry[] {
                     const crops = row.getAttribute('data-face-crops');
                     if (crops) dataMap['face-crops'] = crops;
 
+                    const detailedFaceCount = bboxes
+                        ? bboxes.split(';').filter(Boolean).length
+                        : 0;
+                    dataMap['face-count'] = String(detailedFaceCount);
+
                     const result = dataAttrsToFaces(dataMap);
-                    const count = result.faces.length;
-                    const clusterHashes = row.getAttribute('data-face-cluster-hashes');
-                    const faceNames = row.getAttribute('data-face-names');
-                    faces = {
-                        count,
-                        bboxes: result.faces.map(f => f.detection.bbox),
-                        scores: result.faces.map(f => f.detection.score),
-                        embeddings: count > 0 ? (() => {
+                    const count = inferFaceInfoCount({
+                        parsedCount: inferredCount,
+                        detailedFaceCount: result.faces.length,
+                        clusterIds,
+                        names,
+                    });
+
+                    const detailedEmbeddings = result.faces.some(face => face.embedding.some(value => value !== 0))
+                        ? (() => {
                             const flat = new Float32Array(count * EMBEDDING_DIM);
-                            for (let i = 0; i < count; i++) {
+                            for (let i = 0; i < result.faces.length; i++) {
                                 flat.set(result.faces[i].embedding, i * EMBEDDING_DIM);
                             }
                             return flat;
-                        })() : null,
-                        crops: result.faces.map(f => f.cropPath ?? ''),
-                        clusterIds: clusterHashes ? clusterHashes.split(';') : undefined,
-                        names: faceNames ? faceNames.split(';') : undefined,
+                        })()
+                        : null;
+
+                    faces = {
+                        count,
+                        bboxes: Array.from({length: count}, (_, i) => result.faces[i]?.detection.bbox ?? [0, 0, 0, 0]),
+                        scores: Array.from({length: count}, (_, i) => result.faces[i]?.detection.score ?? 0),
+                        embeddings: detailedEmbeddings,
+                        crops: Array.from({length: count}, (_, i) => result.faces[i]?.cropPath ?? ''),
+                        clusterIds,
+                        names,
                     };
                     if ((faces.clusterIds?.length ?? 0) > 0) {
                         clusteredRows += 1;
