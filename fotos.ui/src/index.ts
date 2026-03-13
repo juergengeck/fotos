@@ -10,7 +10,7 @@ export type {
     DisplaySettings,
     AnalysisSettings,
 } from './types/fotos.js';
-export {DEFAULT_SETTINGS} from './types/fotos.js';
+export {DEFAULT_SETTINGS, getFaceCount} from './types/fotos.js';
 
 export type {DayGroup, GalleryFilterOptions} from './lib/gallery.js';
 export {

@@ -9,10 +9,12 @@ import '@refinio/one.core/lib/system/browser/storage-streams.js';
 
 import { StrictMode } from 'react';
 import ReactDOM from 'react-dom/client';
+import { initGlueCore } from '@glueone/glue.core';
 import { createPlanRegistry } from '@/lib/PlanRegistry';
 import { FotosPlan } from '@/lib/FotosPlan';
 import { bootFotosModel } from './lib/onecore-boot';
 import { installHangTrace, traceHang } from './lib/hangTrace';
+import { API_BASE, TRUSTED_SYSTEM_PUBLIC_KEYS } from './config';
 import { App } from './App';
 import './index.css';
 
@@ -28,6 +30,9 @@ planRegistry.register('fotos', fotosPlan, {category: 'analytics', description: '
     if (!result.success) throw new Error(result.error?.message);
     return result.data;
 };
+
+// Keep glue.core aligned with fotos.browser runtime config.
+initGlueCore({ apiBase: API_BASE, trustedSystemPublicKeys: TRUSTED_SYSTEM_PUBLIC_KEYS });
 
 // ── HMR bridge (dev only) — HTTP /api/:plan/:method → browser PlanRegistry ──
 if (import.meta.hot) {

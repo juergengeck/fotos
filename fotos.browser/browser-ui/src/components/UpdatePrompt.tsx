@@ -9,6 +9,8 @@ export function UpdatePrompt() {
     const [updating, setUpdating] = useState(false);
     const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
     const [hasWaitingWorker, setHasWaitingWorker] = useState(false);
+    const [hasController, setHasController] = useState(() => Boolean(navigator.serviceWorker?.controller));
+    const [bootSettled, setBootSettled] = useState(false);
 
     const {
         needRefresh: [needRefresh],
@@ -18,6 +20,11 @@ export function UpdatePrompt() {
         onRegisteredSW(_url, r) { if (r) setRegistration(r); },
         onRegisterError(err) { console.error('[SW] Registration error:', err); },
     });
+
+    useEffect(() => {
+        const timer = window.setTimeout(() => setBootSettled(true), 2000);
+        return () => window.clearTimeout(timer);
+    }, []);
 
     useEffect(() => {
         if (!registration) return;
@@ -39,17 +46,22 @@ export function UpdatePrompt() {
 
         const onVisibility = () => { if (!document.hidden) triggerCheck(); };
         const onFocus = () => triggerCheck();
-        const onController = () => setHasWaitingWorker(false);
+        const onController = () => {
+            setHasController(true);
+            setHasWaitingWorker(Boolean(registration.waiting));
+        };
 
         registration.addEventListener('updatefound', onUpdateFound);
         document.addEventListener('visibilitychange', onVisibility);
         window.addEventListener('focus', onFocus);
         navigator.serviceWorker.addEventListener('controllerchange', onController);
 
-        triggerCheck();
+        checkWaiting();
+        const initialCheck = window.setTimeout(triggerCheck, 15000);
         const interval = setInterval(triggerCheck, 2 * 60 * 1000);
 
         return () => {
+            window.clearTimeout(initialCheck);
             clearInterval(interval);
             registration.removeEventListener('updatefound', onUpdateFound);
             document.removeEventListener('visibilitychange', onVisibility);
@@ -58,7 +70,9 @@ export function UpdatePrompt() {
         };
     }, [registration]);
 
-    if (!needRefresh && !hasWaitingWorker) return null;
+    const showPrompt = !import.meta.env.DEV && bootSettled && hasController && (needRefresh || hasWaitingWorker);
+
+    if (!showPrompt) return null;
 
     return (
         <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[9999] pointer-events-auto flex items-center gap-3 px-5 py-3 rounded-xl bg-black/80 backdrop-blur-md text-white text-sm shadow-lg border border-white/10 max-w-[calc(100vw-2rem)]">

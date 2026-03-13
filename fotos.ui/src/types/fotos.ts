@@ -1,4 +1,4 @@
-import { DEFAULT_FOTOS_CONFIG } from '@refinio/fotos.core';
+import { DEFAULT_FOTOS_CONFIG, EMBEDDING_DIM } from '@refinio/fotos.core';
 
 export type StorageMode = 'reference' | 'metadata' | 'ingest';
 
@@ -81,6 +81,30 @@ export interface AnalysisSettings {
     faceAnalyticsEnabled: boolean;
     semanticSearchEnabled: boolean;
     clusterSensitivity: number;
+}
+
+export function getFaceCount(faces?: FaceInfo): number {
+    if (!faces) {
+        return 0;
+    }
+
+    const derivedCounts = [
+        faces.count,
+        faces.bboxes.length,
+        faces.scores.length,
+        faces.crops.filter(Boolean).length,
+        faces.clusterIds?.filter(Boolean).length ?? 0,
+        faces.names?.filter(Boolean).length ?? 0,
+    ];
+
+    if (faces.embeddings) {
+        derivedCounts.push(Math.floor(faces.embeddings.length / EMBEDDING_DIM));
+    }
+
+    return Math.max(
+        0,
+        ...derivedCounts.filter((value): value is number => Number.isFinite(value)),
+    );
 }
 
 export const DEFAULT_SETTINGS: FotosSettings = {

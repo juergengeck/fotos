@@ -11,6 +11,7 @@ import { useBreadcrumbHistory } from '@/hooks/useBreadcrumbHistory';
 import { useSettings } from '@/hooks/useSettings';
 import { shareFile } from '@/lib/platform';
 import { UpdatePrompt } from '@/components/UpdatePrompt';
+import { getFaceCount } from '@refinio/fotos.ui';
 import type { FotosModel } from './lib/onecore-boot';
 import { setModelUpdater } from './lib/onecore-boot';
 import { traceHang } from './lib/hangTrace';
@@ -131,7 +132,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
 
     const progress = gallery.folder.ingestProgress;
     const totalDetectedFaces = gallery.folder.entries.reduce(
-        (count, photo) => count + (photo.faces?.count ?? 0),
+        (count, photo) => count + getFaceCount(photo.faces),
         0,
     );
     const analysisProgress = progress

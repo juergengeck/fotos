@@ -7,6 +7,8 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 
+const DEV_API_PROXY_TARGET = process.env.VITE_HEADLESS_URL || 'https://api.glue.one';
+
 /** Vite plugin that serves local photos and provides a scan API */
 function localPhotosPlugin(): Plugin {
     const PHOTO_ROOTS = [
@@ -186,6 +188,7 @@ export default defineConfig({
             {find: '@', replacement: path.resolve(__dirname, './src')},
             {find: '@refinio/fotos.ui', replacement: path.resolve(__dirname, '../../fotos.ui/src/index.ts')},
             {find: '@refinio/local.core/BrowserMultimodalEmbeddingProvider.js', replacement: path.resolve(__dirname, '../../../vger/packages/local.core/dist/BrowserMultimodalEmbeddingProvider.js')},
+            {find: '@huggingface/transformers', replacement: path.resolve(__dirname, '../../../vger/node_modules/.pnpm/node_modules/@huggingface/transformers/dist/transformers.web.js')},
             {find: '@vger/vger.core', replacement: path.resolve(__dirname, '../../../vger/packages/vger.core/dist')},
             {find: '@vger/vger.glue', replacement: path.resolve(__dirname, '../../../vger/packages/vger.glue/dist')},
             // Stub out Node-only modules that ONE.core dependency tree pulls in
@@ -229,6 +232,13 @@ export default defineConfig({
     server: {
         port: 5188,
         strictPort: true,
-        open: true
+        open: true,
+        proxy: {
+            '/api': {
+                target: DEV_API_PROXY_TARGET,
+                changeOrigin: true,
+                secure: true,
+            },
+        },
     }
 });

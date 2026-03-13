@@ -1,6 +1,6 @@
 import {useEffect, useState, type ReactNode} from 'react';
 import type {DayGroup} from '../lib/gallery.js';
-import type {PhotoEntry} from '../types/fotos.js';
+import {getFaceCount, type PhotoEntry} from '../types/fotos.js';
 
 export interface PhotoGridProps<TPhoto extends PhotoEntry = PhotoEntry> {
     dayGroups: Array<DayGroup<TPhoto>>;
@@ -137,7 +137,6 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
                                     photo={photo}
                                     onClick={() => onPhotoClick(startIndex + index)}
                                     getThumbUrl={getThumbUrl}
-                                    mobile={mobile}
                                 />
                             ))}
                         </div>
@@ -152,15 +151,14 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
     photo,
     onClick,
     getThumbUrl,
-    mobile,
 }: {
     photo: TPhoto;
     onClick: () => void;
     getThumbUrl: (entry: TPhoto) => Promise<string | null>;
-    mobile?: boolean;
 }) {
     const [thumbSrc, setThumbSrc] = useState<string | null>(null);
     const [loaded, setLoaded] = useState(false);
+    const faceCount = getFaceCount(photo.faces);
 
     useEffect(() => {
         let cancelled = false;
@@ -191,13 +189,13 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
                 />
             )}
 
-            {!mobile && photo.faces === undefined && (
+            {photo.faces === undefined && (
                 <div className="absolute top-1.5 left-1.5 w-2 h-2 rounded-full bg-white/20 animate-pulse" />
             )}
 
-            {!mobile && photo.faces && photo.faces.count > 0 && (
+            {faceCount > 0 && (
                 <div className="absolute top-1.5 right-1.5 rounded-full border border-white/15 bg-[#e94560]/85 px-2 py-0.5 text-[10px] font-medium text-white shadow-[0_6px_18px_rgba(233,69,96,0.35)] backdrop-blur-sm">
-                    {photo.faces.count} {photo.faces.count === 1 ? 'face' : 'faces'}
+                    {faceCount} {faceCount === 1 ? 'face' : 'faces'}
                 </div>
             )}
 
