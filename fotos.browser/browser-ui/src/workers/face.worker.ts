@@ -259,8 +259,10 @@ async function handleInit(): Promise<void> {
     if (initialized) return;
     reportProgress('init-start');
 
-    // WASM runtime binaries from CDN (too large for Cloudflare Pages 25MB limit)
-    ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.2/dist/';
+    ort.env.wasm.wasmPaths = {
+        mjs: '/ort/ort-wasm-simd-threaded.jsep.mjs',
+        wasm: '/ort/ort-wasm-simd-threaded.jsep.wasm',
+    };
     ort.env.wasm.numThreads = 1;
 
     // Detect WebGPU

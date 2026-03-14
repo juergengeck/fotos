@@ -8,6 +8,66 @@ import fs from 'fs';
 import os from 'os';
 
 const DEV_API_PROXY_TARGET = process.env.VITE_HEADLESS_URL || 'https://api.glue.one';
+const ORT_RUNTIME_DIR = path.resolve(
+    __dirname,
+    '../../../vger/node_modules/.pnpm/onnxruntime-web@1.24.2/node_modules/onnxruntime-web/dist',
+);
+const ORT_RUNTIME_FILES = [
+    'ort-wasm-simd-threaded.jsep.mjs',
+    'ort-wasm-simd-threaded.jsep.wasm',
+    'ort-wasm-simd-threaded.mjs',
+    'ort-wasm-simd-threaded.wasm',
+] as const;
+
+function ortRuntimePlugin(): Plugin {
+    const routePrefix = '/ort/';
+
+    function isKnownRuntimeFile(fileName: string): fileName is typeof ORT_RUNTIME_FILES[number] {
+        return ORT_RUNTIME_FILES.includes(fileName as typeof ORT_RUNTIME_FILES[number]);
+    }
+
+    function resolveRuntimeFile(fileName: string): string | null {
+        if (!isKnownRuntimeFile(fileName)) {
+            return null;
+        }
+        return path.join(ORT_RUNTIME_DIR, fileName);
+    }
+
+    function copyRuntimeFiles(outputDir: string) {
+        const targetDir = path.join(outputDir, 'ort');
+        fs.mkdirSync(targetDir, { recursive: true });
+        for (const fileName of ORT_RUNTIME_FILES) {
+            fs.copyFileSync(path.join(ORT_RUNTIME_DIR, fileName), path.join(targetDir, fileName));
+        }
+    }
+
+    return {
+        name: 'ort-runtime',
+        configureServer(server) {
+            server.middlewares.use((req, res, next) => {
+                if (!req.url?.startsWith(routePrefix)) {
+                    next();
+                    return;
+                }
+
+                const fileName = req.url.slice(routePrefix.length).split('?')[0];
+                const runtimeFile = resolveRuntimeFile(fileName);
+                if (!runtimeFile || !fs.existsSync(runtimeFile)) {
+                    res.statusCode = 404;
+                    res.end('Not found');
+                    return;
+                }
+
+                res.setHeader('Content-Type', fileName.endsWith('.wasm') ? 'application/wasm' : 'text/javascript; charset=utf-8');
+                res.setHeader('Cache-Control', 'no-cache');
+                fs.createReadStream(runtimeFile).pipe(res);
+            });
+        },
+        closeBundle() {
+            copyRuntimeFiles(path.resolve(__dirname, 'dist'));
+        },
+    };
+}
 
 /** Vite plugin that serves local photos and provides a scan API */
 function localPhotosPlugin(): Plugin {
@@ -150,6 +210,7 @@ export default defineConfig({
     plugins: [
         react(),
         nodePolyfills(),
+        ortRuntimePlugin(),
         localPhotosPlugin(),
         fotosApiPlugin(),
         VitePWA({

@@ -1,5 +1,6 @@
-import type { MultimodalEmbeddingModel } from '@refinio/local.core';
-import { BrowserMultimodalEmbeddingProvider } from '@refinio/local.core/BrowserMultimodalEmbeddingProvider.js';
+import { BrowserMultimodalEmbeddingProvider } from '@/lib/BrowserMultimodalEmbeddingProvider';
+
+type MultimodalEmbeddingModel = 'clip-vit-base-patch32';
 
 const MODEL_ID: MultimodalEmbeddingModel = 'clip-vit-base-patch32';
 
