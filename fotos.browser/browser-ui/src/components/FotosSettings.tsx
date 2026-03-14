@@ -1,7 +1,12 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Shield, Wifi, WifiOff, ExternalLink, Check } from 'lucide-react';
 import type { FotosModel } from '@/lib/onecore-boot';
-import { nameToIdentity } from '@glueone/glue.core';
+import {
+    DEFAULT_GLUE_CONNECTION_BINDING_ID,
+    getGlueBindingPersonId,
+    getGlueIdentityProfile,
+    nameToIdentity,
+} from '@glueone/glue.core';
 import { authenticateWithPasskeyViaPopup } from '@glueone/auth.core';
 import { API_BASE } from '../config.js';
 
@@ -46,7 +51,18 @@ export function FotosSettings({ model }: FotosSettingsProps) {
         (async () => {
             try {
                 const { values } = await model.settingsPlan.getSection({ moduleId: 'glue' });
-                const name = typeof values.glueDisplayName === 'string' ? values.glueDisplayName.trim() : null;
+                const configuredPublicationIdentity = getGlueBindingPersonId(
+                    values,
+                    DEFAULT_GLUE_CONNECTION_BINDING_ID,
+                );
+                const boundProfile = configuredPublicationIdentity
+                    ? getGlueIdentityProfile(values, configuredPublicationIdentity)
+                    : null;
+                const name = typeof boundProfile?.displayName === 'string'
+                    ? boundProfile.displayName.trim()
+                    : typeof values.glueDisplayName === 'string'
+                        ? values.glueDisplayName.trim()
+                        : null;
                 setDisplayName(name);
 
                 if (!name) {

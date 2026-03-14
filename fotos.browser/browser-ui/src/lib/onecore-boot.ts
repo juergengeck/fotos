@@ -5,8 +5,8 @@
  *   1. Create MultiUser with all required recipes
  *   2. Login or register with auto-generated credentials (localStorage/sessionStorage)
  *   3. Initialize ModuleRegistry (CoreModule, TrustModule, ConnectionModule, GlueModule)
- *   4. Set up glue identity via ensureStartupGlueIdentity
- *   5. Fire-and-forget headless connection
+ *   4. Activate glue.one only when data exchange is already configured
+ *   5. Fire-and-forget headless connection when configured
  *   6. Return FotosModel
  */
 import MultiUser from '@refinio/one.models/lib/models/Authenticator/MultiUser.js';
@@ -33,6 +33,10 @@ import GlueContentRecipes from '@glueone/glue.core/recipes/GlueContentRecipes.js
 import PresenceRecipes from '@glueone/glue.core/recipes/PresenceRecipes.js';
 import TimeTrieRecipes from '@glueone/glue.core/recipes/TimeTrieRecipes.js';
 import PresenceTrieRecipes from '@glueone/glue.core/recipes/PresenceTrieRecipes.js';
+import {
+  DEFAULT_GLUE_CONNECTION_BINDING_ID,
+  getGlueBindingPersonId,
+} from '@glueone/glue.core';
 import { AllRecipes as TrustCoreRecipes } from '@refinio/trust.core/recipes';
 import { FotosRecipes } from '@refinio/fotos.core';
 import {
@@ -48,7 +52,6 @@ import { getInstanceIdHash, getInstanceOwnerIdHash } from '@refinio/one.core/lib
 import { getLocalInstanceOfPerson } from '@refinio/one.models/lib/misc/instance.js';
 import { getDefaultKeys } from '@refinio/one.core/lib/keychain/keychain.js';
 
-import { ensureStartupGlueIdentity } from './glueIdentity.js';
 import { registerFotosHistorySettings } from './fotosHistorySettings.js';
 import { registerFotosSettings } from './fotosSettings.js';
 import { grantFotosAccess } from './fotos-manifest.js';
@@ -153,6 +156,30 @@ async function ensureCommserverEndpointForPerson(
   }
 }
 
+async function getConfiguredPublicationIdentity(
+  settingsPlan: SettingsPlan,
+  ownerId: SHA256IdHash<Person>,
+): Promise<SHA256IdHash<Person> | null> {
+  try {
+    const { values } = await settingsPlan.getSection({ moduleId: 'glue' });
+    const configuredPublicationIdentity = getGlueBindingPersonId(
+      values,
+      DEFAULT_GLUE_CONNECTION_BINDING_ID,
+    );
+
+    if (
+      !configuredPublicationIdentity ||
+      configuredPublicationIdentity === ownerId
+    ) {
+      return null;
+    }
+
+    return configuredPublicationIdentity as SHA256IdHash<Person>;
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Module init (after ONE.core login)
 // ---------------------------------------------------------------------------
@@ -242,10 +269,6 @@ async function initModules(
 
   registry.register(glueModule);
 
-  // Do not pre-activate Glue from settings before the configured publication
-  // identity has been validated against local instance state. A wiped browser
-  // can retain a stale person id in settings without having the corresponding
-  // local instance anymore.
   const ownerId = getInstanceOwnerIdHash()! as SHA256IdHash<Person>;
   publicationIdentity = null;
 
@@ -256,23 +279,18 @@ async function initModules(
   const leuteModel = coreModule.leuteModel;
   const connectionsModel = connectionModule.connectionsModel;
 
-  // Ensure glue identity
-  const startupGlueIdentity = await ensureStartupGlueIdentity(
-    settingsPlan,
-    leuteModel,
-    ownerId,
-  );
-  publicationIdentity = startupGlueIdentity.personId;
-  registry.supply('GlueOwnerId', String(publicationIdentity));
-  registry.supply('PublicationIdentity', String(publicationIdentity));
-  await ensureCommserverEndpointForPerson(leuteModel, publicationIdentity, commServerUrl);
-  await glueModule.activateAfterIdentityCreation();
+  publicationIdentity = await getConfiguredPublicationIdentity(settingsPlan, ownerId);
+  if (publicationIdentity) {
+    registry.supply('GlueOwnerId', String(publicationIdentity));
+    registry.supply('PublicationIdentity', String(publicationIdentity));
+    await ensureCommserverEndpointForPerson(leuteModel, publicationIdentity, commServerUrl);
+    await glueModule.activateForIdentity(String(publicationIdentity));
 
-  // Fire-and-forget headless connection
-  connectionModuleWithFotos.connectToGlueServer?.(publicationIdentity).then(() => {
-    modelUpdater?.(prev => prev ? { ...prev, headlessConnected: true } : null);
-  }).catch((err: unknown) =>
-    console.warn('[fotos.one] glue server auto-connect failed:', err));
+    connectionModuleWithFotos.connectToGlueServer?.(publicationIdentity).then(() => {
+      modelUpdater?.(prev => prev ? { ...prev, headlessConnected: true } : null);
+    }).catch((err: unknown) =>
+      console.warn('[fotos.one] glue server auto-connect failed:', err));
+  }
 
   console.log('[fotos.one] ModuleRegistry initialized');
 
