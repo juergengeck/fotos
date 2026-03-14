@@ -1,5 +1,6 @@
 import {useEffect, useState, type ReactNode} from 'react';
 import type {DayGroup} from '../lib/gallery.js';
+import {summarizeNamedFaces} from '../lib/faceLabels.js';
 import {getFaceCount, type PhotoEntry} from '../types/fotos.js';
 
 export interface PhotoGridProps<TPhoto extends PhotoEntry = PhotoEntry> {
@@ -158,6 +159,7 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
     const [thumbSrc, setThumbSrc] = useState<string | null>(null);
     const [loaded, setLoaded] = useState(false);
     const faceCount = getFaceCount(photo.faces);
+    const namedFaces = summarizeNamedFaces(photo.faces);
 
     useEffect(() => {
         let cancelled = false;
@@ -192,14 +194,28 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
                 <div className="absolute top-1.5 left-1.5 w-2 h-2 rounded-full bg-white/20 animate-pulse" />
             )}
 
-            {faceCount > 0 && (
+            {faceCount > 0 && !namedFaces && (
                 <div className="absolute top-1.5 right-1.5 rounded-full border border-white/15 bg-[#e94560]/85 px-2 py-0.5 text-[10px] font-medium text-white shadow-[0_6px_18px_rgba(233,69,96,0.35)] backdrop-blur-sm">
                     {faceCount} {faceCount === 1 ? 'face' : 'faces'}
                 </div>
             )}
 
-            <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+            {namedFaces && (
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 px-2 pb-1.5 pt-6 bg-gradient-to-t from-black/70 via-black/20 to-transparent">
+                    <p
+                        className="truncate text-[10px] font-medium tracking-[0.01em] text-white/70 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
+                        title={namedFaces.fullLabel}
+                    >
+                        {namedFaces.label}
+                    </p>
+                </div>
+            )}
+
+            <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/35 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
                 <p className="text-xs truncate text-white/90">{photo.name}</p>
+                {namedFaces && (
+                    <p className="mt-0.5 truncate text-[10px] text-white/55">{namedFaces.fullLabel}</p>
+                )}
             </div>
         </button>
     );
