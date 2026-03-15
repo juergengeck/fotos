@@ -234,6 +234,9 @@ async function initModules(
   if (publicationIdentity) {
     const nextConnectionModule = new ConnectionModule(commServerUrl, API_BASE, undefined);
     nextConnectionModule.enableCredentialAutoConnect = false;
+    // GlueModule owns live peer dialing in browser mode. Leaving the generic
+    // route manager enabled causes it to redial every cached endpoint on boot.
+    nextConnectionModule.setManagedOutgoingConnections(false);
     connectionModule = nextConnectionModule;
     connectionModuleWithFotos = nextConnectionModule as ConnectionModuleType & {
       connectToGlueServer?: (personId: SHA256IdHash<Person>) => Promise<void>;
