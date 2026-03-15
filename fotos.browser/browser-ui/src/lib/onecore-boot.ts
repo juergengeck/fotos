@@ -81,11 +81,11 @@ export interface FotosModel {
   ownerId: SHA256IdHash<Person> | null;
   publicationIdentity: SHA256IdHash<Person> | null;
   leuteModel: LeuteModel;
-  connectionsModel: ConnectionsModel;
-  connectionModule: ConnectionModuleType;
+  connectionsModel: ConnectionsModel | null;
+  connectionModule: ConnectionModuleType | null;
   trustPlan: TrustPlan;
   settingsPlan: SettingsPlan;
-  glueModule: GlueModule;
+  glueModule: GlueModule | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -197,32 +197,27 @@ async function initModules(
     instanceIdHash: getInstanceIdHash()!,
   });
   const settingsPlan = new SettingsPlan(storage);
+  const ownerId = getInstanceOwnerIdHash()! as SHA256IdHash<Person>;
+  publicationIdentity = await getConfiguredPublicationIdentity(settingsPlan, ownerId);
 
   // ModuleRegistry: CoreModule -> TrustModule -> ConnectionModule -> GlueModule
   const registry = new ModuleRegistry();
 
   const coreModule = new CoreModule(commServerUrl);
   const trustModule = new TrustModule();
-  const connectionModule = new ConnectionModule(commServerUrl, API_BASE, undefined);
-  connectionModule.enableCredentialAutoConnect = false;
-  const connectionModuleWithFotos = connectionModule as ConnectionModuleType & {
+  let connectionModule: ConnectionModuleType | null = null;
+  let connectionModuleWithFotos: (ConnectionModuleType & {
     connectToGlueServer?: (personId: SHA256IdHash<Person>) => Promise<void>;
     fotosAccessGranter?: (remotePersonId: SHA256IdHash<Person>) => Promise<void>;
     fotosTrustFilter?: (remotePersonId: SHA256IdHash<Person>) => Promise<boolean>;
-  };
-  connectionModuleWithFotos.fotosAccessGranter = async (remotePersonId: SHA256IdHash<Person>) => {
-    await grantFotosAccess(remotePersonId);
-  };
-  connectionModuleWithFotos.fotosTrustFilter = async (remotePersonId: SHA256IdHash<Person>) => {
-    return remotePersonId === publicationIdentity;
-  };
+  }) | null = null;
 
   // Lazy proxy for OneCore — getters resolve after module init
   const oneCore = {
     get leuteModel() { return coreModule.leuteModel; },
     get channelManager() { return coreModule.channelManager; },
     get topicModel() { return coreModule.topicModel; },
-    get connectionsModel() { return connectionModule.connectionsModel; },
+    get connectionsModel() { return connectionModule?.connectionsModel ?? null; },
     get ownerId() { return getInstanceOwnerIdHash(); },
     get initialized() { return true; },
     getInfo() { return { initialized: true, ownerId: getInstanceOwnerIdHash() }; },
@@ -232,55 +227,72 @@ async function initModules(
   registry.supply('SettingsPlan', settingsPlan);
   registry.register(coreModule);
   registry.register(trustModule);
-  registry.register(connectionModule);
 
-  // GlueModule — presence and peer connections
-  if (glueModuleInstance) {
-    await glueModuleInstance.shutdown();
-    glueModuleInstance = null;
+  let glueModule: GlueModule | null = null;
+
+  // Keep the app offline unless sync was explicitly configured.
+  if (publicationIdentity) {
+    const nextConnectionModule = new ConnectionModule(commServerUrl, API_BASE, undefined);
+    nextConnectionModule.enableCredentialAutoConnect = false;
+    connectionModule = nextConnectionModule;
+    connectionModuleWithFotos = nextConnectionModule as ConnectionModuleType & {
+      connectToGlueServer?: (personId: SHA256IdHash<Person>) => Promise<void>;
+      fotosAccessGranter?: (remotePersonId: SHA256IdHash<Person>) => Promise<void>;
+      fotosTrustFilter?: (remotePersonId: SHA256IdHash<Person>) => Promise<boolean>;
+    };
+    connectionModuleWithFotos.fotosAccessGranter = async (remotePersonId: SHA256IdHash<Person>) => {
+      await grantFotosAccess(remotePersonId);
+    };
+    connectionModuleWithFotos.fotosTrustFilter = async (remotePersonId: SHA256IdHash<Person>) => {
+      return remotePersonId === publicationIdentity;
+    };
+    registry.register(connectionModule);
+
+    // GlueModule — presence and peer connections
+    if (glueModuleInstance) {
+      await glueModuleInstance.shutdown();
+      glueModuleInstance = null;
+    }
+    glueModule = new GlueModule(API_BASE, commServerUrl);
+    glueModule.enableMailboxPairing = false;
+
+    // Inject browser platform hooks
+    glueModule.onVisibilityChange = (cb: (visible: boolean) => void) => {
+      const handler = () => cb(!document.hidden);
+      document.addEventListener('visibilitychange', handler);
+      return () => document.removeEventListener('visibilitychange', handler);
+    };
+    glueModule.onBeforeUnload = (cb: () => void) => {
+      window.addEventListener('beforeunload', cb);
+      return () => window.removeEventListener('beforeunload', cb);
+    };
+    glueModule.getLocalTransportCapabilities = async () => ['webrtc', 'commserver-relay'];
+    glueModule.connectToPeerDirectByKey = (encKey: string, ownId: string, caps?: string[]) =>
+      connectionModule!.connectToPeerByKey(encKey, ownId as any, caps);
+    glueModule.connectToPeerRelayByKey = (encKey: string, ownId: string, remotePersonId: string) =>
+      connectionModule!.connectToPeerRelayByKey(encKey, ownId as any, remotePersonId as any);
+
+    // Incoming CHUM admission boundary
+    const glueModuleWithAdmission = glueModule as GlueModule & {
+      shouldAcceptIncomingPeer?: (personId: string) => boolean;
+    };
+    connectionModule.setUnknownPeerIdentityMatcher((remotePersonId) => {
+      const personId = String(remotePersonId);
+      return glueModuleWithAdmission.shouldAcceptIncomingPeer?.(personId) ?? false;
+    });
+
+    registry.register(glueModule);
   }
-  const glueModule = new GlueModule(API_BASE, commServerUrl);
-  glueModule.enableMailboxPairing = false;
-
-  // Inject browser platform hooks
-  glueModule.onVisibilityChange = (cb: (visible: boolean) => void) => {
-    const handler = () => cb(!document.hidden);
-    document.addEventListener('visibilitychange', handler);
-    return () => document.removeEventListener('visibilitychange', handler);
-  };
-  glueModule.onBeforeUnload = (cb: () => void) => {
-    window.addEventListener('beforeunload', cb);
-    return () => window.removeEventListener('beforeunload', cb);
-  };
-  glueModule.getLocalTransportCapabilities = async () => ['webrtc', 'commserver-relay'];
-  glueModule.connectToPeerDirectByKey = (encKey: string, ownId: string, caps?: string[]) =>
-    connectionModule.connectToPeerByKey(encKey, ownId as any, caps);
-  glueModule.connectToPeerRelayByKey = (encKey: string, ownId: string, remotePersonId: string) =>
-    connectionModule.connectToPeerRelayByKey(encKey, ownId as any, remotePersonId as any);
-
-  // Incoming CHUM admission boundary
-  const glueModuleWithAdmission = glueModule as GlueModule & {
-    shouldAcceptIncomingPeer?: (personId: string) => boolean;
-  };
-  connectionModule.setUnknownPeerIdentityMatcher((remotePersonId) => {
-    const personId = String(remotePersonId);
-    return glueModuleWithAdmission.shouldAcceptIncomingPeer?.(personId) ?? false;
-  });
-
-  registry.register(glueModule);
-
-  const ownerId = getInstanceOwnerIdHash()! as SHA256IdHash<Person>;
-  publicationIdentity = null;
 
   await registry.initAll();
   glueModuleInstance = glueModule;
 
   // Post-init: extract models
   const leuteModel = coreModule.leuteModel;
-  const connectionsModel = connectionModule.connectionsModel;
-
+  const connectionsModel = connectionModule?.connectionsModel ?? null;
   publicationIdentity = await getConfiguredPublicationIdentity(settingsPlan, ownerId);
-  if (publicationIdentity) {
+
+  if (publicationIdentity && glueModule && connectionModuleWithFotos) {
     registry.supply('GlueOwnerId', String(publicationIdentity));
     registry.supply('PublicationIdentity', String(publicationIdentity));
     await ensureCommserverEndpointForPerson(leuteModel, publicationIdentity, commServerUrl);

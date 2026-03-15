@@ -65,8 +65,9 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                         : null;
                 setDisplayName(name);
 
-                if (!name) {
+                if (!name || !configuredPublicationIdentity) {
                     setCertState('ephemeral');
+                    setCertValidUntil(null);
                     return;
                 }
 
@@ -98,7 +99,7 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                 setCertState('ephemeral');
             }
         })();
-    }, [model?.settingsPlan]);
+    }, [model?.settingsPlan, model?.publicationIdentity]);
 
     // Load passkey count
     useEffect(() => {
@@ -205,10 +206,12 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                 {certState !== 'certified' && (
                     <button
                         onClick={handleCertify}
-                        disabled={certifying || !displayName}
+                        disabled={certifying || !displayName || !model?.publicationIdentity}
                         className={`w-full flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-md text-[11px] font-medium transition-colors ${
                             certifying
                                 ? 'bg-white/5 text-white/20 cursor-wait'
+                                : !displayName || !model?.publicationIdentity
+                                    ? 'bg-white/5 text-white/20 cursor-not-allowed'
                                 : 'bg-[#e94560]/80 text-white hover:bg-[#e94560]'
                         }`}
                     >
