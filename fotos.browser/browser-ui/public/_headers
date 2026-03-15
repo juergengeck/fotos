@@ -16,6 +16,9 @@
 /workbox-*.js
   Cache-Control: no-cache, must-revalidate
 
+/version.json
+  Cache-Control: no-cache, no-store, must-revalidate
+
 # Long cache for hashed build output.
 /assets/*
   Cache-Control: public, max-age=31536000, immutable

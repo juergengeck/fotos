@@ -5,12 +5,20 @@ import { useRegisterSW } from 'virtual:pwa-register/react';
  * Shows a banner when a new version of fotos.one is available.
  * Checks on focus, visibility change, and every 2 minutes.
  */
+
+interface BuildVersionInfo {
+    buildId?: string;
+}
+
 export function UpdatePrompt() {
     const [updating, setUpdating] = useState(false);
     const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
     const [hasWaitingWorker, setHasWaitingWorker] = useState(false);
     const [hasController, setHasController] = useState(() => Boolean(navigator.serviceWorker?.controller));
     const [bootSettled, setBootSettled] = useState(false);
+    const [hasNewBuild, setHasNewBuild] = useState(false);
+
+    const currentBuildId = __APP_BUILD_ID__;
 
     const {
         needRefresh: [needRefresh],
@@ -27,50 +35,84 @@ export function UpdatePrompt() {
     }, []);
 
     useEffect(() => {
-        if (!registration) return;
+        if (import.meta.env.DEV) return;
 
-        const checkWaiting = () => setHasWaitingWorker(Boolean(registration.waiting));
+        let cancelled = false;
 
+        const fetchBuildVersion = async () => {
+            try {
+                const response = await fetch(`/version.json?ts=${Date.now()}`, {
+                    cache: 'no-store',
+                });
+                if (!response.ok) {
+                    return;
+                }
+                const result = await response.json() as BuildVersionInfo;
+                if (cancelled || typeof result.buildId !== 'string') {
+                    return;
+                }
+                setHasNewBuild(result.buildId !== currentBuildId);
+            } catch {
+                // Keep the last known update state when the network flakes out.
+            }
+        };
+
+        const checkWaiting = () => setHasWaitingWorker(Boolean(registration?.waiting));
         const triggerCheck = () => {
-            registration.update().catch(() => {});
+            registration?.update().catch(() => {});
             checkWaiting();
+            void fetchBuildVersion();
         };
-
-        const onUpdateFound = () => {
-            const installing = registration.installing;
-            if (!installing) return;
-            installing.addEventListener('statechange', () => {
-                if (installing.state === 'installed') checkWaiting();
-            });
-        };
-
         const onVisibility = () => { if (!document.hidden) triggerCheck(); };
         const onFocus = () => triggerCheck();
         const onController = () => {
             setHasController(true);
-            setHasWaitingWorker(Boolean(registration.waiting));
+            checkWaiting();
         };
 
-        registration.addEventListener('updatefound', onUpdateFound);
+        const initialCheck = window.setTimeout(triggerCheck, 15000);
+        const interval = window.setInterval(triggerCheck, 2 * 60 * 1000);
         document.addEventListener('visibilitychange', onVisibility);
         window.addEventListener('focus', onFocus);
         navigator.serviceWorker.addEventListener('controllerchange', onController);
 
-        checkWaiting();
-        const initialCheck = window.setTimeout(triggerCheck, 15000);
-        const interval = setInterval(triggerCheck, 2 * 60 * 1000);
+        if (registration) {
+            const onUpdateFound = () => {
+                const installing = registration.installing;
+                if (!installing) return;
+                installing.addEventListener('statechange', () => {
+                    if (installing.state === 'installed') checkWaiting();
+                });
+            };
+
+            registration.addEventListener('updatefound', onUpdateFound);
+            checkWaiting();
+            void fetchBuildVersion();
+
+            return () => {
+                cancelled = true;
+                window.clearTimeout(initialCheck);
+                window.clearInterval(interval);
+                registration.removeEventListener('updatefound', onUpdateFound);
+                document.removeEventListener('visibilitychange', onVisibility);
+                window.removeEventListener('focus', onFocus);
+                navigator.serviceWorker.removeEventListener('controllerchange', onController);
+            };
+        }
 
         return () => {
+            cancelled = true;
             window.clearTimeout(initialCheck);
-            clearInterval(interval);
-            registration.removeEventListener('updatefound', onUpdateFound);
+            window.clearInterval(interval);
             document.removeEventListener('visibilitychange', onVisibility);
             window.removeEventListener('focus', onFocus);
             navigator.serviceWorker.removeEventListener('controllerchange', onController);
         };
-    }, [registration]);
+    }, [currentBuildId, registration]);
 
-    const showPrompt = !import.meta.env.DEV && bootSettled && hasController && (needRefresh || hasWaitingWorker);
+    const showPrompt = !import.meta.env.DEV
+        && bootSettled
+        && (((hasController && (needRefresh || hasWaitingWorker))) || hasNewBuild);
 
     if (!showPrompt) return null;
 
@@ -80,11 +122,18 @@ export function UpdatePrompt() {
             <button
                 type="button"
                 disabled={updating}
-                onClick={() => {
+                onClick={async () => {
                     setUpdating(true);
-                    registration?.waiting?.postMessage({ type: 'SKIP_WAITING' });
-                    updateServiceWorker(true);
-                    window.setTimeout(() => window.location.reload(), 5000);
+                    await registration?.update().catch(() => {});
+
+                    if (registration?.waiting) {
+                        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                        await updateServiceWorker(true);
+                        window.setTimeout(() => window.location.reload(), 5000);
+                        return;
+                    }
+
+                    window.location.reload();
                 }}
                 className={`touch-manipulation px-4 py-1.5 rounded-lg font-semibold text-xs whitespace-nowrap ${
                     updating

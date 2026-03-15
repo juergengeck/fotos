@@ -18,6 +18,23 @@ const ORT_RUNTIME_FILES = [
     'ort-wasm-simd-threaded.mjs',
     'ort-wasm-simd-threaded.wasm',
 ] as const;
+const BUILD_ID = new Date().toISOString();
+
+function buildVersionPlugin(buildId: string): Plugin {
+    return {
+        name: 'build-version',
+        generateBundle() {
+            this.emitFile({
+                type: 'asset',
+                fileName: 'version.json',
+                source: JSON.stringify({
+                    buildId,
+                    builtAt: buildId,
+                }, null, 2),
+            });
+        },
+    };
+}
 
 function ortRuntimePlugin(): Plugin {
     const routePrefix = '/ort/';
@@ -210,6 +227,7 @@ export default defineConfig({
     plugins: [
         react(),
         nodePolyfills(),
+        buildVersionPlugin(BUILD_ID),
         ortRuntimePlugin(),
         localPhotosPlugin(),
         fotosApiPlugin(),
@@ -269,6 +287,7 @@ export default defineConfig({
         'process.env': {},
         'process.version': '"v20.0.0"',
         'process.platform': '"browser"',
+        __APP_BUILD_ID__: JSON.stringify(BUILD_ID),
     },
     optimizeDeps: {
         entries: ['src/workers/face.worker.ts', 'src/workers/semantic.worker.ts'],
