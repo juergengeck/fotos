@@ -5,8 +5,8 @@
  *   1. Create MultiUser with all required recipes
  *   2. Login or register with auto-generated credentials (localStorage/sessionStorage)
  *   3. Initialize ModuleRegistry (CoreModule, TrustModule, ConnectionModule, GlueModule)
- *   4. Activate glue.one only when data exchange is already configured
- *   5. Fire-and-forget headless connection when configured
+ *   4. Activate glue.one only when sync is explicitly enabled
+ *   5. Fire-and-forget headless connection when sync is enabled
  *   6. Return FotosModel
  */
 import MultiUser from '@refinio/one.models/lib/models/Authenticator/MultiUser.js';
@@ -159,24 +159,37 @@ async function ensureCommserverEndpointForPerson(
 async function getConfiguredPublicationIdentity(
   settingsPlan: SettingsPlan,
   ownerId: SHA256IdHash<Person>,
-): Promise<SHA256IdHash<Person> | null> {
+): Promise<{
+  publicationIdentity: SHA256IdHash<Person> | null;
+  syncEnabled: boolean;
+}> {
   try {
     const { values } = await settingsPlan.getSection({ moduleId: 'glue' });
     const configuredPublicationIdentity = getGlueBindingPersonId(
       values,
       DEFAULT_GLUE_CONNECTION_BINDING_ID,
     );
+    const syncEnabled = values.syncEnabled === true;
 
     if (
       !configuredPublicationIdentity ||
       configuredPublicationIdentity === ownerId
     ) {
-      return null;
+      return {
+        publicationIdentity: null,
+        syncEnabled,
+      };
     }
 
-    return configuredPublicationIdentity as SHA256IdHash<Person>;
+    return {
+      publicationIdentity: configuredPublicationIdentity as SHA256IdHash<Person>,
+      syncEnabled,
+    };
   } catch {
-    return null;
+    return {
+      publicationIdentity: null,
+      syncEnabled: false,
+    };
   }
 }
 
@@ -198,7 +211,9 @@ async function initModules(
   });
   const settingsPlan = new SettingsPlan(storage);
   const ownerId = getInstanceOwnerIdHash()! as SHA256IdHash<Person>;
-  publicationIdentity = await getConfiguredPublicationIdentity(settingsPlan, ownerId);
+  const glueStartup = await getConfiguredPublicationIdentity(settingsPlan, ownerId);
+  const syncEnabled = glueStartup.syncEnabled;
+  publicationIdentity = glueStartup.publicationIdentity;
 
   // ModuleRegistry: CoreModule -> TrustModule -> ConnectionModule -> GlueModule
   const registry = new ModuleRegistry();
@@ -230,8 +245,8 @@ async function initModules(
 
   let glueModule: GlueModule | null = null;
 
-  // Keep the app offline unless sync was explicitly configured.
-  if (publicationIdentity) {
+  // Keep the app offline unless sync is explicitly enabled.
+  if (syncEnabled && publicationIdentity) {
     const nextConnectionModule = new ConnectionModule(commServerUrl, API_BASE, undefined);
     nextConnectionModule.enableCredentialAutoConnect = false;
     // GlueModule owns live peer dialing in browser mode. Leaving the generic
@@ -293,9 +308,9 @@ async function initModules(
   // Post-init: extract models
   const leuteModel = coreModule.leuteModel;
   const connectionsModel = connectionModule?.connectionsModel ?? null;
-  publicationIdentity = await getConfiguredPublicationIdentity(settingsPlan, ownerId);
+  publicationIdentity = (await getConfiguredPublicationIdentity(settingsPlan, ownerId)).publicationIdentity;
 
-  if (publicationIdentity && glueModule && connectionModuleWithFotos) {
+  if (syncEnabled && publicationIdentity && glueModule && connectionModuleWithFotos) {
     registry.supply('GlueOwnerId', String(publicationIdentity));
     registry.supply('PublicationIdentity', String(publicationIdentity));
     await ensureCommserverEndpointForPerson(leuteModel, publicationIdentity, commServerUrl);

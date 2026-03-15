@@ -35,6 +35,9 @@ interface FotosSettingsProps {
 }
 
 export function FotosSettings({ model }: FotosSettingsProps) {
+    const [syncEnabled, setSyncEnabled] = useState(false);
+    const [syncPending, setSyncPending] = useState(false);
+    const [syncError, setSyncError] = useState<string | null>(null);
     const [displayName, setDisplayName] = useState<string | null>(null);
     const [certState, setCertState] = useState<CertState>('ephemeral');
     const [certValidUntil, setCertValidUntil] = useState<string | null>(null);
@@ -48,9 +51,14 @@ export function FotosSettings({ model }: FotosSettingsProps) {
     // Load identity state from settings
     useEffect(() => {
         if (!model?.settingsPlan) return;
+        let cancelled = false;
         (async () => {
             try {
                 const { values } = await model.settingsPlan.getSection({ moduleId: 'glue' });
+                const nextSyncEnabled = values.syncEnabled === true;
+                if (cancelled) return;
+                setSyncEnabled(nextSyncEnabled);
+
                 const configuredPublicationIdentity = getGlueBindingPersonId(
                     values,
                     DEFAULT_GLUE_CONNECTION_BINDING_ID,
@@ -65,7 +73,7 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                         : null;
                 setDisplayName(name);
 
-                if (!name || !configuredPublicationIdentity) {
+                if (!nextSyncEnabled || !name || !configuredPublicationIdentity) {
                     setCertState('ephemeral');
                     setCertValidUntil(null);
                     return;
@@ -83,27 +91,36 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                         if (certRes.ok) {
                             const certResult = await certRes.json();
                             if (certResult.success && certResult.data?.cert?.validUntil) {
+                                if (cancelled) return;
                                 setCertState('certified');
                                 setCertValidUntil(new Date(certResult.data.cert.validUntil).toLocaleDateString());
                             } else {
+                                if (cancelled) return;
                                 setCertState('anchored');
                             }
                         } else {
+                            if (cancelled) return;
                             setCertState('anchored');
                         }
                     } else {
+                        if (cancelled) return;
                         setCertState('anchored');
                     }
                 }
             } catch {
+                if (cancelled) return;
                 setCertState('ephemeral');
+                setCertValidUntil(null);
             }
         })();
+        return () => {
+            cancelled = true;
+        };
     }, [model?.settingsPlan, model?.publicationIdentity]);
 
     // Load passkey count
     useEffect(() => {
-        if (certState !== 'certified' || !displayName || !publicationIdentity) return;
+        if (certState !== 'certified' || !syncEnabled || !displayName || !publicationIdentity) return;
         (async () => {
             try {
                 const { signOwnershipProof } = await import('@glueone/glue.core');
@@ -123,10 +140,35 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                 }
             } catch { /* passkey count is informational */ }
         })();
-    }, [certState, displayName, publicationIdentity]);
+    }, [certState, syncEnabled, displayName, publicationIdentity]);
+
+    const handleSyncToggle = useCallback(async () => {
+        if (!model?.settingsPlan || syncPending) return;
+
+        const nextSyncEnabled = !syncEnabled;
+        const previousSyncEnabled = syncEnabled;
+
+        setSyncEnabled(nextSyncEnabled);
+        setSyncPending(true);
+        setSyncError(null);
+
+        try {
+            await model.settingsPlan.updateSection({
+                moduleId: 'glue',
+                values: {
+                    syncEnabled: nextSyncEnabled,
+                },
+            });
+            window.location.reload();
+        } catch (err) {
+            setSyncEnabled(previousSyncEnabled);
+            setSyncPending(false);
+            setSyncError(err instanceof Error ? err.message : 'Failed to update sync setting');
+        }
+    }, [model?.settingsPlan, syncEnabled, syncPending]);
 
     const handleCertify = useCallback(async () => {
-        if (!model?.publicationIdentity || !displayName) return;
+        if (!syncEnabled || !model?.publicationIdentity || !displayName) return;
         setCertifying(true);
         setCertifyError(null);
         try {
@@ -144,31 +186,71 @@ export function FotosSettings({ model }: FotosSettingsProps) {
         } finally {
             setCertifying(false);
         }
-    }, [model?.publicationIdentity, displayName]);
+    }, [syncEnabled, model?.publicationIdentity, displayName]);
 
     return (
         <>
             {/* Connection status */}
             <CollapsibleSection label="Sync">
+                <label className="flex items-start gap-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-2">
+                    <input
+                        type="checkbox"
+                        checked={syncEnabled}
+                        onChange={() => void handleSyncToggle()}
+                        disabled={syncPending || !model?.settingsPlan}
+                        className="mt-0.5 h-3.5 w-3.5 accent-[#e94560]"
+                    />
+                    <div className="space-y-1">
+                        <div className="text-[11px] text-white/72">Enable glue.one sync</div>
+                        <p className="text-[10px] leading-relaxed text-white/30">
+                            When off, fotos stays local and does not connect to glue.one.
+                        </p>
+                    </div>
+                </label>
+
                 <div className="flex items-center gap-2 px-2.5 py-1.5 bg-white/5 rounded-md text-[11px]">
-                    {connected ? (
+                    {syncPending ? (
+                        <>
+                            <Wifi className="w-3 h-3 text-white/25" />
+                            <span className="text-white/40">Reloading...</span>
+                        </>
+                    ) : syncEnabled && connected ? (
                         <>
                             <Wifi className="w-3 h-3 text-green-400/70" />
                             <span className="text-green-400/70">Connected to glue.one</span>
                         </>
+                    ) : syncEnabled ? (
+                        <>
+                            <Wifi className="w-3 h-3 text-white/40" />
+                            <span className="text-white/40">
+                                {publicationIdentity ? 'Sync enabled' : 'Sync enabled, waiting for identity'}
+                            </span>
+                        </>
                     ) : (
                         <>
                             <WifiOff className="w-3 h-3 text-white/25" />
-                            <span className="text-white/25">Not connected</span>
+                            <span className="text-white/25">Sync is off</span>
                         </>
                     )}
                 </div>
+
+                {syncError && (
+                    <div className="px-2.5 text-[10px] text-red-400/70">{syncError}</div>
+                )}
             </CollapsibleSection>
 
             {/* Identity */}
             <CollapsibleSection label="Identity">
               <div className="space-y-1.5">
-                {certState === 'ephemeral' && (
+                {!syncEnabled && (
+                    <div className="px-2.5 py-2 bg-white/5 rounded-md text-[11px] text-white/40 leading-relaxed">
+                        {displayName && publicationIdentity
+                            ? `${displayName} stays local until Sync is enabled.`
+                            : 'Sync is off. Fotos stays local and does not talk to glue.one.'}
+                    </div>
+                )}
+
+                {syncEnabled && certState === 'ephemeral' && (
                     <div className="px-2.5 py-2 bg-white/5 rounded-md text-[11px] text-white/40 leading-relaxed">
                         Using local identity (ephemeral).
                         Your photos stay on your devices.
@@ -203,7 +285,7 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                 )}
 
                 {/* Sign in button — shown when not certified */}
-                {certState !== 'certified' && (
+                {syncEnabled && certState !== 'certified' && (
                     <button
                         onClick={handleCertify}
                         disabled={certifying || !displayName || !model?.publicationIdentity}
@@ -225,7 +307,7 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                 )}
 
                 {/* Manage link — shown when certified */}
-                {certState === 'certified' && (
+                {syncEnabled && certState === 'certified' && (
                     <a
                         href="https://glue.one"
                         target="_blank"
