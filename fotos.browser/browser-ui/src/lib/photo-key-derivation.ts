@@ -1,5 +1,5 @@
 import { argon2id } from 'hash-wasm';
-import nacl from 'tweetnacl';
+import { createSignKeyPairFromSeed, sign as signDetached, ensureSecretSignKey } from '@refinio/one.core/lib/crypto/sign.js';
 
 const APPLICATION_SALT = 'one.photo.key.v1';
 
@@ -65,11 +65,46 @@ export async function deriveKeyFromPhotos(options: PhotoKeyDerivationOptions): P
         seed[i] = parseInt(hashHex.slice(i * 2, i * 2 + 2), 16);
     }
 
-    const keyPair = nacl.sign.keyPair.fromSeed(seed);
+    const keyPair = createSignKeyPairFromSeed(seed);
 
     return {
         seed,
-        publicKey: keyPair.publicKey,
-        secretKey: keyPair.secretKey,
+        publicKey: keyPair.publicKey as Uint8Array,
+        secretKey: keyPair.secretKey as Uint8Array,
+    };
+}
+
+function hexEncode(bytes: Uint8Array): string {
+    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Build and sign a recovery request from a derived keypair.
+ * Returns a ready-to-POST JSON body.
+ */
+export function signRecoveryRequest(
+    result: DerivedKeyResult,
+    personId: string,
+): {
+    personId: string;
+    recoveryPubKey: string;
+    newSigningPubKey: string;
+    newEncryptionPubKey: string;
+    timestamp: number;
+    signature: string;
+} {
+    const publicKeyHex = hexEncode(result.publicKey);
+    const timestamp = Date.now();
+    const message = new TextEncoder().encode(
+        `${personId}${publicKeyHex}${publicKeyHex}${timestamp}`
+    );
+    const signature = signDetached(message, ensureSecretSignKey(result.secretKey));
+    return {
+        personId,
+        recoveryPubKey: publicKeyHex,
+        newSigningPubKey: publicKeyHex,
+        newEncryptionPubKey: publicKeyHex,
+        timestamp,
+        signature: hexEncode(signature),
     };
 }

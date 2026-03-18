@@ -8,9 +8,8 @@ import {
     nameToIdentity,
 } from '@glueone/glue.core';
 import { authenticateWithPasskeyViaPopup } from '@glueone/auth.core';
-import nacl from 'tweetnacl';
 import { API_BASE } from '../config.js';
-import { deriveKeyFromPhotos } from '@/lib/photo-key-derivation.js';
+import { deriveKeyFromPhotos, signRecoveryRequest } from '@/lib/photo-key-derivation.js';
 
 import { ChevronDown } from 'lucide-react';
 
@@ -431,34 +430,13 @@ function RecoverySecretSection({ model }: { model: FotosModel | null }) {
             setPhase('submitting');
             setProgress('Registering recovery key...');
 
-            const publicKeyHex = Array.from(result.publicKey)
-                .map(b => b.toString(16).padStart(2, '0'))
-                .join('');
-
-            // For initial registration, sign with the photo-derived key to prove possession.
-            // newSigningPubKey and newEncryptionPubKey are the recovery pubkey for now
-            // (actual device key rotation happens during recovery, not registration).
             const personId = model?.publicationIdentity ?? '';
-            const timestamp = Date.now();
-            const message = new TextEncoder().encode(
-                `${personId}${publicKeyHex}${publicKeyHex}${timestamp}`
-            );
-            const signature = nacl.sign.detached(message, result.secretKey);
-            const signatureHex = Array.from(signature)
-                .map(b => b.toString(16).padStart(2, '0'))
-                .join('');
+            const body = signRecoveryRequest(result, personId);
 
             const res = await fetch(`${API_BASE}/api/recovery/recover`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    personId,
-                    recoveryPubKey: publicKeyHex,
-                    newSigningPubKey: publicKeyHex,
-                    newEncryptionPubKey: publicKeyHex,
-                    timestamp,
-                    signature: signatureHex,
-                }),
+                body: JSON.stringify(body),
             });
 
             if (!res.ok) {
