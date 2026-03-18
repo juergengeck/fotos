@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect } from 'react';
-import { Shield, Wifi, WifiOff, ExternalLink, Check } from 'lucide-react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { Shield, Wifi, WifiOff, ExternalLink, Check, KeyRound, GripVertical, X, Loader2 } from 'lucide-react';
 import type { FotosModel } from '@/lib/onecore-boot';
 import {
     DEFAULT_GLUE_CONNECTION_BINDING_ID,
@@ -8,7 +8,9 @@ import {
     nameToIdentity,
 } from '@glueone/glue.core';
 import { authenticateWithPasskeyViaPopup } from '@glueone/auth.core';
+import nacl from 'tweetnacl';
 import { API_BASE } from '../config.js';
+import { deriveKeyFromPhotos } from '@/lib/photo-key-derivation.js';
 
 import { ChevronDown } from 'lucide-react';
 
@@ -329,6 +331,281 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                 </a>
               </div>
             </CollapsibleSection>
+
+            {/* Recovery Secret */}
+            <RecoverySecretSection model={model} />
         </>
+    );
+}
+
+type RecoveryPhase = 'idle' | 'picking' | 'deriving' | 'submitting' | 'done' | 'error';
+
+interface SelectedImage {
+    file: File;
+    thumbnailUrl: string;
+}
+
+function RecoverySecretSection({ model }: { model: FotosModel | null }) {
+    const [phase, setPhase] = useState<RecoveryPhase>('idle');
+    const [images, setImages] = useState<SelectedImage[]>([]);
+    const [pin, setPin] = useState('');
+    const [error, setError] = useState<string | null>(null);
+    const [progress, setProgress] = useState('');
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const dragIndexRef = useRef<number | null>(null);
+
+    const handlePickPhotos = useCallback(() => {
+        fileInputRef.current?.click();
+    }, []);
+
+    const handleFilesSelected = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+
+        const newImages: SelectedImage[] = [];
+        for (const file of files) {
+            newImages.push({
+                file,
+                thumbnailUrl: URL.createObjectURL(file),
+            });
+        }
+        setImages(prev => [...prev, ...newImages]);
+        setPhase('picking');
+        e.target.value = '';
+    }, []);
+
+    const handleRemoveImage = useCallback((index: number) => {
+        setImages(prev => {
+            const next = [...prev];
+            URL.revokeObjectURL(next[index]!.thumbnailUrl);
+            next.splice(index, 1);
+            return next;
+        });
+    }, []);
+
+    const handleDragStart = useCallback((index: number) => {
+        dragIndexRef.current = index;
+    }, []);
+
+    const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
+        e.preventDefault();
+        if (dragIndexRef.current === null || dragIndexRef.current === index) return;
+        setImages(prev => {
+            const next = [...prev];
+            const [moved] = next.splice(dragIndexRef.current!, 1);
+            next.splice(index, 0, moved!);
+            dragIndexRef.current = index;
+            return next;
+        });
+    }, []);
+
+    const handleDragEnd = useCallback(() => {
+        dragIndexRef.current = null;
+    }, []);
+
+    const handleDerive = useCallback(async () => {
+        if (images.length === 0) return;
+        if (!/^\d{8}$/.test(pin)) {
+            setError('Enter a date as 8 digits: DDMMYYYY');
+            return;
+        }
+
+        setPhase('deriving');
+        setError(null);
+        setProgress('Reading photos...');
+
+        try {
+            const imageBytes: Uint8Array[] = [];
+            for (const img of images) {
+                const buf = await img.file.arrayBuffer();
+                imageBytes.push(new Uint8Array(buf));
+            }
+
+            setProgress('Deriving key (this takes a few seconds)...');
+
+            const result = await deriveKeyFromPhotos({
+                images: imageBytes,
+                pin,
+            });
+
+            setPhase('submitting');
+            setProgress('Registering recovery key...');
+
+            const publicKeyHex = Array.from(result.publicKey)
+                .map(b => b.toString(16).padStart(2, '0'))
+                .join('');
+
+            // For initial registration, sign with the photo-derived key to prove possession.
+            // newSigningPubKey and newEncryptionPubKey are the recovery pubkey for now
+            // (actual device key rotation happens during recovery, not registration).
+            const personId = model?.publicationIdentity ?? '';
+            const timestamp = Date.now();
+            const message = new TextEncoder().encode(
+                `${personId}${publicKeyHex}${publicKeyHex}${timestamp}`
+            );
+            const signature = nacl.sign.detached(message, result.secretKey);
+            const signatureHex = Array.from(signature)
+                .map(b => b.toString(16).padStart(2, '0'))
+                .join('');
+
+            const res = await fetch(`${API_BASE}/api/recovery/recover`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    personId,
+                    recoveryPubKey: publicKeyHex,
+                    newSigningPubKey: publicKeyHex,
+                    newEncryptionPubKey: publicKeyHex,
+                    timestamp,
+                    signature: signatureHex,
+                }),
+            });
+
+            if (!res.ok) {
+                const body = await res.text();
+                throw new Error(`Recovery registration failed: ${body}`);
+            }
+
+            setPhase('done');
+            setProgress('');
+
+            // Clean up thumbnails
+            for (const img of images) {
+                URL.revokeObjectURL(img.thumbnailUrl);
+            }
+        } catch (err) {
+            setPhase('error');
+            setError(err instanceof Error ? err.message : 'Key derivation failed');
+            setProgress('');
+        }
+    }, [images, pin, model]);
+
+    const handleReset = useCallback(() => {
+        for (const img of images) {
+            URL.revokeObjectURL(img.thumbnailUrl);
+        }
+        setImages([]);
+        setPin('');
+        setPhase('idle');
+        setError(null);
+        setProgress('');
+    }, [images]);
+
+    const busy = phase === 'deriving' || phase === 'submitting';
+
+    return (
+        <CollapsibleSection label="Recovery" defaultOpen={false}>
+            <div className="space-y-2">
+                <p className="px-2.5 text-[10px] leading-relaxed text-white/30">
+                    Pick photos you'll remember, arrange them in order, and enter a date as PIN.
+                    This derives a recovery key from your photos — nothing is stored.
+                </p>
+
+                {phase === 'done' ? (
+                    <>
+                        <div className="px-2.5 py-2 bg-green-400/10 rounded-md text-[11px] text-green-400/70">
+                            Recovery secret registered.
+                        </div>
+                        <button
+                            onClick={handleReset}
+                            className="w-full px-2.5 py-2 rounded-md text-[11px] font-medium bg-white/5 text-white/40 hover:text-white/60 transition-colors"
+                        >
+                            Set new recovery secret
+                        </button>
+                    </>
+                ) : (
+                    <>
+                        {/* Hidden file input */}
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            className="hidden"
+                            onChange={handleFilesSelected}
+                        />
+
+                        {/* Photo thumbnails with drag-to-reorder */}
+                        {images.length > 0 && (
+                            <div className="space-y-1">
+                                {images.map((img, i) => (
+                                    <div
+                                        key={img.thumbnailUrl}
+                                        draggable
+                                        onDragStart={() => handleDragStart(i)}
+                                        onDragOver={e => handleDragOver(e, i)}
+                                        onDragEnd={handleDragEnd}
+                                        className="flex items-center gap-1.5 px-1.5 py-1 bg-white/5 rounded-md group cursor-grab active:cursor-grabbing"
+                                    >
+                                        <GripVertical className="w-3 h-3 text-white/15 shrink-0" />
+                                        <span className="text-[10px] text-white/25 w-4 text-right shrink-0">{i + 1}</span>
+                                        <img
+                                            src={img.thumbnailUrl}
+                                            className="w-8 h-8 rounded object-cover shrink-0"
+                                        />
+                                        <span className="text-[10px] text-white/40 truncate flex-1">{img.file.name}</span>
+                                        <button
+                                            onClick={() => handleRemoveImage(i)}
+                                            className="p-0.5 text-white/15 hover:text-red-400/70 transition-colors opacity-0 group-hover:opacity-100"
+                                        >
+                                            <X className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Add photos button */}
+                        <button
+                            onClick={handlePickPhotos}
+                            disabled={busy}
+                            className="w-full flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-md text-[11px] font-medium bg-white/5 text-white/40 hover:text-white/60 hover:bg-white/10 transition-colors disabled:opacity-30"
+                        >
+                            <KeyRound className="w-3.5 h-3.5" />
+                            {images.length === 0 ? 'Pick photos' : 'Add more photos'}
+                        </button>
+
+                        {/* PIN input */}
+                        {images.length > 0 && (
+                            <div className="space-y-1">
+                                <label className="block text-[10px] text-white/25 px-2.5">
+                                    Date PIN (DDMMYYYY)
+                                </label>
+                                <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    maxLength={8}
+                                    placeholder="DDMMYYYY"
+                                    value={pin}
+                                    onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                                    disabled={busy}
+                                    className="w-full px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-md text-[11px] text-white/60 font-mono placeholder:text-white/15 focus:outline-none focus:border-white/20"
+                                />
+                            </div>
+                        )}
+
+                        {/* Derive button */}
+                        {images.length > 0 && pin.length === 8 && (
+                            <button
+                                onClick={handleDerive}
+                                disabled={busy}
+                                className={`w-full flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-md text-[11px] font-medium transition-colors ${
+                                    busy
+                                        ? 'bg-white/5 text-white/20 cursor-wait'
+                                        : 'bg-[#e94560]/80 text-white hover:bg-[#e94560]'
+                                }`}
+                            >
+                                {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                                {busy ? progress : 'Derive recovery key'}
+                            </button>
+                        )}
+
+                        {error && (
+                            <div className="px-2.5 text-[10px] text-red-400/70">{error}</div>
+                        )}
+                    </>
+                )}
+            </div>
+        </CollapsibleSection>
     );
 }
