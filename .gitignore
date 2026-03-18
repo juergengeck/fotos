@@ -3,6 +3,7 @@ node_modules/
 dist/
 _deploy/
 *.log
+*.tgz
 
 # Local dependency shims for sibling VGER/ONE packages
 auth.core
