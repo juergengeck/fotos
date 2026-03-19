@@ -33,6 +33,33 @@ import semanticWorkerUrl from '@/workers/semantic.worker.ts?worker&url';
 
 type IndexHtmlNamespace = 'face' | 'semantic';
 
+function escapeAttr(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function buildFacesCellHtml(dataAttrs: Record<string, string>): string {
+    const count = parseInt(dataAttrs['face-count'] ?? '0', 10);
+    if (count === 0) return '';
+
+    const crops = dataAttrs['face-crops']?.split(';') ?? [];
+    const names = dataAttrs['face-names']?.split(';') ?? [];
+    const clusterIds = dataAttrs['face-cluster-hashes']?.split(';') ?? [];
+
+    const parts: string[] = [];
+    for (let i = 0; i < count; i++) {
+        const name = names[i] && names[i] !== 'Unknown' ? escapeAttr(names[i]) : '';
+        const cropSrc = crops[i] ? `<img class="fs-face-crop" src="${escapeAttr(crops[i])}" loading="lazy" alt="${name}">` : '';
+        const nameLabel = name ? `<span class="fs-face-name">${name}</span>` : '';
+        const clusterId = clusterIds[i];
+        if (clusterId && name) {
+            parts.push(`<a class="fs-face" data-cluster="${escapeAttr(clusterId)}">${cropSrc}${nameLabel}</a>`);
+        } else {
+            parts.push(`<span class="fs-face">${cropSrc}${nameLabel}</span>`);
+        }
+    }
+    return parts.join('');
+}
+
 let indexHtmlWriteChain = Promise.resolve();
 
 function queueIndexHtmlWrite<T>(operation: () => Promise<T>): Promise<T> {
@@ -135,6 +162,14 @@ async function updateIndexHtmlData(
 
         for (const [key, value] of Object.entries(dataAttrs)) {
             row.setAttribute(`data-${key}`, value);
+        }
+
+        // Update visible faces cell to reflect current metadata
+        if (namespace === 'face') {
+            const facesCell = row.querySelector('.fs-faces') as HTMLTableCellElement | null;
+            if (facesCell) {
+                facesCell.innerHTML = buildFacesCellHtml(dataAttrs);
+            }
         }
 
         const nextHtml = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
@@ -773,7 +808,7 @@ export interface FolderAccess {
     /** Whether running in mobile/PWA lightweight mode */
     mobile: boolean;
     /** Trigger the primary intake action for this surface. */
-    openFolder: () => Promise<void>;
+    openFolder: () => void;
     /** Rescan the current folder */
     rescan: () => Promise<void>;
     /** Force rerun of enabled analysis for the current folder */
@@ -933,6 +968,9 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     const facePassProgressRef = useRef<{ total: number; current: number; fileName?: string } | null>(null);
     const semanticWorkerRef = useRef<ReturnType<typeof createSemanticWorker> | null>(null);
     const semanticPassPromiseRef = useRef<Promise<void> | null>(null);
+    // Persistent hidden file input for mobile photo selection — reused across
+    // openFolder calls to avoid iOS Safari PWA issues with dynamic elements.
+    const mobileInputRef = useRef<HTMLInputElement | null>(null);
     // Face cluster dimension — loaded lazily, persists across face passes
     const clusterDimRef = useRef<FaceClusterDimension | null>(null);
     const clusterThresholdRef = useRef<number | null>(null);
@@ -942,6 +980,10 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         return () => {
             faceWorkerRef.current?.terminate();
             semanticWorkerRef.current?.terminate();
+            const mobileInput = mobileInputRef.current;
+            if (mobileInput?.parentNode) {
+                mobileInput.parentNode.removeChild(mobileInput);
+            }
         };
     }, []);
 
@@ -1692,93 +1734,106 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         }).catch(err => console.warn('[share-target]', err));
     }, [clearUrlCache, shareIntakePlan.supported]);
 
-    const openFolder = useCallback(async () => {
-        if (usesWritableLibraryAttach && 'showDirectoryPicker' in window) {
-            const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
-            saveLastFolder(handle).catch(() => {});
-            await openFromHandle(handle);
+    // Process files selected via the mobile file input.
+    const handleMobileFiles = useCallback(async (input: HTMLInputElement) => {
+        const files = input.files ? Array.from(input.files) : [];
+        // Reset so the same selection can be re-picked next time.
+        input.value = '';
+
+        if (files.length === 0) {
+            console.warn('[openFolder] Mobile picker returned no files');
             return;
         }
 
-        // Selection capture fallback: pick photos from the system library.
-        // Keep the input attached and capture files before cleanup; Safari/iOS
-        // can otherwise come back from the picker with an empty FileList.
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.multiple = true;
-        input.accept = 'image/*,.heic,.heif';
-        input.style.position = 'fixed';
-        input.style.left = '-9999px';
-        input.style.width = '1px';
-        input.style.height = '1px';
-        input.style.opacity = '0';
-        input.style.pointerEvents = 'none';
-        document.body.appendChild(input);
+        rootHandleRef.current = null;
+        clusterDimRef.current = null;
+        clusterThresholdRef.current = null;
+        semanticPassPromiseRef.current = null;
+        clearUrlCache();
 
-        const cleanup = () => {
-            input.value = '';
-            if (input.parentNode) {
-                input.parentNode.removeChild(input);
-            }
+        setFolderName('photos');
+        setIsOpen(true);
+
+        try {
+            // Ingest files directly (no one/ write on mobile — read-only)
+            setIngestProgress({ phase: 'scanning', current: 0, total: files.length });
+            const mobileEntries = await ingestFiles(files, setIngestProgress);
+
+            // Convert to PhotoEntry and cache object URLs
+            const photoEntries: PhotoEntry[] = mobileEntries.map(m => {
+                if (m.objectUrl) urlCacheRef.current.set(m.sourcePath, m.objectUrl);
+                if (m.thumb) urlCacheRef.current.set(`thumb:${m.hash}`, m.thumb);
+                return {
+                    hash: m.hash,
+                    name: m.name,
+                    managed: m.managed,
+                    sourcePath: m.sourcePath,
+                    folderPath: m.folderPath,
+                    mimeType: m.mimeType,
+                    thumb: m.thumb ? `thumb:${m.hash}` : undefined,
+                    tags: m.tags,
+                    capturedAt: m.capturedAt,
+                    updatedAt: m.updatedAt,
+                    exif: m.exif,
+                    addedAt: m.addedAt,
+                    size: m.size,
+                };
+            });
+            setEntries(photoEntries);
+            // Fire-and-forget ONE.core sync (no rootHandle on mobile — no thumbnails)
+            syncPhotosToOneCore(photoEntries, null).catch(err =>
+                console.warn('[fotos-sync]', err));
+        } catch (err) {
+            console.warn('[openFolder] Failed to import mobile photos:', err);
+        } finally {
+            setIngestProgress(null);
+        }
+    }, [clearUrlCache]);
+
+    // NOT async — iOS Safari PWA drops user-activation for programmatic
+    // input.click() when the handler is async, causing the photo picker to
+    // silently refuse to open (requiring multiple taps).
+    const openFolder = useCallback(() => {
+        if (usesWritableLibraryAttach && 'showDirectoryPicker' in window) {
+            void (async () => {
+                try {
+                    const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
+                    saveLastFolder(handle).catch(() => {});
+                    await openFromHandle(handle);
+                } catch {
+                    // User cancelled the directory picker.
+                }
+            })();
+            return;
+        }
+
+        // Reuse a persistent hidden file input so Safari treats it as a
+        // trusted element.  Creating a fresh <input> on every tap is unreliable
+        // in iOS Safari standalone/PWA mode.
+        if (!mobileInputRef.current) {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.multiple = true;
+            input.accept = 'image/*,.heic,.heif';
+            // Keep in the DOM but visually hidden.
+            input.style.position = 'fixed';
+            input.style.left = '-9999px';
+            input.style.width = '1px';
+            input.style.height = '1px';
+            input.style.opacity = '0';
+            input.style.pointerEvents = 'none';
+            document.body.appendChild(input);
+            mobileInputRef.current = input;
+        }
+
+        const input = mobileInputRef.current;
+        // Allow re-selecting the same files.
+        input.value = '';
+        input.onchange = () => {
+            void handleMobileFiles(input);
         };
-        input.addEventListener('cancel', cleanup, { once: true });
-
-        input.onchange = async () => {
-            const files = input.files ? Array.from(input.files) : [];
-            if (files.length === 0) {
-                console.warn('[openFolder] Mobile picker returned no files');
-                cleanup();
-                return;
-            }
-
-            rootHandleRef.current = null;
-            clusterDimRef.current = null;
-            clusterThresholdRef.current = null;
-            semanticPassPromiseRef.current = null;
-            clearUrlCache();
-
-            setFolderName('photos');
-            setIsOpen(true);
-
-            try {
-                // Ingest files directly (no one/ write on mobile — read-only)
-                setIngestProgress({ phase: 'scanning', current: 0, total: files.length });
-                const mobileEntries = await ingestFiles(files, setIngestProgress);
-
-                // Convert to PhotoEntry and cache object URLs
-                const photoEntries: PhotoEntry[] = mobileEntries.map(m => {
-                    if (m.objectUrl) urlCacheRef.current.set(m.sourcePath, m.objectUrl);
-                    if (m.thumb) urlCacheRef.current.set(`thumb:${m.hash}`, m.thumb);
-                    return {
-                        hash: m.hash,
-                        name: m.name,
-                        managed: m.managed,
-                        sourcePath: m.sourcePath,
-                        folderPath: m.folderPath,
-                        mimeType: m.mimeType,
-                        thumb: m.thumb ? `thumb:${m.hash}` : undefined,
-                        tags: m.tags,
-                        capturedAt: m.capturedAt,
-                        updatedAt: m.updatedAt,
-                        exif: m.exif,
-                        addedAt: m.addedAt,
-                        size: m.size,
-                    };
-                });
-                setEntries(photoEntries);
-                // Fire-and-forget ONE.core sync (no rootHandle on mobile — no thumbnails)
-                syncPhotosToOneCore(photoEntries, null).catch(err =>
-                    console.warn('[fotos-sync]', err));
-            } catch (err) {
-                console.warn('[openFolder] Failed to import mobile photos:', err);
-            } finally {
-                setIngestProgress(null);
-                cleanup();
-            }
-        };
-
         input.click();
-    }, [openFromHandle, usesWritableLibraryAttach]);
+    }, [handleMobileFiles, openFromHandle, usesWritableLibraryAttach]);
 
     const rescan = useCallback(async () => {
         if (!rootHandleRef.current) return;
