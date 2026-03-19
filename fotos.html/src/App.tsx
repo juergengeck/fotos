@@ -10,7 +10,7 @@ export function App() {
             source={folder}
             settingsController={settingsController}
             loadingLabel="connecting to server..."
-            emptyStateLabel="no photos found on server — tap to ingest"
+            emptyStateLabel="no photos found on server"
         />
     );
 }

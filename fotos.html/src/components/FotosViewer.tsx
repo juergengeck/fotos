@@ -6,6 +6,7 @@ import { Lightbox } from '@/components/Lightbox';
 import { Sidebar } from '@/components/Sidebar';
 import { TimelineScrubber } from '@/components/TimelineScrubber';
 import type { PhotoEntry } from '@/types/fotos';
+import type { IngestStatus } from '@/hooks/useServerAccess';
 
 export interface FotosViewerProgress {
     phase: 'scanning' | 'processing' | 'writing' | 'done';
@@ -17,7 +18,11 @@ export interface FotosViewerProgress {
 export interface FotosViewerSource extends GalleryAccessSource<PhotoEntry> {
     isOpen: boolean;
     ingestProgress: FotosViewerProgress | null;
+    ingestStatus: IngestStatus | null;
     openFolder?: () => Promise<void>;
+    startIngest?: () => Promise<void>;
+    pauseIngest?: () => Promise<void>;
+    resumeIngest?: () => Promise<void>;
     getFileUrl: (relativePath: string) => Promise<string>;
     getThumbUrl: (entry: PhotoEntry) => Promise<string | null>;
 }
@@ -42,7 +47,7 @@ export function FotosViewer({
     settingsController,
     appTitle = 'fotos.one',
     loadingLabel = 'connecting to source...',
-    emptyStateLabel = 'no photos found — tap to ingest',
+    emptyStateLabel = 'no photos found',
 }: FotosViewerProps) {
     const gallery = useFotosGalleryState<PhotoEntry>({ source });
     const { settings, updateStorage, updateDisplay, updateDeviceName } = settingsController;
@@ -65,8 +70,65 @@ export function FotosViewer({
         gallery.setSelectedIndex(null);
     }, [gallery]);
 
-    const progress = source.ingestProgress;
+    // ── Ingestion progress screen ─────────────────────────────────────
+    const status = source.ingestStatus;
+    if (status && (status.state === 'running' || status.state === 'paused')) {
+        const folderPct = status.totalFolders > 0
+            ? (status.folderIndex / status.totalFolders) * 100
+            : 0;
+        const photoPct = status.photosInFolder > 0
+            ? (status.photoIndex / status.photosInFolder) * 100
+            : 0;
 
+        return (
+            <div className="h-screen flex flex-col items-center justify-center bg-[#111] text-white/70"
+                 style={{ fontFamily: "'Figtree', system-ui, sans-serif" }}>
+                <div className="w-80 space-y-6">
+                    <h2 className="text-lg font-medium text-white text-center">
+                        {status.state === 'paused' ? 'Paused' : 'Ingesting photos...'}
+                    </h2>
+
+                    {/* Folder progress */}
+                    <div>
+                        <div className="flex justify-between text-xs text-white/40 mb-1">
+                            <span className="truncate mr-2">{status.currentFolder || '...'}</span>
+                            <span className="shrink-0">Folder {status.folderIndex + 1} of {status.totalFolders}</span>
+                        </div>
+                        <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                            <div className="h-full bg-[#e94560] transition-all" style={{ width: `${folderPct}%` }} />
+                        </div>
+                    </div>
+
+                    {/* Photo progress within folder */}
+                    <div>
+                        <div className="flex justify-between text-xs text-white/40 mb-1">
+                            <span>Photos in folder</span>
+                            <span>{status.photoIndex} / {status.photosInFolder}</span>
+                        </div>
+                        <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                            <div className="h-full bg-[#e94560] transition-all" style={{ width: `${photoPct}%` }} />
+                        </div>
+                    </div>
+
+                    {/* Overall */}
+                    <p className="text-xs text-white/30 text-center">
+                        {status.totalProcessed} of {status.totalFound} photos processed
+                    </p>
+
+                    {/* Pause / Resume button */}
+                    <button
+                        onClick={status.state === 'running' ? source.pauseIngest : source.resumeIngest}
+                        className="w-full py-2 rounded bg-white/10 hover:bg-white/20 text-sm text-white/70 transition-colors"
+                    >
+                        {status.state === 'running' ? 'Pause' : 'Resume'}
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    // ── Legacy ingest progress (browser-side) ─────────────────────────
+    const progress = source.ingestProgress;
     if (progress) {
         return (
             <div className="h-screen flex flex-col items-center justify-center bg-[#111] text-white/70"
@@ -90,6 +152,7 @@ export function FotosViewer({
         );
     }
 
+    // ── Loading ───────────────────────────────────────────────────────
     if (gallery.loading && !source.isOpen) {
         return (
             <div className="h-screen flex flex-col items-center justify-center bg-[#111] text-white/70"
@@ -99,13 +162,11 @@ export function FotosViewer({
         );
     }
 
+    // ── Empty state with Start Ingestion button ──────────────────────
     if (!source.isOpen) {
         return (
-            <div
-                className="h-screen flex flex-col items-center justify-center bg-[#111] text-white/70 cursor-pointer"
-                onClick={() => { void source.openFolder?.(); }}
-                style={{ fontFamily: "'Figtree', system-ui, sans-serif" }}
-            >
+            <div className="h-screen flex flex-col items-center justify-center bg-[#111] text-white/70"
+                 style={{ fontFamily: "'Figtree', system-ui, sans-serif" }}>
                 <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
                     <h1 style={{ fontFamily: "'Outfit', system-ui, sans-serif", fontWeight: 800, fontSize: 'clamp(2rem, 5vw, 3rem)', letterSpacing: '-0.03em' }}>
                         {appTitle.split('.').map((part, index, parts) => (
@@ -118,11 +179,20 @@ export function FotosViewer({
                     <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.9rem' }}>
                         {emptyStateLabel}
                     </p>
+                    {source.startIngest && (
+                        <button
+                            onClick={source.startIngest}
+                            className="px-6 py-2 rounded bg-[#e94560] hover:bg-[#d63850] text-white text-sm font-medium transition-colors"
+                        >
+                            Start Ingestion
+                        </button>
+                    )}
                 </div>
             </div>
         );
     }
 
+    // ── Gallery ──────────────────────────────────────────────────────
     return (
         <>
             <div className="h-screen flex">

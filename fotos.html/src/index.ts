@@ -9,6 +9,6 @@ export {
 export {
     useServerAccess,
     type FolderAccess,
-    type IngestProgress,
+    type IngestStatus,
 } from './hooks/useServerAccess';
 export { useSettings } from './hooks/useSettings';

@@ -10,6 +10,14 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./faces": {
+      "import": "./dist/faces.js",
+      "types": "./dist/faces.d.ts"
+    },
+    "./ingest": {
+      "import": "./dist/ingest/index.js",
+      "types": "./dist/ingest/index.d.ts"
     }
   },
   "files": [

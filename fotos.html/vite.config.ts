@@ -9,13 +9,26 @@ export default defineConfig({
     resolve: {
         alias: [
             {find: '@', replacement: path.resolve(__dirname, './src')},
-            {find: '@refinio/fotos.ui', replacement: path.resolve(__dirname, '../fotos.ui/src/index.ts')}
+            {find: '@refinio/fotos.ui', replacement: path.resolve(__dirname, '../fotos.ui/src/index.ts')},
+            {find: '@refinio/fotos.core/faces', replacement: path.resolve(__dirname, '../fotos.core/src/faces.ts')},
+            {find: '@refinio/fotos.core', replacement: path.resolve(__dirname, '../fotos.core/src/index.ts')},
+            {find: '@refinio/trie.core', replacement: path.resolve(__dirname, '../trie.core/src/index.ts')},
+            // meaning.core needs directory alias (sub-path imports like /vector-index/HNSWIndex.js)
+            {find: /^@refinio\/meaning\.core\/(.*)$/, replacement: path.resolve(__dirname, '../meaning.core/src/$1')},
+            {find: '@refinio/meaning.core', replacement: path.resolve(__dirname, '../meaning.core/src/index.ts')},
         ]
     },
     build: {
         target: 'esnext',
         outDir: 'dist',
-        emptyOutDir: true
+        emptyOutDir: true,
+        rollupOptions: {
+            // Workspace deps used only in Node.js code paths (ONE.core recipes)
+            // that are tree-shaken away in the browser build — safe to externalize
+            external: [
+                /^@refinio\/one\.core/,
+            ],
+        },
     },
     server: {
         port: 5189,
