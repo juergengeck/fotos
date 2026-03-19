@@ -355,6 +355,20 @@ export async function bootFotosModel(
     throw new Error('[fotos.one] bootFotosModel called but ONE.core is already initialized');
   }
 
+  // Check for ONE Auth redirect return
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const oneToken = params.get('one_token');
+    if (oneToken) {
+      // Clean URL immediately
+      const cleanUrl = new URL(window.location.href);
+      cleanUrl.searchParams.delete('one_token');
+      window.history.replaceState({}, '', cleanUrl.toString());
+      // Store for later use
+      sessionStorage.setItem('one_auth_token', oneToken);
+    }
+  } catch {}
+
   const one = new MultiUser({
     directory: 'fotos.one.storage',
     recipes: [

@@ -45,6 +45,7 @@ export function FotosSettings({ model }: FotosSettingsProps) {
     const [passkeyCount, setPasskeyCount] = useState(0);
     const [certifying, setCertifying] = useState(false);
     const [certifyError, setCertifyError] = useState<string | null>(null);
+    const [hasRecoveryKey, setHasRecoveryKey] = useState(false);
 
     const connected = model?.headlessConnected ?? false;
     const publicationIdentity = model?.publicationIdentity ?? null;
@@ -77,12 +78,19 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                 if (!nextSyncEnabled || !name || !configuredPublicationIdentity) {
                     setCertState('ephemeral');
                     setCertValidUntil(null);
+                    // Set FedCM login status for browser
+                    try {
+                        if ('login' in navigator) {
+                            (navigator as any).login.setStatus('logged-out');
+                        }
+                    } catch {}
                     return;
                 }
 
                 // Check registration + cert status
                 const identity = nameToIdentity(name);
                 const res = await fetch(`${API_BASE}/api/registration/check/${encodeURIComponent(identity)}`);
+                let nextCertState: CertState = 'ephemeral';
                 if (res.ok) {
                     const result = await res.json();
                     const registered = !(result.available ?? true);
@@ -93,25 +101,44 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                             const certResult = await certRes.json();
                             if (certResult.success && certResult.data?.cert?.validUntil) {
                                 if (cancelled) return;
+                                nextCertState = 'certified';
                                 setCertState('certified');
                                 setCertValidUntil(new Date(certResult.data.cert.validUntil).toLocaleDateString());
                             } else {
                                 if (cancelled) return;
+                                nextCertState = 'anchored';
                                 setCertState('anchored');
                             }
                         } else {
                             if (cancelled) return;
+                            nextCertState = 'anchored';
                             setCertState('anchored');
                         }
                     } else {
                         if (cancelled) return;
+                        nextCertState = 'anchored';
                         setCertState('anchored');
                     }
                 }
+
+                // Set FedCM login status for browser
+                try {
+                    if ('login' in navigator) {
+                        (navigator as any).login.setStatus(
+                            nextCertState === 'certified' ? 'logged-in' : 'logged-out'
+                        );
+                    }
+                } catch {}
             } catch {
                 if (cancelled) return;
                 setCertState('ephemeral');
                 setCertValidUntil(null);
+                // Set FedCM login status for browser
+                try {
+                    if ('login' in navigator) {
+                        (navigator as any).login.setStatus('logged-out');
+                    }
+                } catch {}
             }
         })();
         return () => {
@@ -142,6 +169,17 @@ export function FotosSettings({ model }: FotosSettingsProps) {
             } catch { /* passkey count is informational */ }
         })();
     }, [certState, syncEnabled, displayName, publicationIdentity]);
+
+    // Check recovery key status
+    useEffect(() => {
+        if (certState !== 'certified' || !publicationIdentity) return;
+        fetch(`${API_BASE}/api/recovery/status/${encodeURIComponent(publicationIdentity)}`)
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+                if (data?.hasRecoveryKey) setHasRecoveryKey(true);
+            })
+            .catch(() => {});
+    }, [certState, publicationIdentity]);
 
     const handleSyncToggle = useCallback(async () => {
         if (!model?.settingsPlan || syncPending) return;
@@ -282,6 +320,9 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                         <div className="px-2.5 text-[9px] text-white/20">
                             {passkeyCount} passkey{passkeyCount !== 1 ? 's' : ''} registered
                         </div>
+                        <div className="px-2.5 text-[9px] text-white/20">
+                            Recovery key: {hasRecoveryKey ? 'configured' : 'not set'}
+                        </div>
                     </>
                 )}
 
@@ -317,6 +358,13 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                     >
                         Manage on glue.one <ExternalLink className="w-2.5 h-2.5" />
                     </a>
+                )}
+
+                {syncEnabled && certState === 'certified' && (
+                    <div className="px-2.5 py-1.5 bg-white/5 rounded-md text-[10px] text-white/30 leading-relaxed">
+                        Your identity works across all ONE apps.
+                        Other sites can verify you via <span className="text-white/50">Sign in with ONE</span>.
+                    </div>
                 )}
 
                 {/* Learn more — always visible */}
