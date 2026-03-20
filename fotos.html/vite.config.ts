@@ -13,9 +13,12 @@ export default defineConfig({
             {find: '@refinio/fotos.core/faces', replacement: path.resolve(__dirname, '../fotos.core/src/faces.ts')},
             {find: '@refinio/fotos.core', replacement: path.resolve(__dirname, '../fotos.core/src/index.ts')},
             {find: '@refinio/trie.core', replacement: path.resolve(__dirname, '../trie.core/src/index.ts')},
-            // meaning.core needs directory alias (sub-path imports like /vector-index/HNSWIndex.js)
             {find: /^@refinio\/meaning\.core\/(.*)$/, replacement: path.resolve(__dirname, '../meaning.core/src/$1')},
             {find: '@refinio/meaning.core', replacement: path.resolve(__dirname, '../meaning.core/src/index.ts')},
+            // Browser shim for one.core crypto (used by trie.core/hash.ts)
+            {find: '@refinio/one.core/lib/system/crypto-helpers.js', replacement: path.resolve(__dirname, './src/shims/crypto-helpers.ts')},
+            // Externalize remaining one.core imports (type-only, tree-shaken)
+            {find: /^@refinio\/one\.core/, replacement: path.resolve(__dirname, './src/shims/empty.ts')},
         ]
     },
     build: {
@@ -23,10 +26,9 @@ export default defineConfig({
         outDir: 'dist',
         emptyOutDir: true,
         rollupOptions: {
-            // Workspace deps used only in Node.js code paths (ONE.core recipes)
-            // that are tree-shaken away in the browser build — safe to externalize
             external: [
-                /^@refinio\/one\.core/,
+                /^node:/,
+                'sharp',
             ],
         },
     },

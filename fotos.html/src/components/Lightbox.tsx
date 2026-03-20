@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, RotateCcw, FlipHorizontal, FlipVertical, Trash2, Maximize } from 'lucide-react';
 import type { PhotoEntry } from '@/types/fotos';
-import { EMBEDDING_DIM } from '@refinio/fotos.core';
+import { EMBEDDING_DIM } from '@refinio/fotos.core/faces';
 
 interface LightboxProps {
     photos: PhotoEntry[];
