@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Shield, Wifi, WifiOff, ExternalLink, Check, KeyRound, GripVertical, X, Loader2 } from 'lucide-react';
+import { Shield, ExternalLink, Check, KeyRound, GripVertical, X, Loader2, LogOut, Key } from 'lucide-react';
 import type { FotosModel } from '@/lib/onecore-boot';
 import {
     DEFAULT_GLUE_CONNECTION_BINDING_ID,
@@ -7,7 +7,7 @@ import {
     getGlueIdentityProfile,
     nameToIdentity,
 } from '@glueone/glue.core';
-import { authenticateWithPasskeyViaPopup } from '@glueone/auth.core';
+import { authenticateWithPasskeyViaPopup, registerPasskeyViaPopup, OneAuth } from '@glueone/auth.core';
 import { API_BASE } from '../config.js';
 import { deriveKeyFromPhotos, signRecoveryRequest } from '@/lib/photo-key-derivation.js';
 
@@ -35,19 +35,26 @@ interface FotosSettingsProps {
     model: FotosModel | null;
 }
 
+function setFedCMLoginStatus(status: 'logged-in' | 'logged-out') {
+    try {
+        if ('login' in navigator) {
+            (navigator as any).login.setStatus(status);
+        }
+    } catch {}
+}
+
 export function FotosSettings({ model }: FotosSettingsProps) {
     const [syncEnabled, setSyncEnabled] = useState(false);
-    const [syncPending, setSyncPending] = useState(false);
-    const [syncError, setSyncError] = useState<string | null>(null);
     const [displayName, setDisplayName] = useState<string | null>(null);
     const [certState, setCertState] = useState<CertState>('ephemeral');
     const [certValidUntil, setCertValidUntil] = useState<string | null>(null);
     const [passkeyCount, setPasskeyCount] = useState(0);
-    const [certifying, setCertifying] = useState(false);
-    const [certifyError, setCertifyError] = useState<string | null>(null);
+    const [signingIn, setSigningIn] = useState(false);
+    const [signInError, setSignInError] = useState<string | null>(null);
     const [hasRecoveryKey, setHasRecoveryKey] = useState(false);
+    const [showPasskeyPrompt, setShowPasskeyPrompt] = useState(false);
+    const [registeringPasskey, setRegisteringPasskey] = useState(false);
 
-    const connected = model?.headlessConnected ?? false;
     const publicationIdentity = model?.publicationIdentity ?? null;
 
     // Load identity state from settings
@@ -78,12 +85,7 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                 if (!nextSyncEnabled || !name || !configuredPublicationIdentity) {
                     setCertState('ephemeral');
                     setCertValidUntil(null);
-                    // Set FedCM login status for browser
-                    try {
-                        if ('login' in navigator) {
-                            (navigator as any).login.setStatus('logged-out');
-                        }
-                    } catch {}
+                    setFedCMLoginStatus('logged-out');
                     return;
                 }
 
@@ -95,7 +97,6 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                     const result = await res.json();
                     const registered = !(result.available ?? true);
                     if (registered) {
-                        // Check for counter-signed cert
                         const certRes = await fetch(`${API_BASE}/api/registration/cert/${encodeURIComponent(name)}`);
                         if (certRes.ok) {
                             const certResult = await certRes.json();
@@ -121,24 +122,12 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                     }
                 }
 
-                // Set FedCM login status for browser
-                try {
-                    if ('login' in navigator) {
-                        (navigator as any).login.setStatus(
-                            nextCertState === 'certified' ? 'logged-in' : 'logged-out'
-                        );
-                    }
-                } catch {}
+                setFedCMLoginStatus(nextCertState === 'certified' ? 'logged-in' : 'logged-out');
             } catch {
                 if (cancelled) return;
                 setCertState('ephemeral');
                 setCertValidUntil(null);
-                // Set FedCM login status for browser
-                try {
-                    if ('login' in navigator) {
-                        (navigator as any).login.setStatus('logged-out');
-                    }
-                } catch {}
+                setFedCMLoginStatus('logged-out');
             }
         })();
         return () => {
@@ -181,190 +170,278 @@ export function FotosSettings({ model }: FotosSettingsProps) {
             .catch(() => {});
     }, [certState, publicationIdentity]);
 
-    const handleSyncToggle = useCallback(async () => {
-        if (!model?.settingsPlan || syncPending) return;
+    // Sign in: passkey first if available, then OneAuth fallback
+    const handleSignIn = useCallback(async () => {
+        if (!model?.settingsPlan) return;
+        setSigningIn(true);
+        setSignInError(null);
 
-        const nextSyncEnabled = !syncEnabled;
-        const previousSyncEnabled = syncEnabled;
+        try {
+            // Enable sync first if needed
+            if (!syncEnabled) {
+                await model.settingsPlan.updateSection({
+                    moduleId: 'glue',
+                    values: { syncEnabled: true },
+                });
+                window.location.reload();
+                return;
+            }
 
-        setSyncEnabled(nextSyncEnabled);
-        setSyncPending(true);
-        setSyncError(null);
+            if (!model.publicationIdentity || !displayName) {
+                throw new Error('Identity not ready — sync may still be loading');
+            }
 
+            let usedPasskey = false;
+
+            // Try passkey first if user has any registered
+            if (passkeyCount > 0) {
+                try {
+                    const result = await authenticateWithPasskeyViaPopup(model.publicationIdentity, displayName);
+                    if (result.success) {
+                        usedPasskey = true;
+                        setCertState('certified');
+                        if (result.data?.cert?.validUntil) {
+                            setCertValidUntil(new Date(result.data.cert.validUntil).toLocaleDateString());
+                        }
+                        setFedCMLoginStatus('logged-in');
+                    }
+                } catch {
+                    // Passkey failed — fall through to OneAuth
+                }
+            }
+
+            // OneAuth fallback (FedCM → popup → redirect)
+            if (!usedPasskey) {
+                const oneAuth = new OneAuth();
+                const result = await oneAuth.login({ popup: true });
+                if ('cancelled' in result) {
+                    setSigningIn(false);
+                    return;
+                }
+                // OneAuth succeeded — reload to complete certification with the new identity
+                window.location.reload();
+                return;
+            }
+
+            // After passkey sign-in, offer to save a passkey if they don't have one
+            // (shouldn't happen since we only use passkey when count > 0, but guard)
+        } catch (err) {
+            setSignInError((err as Error).message);
+        } finally {
+            setSigningIn(false);
+        }
+    }, [model?.settingsPlan, model?.publicationIdentity, syncEnabled, displayName, passkeyCount]);
+
+    // OneAuth-only sign-in (when no passkeys or as explicit action)
+    const handleSignInWithONE = useCallback(async () => {
+        if (!model?.settingsPlan) return;
+        setSigningIn(true);
+        setSignInError(null);
+
+        try {
+            // Enable sync first if needed
+            if (!syncEnabled) {
+                await model.settingsPlan.updateSection({
+                    moduleId: 'glue',
+                    values: { syncEnabled: true },
+                });
+                window.location.reload();
+                return;
+            }
+
+            const oneAuth = new OneAuth();
+            const result = await oneAuth.login({ popup: true });
+            if ('cancelled' in result) {
+                setSigningIn(false);
+                return;
+            }
+            // Reload to complete certification
+            window.location.reload();
+        } catch (err) {
+            setSignInError((err as Error).message);
+        } finally {
+            setSigningIn(false);
+        }
+    }, [model?.settingsPlan, syncEnabled]);
+
+    // Register a passkey after successful sign-in
+    const handleSavePasskey = useCallback(async () => {
+        if (!model?.publicationIdentity || !displayName) return;
+        setRegisteringPasskey(true);
+        try {
+            const result = await registerPasskeyViaPopup(model.publicationIdentity, displayName);
+            if (result.success) {
+                setPasskeyCount(prev => prev + 1);
+            }
+        } catch { /* user cancelled or error — non-fatal */ }
+        setRegisteringPasskey(false);
+        setShowPasskeyPrompt(false);
+    }, [model?.publicationIdentity, displayName]);
+
+    // Sign out: disable sync and reload
+    const handleSignOut = useCallback(async () => {
+        if (!model?.settingsPlan) return;
         try {
             await model.settingsPlan.updateSection({
                 moduleId: 'glue',
-                values: {
-                    syncEnabled: nextSyncEnabled,
-                },
+                values: { syncEnabled: false },
             });
+            setFedCMLoginStatus('logged-out');
             window.location.reload();
         } catch (err) {
-            setSyncEnabled(previousSyncEnabled);
-            setSyncPending(false);
-            setSyncError(err instanceof Error ? err.message : 'Failed to update sync setting');
+            setSignInError((err as Error).message);
         }
-    }, [model?.settingsPlan, syncEnabled, syncPending]);
+    }, [model?.settingsPlan]);
 
-    const handleCertify = useCallback(async () => {
-        if (!syncEnabled || !model?.publicationIdentity || !displayName) return;
-        setCertifying(true);
-        setCertifyError(null);
-        try {
-            const result = await authenticateWithPasskeyViaPopup(model.publicationIdentity, displayName);
-            if (result.success) {
-                setCertState('certified');
-                if (result.data?.cert?.validUntil) {
-                    setCertValidUntil(new Date(result.data.cert.validUntil).toLocaleDateString());
-                }
-            } else {
-                setCertifyError(result.error || 'Certification failed');
-            }
-        } catch (err) {
-            setCertifyError((err as Error).message);
-        } finally {
-            setCertifying(false);
-        }
-    }, [syncEnabled, model?.publicationIdentity, displayName]);
+    const signedIn = certState === 'certified' && syncEnabled;
 
     return (
-        <>
-            {/* Connection status */}
-            <CollapsibleSection label="Sync">
-                <label className="flex items-start gap-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-2">
-                    <input
-                        type="checkbox"
-                        checked={syncEnabled}
-                        onChange={() => void handleSyncToggle()}
-                        disabled={syncPending || !model?.settingsPlan}
-                        className="mt-0.5 h-3.5 w-3.5 accent-[#e94560]"
-                    />
-                    <div className="space-y-1">
-                        <div className="text-[11px] text-white/72">Enable glue.one sync</div>
-                        <p className="text-[10px] leading-relaxed text-white/30">
-                            When off, fotos stays local and does not connect to glue.one.
-                        </p>
-                    </div>
-                </label>
-
-                <div className="flex items-center gap-2 px-2.5 py-1.5 bg-white/5 rounded-md text-[11px]">
-                    {syncPending ? (
-                        <>
-                            <Wifi className="w-3 h-3 text-white/25" />
-                            <span className="text-white/40">Reloading...</span>
-                        </>
-                    ) : syncEnabled && connected ? (
-                        <>
-                            <Wifi className="w-3 h-3 text-green-400/70" />
-                            <span className="text-green-400/70">Connected to glue.one</span>
-                        </>
-                    ) : syncEnabled ? (
-                        <>
-                            <Wifi className="w-3 h-3 text-white/40" />
-                            <span className="text-white/40">
-                                {publicationIdentity ? 'Sync enabled' : 'Sync enabled, waiting for identity'}
-                            </span>
-                        </>
-                    ) : (
-                        <>
-                            <WifiOff className="w-3 h-3 text-white/25" />
-                            <span className="text-white/25">Sync is off</span>
-                        </>
-                    )}
-                </div>
-
-                {syncError && (
-                    <div className="px-2.5 text-[10px] text-red-400/70">{syncError}</div>
-                )}
-            </CollapsibleSection>
-
-            {/* Identity */}
-            <CollapsibleSection label="Identity">
-              <div className="space-y-1.5">
-                {!syncEnabled && (
-                    <div className="px-2.5 py-2 bg-white/5 rounded-md text-[11px] text-white/40 leading-relaxed">
-                        {displayName && publicationIdentity
-                            ? `${displayName} stays local until Sync is enabled.`
-                            : 'Sync is off. Fotos stays local and does not talk to glue.one.'}
-                    </div>
-                )}
-
-                {syncEnabled && certState === 'ephemeral' && (
-                    <div className="px-2.5 py-2 bg-white/5 rounded-md text-[11px] text-white/40 leading-relaxed">
-                        Using local identity (ephemeral).
-                        Your photos stay on your devices.
-                    </div>
-                )}
-
-                {certState === 'anchored' && displayName && (
-                    <div className="flex items-center gap-2 px-2.5 py-1.5 bg-white/5 rounded-md text-[11px] text-white/60">
-                        <Shield className="w-3 h-3 text-white/30 shrink-0" />
-                        <span className="truncate flex-1">{displayName}</span>
-                        <span className="text-[9px] text-white/25">self-signed</span>
-                    </div>
-                )}
-
-                {certState === 'certified' && displayName && (
+        <CollapsibleSection label="fotos id">
+            <div className="space-y-2">
+                {/* ── Signed out ── */}
+                {!signedIn && (
                     <>
-                        <div className="flex items-center gap-2 px-2.5 py-1.5 bg-white/5 rounded-md text-[11px] text-white/60">
-                            <Shield className="w-3 h-3 text-green-400/70 shrink-0" />
-                            <span className="truncate flex-1">{displayName}</span>
-                            <Check className="w-3 h-3 text-green-400/70 shrink-0" />
-                            <span className="text-[9px] text-green-400/50">Certified</span>
+                        <div className="px-2.5 py-2 bg-white/5 rounded-md text-[11px] text-white/40 leading-relaxed">
+                            Sign in to sync your photos across devices and use your identity on other ONE apps.
                         </div>
+
+                        {/* Primary sign-in button */}
+                        <button
+                            onClick={passkeyCount > 0 ? handleSignIn : handleSignInWithONE}
+                            disabled={signingIn || !model?.settingsPlan}
+                            className={`w-full flex items-center justify-center gap-1.5 px-2.5 py-2.5 rounded-md text-[11px] font-medium transition-colors ${
+                                signingIn
+                                    ? 'bg-white/5 text-white/20 cursor-wait'
+                                    : 'bg-[#e94560]/80 text-white hover:bg-[#e94560]'
+                            }`}
+                        >
+                            {signingIn && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                            <Shield className="w-3.5 h-3.5" />
+                            {signingIn
+                                ? 'Signing in...'
+                                : passkeyCount > 0
+                                    ? 'Sign in'
+                                    : 'Sign in with ONE'}
+                        </button>
+
+                        {/* If user has passkeys, show OneAuth as secondary option */}
+                        {passkeyCount > 0 && !signingIn && (
+                            <button
+                                onClick={handleSignInWithONE}
+                                className="w-full text-center text-[10px] text-white/25 hover:text-white/40 transition-colors py-1"
+                            >
+                                Sign in with ONE instead
+                            </button>
+                        )}
+
+                        {signInError && (
+                            <div className="px-2.5 text-[10px] text-red-400/70">{signInError}</div>
+                        )}
+                    </>
+                )}
+
+                {/* ── Signed in ── */}
+                {signedIn && displayName && (
+                    <>
+                        {/* Identity card */}
+                        <div className="flex items-center gap-2 px-2.5 py-2 bg-white/5 rounded-md text-[11px] text-white/60">
+                            <Shield className="w-3.5 h-3.5 text-green-400/70 shrink-0" />
+                            <span className="truncate flex-1 font-medium">{displayName}</span>
+                            <Check className="w-3 h-3 text-green-400/70 shrink-0" />
+                        </div>
+
+                        {/* Status details */}
                         {certValidUntil && (
                             <div className="px-2.5 text-[9px] text-white/20">
                                 Valid until {certValidUntil}
                             </div>
                         )}
-                        <div className="px-2.5 text-[9px] text-white/20">
-                            {passkeyCount} passkey{passkeyCount !== 1 ? 's' : ''} registered
+
+                        {/* Passkey status */}
+                        <div className="flex items-center gap-1 px-2.5 text-[9px] text-white/20">
+                            <Key className="w-2.5 h-2.5" />
+                            {passkeyCount > 0
+                                ? `${passkeyCount} passkey${passkeyCount !== 1 ? 's' : ''}`
+                                : 'No passkeys'}
+                            {passkeyCount === 0 && (
+                                <button
+                                    onClick={() => void handleSavePasskey()}
+                                    disabled={registeringPasskey}
+                                    className="ml-1 text-[#e94560]/60 hover:text-[#e94560] transition-colors"
+                                >
+                                    {registeringPasskey ? 'saving...' : 'add passkey'}
+                                </button>
+                            )}
                         </div>
+
+                        {/* Passkey save prompt (shown after OneAuth sign-in) */}
+                        {showPasskeyPrompt && (
+                            <div className="px-2.5 py-2 bg-[#e94560]/8 border border-[#e94560]/20 rounded-md space-y-2">
+                                <div className="text-[10px] text-white/50">
+                                    Save a passkey for faster sign-in next time?
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => void handleSavePasskey()}
+                                        disabled={registeringPasskey}
+                                        className="px-3 py-1 rounded-md text-[10px] font-medium bg-[#e94560]/80 text-white hover:bg-[#e94560] transition-colors"
+                                    >
+                                        {registeringPasskey ? 'Saving...' : 'Save passkey'}
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setShowPasskeyPrompt(false);
+                                            try { localStorage.setItem('fotos_passkey_prompt_dismissed', '1'); } catch {}
+                                        }}
+                                        className="text-[10px] text-white/25 hover:text-white/40 transition-colors"
+                                    >
+                                        Skip
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Recovery key status */}
                         <div className="px-2.5 text-[9px] text-white/20">
                             Recovery key: {hasRecoveryKey ? 'configured' : 'not set'}
                         </div>
+
+                        {/* Inline recovery setup when not configured */}
+                        {!hasRecoveryKey && (
+                            <RecoverySecretSection model={model} onComplete={() => setHasRecoveryKey(true)} />
+                        )}
+
+                        {/* When recovery IS configured, allow changing it */}
+                        {hasRecoveryKey && (
+                            <CollapsibleSection label="Change recovery key" defaultOpen={false}>
+                                <RecoverySecretSection model={model} onComplete={() => setHasRecoveryKey(true)} />
+                            </CollapsibleSection>
+                        )}
+
+                        {/* Federation info */}
+                        <div className="px-2.5 py-1.5 bg-white/5 rounded-md text-[10px] text-white/30 leading-relaxed">
+                            Your identity works across all ONE apps.
+                        </div>
+
+                        {/* Footer links */}
+                        <div className="flex items-center gap-3 px-2.5">
+                            <a
+                                href="https://glue.one"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1 text-[10px] text-white/25 hover:text-white/40 transition-colors"
+                            >
+                                Manage identity <ExternalLink className="w-2.5 h-2.5" />
+                            </a>
+                            <button
+                                onClick={() => void handleSignOut()}
+                                className="flex items-center gap-1 text-[10px] text-white/25 hover:text-red-400/60 transition-colors ml-auto"
+                            >
+                                <LogOut className="w-2.5 h-2.5" />
+                                Sign out
+                            </button>
+                        </div>
                     </>
-                )}
-
-                {/* Sign in button — shown when not certified */}
-                {syncEnabled && certState !== 'certified' && (
-                    <button
-                        onClick={handleCertify}
-                        disabled={certifying || !displayName || !model?.publicationIdentity}
-                        className={`w-full flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-md text-[11px] font-medium transition-colors ${
-                            certifying
-                                ? 'bg-white/5 text-white/20 cursor-wait'
-                                : !displayName || !model?.publicationIdentity
-                                    ? 'bg-white/5 text-white/20 cursor-not-allowed'
-                                : 'bg-[#e94560]/80 text-white hover:bg-[#e94560]'
-                        }`}
-                    >
-                        <Shield className="w-3.5 h-3.5" />
-                        {certifying ? 'Certifying...' : 'Sign in with glue.one'}
-                    </button>
-                )}
-
-                {certifyError && (
-                    <div className="px-2.5 text-[10px] text-red-400/70">{certifyError}</div>
-                )}
-
-                {/* Manage link — shown when certified */}
-                {syncEnabled && certState === 'certified' && (
-                    <a
-                        href="https://glue.one"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 px-2.5 py-1 text-[10px] text-white/25 hover:text-white/40 transition-colors"
-                    >
-                        Manage on glue.one <ExternalLink className="w-2.5 h-2.5" />
-                    </a>
-                )}
-
-                {syncEnabled && certState === 'certified' && (
-                    <div className="px-2.5 py-1.5 bg-white/5 rounded-md text-[10px] text-white/30 leading-relaxed">
-                        Your identity works across all ONE apps.
-                        Other sites can verify you via <span className="text-white/50">Sign in with ONE</span>.
-                    </div>
                 )}
 
                 {/* Learn more — always visible */}
@@ -374,16 +451,14 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                     rel="noopener noreferrer"
                     className="flex items-center gap-1 px-2.5 py-1 text-[10px] text-white/25 hover:text-white/40 transition-colors"
                 >
-                    Learn more about glue.one <ExternalLink className="w-2.5 h-2.5" />
+                    Learn more <ExternalLink className="w-2.5 h-2.5" />
                 </a>
-              </div>
-            </CollapsibleSection>
-
-            {/* Recovery Secret */}
-            <RecoverySecretSection model={model} />
-        </>
+            </div>
+        </CollapsibleSection>
     );
 }
+
+// ── Recovery Secret (inline) ────────────────────────────────────────
 
 type RecoveryPhase = 'idle' | 'picking' | 'deriving' | 'submitting' | 'done' | 'error';
 
@@ -392,7 +467,7 @@ interface SelectedImage {
     thumbnailUrl: string;
 }
 
-function RecoverySecretSection({ model }: { model: FotosModel | null }) {
+function RecoverySecretSection({ model, onComplete }: { model: FotosModel | null; onComplete?: () => void }) {
     const [phase, setPhase] = useState<RecoveryPhase>('idle');
     const [images, setImages] = useState<SelectedImage[]>([]);
     const [pin, setPin] = useState('');
@@ -494,6 +569,7 @@ function RecoverySecretSection({ model }: { model: FotosModel | null }) {
 
             setPhase('done');
             setProgress('');
+            onComplete?.();
 
             // Clean up thumbnails
             for (const img of images) {
@@ -504,7 +580,7 @@ function RecoverySecretSection({ model }: { model: FotosModel | null }) {
             setError(err instanceof Error ? err.message : 'Key derivation failed');
             setProgress('');
         }
-    }, [images, pin, model]);
+    }, [images, pin, model, onComplete]);
 
     const handleReset = useCallback(() => {
         for (const img of images) {
@@ -520,118 +596,116 @@ function RecoverySecretSection({ model }: { model: FotosModel | null }) {
     const busy = phase === 'deriving' || phase === 'submitting';
 
     return (
-        <CollapsibleSection label="Recovery" defaultOpen={false}>
-            <div className="space-y-2">
-                <p className="px-2.5 text-[10px] leading-relaxed text-white/30">
-                    Pick photos you'll remember, arrange them in order, and enter a date as PIN.
-                    This derives a recovery key from your photos — nothing is stored.
-                </p>
+        <div className="space-y-2">
+            <p className="px-2.5 text-[10px] leading-relaxed text-white/30">
+                Pick photos you'll remember, arrange them in order, and enter a date as PIN.
+                This derives a recovery key from your photos.
+            </p>
 
-                {phase === 'done' ? (
-                    <>
-                        <div className="px-2.5 py-2 bg-green-400/10 rounded-md text-[11px] text-green-400/70">
-                            Recovery secret registered.
-                        </div>
-                        <button
-                            onClick={handleReset}
-                            className="w-full px-2.5 py-2 rounded-md text-[11px] font-medium bg-white/5 text-white/40 hover:text-white/60 transition-colors"
-                        >
-                            Set new recovery secret
-                        </button>
-                    </>
-                ) : (
-                    <>
-                        {/* Hidden file input */}
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            className="hidden"
-                            onChange={handleFilesSelected}
-                        />
+            {phase === 'done' ? (
+                <>
+                    <div className="px-2.5 py-2 bg-green-400/10 rounded-md text-[11px] text-green-400/70">
+                        Recovery secret registered.
+                    </div>
+                    <button
+                        onClick={handleReset}
+                        className="w-full px-2.5 py-2 rounded-md text-[11px] font-medium bg-white/5 text-white/40 hover:text-white/60 transition-colors"
+                    >
+                        Set new recovery secret
+                    </button>
+                </>
+            ) : (
+                <>
+                    {/* Hidden file input */}
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={handleFilesSelected}
+                    />
 
-                        {/* Photo thumbnails with drag-to-reorder */}
-                        {images.length > 0 && (
-                            <div className="space-y-1">
-                                {images.map((img, i) => (
-                                    <div
-                                        key={img.thumbnailUrl}
-                                        draggable
-                                        onDragStart={() => handleDragStart(i)}
-                                        onDragOver={e => handleDragOver(e, i)}
-                                        onDragEnd={handleDragEnd}
-                                        className="flex items-center gap-1.5 px-1.5 py-1 bg-white/5 rounded-md group cursor-grab active:cursor-grabbing"
+                    {/* Photo thumbnails with drag-to-reorder */}
+                    {images.length > 0 && (
+                        <div className="space-y-1">
+                            {images.map((img, i) => (
+                                <div
+                                    key={img.thumbnailUrl}
+                                    draggable
+                                    onDragStart={() => handleDragStart(i)}
+                                    onDragOver={e => handleDragOver(e, i)}
+                                    onDragEnd={handleDragEnd}
+                                    className="flex items-center gap-1.5 px-1.5 py-1 bg-white/5 rounded-md group cursor-grab active:cursor-grabbing"
+                                >
+                                    <GripVertical className="w-3 h-3 text-white/15 shrink-0" />
+                                    <span className="text-[10px] text-white/25 w-4 text-right shrink-0">{i + 1}</span>
+                                    <img
+                                        src={img.thumbnailUrl}
+                                        className="w-8 h-8 rounded object-cover shrink-0"
+                                    />
+                                    <span className="text-[10px] text-white/40 truncate flex-1">{img.file.name}</span>
+                                    <button
+                                        onClick={() => handleRemoveImage(i)}
+                                        className="p-0.5 text-white/15 hover:text-red-400/70 transition-colors opacity-0 group-hover:opacity-100"
                                     >
-                                        <GripVertical className="w-3 h-3 text-white/15 shrink-0" />
-                                        <span className="text-[10px] text-white/25 w-4 text-right shrink-0">{i + 1}</span>
-                                        <img
-                                            src={img.thumbnailUrl}
-                                            className="w-8 h-8 rounded object-cover shrink-0"
-                                        />
-                                        <span className="text-[10px] text-white/40 truncate flex-1">{img.file.name}</span>
-                                        <button
-                                            onClick={() => handleRemoveImage(i)}
-                                            className="p-0.5 text-white/15 hover:text-red-400/70 transition-colors opacity-0 group-hover:opacity-100"
-                                        >
-                                            <X className="w-3 h-3" />
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
 
-                        {/* Add photos button */}
-                        <button
-                            onClick={handlePickPhotos}
-                            disabled={busy}
-                            className="w-full flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-md text-[11px] font-medium bg-white/5 text-white/40 hover:text-white/60 hover:bg-white/10 transition-colors disabled:opacity-30"
-                        >
-                            <KeyRound className="w-3.5 h-3.5" />
-                            {images.length === 0 ? 'Pick photos' : 'Add more photos'}
-                        </button>
+                    {/* Add photos button */}
+                    <button
+                        onClick={handlePickPhotos}
+                        disabled={busy}
+                        className="w-full flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-md text-[11px] font-medium bg-white/5 text-white/40 hover:text-white/60 hover:bg-white/10 transition-colors disabled:opacity-30"
+                    >
+                        <KeyRound className="w-3.5 h-3.5" />
+                        {images.length === 0 ? 'Pick photos' : 'Add more photos'}
+                    </button>
 
-                        {/* PIN input */}
-                        {images.length > 0 && (
-                            <div className="space-y-1">
-                                <label className="block text-[10px] text-white/25 px-2.5">
-                                    Date PIN (DDMMYYYY)
-                                </label>
-                                <input
-                                    type="text"
-                                    inputMode="numeric"
-                                    maxLength={8}
-                                    placeholder="DDMMYYYY"
-                                    value={pin}
-                                    onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
-                                    disabled={busy}
-                                    className="w-full px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-md text-[11px] text-white/60 font-mono placeholder:text-white/15 focus:outline-none focus:border-white/20"
-                                />
-                            </div>
-                        )}
-
-                        {/* Derive button */}
-                        {images.length > 0 && pin.length === 8 && (
-                            <button
-                                onClick={handleDerive}
+                    {/* PIN input */}
+                    {images.length > 0 && (
+                        <div className="space-y-1">
+                            <label className="block text-[10px] text-white/25 px-2.5">
+                                Date PIN (DDMMYYYY)
+                            </label>
+                            <input
+                                type="text"
+                                inputMode="numeric"
+                                maxLength={8}
+                                placeholder="DDMMYYYY"
+                                value={pin}
+                                onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
                                 disabled={busy}
-                                className={`w-full flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-md text-[11px] font-medium transition-colors ${
-                                    busy
-                                        ? 'bg-white/5 text-white/20 cursor-wait'
-                                        : 'bg-[#e94560]/80 text-white hover:bg-[#e94560]'
-                                }`}
-                            >
-                                {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                                {busy ? progress : 'Derive recovery key'}
-                            </button>
-                        )}
+                                className="w-full px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-md text-[11px] text-white/60 font-mono placeholder:text-white/15 focus:outline-none focus:border-white/20"
+                            />
+                        </div>
+                    )}
 
-                        {error && (
-                            <div className="px-2.5 text-[10px] text-red-400/70">{error}</div>
-                        )}
-                    </>
-                )}
-            </div>
-        </CollapsibleSection>
+                    {/* Derive button */}
+                    {images.length > 0 && pin.length === 8 && (
+                        <button
+                            onClick={handleDerive}
+                            disabled={busy}
+                            className={`w-full flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-md text-[11px] font-medium transition-colors ${
+                                busy
+                                    ? 'bg-white/5 text-white/20 cursor-wait'
+                                    : 'bg-[#e94560]/80 text-white hover:bg-[#e94560]'
+                            }`}
+                        >
+                            {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                            {busy ? progress : 'Derive recovery key'}
+                        </button>
+                    )}
+
+                    {error && (
+                        <div className="px-2.5 text-[10px] text-red-400/70">{error}</div>
+                    )}
+                </>
+            )}
+        </div>
     );
 }
