@@ -31,6 +31,16 @@ export interface FsEntry {
     data?: Record<string, string>;
 }
 
+export interface FolderMetadata {
+    path: string;           // relative path from library root
+    name: string;           // display name (last path segment)
+    photoCount: number;     // total photos (including nested children)
+    localCount: number;     // photos directly in this folder
+    dateRangeStart?: string; // earliest capture date (ISO)
+    dateRangeEnd?: string;   // latest capture date (ISO)
+    childCount: number;     // number of immediate child folders
+}
+
 export interface IngestProgress {
     phase: 'scanning' | 'processing' | 'writing' | 'done' | 'error';
     current: number;

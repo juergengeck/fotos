@@ -1,5 +1,5 @@
 // index-html.ts — Shared index.html renderer and parser for fotos.one ingest
-import type { FsEntry } from './types.js';
+import type { FsEntry, FolderMetadata } from './types.js';
 
 export function escapeHtml(text: string): string {
     return text.replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -44,22 +44,58 @@ function renderFacesCell(data: Record<string, string> | undefined): string {
     return faces.join('');
 }
 
+function computeArticleMeta(entries: FsEntry[], children: FolderMetadata[]): Omit<FolderMetadata, 'path' | 'name'> {
+    const localCount = entries.length;
+    const childPhotoSum = children.reduce((s, c) => s + c.photoCount, 0);
+    const photoCount = localCount + childPhotoSum;
+    const childCount = children.length;
+
+    // Collect all date strings: entry exif dates + child date ranges
+    const dates: string[] = [];
+    for (const e of entries) {
+        const d = e.data?.['exif-date'];
+        if (d) dates.push(d);
+    }
+    for (const c of children) {
+        if (c.dateRangeStart) dates.push(c.dateRangeStart);
+        if (c.dateRangeEnd) dates.push(c.dateRangeEnd);
+    }
+    dates.sort();
+
+    return {
+        photoCount,
+        localCount,
+        dateRangeStart: dates.length > 0 ? dates[0] : undefined,
+        dateRangeEnd: dates.length > 0 ? dates[dates.length - 1] : undefined,
+        childCount,
+    };
+}
+
 export function renderIndexHtml(
     dirPath: string,
     entries: FsEntry[],
-    children: string[],
+    children: FolderMetadata[],
     scannedAt: number
 ): string {
     const title = dirPath || 'root';
     const scanned = new Date(scannedAt).toISOString();
+    const meta = computeArticleMeta(entries, children);
 
-    const childRows = children.map(c =>
-        `        <tr class="fs-child">
+    const childRows = children.map(c => {
+        const dateRange = c.dateRangeStart && c.dateRangeEnd
+            ? `<span itemprop="dateRangeStart">${escapeHtml(c.dateRangeStart)}</span> &ndash; <span itemprop="dateRangeEnd">${escapeHtml(c.dateRangeEnd)}</span>`
+            : c.dateRangeStart
+                ? `<span itemprop="dateRangeStart">${escapeHtml(c.dateRangeStart)}</span>`
+                : '';
+        return `        <tr class="fs-child" itemscope itemtype="//fotos.one/FolderMetadata">
             <td class="fs-icon">\u{1F4C1}</td>
-            <td class="fs-name"><a href="${escapeHtml(c)}/one/index.html">${escapeHtml(c)}/</a></td>
-            <td class="fs-faces"></td><td class="fs-size"></td><td class="fs-date"></td><td class="fs-path"></td>
-        </tr>`
-    ).join('\n');
+            <td class="fs-name"><a href="${escapeHtml(c.path)}/one/index.html" itemprop="path">${escapeHtml(c.name)}</a></td>
+            <td class="fs-faces"></td>
+            <td class="fs-size" itemprop="photoCount">${c.photoCount}</td>
+            <td class="fs-date">${dateRange}</td>
+            <td class="fs-path"></td>
+        </tr>`;
+    }).join('\n');
 
     const entryRows = entries.map(e => {
         let attrs = ` data-mime="${escapeHtml(e.mime)}"`;
@@ -88,6 +124,15 @@ export function renderIndexHtml(
     }).join('\n');
 
     const summary = `${entries.length} files, ${children.length} folders`;
+
+    // Article-level meta tags
+    const metaTags: string[] = [];
+    metaTags.push(`    <meta itemprop="photoCount" content="${meta.photoCount}">`);
+    metaTags.push(`    <meta itemprop="localCount" content="${meta.localCount}">`);
+    if (meta.dateRangeStart) metaTags.push(`    <meta itemprop="dateRangeStart" content="${escapeHtml(meta.dateRangeStart)}">`);
+    if (meta.dateRangeEnd) metaTags.push(`    <meta itemprop="dateRangeEnd" content="${escapeHtml(meta.dateRangeEnd)}">`);
+    metaTags.push(`    <meta itemprop="childCount" content="${meta.childCount}">`);
+    const metaBlock = metaTags.join('\n');
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -126,7 +171,8 @@ a.fs-face:hover .fs-face-name{color:var(--fs-accent)}
 </style>
 </head>
 <body>
-<article class="fs-node" data-path="${escapeHtml(dirPath)}" data-scanned="${scanned}">
+<article class="fs-node" itemscope itemtype="//fotos.one/FolderIndex" data-path="${escapeHtml(dirPath)}" data-scanned="${scanned}">
+${metaBlock}
     <header class="fs-header">
         <h1 class="fs-title">${escapeHtml(title)}</h1>
         <div class="fs-meta"><span class="fs-summary">${summary}</span></div>
@@ -192,6 +238,98 @@ export interface ParsedPhotoEntry {
         gps?: { lat: number; lon: number }; width?: number; height?: number;
     };
     faceData?: Record<string, string>;
+}
+
+export interface ParsedFolderIndex {
+    meta: FolderMetadata;
+    children: FolderMetadata[];
+    entries: ParsedPhotoEntry[];
+}
+
+/**
+ * Parse ONLY the article-level meta tags from an index.html file.
+ * Fast — does not parse any entry rows or child rows.
+ */
+export function parseFolderMeta(html: string): FolderMetadata {
+    const articleRegex = /<article[^>]*class="fs-node"[^>]*>/i;
+    const articleMatch = html.match(articleRegex);
+    const articleAttrs = articleMatch?.[0] ?? '';
+
+    const path = getAttr(articleAttrs, 'data-path') ?? '';
+    const segments = path.split('/').filter(Boolean);
+    const name = segments.length > 0 ? segments[segments.length - 1] : path || 'root';
+
+    // Extract meta itemprop tags within the article (before the table)
+    const articleStart = articleMatch?.index ?? 0;
+    const tableStart = html.indexOf('<table', articleStart);
+    const metaSection = html.slice(articleStart, tableStart > 0 ? tableStart : undefined);
+
+    function getMetaProp(prop: string): string | undefined {
+        const re = new RegExp(`<meta\\s+itemprop="${prop}"\\s+content="([^"]*)"`, 'i');
+        const m = metaSection.match(re);
+        return m?.[1];
+    }
+
+    return {
+        path,
+        name,
+        photoCount: parseInt(getMetaProp('photoCount') ?? '0', 10),
+        localCount: parseInt(getMetaProp('localCount') ?? '0', 10),
+        dateRangeStart: getMetaProp('dateRangeStart'),
+        dateRangeEnd: getMetaProp('dateRangeEnd'),
+        childCount: parseInt(getMetaProp('childCount') ?? '0', 10),
+    };
+}
+
+/**
+ * Full parse: returns folder meta, child folder metadata, and photo entries.
+ */
+export function parseFolderIndex(html: string, relPath: string): ParsedFolderIndex {
+    const meta = parseFolderMeta(html);
+    const children = parseChildFolders(html);
+    const entries = parseIndexHtml(html, relPath);
+    return { meta, children, entries };
+}
+
+function parseChildFolders(html: string): FolderMetadata[] {
+    const children: FolderMetadata[] = [];
+    const rowRegex = /<tr\s+class="fs-child"[^>]*itemtype="\/\/fotos\.one\/FolderMetadata"[^>]*>/g;
+    let match;
+
+    while ((match = rowRegex.exec(html)) !== null) {
+        const rowStart = match.index;
+        const rowEnd = html.indexOf('</tr>', rowStart);
+        if (rowEnd < 0) continue;
+        const rowHtml = html.slice(rowStart, rowEnd + 5);
+
+        // Extract path from <a itemprop="path" href="...">name</a>
+        const pathMatch = rowHtml.match(/<a\s+href="([^"]*)"[^>]*itemprop="path"[^>]*>([^<]*)<\/a>/i)
+            ?? rowHtml.match(/<a\s+[^>]*itemprop="path"[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/i);
+        // href is "childPath/one/index.html", extract childPath
+        const href = pathMatch?.[1] ?? '';
+        const childPath = href.replace(/\/one\/index\.html$/, '');
+        const childName = pathMatch?.[2] ?? childPath;
+
+        // Extract photoCount from <td ... itemprop="photoCount">N</td>
+        const photoCountMatch = rowHtml.match(/itemprop="photoCount"[^>]*>(\d+)/i);
+        const photoCount = photoCountMatch ? parseInt(photoCountMatch[1], 10) : 0;
+
+        // Extract dateRangeStart and dateRangeEnd from <span itemprop="...">value</span>
+        const startMatch = rowHtml.match(/itemprop="dateRangeStart"[^>]*>([^<]*)</i);
+        const endMatch = rowHtml.match(/itemprop="dateRangeEnd"[^>]*>([^<]*)</i);
+
+        children.push({
+            path: childPath,
+            name: childName,
+            photoCount,
+            localCount: 0,  // not stored in child rows, only in child's own article meta
+            dateRangeStart: startMatch?.[1] || undefined,
+            dateRangeEnd: endMatch?.[1] || undefined,
+            childCount: 0,  // not stored in child rows, only in child's own article meta
+        });
+    }
+
+    return children;
 }
 
 /**

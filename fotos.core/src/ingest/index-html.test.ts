@@ -1,6 +1,7 @@
 // index-html.test.ts
 import { describe, it, expect } from 'vitest';
-import { renderIndexHtml, parseIndexHtml, escapeHtml, formatSize } from './index-html.js';
+import { renderIndexHtml, parseIndexHtml, parseFolderMeta, parseFolderIndex, escapeHtml, formatSize } from './index-html.js';
+import type { FolderMetadata } from './types.js';
 
 describe('escapeHtml', () => {
     it('escapes special characters', () => {
@@ -119,7 +120,11 @@ describe('renderIndexHtml + parseIndexHtml roundtrip', () => {
     });
 
     it('roundtrips child directories', () => {
-        const html = renderIndexHtml('photos', [], ['2023', '2024'], Date.now());
+        const children: FolderMetadata[] = [
+            { path: '2023', name: '2023', photoCount: 100, localCount: 50, childCount: 2, dateRangeStart: '2023-01-01', dateRangeEnd: '2023-12-31' },
+            { path: '2024', name: '2024', photoCount: 200, localCount: 80, childCount: 3, dateRangeStart: '2024-01-15', dateRangeEnd: '2024-11-30' },
+        ];
+        const html = renderIndexHtml('photos', [], children, Date.now());
         expect(html).toContain('2023/one/index.html');
         expect(html).toContain('2024/one/index.html');
     });
@@ -160,5 +165,124 @@ describe('renderIndexHtml + parseIndexHtml roundtrip', () => {
         expect(parsed).toHaveLength(1);
         // The parser extracts text content which is the unescaped name from the <a> tag
         expect(parsed[0].name).toContain('sunset.jpg');
+    });
+});
+
+describe('parseFolderMeta', () => {
+    it('extracts article-level metadata without parsing entries', () => {
+        const children: FolderMetadata[] = [
+            { path: 'vacation', name: 'vacation', photoCount: 312, localCount: 100, childCount: 2, dateRangeStart: '2017-07-10', dateRangeEnd: '2017-07-24' },
+        ];
+        const entries = [
+            { name: 'a.jpg', size: 100, mtime: Date.now(), mime: 'image/jpeg', path: 'a.jpg', data: { 'content-hash': 'h1', 'stream-id': 's1', 'exif-date': '2017-01-05' } },
+            { name: 'b.jpg', size: 200, mtime: Date.now(), mime: 'image/jpeg', path: 'b.jpg', data: { 'content-hash': 'h2', 'stream-id': 's2', 'exif-date': '2017-12-31' } },
+        ];
+        const html = renderIndexHtml('2017', entries, children, Date.now());
+        const meta = parseFolderMeta(html);
+
+        expect(meta.path).toBe('2017');
+        expect(meta.name).toBe('2017');
+        expect(meta.photoCount).toBe(314); // 2 local + 312 from child
+        expect(meta.localCount).toBe(2);
+        expect(meta.dateRangeStart).toBe('2017-01-05');
+        expect(meta.dateRangeEnd).toBe('2017-12-31');
+        expect(meta.childCount).toBe(1);
+    });
+
+    it('handles empty folder', () => {
+        const html = renderIndexHtml('empty', [], [], Date.now());
+        const meta = parseFolderMeta(html);
+
+        expect(meta.path).toBe('empty');
+        expect(meta.photoCount).toBe(0);
+        expect(meta.localCount).toBe(0);
+        expect(meta.childCount).toBe(0);
+        expect(meta.dateRangeStart).toBeUndefined();
+        expect(meta.dateRangeEnd).toBeUndefined();
+    });
+});
+
+describe('parseFolderIndex full roundtrip', () => {
+    it('roundtrips meta, children, and entries', () => {
+        const children: FolderMetadata[] = [
+            { path: 'vacation', name: 'vacation', photoCount: 312, localCount: 100, childCount: 2, dateRangeStart: '2017-07-10', dateRangeEnd: '2017-07-24' },
+            { path: 'christmas', name: 'christmas', photoCount: 45, localCount: 45, childCount: 0, dateRangeStart: '2017-12-24', dateRangeEnd: '2017-12-25' },
+        ];
+        const entries = [
+            { name: 'cover.jpg', size: 5000, mtime: 1710504000000, mime: 'image/jpeg', contentHash: 'abc', path: 'cover.jpg', data: { 'content-hash': 'abc', 'stream-id': 'st1', 'exif-date': '2017-03-15' } },
+        ];
+        const html = renderIndexHtml('2017', entries, children, Date.now());
+        const result = parseFolderIndex(html, '2017');
+
+        // Meta
+        expect(result.meta.path).toBe('2017');
+        expect(result.meta.photoCount).toBe(358); // 1 + 312 + 45
+        expect(result.meta.localCount).toBe(1);
+        expect(result.meta.childCount).toBe(2);
+        expect(result.meta.dateRangeStart).toBe('2017-03-15');
+        expect(result.meta.dateRangeEnd).toBe('2017-12-25');
+
+        // Children
+        expect(result.children).toHaveLength(2);
+        expect(result.children[0].path).toBe('vacation');
+        expect(result.children[0].name).toBe('vacation');
+        expect(result.children[0].photoCount).toBe(312);
+        expect(result.children[0].dateRangeStart).toBe('2017-07-10');
+        expect(result.children[0].dateRangeEnd).toBe('2017-07-24');
+
+        expect(result.children[1].path).toBe('christmas');
+        expect(result.children[1].name).toBe('christmas');
+        expect(result.children[1].photoCount).toBe(45);
+        expect(result.children[1].dateRangeStart).toBe('2017-12-24');
+        expect(result.children[1].dateRangeEnd).toBe('2017-12-25');
+
+        // Entries
+        expect(result.entries).toHaveLength(1);
+        expect(result.entries[0].name).toBe('cover.jpg');
+        expect(result.entries[0].contentHash).toBe('abc');
+    });
+
+    it('roundtrips with no children', () => {
+        const entries = [
+            { name: 'photo.jpg', size: 1024, mtime: Date.now(), mime: 'image/jpeg', contentHash: 'h1', path: 'photo.jpg', data: { 'content-hash': 'h1', 'stream-id': 's1' } },
+        ];
+        const html = renderIndexHtml('leaf', entries, [], Date.now());
+        const result = parseFolderIndex(html, 'leaf');
+
+        expect(result.meta.photoCount).toBe(1);
+        expect(result.meta.localCount).toBe(1);
+        expect(result.meta.childCount).toBe(0);
+        expect(result.children).toHaveLength(0);
+        expect(result.entries).toHaveLength(1);
+    });
+
+    it('roundtrips with only children, no local entries', () => {
+        const children: FolderMetadata[] = [
+            { path: 'sub1', name: 'sub1', photoCount: 50, localCount: 50, childCount: 0, dateRangeStart: '2020-01-01', dateRangeEnd: '2020-06-30' },
+            { path: 'sub2', name: 'sub2', photoCount: 30, localCount: 20, childCount: 1, dateRangeStart: '2020-07-01', dateRangeEnd: '2020-12-31' },
+        ];
+        const html = renderIndexHtml('parent', [], children, Date.now());
+        const result = parseFolderIndex(html, 'parent');
+
+        expect(result.meta.photoCount).toBe(80);
+        expect(result.meta.localCount).toBe(0);
+        expect(result.meta.childCount).toBe(2);
+        expect(result.children).toHaveLength(2);
+        expect(result.entries).toHaveLength(0);
+    });
+
+    it('article tag has itemscope and itemtype', () => {
+        const html = renderIndexHtml('test', [], [], Date.now());
+        expect(html).toContain('itemscope itemtype="//fotos.one/FolderIndex"');
+    });
+
+    it('child rows have itemscope and itemtype', () => {
+        const children: FolderMetadata[] = [
+            { path: 'sub', name: 'sub', photoCount: 10, localCount: 10, childCount: 0 },
+        ];
+        const html = renderIndexHtml('parent', [], children, Date.now());
+        expect(html).toContain('itemscope itemtype="//fotos.one/FolderMetadata"');
+        expect(html).toContain('itemprop="path"');
+        expect(html).toContain('itemprop="photoCount"');
     });
 });
