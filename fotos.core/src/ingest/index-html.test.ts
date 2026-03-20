@@ -286,3 +286,208 @@ describe('parseFolderIndex full roundtrip', () => {
         expect(html).toContain('itemprop="photoCount"');
     });
 });
+
+// -- Legacy data-* format (no itemprop, no itemscope) -----------------------
+// This is the format already on the NAS with 486K entries.
+
+/** Build a legacy index.html string — no itemscope, no itemprop, no <meta> tags */
+function legacyIndexHtml(opts: {
+    path: string;
+    childLinks?: { href: string; label: string }[];
+    entries?: { name: string; mime: string; hash: string; exifDate?: string; size?: string }[];
+}): string {
+    const childRows = (opts.childLinks ?? []).map(c =>
+        `        <tr class="fs-child">
+            <td class="fs-icon">\u{1F4C1}</td>
+            <td class="fs-name"><a href="${c.href}">${c.label}</a></td>
+            <td class="fs-faces"></td><td class="fs-size"></td><td class="fs-date"></td><td class="fs-path"></td>
+        </tr>`
+    ).join('\n');
+
+    const entryRows = (opts.entries ?? []).map(e => {
+        let attrs = ` data-mime="${e.mime}" data-hash="${e.hash}"`;
+        if (e.exifDate) attrs += ` data-exif-date="${e.exifDate}"`;
+        return `        <tr class="fs-entry"${attrs}>
+            <td class="fs-icon">\u{1F5BC}</td>
+            <td class="fs-name">${e.name}</td>
+            <td class="fs-faces"></td>
+            <td class="fs-size">${e.size ?? '2.5 MB'}</td>
+            <td class="fs-date"></td>
+            <td class="fs-path"></td>
+        </tr>`;
+    }).join('\n');
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>${opts.path}</title></head>
+<body>
+<article class="fs-node" data-path="${opts.path}" data-scanned="2026-03-19T12:00:00.000Z">
+    <table class="fs-table">
+        <tbody>
+${childRows}${childRows && entryRows ? '\n' : ''}${entryRows}
+        </tbody>
+    </table>
+</article>
+</body>
+</html>`;
+}
+
+describe('parseFolderMeta — legacy data-* format', () => {
+    it('synthesizes metadata from entry rows', () => {
+        const html = legacyIndexHtml({
+            path: '2017',
+            entries: [
+                { name: 'photo1.jpg', mime: 'image/jpeg', hash: 'aaa', exifDate: '2017-03-15' },
+                { name: 'photo2.jpg', mime: 'image/jpeg', hash: 'bbb', exifDate: '2017-08-20' },
+                { name: 'photo3.jpg', mime: 'image/jpeg', hash: 'ccc', exifDate: '2017-01-02' },
+            ],
+        });
+        const meta = parseFolderMeta(html);
+
+        expect(meta.path).toBe('2017');
+        expect(meta.name).toBe('2017');
+        expect(meta.localCount).toBe(3);
+        expect(meta.photoCount).toBe(3); // legacy: photoCount = localCount
+        expect(meta.dateRangeStart).toBe('2017-01-02');
+        expect(meta.dateRangeEnd).toBe('2017-08-20');
+        expect(meta.childCount).toBe(0);
+    });
+
+    it('counts child rows', () => {
+        const html = legacyIndexHtml({
+            path: '2017',
+            childLinks: [
+                { href: 'vacation/one/index.html', label: 'vacation/' },
+                { href: 'christmas/one/index.html', label: 'christmas/' },
+            ],
+            entries: [
+                { name: 'cover.jpg', mime: 'image/jpeg', hash: 'x1', exifDate: '2017-06-01' },
+            ],
+        });
+        const meta = parseFolderMeta(html);
+
+        expect(meta.childCount).toBe(2);
+        expect(meta.localCount).toBe(1);
+        expect(meta.photoCount).toBe(1);
+    });
+
+    it('handles legacy with no entries and no children', () => {
+        const html = legacyIndexHtml({ path: 'empty' });
+        const meta = parseFolderMeta(html);
+
+        expect(meta.photoCount).toBe(0);
+        expect(meta.localCount).toBe(0);
+        expect(meta.childCount).toBe(0);
+        expect(meta.dateRangeStart).toBeUndefined();
+        expect(meta.dateRangeEnd).toBeUndefined();
+    });
+
+    it('handles entries without exif dates', () => {
+        const html = legacyIndexHtml({
+            path: 'misc',
+            entries: [
+                { name: 'a.jpg', mime: 'image/jpeg', hash: 'h1' },
+                { name: 'b.jpg', mime: 'image/jpeg', hash: 'h2' },
+            ],
+        });
+        const meta = parseFolderMeta(html);
+
+        expect(meta.localCount).toBe(2);
+        expect(meta.dateRangeStart).toBeUndefined();
+        expect(meta.dateRangeEnd).toBeUndefined();
+    });
+
+    it('handles nested path', () => {
+        const html = legacyIndexHtml({
+            path: '2017/vacation/beach',
+            entries: [
+                { name: 'sunset.jpg', mime: 'image/jpeg', hash: 'z1', exifDate: '2017-07-15' },
+            ],
+        });
+        const meta = parseFolderMeta(html);
+
+        expect(meta.path).toBe('2017/vacation/beach');
+        expect(meta.name).toBe('beach');
+    });
+});
+
+describe('parseFolderIndex — legacy data-* format', () => {
+    it('parses entries using existing data-* logic', () => {
+        const html = legacyIndexHtml({
+            path: '2017',
+            entries: [
+                { name: 'photo1.jpg', mime: 'image/jpeg', hash: 'abc123', exifDate: '2017-03-15', size: '2.5 MB' },
+                { name: 'photo2.jpg', mime: 'image/jpeg', hash: 'def456', exifDate: '2017-08-20', size: '1.8 MB' },
+            ],
+        });
+        const result = parseFolderIndex(html, '2017');
+
+        // Entries parsed via existing parseIndexHtml
+        expect(result.entries).toHaveLength(2);
+        expect(result.entries[0].name).toBe('photo1.jpg');
+        expect(result.entries[0].contentHash).toBe('abc123');
+        expect(result.entries[0].exif?.date).toBe('2017-03-15');
+        expect(result.entries[0].sourcePath).toBe('2017/photo1.jpg');
+
+        expect(result.entries[1].name).toBe('photo2.jpg');
+        expect(result.entries[1].contentHash).toBe('def456');
+    });
+
+    it('parses legacy child folders', () => {
+        const html = legacyIndexHtml({
+            path: '2017',
+            childLinks: [
+                { href: 'vacation/one/index.html', label: 'vacation/' },
+                { href: 'christmas/one/index.html', label: 'christmas/' },
+            ],
+        });
+        const result = parseFolderIndex(html, '2017');
+
+        expect(result.children).toHaveLength(2);
+        expect(result.children[0].path).toBe('vacation');
+        expect(result.children[0].name).toBe('vacation');
+        expect(result.children[0].photoCount).toBe(0); // no count info in legacy
+        expect(result.children[0].dateRangeStart).toBeUndefined();
+
+        expect(result.children[1].path).toBe('christmas');
+        expect(result.children[1].name).toBe('christmas');
+    });
+
+    it('parses legacy with both children and entries', () => {
+        const html = legacyIndexHtml({
+            path: '2017',
+            childLinks: [
+                { href: 'vacation/one/index.html', label: 'vacation/' },
+            ],
+            entries: [
+                { name: 'cover.jpg', mime: 'image/jpeg', hash: 'covhash', exifDate: '2017-01-01' },
+            ],
+        });
+        const result = parseFolderIndex(html, '2017');
+
+        // Meta synthesized from legacy
+        expect(result.meta.localCount).toBe(1);
+        expect(result.meta.photoCount).toBe(1);
+        expect(result.meta.childCount).toBe(1);
+        expect(result.meta.dateRangeStart).toBe('2017-01-01');
+        expect(result.meta.dateRangeEnd).toBe('2017-01-01');
+
+        // Children
+        expect(result.children).toHaveLength(1);
+        expect(result.children[0].path).toBe('vacation');
+
+        // Entries
+        expect(result.entries).toHaveLength(1);
+        expect(result.entries[0].contentHash).toBe('covhash');
+    });
+
+    it('handles empty legacy file', () => {
+        const html = legacyIndexHtml({ path: 'empty' });
+        const result = parseFolderIndex(html, 'empty');
+
+        expect(result.meta.photoCount).toBe(0);
+        expect(result.meta.childCount).toBe(0);
+        expect(result.children).toHaveLength(0);
+        expect(result.entries).toHaveLength(0);
+    });
+});

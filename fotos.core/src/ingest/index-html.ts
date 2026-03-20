@@ -259,25 +259,56 @@ export function parseFolderMeta(html: string): FolderMetadata {
     const segments = path.split('/').filter(Boolean);
     const name = segments.length > 0 ? segments[segments.length - 1] : path || 'root';
 
-    // Extract meta itemprop tags within the article (before the table)
-    const articleStart = articleMatch?.index ?? 0;
-    const tableStart = html.indexOf('<table', articleStart);
-    const metaSection = html.slice(articleStart, tableStart > 0 ? tableStart : undefined);
+    // Detect legacy format: no itemprop="photoCount" meta tag
+    const hasNewFormat = /itemprop="photoCount"/.test(html);
 
-    function getMetaProp(prop: string): string | undefined {
-        const re = new RegExp(`<meta\\s+itemprop="${prop}"\\s+content="([^"]*)"`, 'i');
-        const m = metaSection.match(re);
-        return m?.[1];
+    if (hasNewFormat) {
+        // New format: extract meta itemprop tags within the article (before the table)
+        const articleStart = articleMatch?.index ?? 0;
+        const tableStart = html.indexOf('<table', articleStart);
+        const metaSection = html.slice(articleStart, tableStart > 0 ? tableStart : undefined);
+
+        function getMetaProp(prop: string): string | undefined {
+            const re = new RegExp(`<meta\\s+itemprop="${prop}"\\s+content="([^"]*)"`, 'i');
+            const m = metaSection.match(re);
+            return m?.[1];
+        }
+
+        return {
+            path,
+            name,
+            photoCount: parseInt(getMetaProp('photoCount') ?? '0', 10),
+            localCount: parseInt(getMetaProp('localCount') ?? '0', 10),
+            dateRangeStart: getMetaProp('dateRangeStart'),
+            dateRangeEnd: getMetaProp('dateRangeEnd'),
+            childCount: parseInt(getMetaProp('childCount') ?? '0', 10),
+        };
     }
+
+    // Legacy format: synthesize metadata from entry and child rows
+    const entryMatches = html.match(/<tr\s+class="fs-entry"/g);
+    const localCount = entryMatches?.length ?? 0;
+
+    const childMatches = html.match(/<tr\s+class="fs-child"/g);
+    const childCount = childMatches?.length ?? 0;
+
+    // Extract min/max data-exif-date from entry rows
+    const dates: string[] = [];
+    const dateRegex = /data-exif-date="([^"]*)"/g;
+    let dateMatch;
+    while ((dateMatch = dateRegex.exec(html)) !== null) {
+        if (dateMatch[1]) dates.push(dateMatch[1]);
+    }
+    dates.sort();
 
     return {
         path,
         name,
-        photoCount: parseInt(getMetaProp('photoCount') ?? '0', 10),
-        localCount: parseInt(getMetaProp('localCount') ?? '0', 10),
-        dateRangeStart: getMetaProp('dateRangeStart'),
-        dateRangeEnd: getMetaProp('dateRangeEnd'),
-        childCount: parseInt(getMetaProp('childCount') ?? '0', 10),
+        photoCount: localCount, // legacy has no nested info, so photoCount = localCount
+        localCount,
+        dateRangeStart: dates.length > 0 ? dates[0] : undefined,
+        dateRangeEnd: dates.length > 0 ? dates[dates.length - 1] : undefined,
+        childCount,
     };
 }
 
@@ -292,6 +323,16 @@ export function parseFolderIndex(html: string, relPath: string): ParsedFolderInd
 }
 
 function parseChildFolders(html: string): FolderMetadata[] {
+    // Detect format: new format has itemtype="//fotos.one/FolderMetadata" on child rows
+    const hasNewFormat = /itemtype="\/\/fotos\.one\/FolderMetadata"/.test(html);
+
+    if (hasNewFormat) {
+        return parseChildFoldersNew(html);
+    }
+    return parseChildFoldersLegacy(html);
+}
+
+function parseChildFoldersNew(html: string): FolderMetadata[] {
     const children: FolderMetadata[] = [];
     const rowRegex = /<tr\s+class="fs-child"[^>]*itemtype="\/\/fotos\.one\/FolderMetadata"[^>]*>/g;
     let match;
@@ -326,6 +367,37 @@ function parseChildFolders(html: string): FolderMetadata[] {
             dateRangeStart: startMatch?.[1] || undefined,
             dateRangeEnd: endMatch?.[1] || undefined,
             childCount: 0,  // not stored in child rows, only in child's own article meta
+        });
+    }
+
+    return children;
+}
+
+function parseChildFoldersLegacy(html: string): FolderMetadata[] {
+    const children: FolderMetadata[] = [];
+    const rowRegex = /<tr\s+class="fs-child"[^>]*>/g;
+    let match;
+
+    while ((match = rowRegex.exec(html)) !== null) {
+        const rowStart = match.index;
+        const rowEnd = html.indexOf('</tr>', rowStart);
+        if (rowEnd < 0) continue;
+        const rowHtml = html.slice(rowStart, rowEnd + 5);
+
+        // Extract child name from <a href="childPath/one/index.html">name/</a>
+        const linkMatch = rowHtml.match(/<a\s+href="([^"]*)"[^>]*>([^<]*)<\/a>/i);
+        if (!linkMatch) continue;
+        const href = linkMatch[1];
+        const childPath = href.replace(/\/one\/index\.html$/, '');
+        // Name text may have trailing slash (e.g. "vacation/"), strip it
+        const childName = linkMatch[2].replace(/\/$/, '') || childPath;
+
+        children.push({
+            path: childPath,
+            name: childName,
+            photoCount: 0,  // legacy format has no count info in child rows
+            localCount: 0,
+            childCount: 0,
         });
     }
 
