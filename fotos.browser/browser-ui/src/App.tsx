@@ -7,6 +7,7 @@ import { Sidebar } from '@/components/Sidebar';
 import { TimelineScrubber } from '@/components/TimelineScrubber';
 import { ClusterGallery } from '@/components/ClusterGallery';
 import { useGallery } from '@/hooks/useGallery';
+import { useHeadlessSource } from '@/hooks/useHeadlessSource';
 import { useBreadcrumbHistory } from '@/hooks/useBreadcrumbHistory';
 import { useSettings } from '@/hooks/useSettings';
 import { shareFile } from '@/lib/platform';
@@ -24,6 +25,9 @@ interface AppProps {
 
 export function App({ fotosModel: initialModel }: AppProps) {
     const [fotosModel, setFotosModel] = useState<FotosModel | null>(initialModel ?? null);
+    const [headlessUrl, setHeadlessUrl] = useState<string | null>(null);
+    const [headlessInput, setHeadlessInput] = useState('');
+    const [showHeadlessConnect, setShowHeadlessConnect] = useState(false);
 
     // Wire up model updater so async state changes (e.g. headlessConnected) trigger re-renders
     useEffect(() => {
@@ -31,10 +35,12 @@ export function App({ fotosModel: initialModel }: AppProps) {
         return () => setModelUpdater(null);
     }, []);
     const { settings, updateStorage, updateDisplay, updateDeviceName, updateAnalysis } = useSettings(fotosModel);
+    const headlessFolder = useHeadlessSource(headlessUrl);
     const gallery = useGallery({
         faceAnalyticsEnabled: settings.analysis.faceAnalyticsEnabled,
         semanticSearchEnabled: settings.analysis.semanticSearchEnabled,
         clusterSensitivity: settings.analysis.clusterSensitivity,
+        folder: headlessUrl ? headlessFolder : undefined,
     });
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -462,6 +468,49 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         >
                             {intakePlan.actionLabel}
                         </button>
+
+                        <div className="flex items-center gap-3 w-full max-w-lg">
+                            <div className="flex-1 h-px bg-white/10" />
+                            <span className="text-xs text-white/30">or</span>
+                            <div className="flex-1 h-px bg-white/10" />
+                        </div>
+
+                        {!showHeadlessConnect ? (
+                            <button
+                                onClick={() => setShowHeadlessConnect(true)}
+                                className="px-5 py-2.5 rounded-lg border border-white/15 text-white/60 text-sm font-medium hover:border-white/25 hover:text-white/80 transition-colors"
+                            >
+                                Connect to server
+                            </button>
+                        ) : (
+                            <div className="flex gap-2 w-full max-w-lg">
+                                <input
+                                    type="text"
+                                    value={headlessInput}
+                                    onChange={e => setHeadlessInput(e.target.value)}
+                                    onKeyDown={e => {
+                                        if (e.key === 'Enter' && headlessInput.trim()) {
+                                            setHeadlessUrl(headlessInput.trim().replace(/\/+$/, ''));
+                                        }
+                                    }}
+                                    placeholder="http://192.168.1.100:3000"
+                                    className="flex-1 px-3 py-2 rounded-lg border border-white/15 bg-black/30 text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-white/30"
+                                    autoFocus
+                                />
+                                <button
+                                    onClick={() => {
+                                        if (headlessInput.trim()) {
+                                            setHeadlessUrl(headlessInput.trim().replace(/\/+$/, ''));
+                                        }
+                                    }}
+                                    disabled={!headlessInput.trim()}
+                                    className="px-4 py-2 rounded-lg bg-white/10 text-white/70 text-sm font-medium hover:bg-white/15 hover:text-white/90 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                >
+                                    Connect
+                                </button>
+                            </div>
+                        )}
+
                         <p className="max-w-md text-center text-xs text-white/45">
                             {intakePlan.summary}
                         </p>

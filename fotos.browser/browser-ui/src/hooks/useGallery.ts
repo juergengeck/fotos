@@ -4,6 +4,7 @@ import { groupPhotosByDay, useFotosGalleryState } from '@refinio/fotos.ui';
 import type { PhotoEntry } from '@/types/fotos';
 import { buildFaceClusterSummaries, buildSimilarFaceMatches } from '@/lib/cluster-gallery';
 import { createSemanticWorker } from '@/lib/semanticWorkerClient';
+import type { FolderAccess } from './useFolderAccess';
 import { useFolderAccess } from './useFolderAccess';
 import semanticWorkerUrl from '@/workers/semantic.worker.ts?worker&url';
 
@@ -13,6 +14,8 @@ export interface UseGalleryOptions {
     clusterSensitivity?: number;
     faceAnalyticsEnabled?: boolean;
     semanticSearchEnabled?: boolean;
+    /** When provided, this folder source is used instead of creating one via useFolderAccess. */
+    folder?: FolderAccess;
 }
 
 async function resolveCaptureDayGroups(photos: PhotoEntry[]) {
@@ -34,11 +37,12 @@ async function resolveCaptureDayGroups(photos: PhotoEntry[]) {
 }
 
 export function useGallery(options: UseGalleryOptions = {}) {
-    const folder = useFolderAccess({
+    const localFolder = useFolderAccess({
         clusterSensitivity: options.clusterSensitivity,
         faceAnalyticsEnabled: options.faceAnalyticsEnabled,
         semanticSearchEnabled: options.semanticSearchEnabled,
     });
+    const folder = options.folder ?? localFolder;
     const gallery = useFotosGalleryState<PhotoEntry>({
         source: folder,
         resolveDayGroups: resolveCaptureDayGroups,
