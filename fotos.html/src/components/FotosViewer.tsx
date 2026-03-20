@@ -6,7 +6,7 @@ import { Lightbox } from '@/components/Lightbox';
 import { Sidebar } from '@/components/Sidebar';
 import { TimelineScrubber } from '@/components/TimelineScrubber';
 import type { PhotoEntry } from '@/types/fotos';
-import type { IngestStatus } from '@/hooks/useServerAccess';
+import type { FolderMetadata, IngestStatus } from '@/hooks/useServerAccess';
 
 export interface FotosViewerProgress {
     phase: 'scanning' | 'processing' | 'writing' | 'done';
@@ -19,10 +19,14 @@ export interface FotosViewerSource extends GalleryAccessSource<PhotoEntry> {
     isOpen: boolean;
     ingestProgress: FotosViewerProgress | null;
     ingestStatus: IngestStatus | null;
+    currentFolder: string;
+    folderChildren: FolderMetadata[];
     openFolder?: () => Promise<void>;
     startIngest?: () => Promise<void>;
     pauseIngest?: () => Promise<void>;
     resumeIngest?: () => Promise<void>;
+    navigateToFolder: (path: string) => void;
+    navigateUp: () => void;
     getFileUrl: (relativePath: string) => Promise<string>;
     getThumbUrl: (entry: PhotoEntry) => Promise<string | null>;
 }
@@ -41,6 +45,160 @@ export interface FotosViewerProps {
     loadingLabel?: string;
     emptyStateLabel?: string;
 }
+
+// ── Helper: format date range for folder cards ────────────────────────
+
+function formatDateRange(start?: string, end?: string): string | null {
+    if (!start) return null;
+    const fmt = (iso: string) => {
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return iso;
+        return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    };
+    const s = fmt(start);
+    const e = end ? fmt(end) : null;
+    if (!e || s === e) return s;
+    return `${s} \u2013 ${e}`;
+}
+
+function formatCount(n: number): string {
+    if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;
+    return String(n);
+}
+
+// ── Breadcrumb bar ────────────────────────────────────────────────────
+
+function Breadcrumbs({ currentFolder, onNavigate }: { currentFolder: string; onNavigate: (path: string) => void }) {
+    if (currentFolder === '') return null;
+
+    const segments = currentFolder.split('/');
+    const crumbs: Array<{ label: string; path: string }> = [
+        { label: 'Library', path: '' },
+    ];
+    for (let i = 0; i < segments.length; i++) {
+        crumbs.push({
+            label: segments[i],
+            path: segments.slice(0, i + 1).join('/'),
+        });
+    }
+
+    return (
+        <div style={{
+            padding: '12px 16px',
+            fontSize: '0.85rem',
+            color: 'rgba(255,255,255,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            flexWrap: 'wrap',
+        }}>
+            {crumbs.map((crumb, i) => (
+                <span key={crumb.path} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    {i > 0 && <span style={{ color: 'rgba(255,255,255,0.2)' }}>/</span>}
+                    {i < crumbs.length - 1 ? (
+                        <button
+                            onClick={() => onNavigate(crumb.path)}
+                            style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#e94560',
+                                cursor: 'pointer',
+                                padding: '2px 4px',
+                                borderRadius: '4px',
+                                fontSize: 'inherit',
+                                fontFamily: 'inherit',
+                            }}
+                            onMouseEnter={e => { (e.target as HTMLButtonElement).style.background = 'rgba(233,69,96,0.1)'; }}
+                            onMouseLeave={e => { (e.target as HTMLButtonElement).style.background = 'none'; }}
+                        >
+                            {i === 0 ? '\uD83D\uDCF7' : ''} {crumb.label}
+                        </button>
+                    ) : (
+                        <span style={{ color: 'rgba(255,255,255,0.7)', padding: '2px 4px' }}>
+                            {crumb.label}
+                        </span>
+                    )}
+                </span>
+            ))}
+        </div>
+    );
+}
+
+// ── Folder cards grid ─────────────────────────────────────────────────
+
+function FolderCards({ children, onNavigate }: { children: FolderMetadata[]; onNavigate: (path: string) => void }) {
+    if (children.length === 0) return null;
+
+    return (
+        <div style={{
+            padding: '12px 16px',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+            gap: '12px',
+        }}>
+            {children.map(child => {
+                const dateRange = formatDateRange(child.dateRangeStart, child.dateRangeEnd);
+                return (
+                    <button
+                        key={child.path}
+                        onClick={() => onNavigate(child.path)}
+                        style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '6px',
+                            padding: '14px 16px',
+                            background: '#1a1a1a',
+                            border: '1px solid rgba(255,255,255,0.06)',
+                            borderRadius: '10px',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            transition: 'background 0.15s, border-color 0.15s',
+                            fontFamily: "'Figtree', system-ui, sans-serif",
+                        }}
+                        onMouseEnter={e => {
+                            (e.currentTarget as HTMLButtonElement).style.background = '#222';
+                            (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(233,69,96,0.3)';
+                        }}
+                        onMouseLeave={e => {
+                            (e.currentTarget as HTMLButtonElement).style.background = '#1a1a1a';
+                            (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.06)';
+                        }}
+                    >
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                        }}>
+                            <span style={{ fontSize: '1.2rem' }}>{'\uD83D\uDCC1'}</span>
+                            <span style={{
+                                color: 'rgba(255,255,255,0.9)',
+                                fontSize: '0.95rem',
+                                fontWeight: 500,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                            }}>
+                                {child.name}
+                            </span>
+                        </div>
+                        <div style={{
+                            fontSize: '0.8rem',
+                            color: 'rgba(255,255,255,0.35)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '2px',
+                        }}>
+                            <span>{formatCount(child.photoCount)} photos</span>
+                            {dateRange && <span>{dateRange}</span>}
+                        </div>
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
+// ── Main viewer ───────────────────────────────────────────────────────
 
 export function FotosViewer({
     source,
@@ -162,8 +320,8 @@ export function FotosViewer({
         );
     }
 
-    // ── Empty state with Start Ingestion button ──────────────────────
-    if (!source.isOpen) {
+    // ── Empty state: root with no entries and no children → ingestion UI ──
+    if (!source.isOpen && source.currentFolder === '') {
         return (
             <div className="h-screen flex flex-col items-center justify-center bg-[#111] text-white/70"
                  style={{ fontFamily: "'Figtree', system-ui, sans-serif" }}>
@@ -192,25 +350,53 @@ export function FotosViewer({
         );
     }
 
-    // ── Gallery ──────────────────────────────────────────────────────
+    // ── Gallery (with folder navigation) ──────────────────────────────
+    const hasPhotos = gallery.photos.length > 0;
+    const hasFolders = source.folderChildren.length > 0;
+
     return (
         <>
             <div className="h-screen flex">
                 <div className="flex-1 min-w-0 relative">
                     <div ref={scrollRef} className="h-full overflow-y-auto">
-                        <PhotoGrid
-                            dayGroups={gallery.dayGroups}
-                            photos={gallery.photos}
-                            thumbScale={settings.display.thumbScale}
-                            onPhotoClick={gallery.setSelectedIndex}
-                            loading={gallery.loading}
-                            getThumbUrl={source.getThumbUrl}
+                        <Breadcrumbs
+                            currentFolder={source.currentFolder}
+                            onNavigate={source.navigateToFolder}
                         />
+                        {hasFolders && (
+                            <FolderCards
+                                children={source.folderChildren}
+                                onNavigate={source.navigateToFolder}
+                            />
+                        )}
+                        {hasPhotos && (
+                            <PhotoGrid
+                                dayGroups={gallery.dayGroups}
+                                photos={gallery.photos}
+                                thumbScale={settings.display.thumbScale}
+                                onPhotoClick={gallery.setSelectedIndex}
+                                loading={gallery.loading}
+                                getThumbUrl={source.getThumbUrl}
+                            />
+                        )}
+                        {!hasPhotos && !hasFolders && source.currentFolder !== '' && (
+                            <div style={{
+                                padding: '48px 16px',
+                                textAlign: 'center',
+                                color: 'rgba(255,255,255,0.3)',
+                                fontSize: '0.9rem',
+                                fontFamily: "'Figtree', system-ui, sans-serif",
+                            }}>
+                                This folder is empty
+                            </div>
+                        )}
                     </div>
-                    <TimelineScrubber
-                        scrollRef={scrollRef}
-                        dayGroups={gallery.dayGroups}
-                    />
+                    {hasPhotos && (
+                        <TimelineScrubber
+                            scrollRef={scrollRef}
+                            dayGroups={gallery.dayGroups}
+                        />
+                    )}
                 </div>
 
                 <Sidebar

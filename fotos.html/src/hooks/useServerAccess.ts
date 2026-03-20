@@ -5,12 +5,24 @@
  *
  * Uses fotos:status/browse/ingest/pause/resume instead of fotos:scan.
  * Listens for fotos:progress WebSocket events for real-time ingestion updates.
+ *
+ * Supports hierarchical folder navigation via fotos:browse { folder }.
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { PhotoEntry } from '@/types/fotos';
 import { dataAttrsToFaces, EMBEDDING_DIM } from '@refinio/fotos.core/faces';
 import { invoke } from '@/api/client';
+
+export interface FolderMetadata {
+    path: string;
+    name: string;
+    photoCount: number;
+    localCount: number;
+    dateRangeStart?: string;
+    dateRangeEnd?: string;
+    childCount: number;
+}
 
 export interface IngestStatus {
     state: 'idle' | 'running' | 'paused';
@@ -21,7 +33,7 @@ export interface IngestStatus {
     photosInFolder: number;
     totalProcessed: number;
     totalFound: number;
-    trieCount?: number;
+    totalPhotos?: number;
     dir?: string;
 }
 
@@ -32,11 +44,15 @@ export interface FolderAccess {
     loading: boolean;
     ingestProgress: null; // kept for FotosViewerSource compat — legacy field, always null
     ingestStatus: IngestStatus | null;
+    currentFolder: string;
+    folderChildren: FolderMetadata[];
     openFolder: () => Promise<void>;
     startIngest: () => Promise<void>;
     pauseIngest: () => Promise<void>;
     resumeIngest: () => Promise<void>;
     rescan: () => Promise<void>;
+    navigateToFolder: (path: string) => void;
+    navigateUp: () => void;
     getFileUrl: (relativePath: string) => Promise<string>;
     getThumbUrl: (entry: PhotoEntry) => Promise<string | null>;
 }
@@ -84,18 +100,26 @@ export function useServerAccess(): FolderAccess {
     const [entries, setEntries] = useState<PhotoEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [ingestStatus, setIngestStatus] = useState<IngestStatus | null>(null);
+    const [currentFolder, setCurrentFolder] = useState('');
+    const [folderChildren, setFolderChildren] = useState<FolderMetadata[]>([]);
     const wsRef = useRef<WebSocket | null>(null);
 
-    // Fetch gallery entries from trie via fotos:browse
-    const loadGallery = useCallback(async () => {
-        const result = await invoke('fotos:browse', {});
-        if (result?.success && result.data?.entries) {
-            const parsed = result.data.entries.map(serverEntryToPhotoEntry);
+    // Fetch gallery entries from a specific folder via fotos:browse
+    const loadGallery = useCallback(async (folder?: string) => {
+        const targetFolder = folder ?? currentFolder;
+        const result = await invoke('fotos:browse', { folder: targetFolder, limit: 200 });
+        if (result?.success && result.data) {
+            const parsed = result.data.entries
+                ? result.data.entries.map(serverEntryToPhotoEntry)
+                : [];
+            const children: FolderMetadata[] = result.data.children ?? [];
+
             setEntries(parsed);
-            setIsOpen(parsed.length > 0);
+            setFolderChildren(children);
+            setIsOpen(parsed.length > 0 || children.length > 0);
         }
         setLoading(false);
-    }, []);
+    }, [currentFolder]);
 
     // Check server status + load gallery
     const checkStatus = useCallback(async () => {
@@ -107,8 +131,26 @@ export function useServerAccess(): FolderAccess {
                 setFolderName(parts[parts.length - 1]);
             }
         }
-        await loadGallery();
+        await loadGallery('');
     }, [loadGallery]);
+
+    // Navigate into a subfolder
+    const navigateToFolder = useCallback((folderPath: string) => {
+        setCurrentFolder(folderPath);
+        setLoading(true);
+        loadGallery(folderPath);
+    }, [loadGallery]);
+
+    // Navigate to parent folder
+    const navigateUp = useCallback(() => {
+        if (currentFolder === '') return;
+        const segments = currentFolder.split('/');
+        segments.pop();
+        const parentPath = segments.join('/');
+        setCurrentFolder(parentPath);
+        setLoading(true);
+        loadGallery(parentPath);
+    }, [currentFolder, loadGallery]);
 
     // Start ingestion
     const startIngest = useCallback(async () => {
@@ -128,7 +170,7 @@ export function useServerAccess(): FolderAccess {
         if (result?.success) setIngestStatus(result.data);
     }, []);
 
-    // On mount: check status + load gallery
+    // On mount: check status + load root gallery
     useEffect(() => {
         checkStatus();
     }, [checkStatus]);
@@ -146,7 +188,7 @@ export function useServerAccess(): FolderAccess {
                         const status = data.data as IngestStatus;
                         setIngestStatus(status);
                         // Reload gallery when ingestion completes (state goes back to idle)
-                        if (status.state === 'idle' && status.totalProcessed > 0) {
+                        if (status.state === 'idle') {
                             loadGallery();
                         }
                     }
@@ -183,11 +225,15 @@ export function useServerAccess(): FolderAccess {
         loading,
         ingestProgress: null, // legacy — always null, replaced by ingestStatus
         ingestStatus,
+        currentFolder,
+        folderChildren,
         openFolder,
         startIngest,
         pauseIngest,
         resumeIngest,
         rescan,
+        navigateToFolder,
+        navigateUp,
         getFileUrl,
         getThumbUrl,
     };
