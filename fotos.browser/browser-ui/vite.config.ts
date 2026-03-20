@@ -222,7 +222,7 @@ function localPhotosPlugin(): Plugin {
 }
 
 export default defineConfig({
-    base: '/',
+    base: process.env.VITE_BASE || '/',
     clearScreen: false,
     plugins: [
         react(),
@@ -271,6 +271,7 @@ export default defineConfig({
             {find: '@huggingface/transformers', replacement: path.resolve(__dirname, '../../../vger/node_modules/.pnpm/node_modules/@huggingface/transformers/dist/transformers.web.js')},
             {find: '@vger/vger.core', replacement: path.resolve(__dirname, '../../../vger/packages/vger.core/dist')},
             {find: '@vger/vger.glue', replacement: path.resolve(__dirname, '../../../vger/packages/vger.glue/dist')},
+            {find: '@refinio/recovery.core', replacement: path.resolve(__dirname, '../../../vger/packages/recovery.core/dist')},
             // Stub out Node-only modules that ONE.core dependency tree pulls in
             {find: '@anthropic-ai/sdk', replacement: path.resolve(__dirname, './src/stubs/empty.ts')},
             {find: '@whiskeysockets/baileys', replacement: path.resolve(__dirname, './src/stubs/empty.ts')},
