@@ -1,4 +1,4 @@
-import {useEffect, useState, type ReactNode} from 'react';
+import {useCallback, useEffect, useRef, useState, type ReactNode} from 'react';
 import type {DayGroup} from '../lib/gallery.js';
 import {summarizeNamedFaces} from '../lib/faceLabels.js';
 import {getFaceCount, type PhotoEntry} from '../types/fotos.js';
@@ -64,6 +64,66 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
         </>
     ),
 }: PhotoGridProps<TPhoto>) {
+    const [cursor, setCursor] = useState(-1);
+    const gridRef = useRef<HTMLDivElement>(null);
+
+    // Compute how many columns the grid has from the first visible grid element
+    const getColumnCount = useCallback(() => {
+        const grid = gridRef.current?.querySelector('[data-photo-grid]') as HTMLElement | null;
+        if (!grid) return 1;
+        return getComputedStyle(grid).gridTemplateColumns.split(' ').length;
+    }, []);
+
+    // Keyboard navigation
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+            const total = photos.length;
+            if (total === 0) return;
+
+            let next = cursor;
+            switch (e.key) {
+                case 'ArrowRight':
+                    next = cursor < 0 ? 0 : Math.min(cursor + 1, total - 1);
+                    break;
+                case 'ArrowLeft':
+                    next = cursor < 0 ? 0 : Math.max(cursor - 1, 0);
+                    break;
+                case 'ArrowDown': {
+                    const cols = getColumnCount();
+                    next = cursor < 0 ? 0 : Math.min(cursor + cols, total - 1);
+                    break;
+                }
+                case 'ArrowUp': {
+                    const cols = getColumnCount();
+                    next = cursor < 0 ? 0 : Math.max(cursor - cols, 0);
+                    break;
+                }
+                case 'Enter':
+                    if (cursor >= 0) {
+                        e.preventDefault();
+                        onPhotoClick(cursor);
+                    }
+                    return;
+                default:
+                    return;
+            }
+
+            e.preventDefault();
+            setCursor(next);
+
+            // Scroll focused card into view
+            const card = gridRef.current?.querySelector(`[data-photo-index="${next}"]`);
+            card?.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+        };
+
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, [cursor, photos.length, getColumnCount, onPhotoClick]);
+
+    // Reset cursor when photos change
+    useEffect(() => { setCursor(-1); }, [photos]);
+
     if (loading) {
         return (
             <div className="flex items-center justify-center h-full text-white/20 text-sm">
@@ -102,7 +162,7 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
     let flatIndex = 0;
 
     return (
-        <div>
+        <div ref={gridRef}>
             {analysisProgress && analysisProgress.total > 0 && (
                 <div className="sticky top-0 z-20 px-3 py-1 bg-black/80 backdrop-blur-sm flex items-center gap-2">
                     <div className="flex-1 h-1 rounded-full bg-white/10 overflow-hidden">
@@ -130,15 +190,20 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
                             <span className="text-[11px] text-white/50 font-medium">{formatDate(group.date)}</span>
                             <span className="text-[10px] text-white/20 ml-2">{group.photos.length}</span>
                         </div>
-                        <div className="grid gap-1 px-1 pb-1" style={{gridTemplateColumns: colStyle}}>
-                            {group.photos.map((photo, index) => (
-                                <PhotoCard
-                                    key={photo.hash}
-                                    photo={photo}
-                                    onClick={() => onPhotoClick(startIndex + index)}
-                                    getThumbUrl={getThumbUrl}
-                                />
-                            ))}
+                        <div className="grid gap-1 px-1 pb-1" data-photo-grid style={{gridTemplateColumns: colStyle}}>
+                            {group.photos.map((photo, index) => {
+                                const fi = startIndex + index;
+                                return (
+                                    <PhotoCard
+                                        key={photo.hash}
+                                        photo={photo}
+                                        flatIndex={fi}
+                                        focused={fi === cursor}
+                                        onClick={() => onPhotoClick(fi)}
+                                        getThumbUrl={getThumbUrl}
+                                    />
+                                );
+                            })}
                         </div>
                     </section>
                 );
@@ -149,10 +214,14 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
 
 function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
     photo,
+    flatIndex,
+    focused,
     onClick,
     getThumbUrl,
 }: {
     photo: TPhoto;
+    flatIndex: number;
+    focused: boolean;
     onClick: () => void;
     getThumbUrl: (entry: TPhoto) => Promise<string | null>;
 }) {
@@ -177,7 +246,8 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
         <button
             type="button"
             onClick={onClick}
-            className="group relative aspect-square overflow-hidden cursor-pointer touch-manipulation appearance-none border-0 p-0 text-left"
+            data-photo-index={flatIndex}
+            className={`group relative aspect-square overflow-hidden cursor-pointer touch-manipulation appearance-none p-0 text-left ${focused ? 'ring-2 ring-[#e94560] ring-offset-1 ring-offset-black border-0' : 'border-0'}`}
             style={{background: hashColor(photo.hash)}}
         >
             {thumbSrc && (
