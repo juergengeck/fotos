@@ -10,6 +10,10 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { deriveKeyFromPhotos } from '@/lib/photo-key-derivation.js';
+import { sign, ensureSecretSignKey } from '@refinio/one.core/lib/crypto/sign.js';
+import { uint8arrayToHexString } from '@refinio/one.core/lib/util/arraybuffer-to-and-from-hex-string.js';
+import { API_BASE } from '@/config.js';
 
 // Allowed origins that may open this popup
 const ALLOWED_ORIGINS = [
@@ -25,6 +29,11 @@ function isOriginAllowed(origin: string): boolean {
   if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
   if (/^https?:\/\/192\.168\.\d+\.\d+(:\d+)?$/.test(origin)) return true;
   return false;
+}
+
+/** Normalize display name → glue.one identity (e.g. "Alice" → "alice@glue.one"). */
+function nameToIdentity(displayName: string): string {
+  return displayName.toLowerCase().replace(/[^a-z0-9]/g, '') + '@glue.one';
 }
 
 type PopupPhase = 'waiting' | 'setup' | 'creating' | 'done' | 'error';
@@ -145,14 +154,499 @@ export function FotosIdPopup() {
   );
 }
 
-// ── Setup form — name + photo selection + PIN + derivation ────────────
+// ── Setup form — name + photo selection + PIN + derivation + registration ──
 
-// This component will be implemented in Task 3.
-// Placeholder for now:
-function FotosIdSetupForm(_props: {
+type SetupStep = 'name' | 'photos' | 'creating';
+
+interface SelectedImage {
+  file: File;
+  thumbnailUrl: string;
+}
+
+// Shared inline styles
+const styles = {
+  input: {
+    width: '100%',
+    padding: '8px 10px',
+    background: 'rgba(255,255,255,0.05)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    borderRadius: 6,
+    color: '#eee',
+    fontSize: '13px',
+    outline: 'none',
+  } as React.CSSProperties,
+  button: {
+    width: '100%',
+    padding: '10px',
+    border: 'none',
+    borderRadius: 6,
+    fontSize: '13px',
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'background 0.15s',
+  } as React.CSSProperties,
+  primaryButton: {
+    background: '#e94560',
+    color: '#fff',
+  } as React.CSSProperties,
+  secondaryButton: {
+    background: 'rgba(255,255,255,0.05)',
+    color: 'rgba(255,255,255,0.5)',
+  } as React.CSSProperties,
+  disabledButton: {
+    opacity: 0.4,
+    cursor: 'not-allowed',
+  } as React.CSSProperties,
+  label: {
+    display: 'block',
+    fontSize: '10px',
+    color: 'rgba(255,255,255,0.3)',
+    marginBottom: 4,
+  } as React.CSSProperties,
+  hint: {
+    fontSize: '10px',
+    lineHeight: '1.5',
+    color: 'rgba(255,255,255,0.3)',
+    marginBottom: 8,
+  } as React.CSSProperties,
+  error: {
+    fontSize: '11px',
+    color: '#ff6b6b',
+    marginTop: 6,
+  } as React.CSSProperties,
+  section: {
+    marginBottom: 12,
+  } as React.CSSProperties,
+} as const;
+
+function FotosIdSetupForm(props: {
   onCreated: (data: { identity: string; displayName: string; cert: unknown; publicKey: string }) => void;
   onError: (err: string) => void;
   onPhaseChange: (phase: PopupPhase) => void;
 }) {
-  return <p style={{ color: '#aaa', textAlign: 'center' }}>Setup form placeholder</p>;
+  const { onCreated, onError, onPhaseChange } = props;
+
+  const [step, setStep] = useState<SetupStep>('name');
+
+  // Name state
+  const [displayName, setDisplayName] = useState('');
+  const [nameStatus, setNameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'error'>('idle');
+  const [nameError, setNameError] = useState<string | null>(null);
+  const checkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Photo state
+  const [images, setImages] = useState<SelectedImage[]>([]);
+  const [pin, setPin] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragIndexRef = useRef<number | null>(null);
+
+  // Creation state
+  const [progress, setProgress] = useState('');
+  const [creationError, setCreationError] = useState<string | null>(null);
+
+  // ── Name availability check (debounced) ──────────────────────────────
+
+  const checkNameAvailability = useCallback(async (name: string) => {
+    const localPart = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (localPart.length < 2) {
+      setNameStatus('idle');
+      return;
+    }
+
+    setNameStatus('checking');
+    setNameError(null);
+
+    try {
+      const identity = nameToIdentity(name);
+      const res = await fetch(
+        `${API_BASE}/api/registration/check/${encodeURIComponent(identity)}`,
+      );
+
+      if (!res.ok) {
+        setNameStatus('error');
+        setNameError('Could not check availability');
+        return;
+      }
+
+      const result = await res.json();
+      const available = result.available ?? result.data?.available ?? true;
+      setNameStatus(available ? 'available' : 'taken');
+    } catch {
+      setNameStatus('error');
+      setNameError('Network error checking name');
+    }
+  }, []);
+
+  const handleNameChange = useCallback((value: string) => {
+    setDisplayName(value);
+    setNameStatus('idle');
+    setNameError(null);
+
+    if (checkTimerRef.current) clearTimeout(checkTimerRef.current);
+
+    const localPart = value.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (localPart.length >= 2) {
+      checkTimerRef.current = setTimeout(() => checkNameAvailability(value), 400);
+    }
+  }, [checkNameAvailability]);
+
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (checkTimerRef.current) clearTimeout(checkTimerRef.current);
+    };
+  }, []);
+
+  const canProceedToPhotos = nameStatus === 'available' && displayName.trim().length >= 2;
+
+  // ── Photo handling ───────────────────────────────────────────────────
+
+  const handlePickPhotos = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFilesSelected = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const newImages: SelectedImage[] = [];
+    for (const file of files) {
+      newImages.push({ file, thumbnailUrl: URL.createObjectURL(file) });
+    }
+    setImages(prev => [...prev, ...newImages]);
+    e.target.value = '';
+  }, []);
+
+  const handleRemoveImage = useCallback((index: number) => {
+    setImages(prev => {
+      const next = [...prev];
+      URL.revokeObjectURL(next[index]!.thumbnailUrl);
+      next.splice(index, 1);
+      return next;
+    });
+  }, []);
+
+  const handleDragStart = useCallback((index: number) => {
+    dragIndexRef.current = index;
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (dragIndexRef.current === null || dragIndexRef.current === index) return;
+    setImages(prev => {
+      const next = [...prev];
+      const [moved] = next.splice(dragIndexRef.current!, 1);
+      next.splice(index, 0, moved!);
+      dragIndexRef.current = index;
+      return next;
+    });
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    dragIndexRef.current = null;
+  }, []);
+
+  // ── Create identity ──────────────────────────────────────────────────
+
+  const canCreate = images.length > 0 && pin.length === 8;
+
+  const handleCreate = useCallback(async () => {
+    if (!canCreate) return;
+
+    setStep('creating');
+    onPhaseChange('creating');
+    setCreationError(null);
+
+    try {
+      // 1. Read photo bytes
+      setProgress('Reading photos...');
+      const imageBytes: Uint8Array[] = [];
+      for (const img of images) {
+        const buf = await img.file.arrayBuffer();
+        imageBytes.push(new Uint8Array(buf));
+      }
+
+      // 2. Derive keypair from photos + PIN
+      setProgress('Deriving key (this takes a few seconds)...');
+      const derived = await deriveKeyFromPhotos({ images: imageBytes, pin });
+      const publicKeyHex = uint8arrayToHexString(derived.publicKey);
+
+      // 3. Build self-signed cert (mirrors cert-builder.ts but without ONE.core keychain)
+      setProgress('Building certificate...');
+      const identity = nameToIdentity(displayName);
+      const localPart = displayName.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const now = Date.now();
+
+      const certPayload = {
+        $type$: 'SubscriptionCertificate' as const,
+        id: identity,
+        certificateType: 'identity' as const,
+        status: 'valid',
+        subject: publicKeyHex,
+        subjectPublicKey: publicKeyHex,
+        issuer: publicKeyHex,
+        issuerPublicKey: publicKeyHex,
+        validFrom: now,
+        validUntil: now + 7 * 24 * 60 * 60 * 1000,
+        chainDepth: 0,
+        claims: {
+          identity,
+          domain: 'glue.one',
+          localPart,
+          tier: 'user',
+          priceEur: 0,
+          subscriptionStatus: 'preliminary' as const,
+          paymentId: '',
+          depositAmount: 0,
+          autoRenew: false,
+          service: 'Identity attestation and verification',
+        },
+        issuedAt: now,
+        serialNumber: `fotosid-${now}`,
+      };
+
+      const payload = JSON.stringify(certPayload);
+      const signatureBytes = sign(
+        new TextEncoder().encode(payload),
+        ensureSecretSignKey(derived.secretKey),
+      );
+      const cert = { ...certPayload, signature: uint8arrayToHexString(signatureBytes) };
+
+      // 4. Register on glue.one API
+      setProgress('Registering identity...');
+      const res = await fetch(`${API_BASE}/api/registration/registerName`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cert, instanceEncryptionKey: '' }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => 'Unknown error');
+        if (res.status === 409) {
+          throw new Error('Name is already taken');
+        }
+        throw new Error(`Registration failed: ${res.status} ${text}`);
+      }
+
+      // 5. Clean up thumbnails
+      for (const img of images) {
+        URL.revokeObjectURL(img.thumbnailUrl);
+      }
+
+      // 6. Return result to opener
+      onCreated({ identity, displayName: displayName.trim(), cert, publicKey: publicKeyHex });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Identity creation failed';
+      setCreationError(msg);
+      setStep('photos');
+      onError(msg);
+    }
+  }, [canCreate, images, pin, displayName, onCreated, onError, onPhaseChange]);
+
+  // ── Render ───────────────────────────────────────────────────────────
+
+  if (step === 'creating') {
+    return (
+      <div style={{ textAlign: 'center' }}>
+        <div style={{
+          width: 24, height: 24, border: '2px solid rgba(255,255,255,0.15)',
+          borderTopColor: '#e94560', borderRadius: '50%',
+          margin: '0 auto 12px', animation: 'spin 0.8s linear infinite',
+        }} />
+        <p style={{ color: '#aaa', fontSize: '12px' }}>{progress}</p>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* ── Step 1: Display name ──────────────────────────────────────── */}
+      {step === 'name' && (
+        <div>
+          <div style={styles.hint}>
+            Choose a display name for your fotos id. This will be your identity on glue.one.
+          </div>
+
+          <div style={styles.section}>
+            <label style={styles.label}>Display name</label>
+            <input
+              type="text"
+              placeholder="e.g. Alice"
+              value={displayName}
+              onChange={e => handleNameChange(e.target.value)}
+              style={styles.input}
+              autoFocus
+            />
+
+            {/* Identity preview */}
+            {displayName.trim().length >= 2 && (
+              <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', marginTop: 4 }}>
+                {nameToIdentity(displayName)}
+              </div>
+            )}
+
+            {/* Availability indicator */}
+            {nameStatus === 'checking' && (
+              <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', marginTop: 4 }}>
+                Checking availability...
+              </div>
+            )}
+            {nameStatus === 'available' && (
+              <div style={{ fontSize: '11px', color: '#4ade80', marginTop: 4 }}>
+                Available
+              </div>
+            )}
+            {nameStatus === 'taken' && (
+              <div style={{ fontSize: '11px', color: '#ff6b6b', marginTop: 4 }}>
+                Name is already taken
+              </div>
+            )}
+            {nameStatus === 'error' && nameError && (
+              <div style={styles.error}>{nameError}</div>
+            )}
+          </div>
+
+          <button
+            onClick={() => setStep('photos')}
+            disabled={!canProceedToPhotos}
+            style={{
+              ...styles.button,
+              ...styles.primaryButton,
+              ...(!canProceedToPhotos ? styles.disabledButton : {}),
+            }}
+          >
+            Next
+          </button>
+        </div>
+      )}
+
+      {/* ── Step 2: Photos + PIN ──────────────────────────────────────── */}
+      {step === 'photos' && (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+            <button
+              onClick={() => setStep('name')}
+              style={{
+                background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)',
+                cursor: 'pointer', fontSize: '12px', padding: '4px 8px 4px 0',
+              }}
+            >
+              &larr; Back
+            </button>
+            <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)' }}>
+              {nameToIdentity(displayName)}
+            </span>
+          </div>
+
+          <div style={styles.hint}>
+            Pick photos you'll remember and arrange them in order.
+            Then enter a date as your 8-digit PIN. Together these derive your identity key.
+          </div>
+
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            style={{ display: 'none' }}
+            onChange={handleFilesSelected}
+          />
+
+          {/* Photo thumbnails with drag-to-reorder */}
+          {images.length > 0 && (
+            <div style={{ marginBottom: 8 }}>
+              {images.map((img, i) => (
+                <div
+                  key={img.thumbnailUrl}
+                  draggable
+                  onDragStart={() => handleDragStart(i)}
+                  onDragOver={e => handleDragOver(e, i)}
+                  onDragEnd={handleDragEnd}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '4px 6px', marginBottom: 2,
+                    background: 'rgba(255,255,255,0.03)', borderRadius: 6,
+                    cursor: 'grab',
+                  }}
+                >
+                  {/* Drag handle */}
+                  <span style={{ color: 'rgba(255,255,255,0.15)', fontSize: '12px', userSelect: 'none' }}>
+                    &#x2630;
+                  </span>
+                  {/* Order number */}
+                  <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.25)', width: 14, textAlign: 'right' }}>
+                    {i + 1}
+                  </span>
+                  {/* Thumbnail */}
+                  <img
+                    src={img.thumbnailUrl}
+                    alt=""
+                    style={{ width: 32, height: 32, borderRadius: 4, objectFit: 'cover' }}
+                  />
+                  {/* File name */}
+                  <span style={{
+                    fontSize: '10px', color: 'rgba(255,255,255,0.4)',
+                    flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {img.file.name}
+                  </span>
+                  {/* Remove button */}
+                  <button
+                    onClick={() => handleRemoveImage(i)}
+                    style={{
+                      background: 'none', border: 'none', color: 'rgba(255,255,255,0.2)',
+                      cursor: 'pointer', fontSize: '14px', padding: '2px 4px',
+                    }}
+                  >
+                    &times;
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add photos button */}
+          <button
+            onClick={handlePickPhotos}
+            style={{ ...styles.button, ...styles.secondaryButton, marginBottom: 10 }}
+          >
+            {images.length === 0 ? 'Pick photos' : 'Add more photos'}
+          </button>
+
+          {/* PIN input */}
+          {images.length > 0 && (
+            <div style={styles.section}>
+              <label style={styles.label}>Date PIN (DDMMYYYY)</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={8}
+                placeholder="DDMMYYYY"
+                value={pin}
+                onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                style={{ ...styles.input, fontFamily: 'monospace', letterSpacing: 2 }}
+              />
+            </div>
+          )}
+
+          {/* Error from creation attempt */}
+          {creationError && (
+            <div style={styles.error}>{creationError}</div>
+          )}
+
+          {/* Create button */}
+          {canCreate && (
+            <button
+              onClick={handleCreate}
+              style={{ ...styles.button, ...styles.primaryButton, marginTop: 4 }}
+            >
+              Create fotos id
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
