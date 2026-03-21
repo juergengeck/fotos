@@ -12,18 +12,7 @@ if (typeof globalThis.setImmediate === 'undefined') {
 }
 
 import ReactDOM from 'react-dom/client';
-
-// Placeholder until FotosIdPopup.tsx is created in Task 2
-function FotosIdPopup() {
-  return (
-    <div style={{ padding: '1.5rem', maxWidth: 420, margin: '0 auto' }}>
-      <h2 style={{ fontSize: '1.1rem', marginBottom: '1rem', textAlign: 'center' }}>
-        Create fotos id
-      </h2>
-      <p style={{ color: '#aaa', textAlign: 'center' }}>Loading...</p>
-    </div>
-  );
-}
+import { FotosIdPopup } from './FotosIdPopup.js';
 
 const rootElement = document.getElementById('root');
 if (rootElement) {
