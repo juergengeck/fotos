@@ -1,4 +1,4 @@
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig, type HmrOptions, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -8,6 +8,13 @@ import fs from 'fs';
 import os from 'os';
 
 const DEV_API_PROXY_TARGET = process.env.VITE_HEADLESS_URL || 'https://api.glue.one';
+const DEV_ALLOWED_HOSTS = (process.env.VITE_ALLOWED_HOSTS || '')
+    .split(',')
+    .map(host => host.trim())
+    .filter(Boolean);
+const DEV_SERVER_HOST = process.env.VITE_DEV_HOST || undefined;
+const DEV_HMR_HOST = process.env.VITE_HMR_HOST || undefined;
+const DEV_HMR_PROTOCOL = process.env.VITE_HMR_PROTOCOL || undefined;
 const ORT_RUNTIME_DIR = path.resolve(
     __dirname,
     '../../../vger/node_modules/.pnpm/onnxruntime-web@1.24.2/node_modules/onnxruntime-web/dist',
@@ -19,6 +26,28 @@ const ORT_RUNTIME_FILES = [
     'ort-wasm-simd-threaded.wasm',
 ] as const;
 const BUILD_ID = new Date().toISOString();
+
+function parseOptionalInt(value: string | undefined): number | undefined {
+    if (!value) {
+        return undefined;
+    }
+
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function getDevHmrOptions(): HmrOptions | undefined {
+    const clientPort = parseOptionalInt(process.env.VITE_HMR_PORT);
+    if (!DEV_HMR_HOST && !DEV_HMR_PROTOCOL && clientPort === undefined) {
+        return undefined;
+    }
+
+    return {
+        ...(DEV_HMR_HOST ? { host: DEV_HMR_HOST } : {}),
+        ...(DEV_HMR_PROTOCOL ? { protocol: DEV_HMR_PROTOCOL } : {}),
+        ...(clientPort !== undefined ? { clientPort } : {}),
+    };
+}
 
 function buildVersionPlugin(buildId: string): Plugin {
     return {
@@ -308,6 +337,10 @@ export default defineConfig({
         outDir: 'dist',
         emptyOutDir: true,
         rollupOptions: {
+            input: {
+                main: path.resolve(__dirname, 'index.html'),
+                'fotos-id': path.resolve(__dirname, 'fotos-id.html'),
+            },
             external: ['ws'],
         },
     },
@@ -315,6 +348,9 @@ export default defineConfig({
         port: 5188,
         strictPort: true,
         open: true,
+        ...(DEV_SERVER_HOST ? { host: DEV_SERVER_HOST } : {}),
+        ...(DEV_ALLOWED_HOSTS.length > 0 ? { allowedHosts: DEV_ALLOWED_HOSTS } : {}),
+        ...(getDevHmrOptions() ? { hmr: getDevHmrOptions() } : {}),
         proxy: {
             '/api': {
                 target: DEV_API_PROXY_TARGET,
