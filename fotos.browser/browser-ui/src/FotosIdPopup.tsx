@@ -38,6 +38,7 @@ export function FotosIdPopup() {
   const [error, setError] = useState<string | null>(null);
   const requestRef = useRef<PopupRequest | null>(null);
   const openerOriginRef = useRef<string>('');
+  const handledRef = useRef(false);
 
   // Signal readiness to opener
   useEffect(() => {
@@ -55,6 +56,8 @@ export function FotosIdPopup() {
       if (!data?.requestId) return;
 
       if (data.type === 'fotos-id-request') {
+        if (handledRef.current) return;
+        handledRef.current = true;
         openerOriginRef.current = event.origin;
         requestRef.current = { requestId: data.requestId };
         setPhase('setup');
