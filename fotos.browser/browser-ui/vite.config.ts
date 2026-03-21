@@ -321,7 +321,7 @@ export default defineConfig({
         __APP_BUILD_ID__: JSON.stringify(BUILD_ID),
     },
     optimizeDeps: {
-        entries: ['src/workers/face.worker.ts', 'src/workers/semantic.worker.ts'],
+        entries: ['src/main.tsx', 'src/fotos-id-main.tsx', 'src/workers/face.worker.ts', 'src/workers/semantic.worker.ts'],
         include: [
             'react',
             'react-dom',
