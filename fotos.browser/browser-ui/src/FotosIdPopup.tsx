@@ -439,9 +439,10 @@ function FotosIdSetupForm(props: {
       const msg = err instanceof Error ? err.message : 'Identity creation failed';
       setCreationError(msg);
       setStep('photos');
-      onError(msg);
+      onPhaseChange('setup');
+      // Don't call onError — let user retry. onError sends a terminal failure to opener.
     }
-  }, [canCreate, images, pin, displayName, onCreated, onError, onPhaseChange]);
+  }, [canCreate, images, pin, displayName, onCreated, onPhaseChange]);
 
   // ── Render ───────────────────────────────────────────────────────────
 
