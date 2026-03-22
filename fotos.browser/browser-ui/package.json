@@ -18,6 +18,7 @@
     "@refinio/connection.core": "workspace:*",
     "@refinio/fotos.core": "workspace:*",
     "@refinio/fotos.ui": "workspace:*",
+    "@refinio/recovery.core": "workspace:*",
     "@refinio/local.core": "workspace:*",
     "@refinio/one.core": "workspace:*",
     "@refinio/one.models": "workspace:*",

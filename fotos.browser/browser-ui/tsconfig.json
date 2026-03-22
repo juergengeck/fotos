@@ -18,7 +18,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@refinio/fotos.ui": ["../../fotos.ui/src/index.ts"]
+      "@refinio/fotos.ui": ["../../fotos.ui/src/index.ts"],
+      "@refinio/recovery.core": ["../../../vger/packages/recovery.core/dist/index.d.ts"]
     }
   },
   "include": [
