@@ -7,6 +7,7 @@
  */
 
 import ExifReader from 'exifreader';
+import { getRuntimeBrowserCryptoSupport } from './browserCryptoSupport.js';
 
 // ── Constants ──────────────────────────────────────────────────────────
 
@@ -81,6 +82,10 @@ function mimeFromName(name: string): string {
 // ── Crypto ─────────────────────────────────────────────────────────────
 
 async function sha256(data: BufferSource): Promise<string> {
+    const cryptoSupport = getRuntimeBrowserCryptoSupport();
+    if (!cryptoSupport.supported || !globalThis.crypto?.subtle) {
+        throw new Error(cryptoSupport.message ?? 'Local ingest requires crypto.subtle.');
+    }
     const hash = await crypto.subtle.digest('SHA-256', data);
     return Array.from(new Uint8Array(hash))
         .map(b => b.toString(16).padStart(2, '0'))
@@ -283,6 +288,31 @@ function formatDate(mtime: number): string {
     });
 }
 
+function renderFacesCell(data: Record<string, string> | undefined): string {
+    if (!data) return '';
+    const count = parseInt(data['face-count'] ?? '0', 10);
+    if (count === 0) return '';
+
+    const crops = data['face-crops']?.split(';') ?? [];
+    const names = data['face-names']?.split(';') ?? [];
+    const clusterIds = data['face-cluster-hashes']?.split(';') ?? [];
+
+    const faces: string[] = [];
+    for (let i = 0; i < count; i++) {
+        const name = names[i] && names[i] !== 'Unknown' ? escapeHtml(names[i]) : '';
+        const cropSrc = crops[i] ? `<img class="fs-face-crop" src="${escapeHtml(crops[i])}" loading="lazy" alt="${name}">` : '';
+        const nameLabel = name ? `<span class="fs-face-name">${name}</span>` : '';
+        const clusterId = clusterIds[i];
+        // Wrap in cluster link if we have both a name and a cluster id
+        if (clusterId && name) {
+            faces.push(`<a class="fs-face" data-cluster="${escapeHtml(clusterId)}">${cropSrc}${nameLabel}</a>`);
+        } else {
+            faces.push(`<span class="fs-face">${cropSrc}${nameLabel}</span>`);
+        }
+    }
+    return faces.join('');
+}
+
 function renderIndexHtml(
     dirPath: string,
     entries: FsEntry[],
@@ -296,7 +326,7 @@ function renderIndexHtml(
         `        <tr class="fs-child">
             <td class="fs-icon">\u{1F4C1}</td>
             <td class="fs-name"><a href="${escapeHtml(c)}/one/index.html">${escapeHtml(c)}/</a></td>
-            <td class="fs-size"></td><td class="fs-date"></td><td class="fs-path"></td>
+            <td class="fs-faces"></td><td class="fs-size"></td><td class="fs-date"></td><td class="fs-path"></td>
         </tr>`
     ).join('\n');
 
@@ -314,9 +344,12 @@ function renderIndexHtml(
             ? `${imgLink}<img class="fs-thumb" src="${escapeHtml(thumbSrc)}" loading="lazy" alt=""></a>${imgLink}${escapeHtml(e.name)}</a>`
             : `${imgLink}${escapeHtml(e.name)}</a>`;
 
+        const facesHtml = renderFacesCell(e.data);
+
         return `        <tr class="fs-entry"${attrs}>
             <td class="fs-icon">\u{1F5BC}</td>
             <td class="fs-name">${nameContent}</td>
+            <td class="fs-faces">${facesHtml}</td>
             <td class="fs-size">${formatSize(e.size)}</td>
             <td class="fs-date">${formatDate(e.mtime)}</td>
             <td class="fs-path">${escapeHtml(e.path)}</td>
@@ -354,6 +387,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
 .fs-footer a{color:var(--fs-muted);text-decoration:none;font-size:0.75em;display:inline-flex;align-items:center;gap:4px}
 .fs-footer a:hover{color:var(--fs-fg)}
 .fotos-icon{width:14px;height:14px}
+.fs-faces{white-space:normal;min-width:60px}
+.fs-face{display:inline-flex;flex-direction:column;align-items:center;margin:2px 4px;vertical-align:top;text-decoration:none;color:var(--fs-fg)}
+.fs-face-crop{width:32px;height:32px;object-fit:cover;border-radius:50%;border:1px solid var(--fs-border)}
+.fs-face-name{font-size:0.7em;color:var(--fs-muted);max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center}
+a.fs-face:hover .fs-face-name{color:var(--fs-accent)}
 @media(max-width:640px){.fs-path{display:none}.fs-date{display:none}}
 </style>
 </head>
@@ -364,7 +402,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
         <div class="fs-meta"><span class="fs-summary">${summary}</span></div>
     </header>
     <table class="fs-table">
-        <thead><tr><th></th><th>Name</th><th>Size</th><th>Modified</th><th>Path</th></tr></thead>
+        <thead><tr><th></th><th>Name</th><th>People</th><th>Size</th><th>Modified</th><th>Path</th></tr></thead>
         <tbody>
 ${childRows}${entryRows}
         </tbody>

@@ -14,6 +14,7 @@ import { createPlanRegistry } from '@/lib/PlanRegistry';
 import { FotosPlan } from '@/lib/FotosPlan';
 import { bootFotosModel } from './lib/onecore-boot';
 import { installHangTrace, traceHang } from './lib/hangTrace';
+import { getRuntimeBrowserCryptoSupport } from './lib/browserCryptoSupport';
 import { API_BASE, TRUSTED_SYSTEM_PUBLIC_KEYS } from './config';
 import { App } from './App';
 import './index.css';
@@ -57,27 +58,39 @@ const rootElement = document.getElementById('root')!;
 installHangTrace('fotos.browser');
 
 const statusEl = document.createElement('div');
-statusEl.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#111;color:#666;font:14px system-ui';
+statusEl.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#111;color:#666;font:14px system-ui;padding:24px;text-align:center;white-space:pre-wrap';
 rootElement.appendChild(statusEl);
+const cryptoSupport = getRuntimeBrowserCryptoSupport();
+(window as any).__fotosCryptoSupport = cryptoSupport;
 
-bootFotosModel((msg) => {
-    statusEl.textContent = msg;
-    traceHang('boot-status', { msg });
-})
-    .then((model) => {
-        traceHang('boot-complete', {
-            ownerId: model.ownerId,
-            publicationIdentity: model.publicationIdentity,
-        });
-        rootElement.removeChild(statusEl);
-        ReactDOM.createRoot(rootElement).render(
-            <StrictMode>
-                <App fotosModel={model} />
-            </StrictMode>
-        );
-    })
-    .catch((err) => {
-        statusEl.textContent = `Boot failed: ${err.message}`;
-        traceHang('boot-failed', { message: err.message });
-        console.error('[fotos] boot failed:', err);
+if (!cryptoSupport.supported) {
+    statusEl.textContent = cryptoSupport.message ?? 'Boot blocked: browser crypto support is unavailable.';
+    traceHang('boot-blocked-crypto', {
+        message: cryptoSupport.message,
+        origin: globalThis.location?.origin ?? null,
+        secureContext: globalThis.isSecureContext ?? null,
     });
+    console.error('[fotos] boot blocked:', cryptoSupport.message);
+} else {
+    bootFotosModel((msg) => {
+        statusEl.textContent = msg;
+        traceHang('boot-status', { msg });
+    })
+        .then((model) => {
+            traceHang('boot-complete', {
+                ownerId: model.ownerId,
+                publicationIdentity: model.publicationIdentity,
+            });
+            rootElement.removeChild(statusEl);
+            ReactDOM.createRoot(rootElement).render(
+                <StrictMode>
+                    <App fotosModel={model} />
+                </StrictMode>
+            );
+        })
+        .catch((err) => {
+            statusEl.textContent = `Boot failed: ${err.message}`;
+            traceHang('boot-failed', { message: err.message });
+            console.error('[fotos] boot failed:', err);
+        });
+}
