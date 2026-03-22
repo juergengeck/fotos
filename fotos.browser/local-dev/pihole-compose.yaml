@@ -1,0 +1,43 @@
+services:
+  pihole:
+    container_name: pihole
+    image: pihole/pihole:latest
+    hostname: schweiz-pihole
+    restart: unless-stopped
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "${PIHOLE_WEB_PORT:-8081}:80/tcp"
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
+      FTLCONF_webserver_api_password: ${PIHOLE_PASSWORD:?set PIHOLE_PASSWORD in .env}
+      DNSMASQ_USER: 'root'
+
+      # Docker bridge networking follows Pi-hole's documented recommendation:
+      # listen on all interfaces and let the LAN/router boundary provide scope.
+      #
+      # Synology's filesystem does not support Pi-hole's usual setcap path, so
+      # DNSMASQ_USER must be root on this host.
+      FTLCONF_dns_listeningMode: 'ALL'
+      FTLCONF_dns_domain_name: ${LOCAL_DOMAIN:-home.arpa}
+      FTLCONF_dns_domain_local: 'true'
+      FTLCONF_dns_expandHosts: 'true'
+      FTLCONF_dns_domainNeeded: 'true'
+      FTLCONF_dns_bogusPriv: 'true'
+      FTLCONF_dns_localise: 'true'
+
+      # Reverse lookups for LAN clients still come from the FRITZ!Box because
+      # FRITZ!Box remains the DHCP server in this topology.
+      FTLCONF_dns_revServers: |-
+        true,${LAN_CIDR:-192.168.178.0/24},${FRITZBOX_IP:-192.168.178.1},${FRITZBOX_LOCAL_DOMAIN:-fritz.box}
+
+      # Authoritative local DNS records for the home lab.
+      FTLCONF_dns_hosts: |-
+        ${PIHOLE_IP:?set PIHOLE_IP in .env} pihole.${LOCAL_DOMAIN:-home.arpa} pihole schweiz.${LOCAL_DOMAIN:-home.arpa} schweiz synology.${LOCAL_DOMAIN:-home.arpa} synology
+        ${FRITZBOX_IP:-192.168.178.1} fritzbox.${LOCAL_DOMAIN:-home.arpa} fritzbox
+        ${BAMBAM_IP:?set BAMBAM_IP in .env} bambam.${LOCAL_DOMAIN:-home.arpa} bambam fotos.${LOCAL_DOMAIN:-home.arpa} fotos
+        ${SPARK_IP:?set SPARK_IP in .env} spark.${LOCAL_DOMAIN:-home.arpa} spark
+    volumes:
+      - ./pihole/etc-pihole:/etc/pihole
+    cap_add:
+      - SYS_NICE

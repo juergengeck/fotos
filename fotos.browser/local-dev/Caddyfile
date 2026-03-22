@@ -1,0 +1,15 @@
+{
+	auto_https disable_redirects
+	https_port 8443
+	skip_install_trust
+}
+
+fotos.home.arpa:8443, bambam.home.arpa:8443 {
+	tls internal
+
+	encode zstd gzip
+
+	# Vite dev server on the same machine. Use localhost so macOS can hit
+	# Vite's default ::1 listener without forcing a host override.
+	reverse_proxy localhost:5188
+}
