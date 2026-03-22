@@ -7,9 +7,7 @@ import {
     getGlueIdentityProfile,
     nameToIdentity,
 } from '@glueone/glue.core';
-import { authenticateWithPasskeyViaPopup, registerPasskeyViaPopup, OneAuth } from '@glueone/auth.core';
 import { API_BASE } from '../config.js';
-import { deriveKeyFromPhotos, signRecoveryRequest } from '@/lib/photo-key-derivation.js';
 
 import { ChevronDown } from 'lucide-react';
 
@@ -170,14 +168,15 @@ export function FotosSettings({ model }: FotosSettingsProps) {
             .catch(() => {});
     }, [certState, publicationIdentity]);
 
-    // Sign in: passkey first if available, then OneAuth fallback
+    // Sign in: enable sync, then certify via glue.one passkey popup.
+    // Passkey auth handles both first-time registration and returning users.
     const handleSignIn = useCallback(async () => {
         if (!model?.settingsPlan) return;
         setSigningIn(true);
         setSignInError(null);
 
         try {
-            // Enable sync first if needed
+            // Enable sync first if needed — reload to let ONE.core establish identity
             if (!syncEnabled) {
                 await model.settingsPlan.updateSection({
                     moduleId: 'glue',
@@ -191,40 +190,23 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                 throw new Error('Identity not ready — sync may still be loading');
             }
 
-            let usedPasskey = false;
-
-            // Try passkey first if user has any registered
-            if (passkeyCount > 0) {
-                try {
-                    const result = await authenticateWithPasskeyViaPopup(model.publicationIdentity, displayName);
-                    if (result.success) {
-                        usedPasskey = true;
-                        setCertState('certified');
-                        if (result.data?.cert?.validUntil) {
-                            setCertValidUntil(new Date(result.data.cert.validUntil).toLocaleDateString());
-                        }
-                        setFedCMLoginStatus('logged-in');
-                    }
-                } catch {
-                    // Passkey failed — fall through to OneAuth
+            // Certify via glue.one passkey popup (handles both registration and auth)
+            const { authenticateWithPasskeyViaPopup } = await import('@glueone/auth.core');
+            const result = await authenticateWithPasskeyViaPopup(model.publicationIdentity, displayName);
+            if (result.success) {
+                setCertState('certified');
+                if (result.data?.cert?.validUntil) {
+                    setCertValidUntil(new Date(result.data.cert.validUntil).toLocaleDateString());
                 }
-            }
-
-            // OneAuth fallback (FedCM → popup → redirect)
-            if (!usedPasskey) {
-                const oneAuth = new OneAuth();
-                const result = await oneAuth.login({ popup: true });
-                if ('cancelled' in result) {
-                    setSigningIn(false);
-                    return;
+                setFedCMLoginStatus('logged-in');
+                // Offer passkey save if this was the first certification
+                if (passkeyCount === 0) {
+                    const dismissed = localStorage.getItem('fotos_passkey_prompt_dismissed');
+                    if (!dismissed) setShowPasskeyPrompt(true);
                 }
-                // OneAuth succeeded — reload to complete certification with the new identity
-                window.location.reload();
-                return;
+            } else {
+                setSignInError(result.error || 'Sign-in failed');
             }
-
-            // After passkey sign-in, offer to save a passkey if they don't have one
-            // (shouldn't happen since we only use passkey when count > 0, but guard)
         } catch (err) {
             setSignInError((err as Error).message);
         } finally {
@@ -232,43 +214,12 @@ export function FotosSettings({ model }: FotosSettingsProps) {
         }
     }, [model?.settingsPlan, model?.publicationIdentity, syncEnabled, displayName, passkeyCount]);
 
-    // OneAuth-only sign-in (when no passkeys or as explicit action)
-    const handleSignInWithONE = useCallback(async () => {
-        if (!model?.settingsPlan) return;
-        setSigningIn(true);
-        setSignInError(null);
-
-        try {
-            // Enable sync first if needed
-            if (!syncEnabled) {
-                await model.settingsPlan.updateSection({
-                    moduleId: 'glue',
-                    values: { syncEnabled: true },
-                });
-                window.location.reload();
-                return;
-            }
-
-            const oneAuth = new OneAuth();
-            const result = await oneAuth.login({ popup: true });
-            if ('cancelled' in result) {
-                setSigningIn(false);
-                return;
-            }
-            // Reload to complete certification
-            window.location.reload();
-        } catch (err) {
-            setSignInError((err as Error).message);
-        } finally {
-            setSigningIn(false);
-        }
-    }, [model?.settingsPlan, syncEnabled]);
-
     // Register a passkey after successful sign-in
     const handleSavePasskey = useCallback(async () => {
         if (!model?.publicationIdentity || !displayName) return;
         setRegisteringPasskey(true);
         try {
+            const { registerPasskeyViaPopup } = await import('@glueone/auth.core');
             const result = await registerPasskeyViaPopup(model.publicationIdentity, displayName);
             if (result.success) {
                 setPasskeyCount(prev => prev + 1);
@@ -305,9 +256,9 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                             Sign in to sync your photos across devices and use your identity on other ONE apps.
                         </div>
 
-                        {/* Primary sign-in button */}
+                        {/* Sign-in button */}
                         <button
-                            onClick={passkeyCount > 0 ? handleSignIn : handleSignInWithONE}
+                            onClick={handleSignIn}
                             disabled={signingIn || !model?.settingsPlan}
                             className={`w-full flex items-center justify-center gap-1.5 px-2.5 py-2.5 rounded-md text-[11px] font-medium transition-colors ${
                                 signingIn
@@ -317,22 +268,8 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                         >
                             {signingIn && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                             <Shield className="w-3.5 h-3.5" />
-                            {signingIn
-                                ? 'Signing in...'
-                                : passkeyCount > 0
-                                    ? 'Sign in'
-                                    : 'Sign in with ONE'}
+                            {signingIn ? 'Signing in...' : 'Sign in'}
                         </button>
-
-                        {/* If user has passkeys, show OneAuth as secondary option */}
-                        {passkeyCount > 0 && !signingIn && (
-                            <button
-                                onClick={handleSignInWithONE}
-                                className="w-full text-center text-[10px] text-white/25 hover:text-white/40 transition-colors py-1"
-                            >
-                                Sign in with ONE instead
-                            </button>
-                        )}
 
                         {signInError && (
                             <div className="px-2.5 text-[10px] text-red-400/70">{signInError}</div>
@@ -545,6 +482,7 @@ function RecoverySecretSection({ model, onComplete }: { model: FotosModel | null
 
             setProgress('Deriving key (this takes a few seconds)...');
 
+            const { deriveKeyFromPhotos, signRecoveryRequest } = await import('@/lib/photo-key-derivation.js');
             const result = await deriveKeyFromPhotos({
                 images: imageBytes,
                 pin,
