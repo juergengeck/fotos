@@ -130,7 +130,7 @@ export function Lightbox<T extends GalleryEntry>({
         padding: '76px 72px 132px', pointerEvents: 'none', zIndex: 1,
       }}>
         {url ? (
-          <img src={url} alt={entry.name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+          <img src={url} alt={entry.name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', pointerEvents: 'auto' }} />
         ) : (
           <div style={{ color: 'rgba(255,255,255,0.72)', fontSize: 14 }}>{entry.name}</div>
         )}

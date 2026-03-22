@@ -214,8 +214,10 @@ export function useServerAccess(): FolderAccess {
     }, []);
 
     const getThumbUrl = useCallback(async (entry: PhotoEntry): Promise<string | null> => {
-        if (!entry.thumb) return null;
-        return `/fotos/thumb/${encodeURIComponent(entry.thumb)}`;
+        if (entry.thumb) return `/fotos/thumb/${encodeURIComponent(entry.thumb)}`;
+        // No thumbnail — fall back to original file
+        if (entry.sourcePath) return `/fotos/file/${encodeURIComponent(entry.sourcePath)}`;
+        return null;
     }, []);
 
     return {
