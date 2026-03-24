@@ -16,7 +16,7 @@ function overlayButton(side: 'left' | 'right'): React.CSSProperties {
   return {
     position: 'absolute',
     top: '50%',
-    [side]: 16,
+    [side]: 12,
     transform: 'translateY(-50%)',
     width: 44,
     height: 44,
@@ -36,7 +36,7 @@ function overlayButton(side: 'left' | 'right'): React.CSSProperties {
 function chromeButton(inset: 'left' | 'right'): React.CSSProperties {
   return {
     position: 'absolute',
-    top: 16,
+    top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
     [inset]: 16,
     width: 42,
     height: 42,
@@ -90,7 +90,14 @@ export function Lightbox<T extends GalleryEntry>({
     <div
       role="dialog"
       aria-modal="true"
-      style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(0,0,0,0.96)' }}
+      onDoubleClick={(event) => event.preventDefault()}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 80,
+        background: 'rgba(0,0,0,0.96)',
+        touchAction: 'none',
+      }}
     >
       {/* Close */}
       <button type="button" onClick={onClose} aria-label="Close" style={chromeButton('right')}>
@@ -106,41 +113,87 @@ export function Lightbox<T extends GalleryEntry>({
 
       {/* Counter */}
       <div style={{
-        position: 'absolute', top: 22, left: '50%', transform: 'translateX(-50%)',
-        color: 'rgba(255,255,255,0.76)', fontSize: 12, letterSpacing: '0.05em', zIndex: 3,
+        position: 'absolute',
+        top: 'calc(env(safe-area-inset-top, 0px) + 18px)',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        color: 'rgba(255,255,255,0.76)',
+        fontSize: 12,
+        letterSpacing: '0.05em',
+        zIndex: 3,
       }}>
         {index + 1} / {items.length}
       </div>
 
-      {/* Nav arrows */}
-      {canPrev && (
-        <button type="button" onClick={() => onIndexChange(index - 1)} aria-label="Previous" style={overlayButton('left')}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
-        </button>
-      )}
-      {canNext && (
-        <button type="button" onClick={() => onIndexChange(index + 1)} aria-label="Next" style={overlayButton('right')}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
-        </button>
-      )}
-
-      {/* Image */}
+      {/* Image stage */}
       <div style={{
-        position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '76px 72px 132px', pointerEvents: 'none', zIndex: 1,
+        position: 'absolute',
+        inset: 0,
+        display: 'flex',
+        alignItems: 'stretch',
+        justifyContent: 'center',
+        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 64px)',
+        paddingRight: 12,
+        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 108px)',
+        paddingLeft: 12,
+        zIndex: 1,
       }}>
-        {url ? (
-          <img src={url} alt={entry.name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', pointerEvents: 'auto' }} />
-        ) : (
-          <div style={{ color: 'rgba(255,255,255,0.72)', fontSize: 14 }}>{entry.name}</div>
-        )}
+        <div
+          style={{
+            position: 'relative',
+            flex: 1,
+            minWidth: 0,
+            minHeight: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {canPrev && (
+            <button type="button" onClick={() => onIndexChange(index - 1)} aria-label="Previous" style={overlayButton('left')}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+          )}
+          {canNext && (
+            <button type="button" onClick={() => onIndexChange(index + 1)} aria-label="Next" style={overlayButton('right')}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          )}
+
+          {url ? (
+            <img
+              src={url}
+              alt={entry.name}
+              draggable={false}
+              style={{
+                display: 'block',
+                maxWidth: '100%',
+                maxHeight: '100%',
+                width: 'auto',
+                height: 'auto',
+                objectFit: 'contain',
+                objectPosition: 'center',
+                userSelect: 'none',
+                WebkitUserDrag: 'none',
+                touchAction: 'none',
+              }}
+            />
+          ) : (
+            <div style={{ color: 'rgba(255,255,255,0.72)', fontSize: 14 }}>{entry.name}</div>
+          )}
+        </div>
       </div>
 
       {/* Bottom bar */}
       <div style={{
-        position: 'absolute', left: 0, right: 0, bottom: 0, padding: '18px 22px 24px',
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 0,
+        padding: '18px 22px calc(env(safe-area-inset-bottom, 0px) + 18px)',
         background: 'linear-gradient(to top, rgba(0,0,0,0.92), rgba(0,0,0,0.78), transparent)',
-        color: '#fff', zIndex: 2,
+        color: '#fff',
+        zIndex: 2,
       }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'baseline', marginBottom: 6 }}>
           {entry.senderName && <div style={{ fontSize: 16, fontWeight: 700 }}>{entry.senderName}</div>}
