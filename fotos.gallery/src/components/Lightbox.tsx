@@ -1,5 +1,40 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from 'react'
 import type { GalleryEntry } from '../types/gallery.js'
+
+const MIN_SCALE = 1
+const MAX_SCALE = 4
+const DOUBLE_TAP_MS = 280
+const DOUBLE_TAP_DISTANCE_PX = 24
+
+type Point = {
+  x: number
+  y: number
+}
+
+type Offset = {
+  x: number
+  y: number
+}
+
+type NaturalSize = {
+  width: number
+  height: number
+}
+
+type InteractionState = {
+  panPointerId: number | null
+  panStartPoint: Point | null
+  panStartOffset: Offset
+  pinchStartDistance: number
+  pinchStartScale: number
+  pinchStartOffset: Offset
+  pointerDownPoint: Point | null
+  pointerDownAt: number
+  moved: boolean
+  lastTapPoint: Point | null
+  lastTapAt: number
+}
 
 export interface LightboxProps<T extends GalleryEntry = GalleryEntry> {
   items: T[]
@@ -53,6 +88,99 @@ function chromeButton(inset: 'left' | 'right'): React.CSSProperties {
   }
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max)
+}
+
+function distance(a: Point, b: Point): number {
+  const dx = a.x - b.x
+  const dy = a.y - b.y
+  return Math.hypot(dx, dy)
+}
+
+function midpoint(a: Point, b: Point): Point {
+  return {
+    x: (a.x + b.x) / 2,
+    y: (a.y + b.y) / 2,
+  }
+}
+
+function getStagePoint(
+  clientX: number,
+  clientY: number,
+  stage: HTMLDivElement,
+): Point {
+  const rect = stage.getBoundingClientRect()
+  return {
+    x: clientX - rect.left,
+    y: clientY - rect.top,
+  }
+}
+
+function getFittedImageSize(
+  naturalSize: NaturalSize,
+  stage: HTMLDivElement,
+): NaturalSize {
+  if (naturalSize.width <= 0 || naturalSize.height <= 0) {
+    return {
+      width: stage.clientWidth,
+      height: stage.clientHeight,
+    }
+  }
+
+  const widthScale = stage.clientWidth / naturalSize.width
+  const heightScale = stage.clientHeight / naturalSize.height
+  const fitScale = Math.min(widthScale, heightScale)
+
+  return {
+    width: naturalSize.width * fitScale,
+    height: naturalSize.height * fitScale,
+  }
+}
+
+function clampOffset(
+  offset: Offset,
+  scale: number,
+  naturalSize: NaturalSize,
+  stage: HTMLDivElement | null,
+): Offset {
+  if (!stage || scale <= 1) {
+    return { x: 0, y: 0 }
+  }
+
+  const fitted = getFittedImageSize(naturalSize, stage)
+  const scaledWidth = fitted.width * scale
+  const scaledHeight = fitted.height * scale
+  const maxX = Math.max(0, (scaledWidth - stage.clientWidth) / 2)
+  const maxY = Math.max(0, (scaledHeight - stage.clientHeight) / 2)
+
+  return {
+    x: clamp(offset.x, -maxX, maxX),
+    y: clamp(offset.y, -maxY, maxY),
+  }
+}
+
+function zoomOffsetAroundPoint(
+  currentOffset: Offset,
+  currentScale: number,
+  nextScale: number,
+  anchor: Point,
+  stage: HTMLDivElement,
+): Offset {
+  const centerX = stage.clientWidth / 2
+  const centerY = stage.clientHeight / 2
+  const ratio = nextScale / currentScale
+  const anchorFromCenter = {
+    x: anchor.x - centerX,
+    y: anchor.y - centerY,
+  }
+
+  return {
+    x: currentOffset.x * ratio + anchorFromCenter.x * (1 - ratio),
+    y: currentOffset.y * ratio + anchorFromCenter.y * (1 - ratio),
+  }
+}
+
 export function Lightbox<T extends GalleryEntry>({
   items,
   index,
@@ -62,6 +190,72 @@ export function Lightbox<T extends GalleryEntry>({
   getPreview,
 }: LightboxProps<T>) {
   const entry = items[index]
+  const stageRef = useRef<HTMLDivElement | null>(null)
+  const activePointersRef = useRef(new Map<number, Point>())
+  const interactionRef = useRef<InteractionState>({
+    panPointerId: null,
+    panStartPoint: null,
+    panStartOffset: { x: 0, y: 0 },
+    pinchStartDistance: 0,
+    pinchStartScale: 1,
+    pinchStartOffset: { x: 0, y: 0 },
+    pointerDownPoint: null,
+    pointerDownAt: 0,
+    moved: false,
+    lastTapPoint: null,
+    lastTapAt: 0,
+  })
+  const [scale, setScale] = useState(1)
+  const [offset, setOffset] = useState<Offset>({ x: 0, y: 0 })
+  const [naturalSize, setNaturalSize] = useState<NaturalSize>({ width: 0, height: 0 })
+  const scaleRef = useRef(scale)
+  const offsetRef = useRef(offset)
+  const naturalSizeRef = useRef(naturalSize)
+
+  const applyTransform = (
+    nextScale: number,
+    nextOffset: Offset,
+  ): void => {
+    const clampedScale = clamp(nextScale, MIN_SCALE, MAX_SCALE)
+    const clampedOffset = clampOffset(
+      nextOffset,
+      clampedScale,
+      naturalSizeRef.current,
+      stageRef.current,
+    )
+
+    scaleRef.current = clampedScale
+    offsetRef.current = clampedOffset
+    setScale(clampedScale)
+    setOffset(clampedOffset)
+  }
+
+  const resetZoom = (): void => {
+    applyTransform(1, { x: 0, y: 0 })
+  }
+
+  const toggleZoomAtPoint = (point: Point): void => {
+    const stage = stageRef.current
+    if (!stage) {
+      return
+    }
+
+    if (scaleRef.current > 1) {
+      resetZoom()
+      return
+    }
+
+    const targetScale = 2
+    const nextOffset = zoomOffsetAroundPoint(
+      offsetRef.current,
+      scaleRef.current,
+      targetScale,
+      point,
+      stage,
+    )
+
+    applyTransform(targetScale, nextOffset)
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -72,6 +266,28 @@ export function Lightbox<T extends GalleryEntry>({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [index, items.length, onClose, onIndexChange])
+
+  useEffect(() => {
+    resetZoom()
+    activePointersRef.current.clear()
+    interactionRef.current.panPointerId = null
+    interactionRef.current.panStartPoint = null
+    interactionRef.current.pinchStartDistance = 0
+    interactionRef.current.pointerDownPoint = null
+    interactionRef.current.moved = false
+  }, [index, entry?.hash])
+
+  useEffect(() => {
+    scaleRef.current = scale
+  }, [scale])
+
+  useEffect(() => {
+    offsetRef.current = offset
+  }, [offset])
+
+  useEffect(() => {
+    naturalSizeRef.current = naturalSize
+  }, [naturalSize])
 
   if (!entry) return null
 
@@ -86,17 +302,183 @@ export function Lightbox<T extends GalleryEntry>({
     minute: '2-digit',
   })
 
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    const stage = stageRef.current
+    if (!stage) {
+      return
+    }
+
+    const point = getStagePoint(event.clientX, event.clientY, stage)
+    activePointersRef.current.set(event.pointerId, point)
+    interactionRef.current.pointerDownPoint = point
+    interactionRef.current.pointerDownAt = Date.now()
+    interactionRef.current.moved = false
+
+    if (activePointersRef.current.size === 1) {
+      interactionRef.current.panPointerId = event.pointerId
+      interactionRef.current.panStartPoint = point
+      interactionRef.current.panStartOffset = offsetRef.current
+    } else if (activePointersRef.current.size === 2) {
+      const [first, second] = Array.from(activePointersRef.current.values())
+      interactionRef.current.pinchStartDistance = distance(first, second)
+      interactionRef.current.pinchStartScale = scaleRef.current
+      interactionRef.current.pinchStartOffset = offsetRef.current
+      interactionRef.current.panPointerId = null
+      interactionRef.current.panStartPoint = null
+    }
+
+    stage.setPointerCapture(event.pointerId)
+  }
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    const stage = stageRef.current
+    if (!stage || !activePointersRef.current.has(event.pointerId)) {
+      return
+    }
+
+    const point = getStagePoint(event.clientX, event.clientY, stage)
+    activePointersRef.current.set(event.pointerId, point)
+
+    const downPoint = interactionRef.current.pointerDownPoint
+    if (downPoint && distance(point, downPoint) > 8) {
+      interactionRef.current.moved = true
+    }
+
+    if (activePointersRef.current.size >= 2) {
+      const [first, second] = Array.from(activePointersRef.current.values())
+      const startDistance = interactionRef.current.pinchStartDistance || distance(first, second)
+      const nextScale = clamp(
+        interactionRef.current.pinchStartScale * (distance(first, second) / startDistance),
+        MIN_SCALE,
+        MAX_SCALE,
+      )
+      const anchor = midpoint(first, second)
+      const nextOffset = zoomOffsetAroundPoint(
+        interactionRef.current.pinchStartOffset,
+        interactionRef.current.pinchStartScale,
+        nextScale,
+        anchor,
+        stage,
+      )
+      applyTransform(nextScale, nextOffset)
+      return
+    }
+
+    if (
+      interactionRef.current.panPointerId === event.pointerId &&
+      interactionRef.current.panStartPoint &&
+      scaleRef.current > 1
+    ) {
+      const deltaX = point.x - interactionRef.current.panStartPoint.x
+      const deltaY = point.y - interactionRef.current.panStartPoint.y
+
+      applyTransform(scaleRef.current, {
+        x: interactionRef.current.panStartOffset.x + deltaX,
+        y: interactionRef.current.panStartOffset.y + deltaY,
+      })
+    }
+  }
+
+  const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    const stage = stageRef.current
+    if (!stage) {
+      return
+    }
+
+    const currentPoint = activePointersRef.current.get(event.pointerId)
+    activePointersRef.current.delete(event.pointerId)
+    if (stage.hasPointerCapture(event.pointerId)) {
+      stage.releasePointerCapture(event.pointerId)
+    }
+
+    if (
+      event.pointerType === 'touch' &&
+      currentPoint &&
+      !interactionRef.current.moved
+    ) {
+      const now = Date.now()
+      const lastTapPoint = interactionRef.current.lastTapPoint
+      const isDoubleTap = (
+        now - interactionRef.current.lastTapAt <= DOUBLE_TAP_MS &&
+        lastTapPoint !== null &&
+        distance(currentPoint, lastTapPoint) <= DOUBLE_TAP_DISTANCE_PX
+      )
+
+      if (isDoubleTap) {
+        toggleZoomAtPoint(currentPoint)
+        interactionRef.current.lastTapAt = 0
+        interactionRef.current.lastTapPoint = null
+      } else {
+        interactionRef.current.lastTapAt = now
+        interactionRef.current.lastTapPoint = currentPoint
+      }
+    }
+
+    if (activePointersRef.current.size === 1) {
+      const [pointerId, point] = Array.from(activePointersRef.current.entries())[0]
+      interactionRef.current.panPointerId = pointerId
+      interactionRef.current.panStartPoint = point
+      interactionRef.current.panStartOffset = offsetRef.current
+      interactionRef.current.pinchStartDistance = 0
+      interactionRef.current.pinchStartScale = scaleRef.current
+      interactionRef.current.pinchStartOffset = offsetRef.current
+    } else if (activePointersRef.current.size === 0) {
+      interactionRef.current.panPointerId = null
+      interactionRef.current.panStartPoint = null
+      interactionRef.current.pinchStartDistance = 0
+      interactionRef.current.pinchStartScale = scaleRef.current
+      interactionRef.current.pinchStartOffset = offsetRef.current
+    }
+  }
+
+  const handlePointerCancel = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    handlePointerUp(event)
+  }
+
+  const handleWheel = (event: ReactWheelEvent<HTMLDivElement>): void => {
+    const stage = stageRef.current
+    if (!stage) {
+      return
+    }
+
+    event.preventDefault()
+    const point = getStagePoint(event.clientX, event.clientY, stage)
+    const factor = event.deltaY < 0 ? 1.12 : 0.9
+    const nextScale = clamp(scaleRef.current * factor, MIN_SCALE, MAX_SCALE)
+
+    if (nextScale === scaleRef.current) {
+      return
+    }
+
+    const nextOffset = zoomOffsetAroundPoint(
+      offsetRef.current,
+      scaleRef.current,
+      nextScale,
+      point,
+      stage,
+    )
+
+    applyTransform(nextScale, nextOffset)
+  }
+
+  const handleDoubleClick = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    const stage = stageRef.current
+    if (!stage) {
+      return
+    }
+
+    toggleZoomAtPoint(getStagePoint(event.clientX, event.clientY, stage))
+  }
+
   return (
     <div
       role="dialog"
       aria-modal="true"
-      onDoubleClick={(event) => event.preventDefault()}
       style={{
         position: 'fixed',
         inset: 0,
         zIndex: 80,
         background: 'rgba(0,0,0,0.96)',
-        touchAction: 'none',
       }}
     >
       {/* Close */}
@@ -139,6 +521,13 @@ export function Lightbox<T extends GalleryEntry>({
         zIndex: 1,
       }}>
         <div
+          ref={stageRef}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
+          onWheel={handleWheel}
+          onDoubleClick={handleDoubleClick}
           style={{
             position: 'relative',
             flex: 1,
@@ -147,6 +536,9 @@ export function Lightbox<T extends GalleryEntry>({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            overflow: 'hidden',
+            touchAction: 'none',
+            cursor: scale > 1 ? 'grab' : 'zoom-in',
           }}
         >
           {canPrev && (
@@ -165,6 +557,13 @@ export function Lightbox<T extends GalleryEntry>({
               src={url}
               alt={entry.name}
               draggable={false}
+              onLoad={(event) => {
+                const img = event.currentTarget
+                setNaturalSize({
+                  width: img.naturalWidth,
+                  height: img.naturalHeight,
+                })
+              }}
               style={{
                 display: 'block',
                 maxWidth: '100%',
@@ -175,7 +574,10 @@ export function Lightbox<T extends GalleryEntry>({
                 objectPosition: 'center',
                 userSelect: 'none',
                 WebkitUserDrag: 'none',
-                touchAction: 'none',
+                transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
+                transformOrigin: 'center center',
+                transition: activePointersRef.current.size > 0 ? 'none' : 'transform 120ms ease-out',
+                cursor: scale > 1 ? 'grab' : 'zoom-in',
               }}
             />
           ) : (
