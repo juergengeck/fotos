@@ -48,6 +48,15 @@ function toBase64(bytes: Uint8Array): string {
 type PopupPhase = 'waiting' | 'setup' | 'creating' | 'done' | 'error';
 type FotosIdMode = 'create' | 'recover';
 
+function getQueryMode(): FotosIdMode {
+  const mode = new URLSearchParams(window.location.search).get('mode');
+  return mode === 'recover' ? 'recover' : 'create';
+}
+
+function getQueryDisplayName(): string {
+  return new URLSearchParams(window.location.search).get('displayName') ?? '';
+}
+
 interface PopupRequest {
   requestId: string;
   mode: FotosIdMode;
@@ -57,8 +66,8 @@ interface PopupRequest {
 
 export function FotosIdPopup() {
   const [phase, setPhase] = useState<PopupPhase>('waiting');
-  const [mode, setMode] = useState<FotosIdMode>('create');
-  const [initialDisplayName, setInitialDisplayName] = useState('');
+  const [mode, setMode] = useState<FotosIdMode>(() => getQueryMode());
+  const [initialDisplayName, setInitialDisplayName] = useState(() => getQueryDisplayName());
   const [error, setError] = useState<string | null>(null);
   const requestRef = useRef<PopupRequest | null>(null);
   const openerOriginRef = useRef<string>('');
