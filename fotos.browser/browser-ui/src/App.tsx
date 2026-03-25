@@ -18,9 +18,44 @@ import { setModelUpdater } from './lib/onecore-boot';
 import { traceHang } from './lib/hangTrace';
 import type { SimilarFaceMatch } from '@/lib/cluster-gallery';
 import { isSnapshotEqual, type FotosBreadcrumbSnapshot } from '@/lib/fotosHistorySettings';
+import {
+    buildPersistentPhotoPath,
+    parsePersistentPhotoRouteTarget,
+} from '@/lib/photoRoute';
 
 interface AppProps {
     fotosModel?: FotosModel;
+}
+
+interface RouteLocationSnapshot {
+    pathname: string;
+    search: string;
+    hash: string;
+}
+
+function getCurrentRouteLocation(): RouteLocationSnapshot {
+    if (typeof window === 'undefined') {
+        return {
+            pathname: '/',
+            search: '',
+            hash: '',
+        };
+    }
+
+    return {
+        pathname: window.location.pathname,
+        search: window.location.search,
+        hash: window.location.hash,
+    };
+}
+
+function areRouteLocationsEqual(
+    left: RouteLocationSnapshot,
+    right: RouteLocationSnapshot,
+): boolean {
+    return left.pathname === right.pathname
+        && left.search === right.search
+        && left.hash === right.hash;
 }
 
 export function App({ fotosModel: initialModel }: AppProps) {
@@ -43,6 +78,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
         folder: headlessUrl ? headlessFolder : undefined,
     });
     const scrollRef = useRef<HTMLDivElement>(null);
+    const [routeLocation, setRouteLocation] = useState<RouteLocationSnapshot>(getCurrentRouteLocation);
 
     const visiblePhotos = gallery.galleryMode === 'clusters' && gallery.activeClusterId
         ? gallery.clusterPhotos
@@ -57,25 +93,6 @@ export function App({ fotosModel: initialModel }: AppProps) {
         || trimmedSearchQuery.length > 0
         || gallery.searchFace !== null
         || gallery.activeClusterId !== null;
-
-    const handleDelete = useCallback((hash: string) => {
-        gallery.deletePhoto(hash);
-        if (gallery.selectedIndex !== null) {
-            const remaining = visiblePhotos.length - 1;
-            if (remaining <= 0) {
-                gallery.setSelectedIndex(null);
-            } else if (gallery.selectedIndex >= remaining) {
-                gallery.setSelectedIndex(remaining - 1);
-            }
-        }
-    }, [gallery, visiblePhotos.length]);
-
-    const handleFaceSearch = useCallback((embedding: Float32Array) => {
-        gallery.setSelectedIndex(null);
-        gallery.setGalleryMode('images');
-        gallery.setActiveClusterId(null);
-        gallery.setSearchFace(embedding);
-    }, [gallery]);
 
     const handleRenameFace = useCallback(
         (clusterId: string, name: string) => gallery.folder.renameFace(clusterId, name),
@@ -100,6 +117,113 @@ export function App({ fotosModel: initialModel }: AppProps) {
         && intakePlan.faceEnrichment === 'local';
     const canReanalyze = canRunFaceAnalytics || settings.analysis.semanticSearchEnabled;
 
+    useEffect(() => {
+        const handlePopState = () => {
+            setRouteLocation(getCurrentRouteLocation());
+        };
+
+        window.addEventListener('popstate', handlePopState);
+        return () => window.removeEventListener('popstate', handlePopState);
+    }, []);
+
+    useEffect(() => {
+        const nextLocation = getCurrentRouteLocation();
+        setRouteLocation((current) => (
+            areRouteLocationsEqual(current, nextLocation) ? current : nextLocation
+        ));
+    });
+
+    const photoRouteTarget = useMemo(
+        () => parsePersistentPhotoRouteTarget(routeLocation.search),
+        [routeLocation.search],
+    );
+    const buildPhotoRoutePath = useCallback(
+        (photoHash?: string | null) => buildPersistentPhotoPath(
+            routeLocation.pathname,
+            routeLocation.search,
+            photoHash ? { photoHash } : null,
+        ),
+        [routeLocation.pathname, routeLocation.search],
+    );
+    const navigatePhotoRoute = useCallback((photoHash?: string | null, options?: { replace?: boolean }) => {
+        const nextPath = buildPhotoRoutePath(photoHash);
+        const nextUrl = new URL(window.location.href);
+        const [nextPathname, nextSearch = ''] = nextPath.split('?');
+        nextUrl.pathname = nextPathname;
+        nextUrl.search = nextSearch ? `?${nextSearch}` : '';
+
+        const currentRoute = `${routeLocation.pathname}${routeLocation.search}${routeLocation.hash}`;
+        const nextRoute = `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`;
+        if (currentRoute === nextRoute) {
+            return;
+        }
+
+        const historyMethod = options?.replace ? 'replaceState' : 'pushState';
+        window.history[historyMethod]({}, '', nextUrl.toString());
+        setRouteLocation({
+            pathname: nextUrl.pathname,
+            search: nextUrl.search,
+            hash: nextUrl.hash,
+        });
+    }, [buildPhotoRoutePath, routeLocation.hash, routeLocation.pathname, routeLocation.search]);
+    const openPhotoRoute = useCallback((photoHash: string, options?: { replace?: boolean }) => {
+        const nextIndex = visiblePhotos.findIndex((photo) => photo.hash === photoHash);
+        if (nextIndex >= 0) {
+            gallery.setSelectedIndex(nextIndex);
+        }
+        navigatePhotoRoute(photoHash, options);
+    }, [gallery, navigatePhotoRoute, visiblePhotos]);
+    const openPhotoRouteIndex = useCallback((index: number, options?: { replace?: boolean }) => {
+        const photo = visiblePhotos[index];
+        if (!photo) {
+            return;
+        }
+        openPhotoRoute(photo.hash, options);
+    }, [openPhotoRoute, visiblePhotos]);
+    const closePhotoRoute = useCallback((options?: { replace?: boolean }) => {
+        gallery.setSelectedIndex(null);
+        navigatePhotoRoute(null, options);
+    }, [gallery, navigatePhotoRoute]);
+
+    const handleDelete = useCallback((hash: string) => {
+        if (photoRouteTarget?.photoHash === hash) {
+            const currentIndex = gallery.selectedIndex;
+            const fallbackPhoto = currentIndex !== null
+                ? visiblePhotos[currentIndex + 1] ?? visiblePhotos[currentIndex - 1] ?? null
+                : null;
+
+            if (fallbackPhoto) {
+                openPhotoRoute(fallbackPhoto.hash, { replace: true });
+            } else {
+                closePhotoRoute({ replace: true });
+            }
+        }
+
+        gallery.deletePhoto(hash);
+        if (!photoRouteTarget?.photoHash && gallery.selectedIndex !== null) {
+            const remaining = visiblePhotos.length - 1;
+            if (remaining <= 0) {
+                gallery.setSelectedIndex(null);
+            } else if (gallery.selectedIndex >= remaining) {
+                gallery.setSelectedIndex(remaining - 1);
+            }
+        }
+    }, [
+        closePhotoRoute,
+        gallery,
+        openPhotoRoute,
+        photoRouteTarget?.photoHash,
+        visiblePhotos,
+        visiblePhotos.length,
+    ]);
+
+    const handleFaceSearch = useCallback((embedding: Float32Array) => {
+        closePhotoRoute({ replace: true });
+        gallery.setGalleryMode('images');
+        gallery.setActiveClusterId(null);
+        gallery.setSearchFace(embedding);
+    }, [closePhotoRoute, gallery]);
+
     // On mobile, tap a photo → share via native share sheet (opens in photo app)
     const handlePhotoClick = useCallback(async (index: number) => {
         traceHang('photo-click', {
@@ -108,7 +232,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
             mobile,
         });
         if (!mobile) {
-            gallery.setSelectedIndex(index);
+            openPhotoRouteIndex(index);
             return;
         }
         const photo = visiblePhotos[index];
@@ -118,14 +242,14 @@ export function App({ fotosModel: initialModel }: AppProps) {
             const shared = await shareFile(file);
             if (!shared) {
                 traceHang('photo-click-fallback-lightbox', { index, hash: photo.hash });
-                gallery.setSelectedIndex(index);
+                openPhotoRouteIndex(index);
             }
         } catch {
             // Share API unavailable — fall back to lightbox
             traceHang('photo-click-share-error', { index, hash: photo.hash });
-            gallery.setSelectedIndex(index);
+            openPhotoRouteIndex(index);
         }
-    }, [mobile, gallery, visiblePhotos]);
+    }, [mobile, gallery, openPhotoRouteIndex, visiblePhotos]);
 
     const progress = gallery.folder.ingestProgress;
     const totalDetectedFaces = gallery.folder.entries.reduce(
@@ -342,7 +466,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
             return;
         }
 
-        gallery.setSelectedIndex(null);
+        closePhotoRoute({ replace: true });
         gallery.setGalleryMode(targetState.galleryMode);
         gallery.setActiveTag(targetState.activeTag ?? null);
         gallery.setActiveClusterId(targetState.activeClusterId ?? null);
@@ -361,6 +485,36 @@ export function App({ fotosModel: initialModel }: AppProps) {
         gallery.setSearchQuery,
         gallery.setSelectedIndex,
         historySnapshot,
+        closePhotoRoute,
+    ]);
+
+    useEffect(() => {
+        if (!gallery.folder.isOpen) {
+            if (gallery.selectedIndex !== null) {
+                gallery.setSelectedIndex(null);
+            }
+            return;
+        }
+
+        const nextPhotoHash = photoRouteTarget?.photoHash ?? null;
+        if (!nextPhotoHash) {
+            gallery.setSelectedIndex((current) => current === null ? current : null);
+            return;
+        }
+
+        const nextIndex = visiblePhotos.findIndex((photo) => photo.hash === nextPhotoHash);
+        if (nextIndex === -1) {
+            gallery.setSelectedIndex((current) => current === null ? current : null);
+            return;
+        }
+
+        gallery.setSelectedIndex((current) => current === nextIndex ? current : nextIndex);
+    }, [
+        gallery.folder.isOpen,
+        gallery.selectedIndex,
+        gallery.setSelectedIndex,
+        photoRouteTarget?.photoHash,
+        visiblePhotos,
     ]);
 
     useEffect(() => {
@@ -390,11 +544,8 @@ export function App({ fotosModel: initialModel }: AppProps) {
     const handleOpenSimilarFace = useCallback((match: SimilarFaceMatch) => {
         gallery.setGalleryMode('images');
         gallery.setActiveClusterId(null);
-        const idx = gallery.photos.findIndex(photo => photo.hash === match.photo.hash);
-        if (idx >= 0) {
-            gallery.setSelectedIndex(idx);
-        }
-    }, [gallery]);
+        openPhotoRoute(match.photo.hash);
+    }, [gallery, openPhotoRoute]);
 
     const appContent = (() => {
         // Ingestion in progress — show progress overlay
@@ -620,8 +771,8 @@ export function App({ fotosModel: initialModel }: AppProps) {
                     <Lightbox
                         photos={visiblePhotos}
                         index={gallery.selectedIndex}
-                        onIndexChange={gallery.setSelectedIndex}
-                        onClose={() => gallery.setSelectedIndex(null)}
+                        onIndexChange={(index) => openPhotoRouteIndex(index, { replace: true })}
+                        onClose={() => closePhotoRoute({ replace: true })}
                         onDelete={handleDelete}
                         onFaceSearch={handleFaceSearch}
                         onRenameFace={handleRenameFace}
