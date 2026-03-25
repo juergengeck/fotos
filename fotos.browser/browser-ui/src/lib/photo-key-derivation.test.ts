@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { deriveKeyFromPhotos } from './photo-key-derivation.js';
+import { deriveKeyFromPhotos, deriveRecoveryKeyCandidatesFromPhotos } from './photo-key-derivation.js';
 
 // Tiny deterministic test images (1x1 pixel PNGs with known byte content)
 const IMG_A = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01]);
@@ -27,6 +27,23 @@ describe('deriveKeyFromPhotos', () => {
         expect(result1.seed).toEqual(result2.seed);
         expect(result1.publicKey).toEqual(result2.publicKey);
         expect(result1.secretKey).toEqual(result2.secretKey);
+    });
+
+    test('recovery candidates include the current derivation and legacy fallback when they differ', async () => {
+        const current = await deriveKeyFromPhotos({
+            images: [IMG_A, IMG_B],
+            pin: PIN,
+            ...FAST_PARAMS,
+        });
+        const candidates = await deriveRecoveryKeyCandidatesFromPhotos({
+            images: [IMG_A, IMG_B],
+            pin: PIN,
+            ...FAST_PARAMS,
+        });
+
+        expect(candidates[0]!.publicKey).toEqual(current.publicKey);
+        expect(candidates.length).toBeGreaterThan(1);
+        expect(candidates[1]!.publicKey).not.toEqual(current.publicKey);
     });
 
     test('same images in different order produce different key', async () => {

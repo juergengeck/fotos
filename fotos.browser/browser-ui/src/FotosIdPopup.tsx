@@ -11,7 +11,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { deriveKeyFromPhotos } from '@/lib/photo-key-derivation.js';
+import { deriveKeyFromPhotos, deriveRecoveryKeyCandidatesFromPhotos } from '@/lib/photo-key-derivation.js';
 import { sign, ensureSecretSignKey } from '@refinio/one.core/lib/crypto/sign.js';
 import { uint8arrayToHexString } from '@refinio/one.core/lib/util/arraybuffer-to-and-from-hex-string.js';
 import { API_BASE } from '@/config.js';
@@ -137,6 +137,7 @@ export function FotosIdPopup() {
     publicKey: string;
     cert?: unknown;
     privateKey?: string;
+    candidatePrivateKeys?: string[];
   }) => {
     setPhase('done');
     sendResult({ success: true, data });
@@ -261,6 +262,7 @@ function FotosIdSetupForm(props: {
     publicKey: string;
     cert?: unknown;
     privateKey?: string;
+    candidatePrivateKeys?: string[];
   }) => void;
 }) {
   const { mode, initialDisplayName = '', personPublicKey, onCreated } = props;
@@ -421,12 +423,10 @@ function FotosIdSetupForm(props: {
 
       // 2. Derive fotos ID root keypair from photos + PIN
       setProgress('Deriving key (this takes a few seconds)...');
-      const derived = await deriveKeyFromPhotos({ images: imageBytes, pin });
-      const fotosRootPublicKeyHex = uint8arrayToHexString(derived.publicKey);
-
       const identity = nameToIdentity(displayName);
-      const localPart = displayName.toLowerCase().replace(/[^a-z0-9]/g, '');
       if (mode === 'recover') {
+        const recoveryCandidates = await deriveRecoveryKeyCandidatesFromPhotos({ images: imageBytes, pin });
+        const primaryCandidate = recoveryCandidates[0]!;
         for (const img of images) {
           URL.revokeObjectURL(img.thumbnailUrl);
         }
@@ -435,11 +435,16 @@ function FotosIdSetupForm(props: {
           mode,
           identity,
           displayName: displayName.trim(),
-          publicKey: fotosRootPublicKeyHex,
-          privateKey: toBase64(derived.secretKey),
+          publicKey: uint8arrayToHexString(primaryCandidate.publicKey),
+          privateKey: toBase64(primaryCandidate.secretKey),
+          candidatePrivateKeys: recoveryCandidates.map(candidate => toBase64(candidate.secretKey)),
         });
         return;
       }
+
+      const derived = await deriveKeyFromPhotos({ images: imageBytes, pin });
+      const fotosRootPublicKeyHex = uint8arrayToHexString(derived.publicKey);
+      const localPart = displayName.toLowerCase().replace(/[^a-z0-9]/g, '');
 
       // 3. Build cert: fotos root (L1) signs the browser's person key
       // Subject = browser's existing person public sign key

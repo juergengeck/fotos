@@ -1,12 +1,9 @@
 /**
- * Photo-based key derivation — thin wrapper around @refinio/recovery.core.
+ * Photo-based key derivation.
  *
- * Delegates to recovery.core's deriveRecoveryKey and signRecoveryRequest with
- * browser-specific deps (hash-wasm for Argon2id, one.core for Ed25519).
- *
- * NOTE: Salt changed from 'one.photo.key.v1' to 'one.recovery.key.v1' (inside
- * recovery.core). This is a breaking change for any previously derived keys.
- * Acceptable because recovery is pre-production.
+ * Current derivation delegates to recovery.core. Recovery also needs legacy
+ * support for fotos ids created before the salt moved from
+ * `one.photo.key.v1` to `one.recovery.key.v1`.
  */
 import {
     deriveRecoveryKey,
@@ -55,6 +52,8 @@ const signDeps: Pick<RecoveryDeps, 'sign'> = {
         signDetached(message, ensureSecretSignKey(secretKey)) as Uint8Array,
 };
 
+const LEGACY_APPLICATION_SALT = 'one.photo.key.v1';
+
 // ---------------------------------------------------------------------------
 // Public API — same signatures as the old inline implementation
 // ---------------------------------------------------------------------------
@@ -71,6 +70,57 @@ interface DerivedKeyResult {
     seed: Uint8Array;
     publicKey: Uint8Array;
     secretKey: Uint8Array;
+}
+
+async function deriveLegacyRecoveryKey(
+    files: Array<{bytes: Uint8Array; mimeType: string}>,
+    passphrase: string,
+    params?: {
+        memoryCost?: number;
+        timeCost?: number;
+        parallelism?: number;
+    },
+): Promise<DerivedKeyResult> {
+    if (files.length === 0) {
+        throw new Error('At least one file is required');
+    }
+
+    for (const file of files) {
+        if (file.bytes.length === 0) {
+            throw new Error('File must not be empty');
+        }
+    }
+
+    if (!passphrase) {
+        throw new Error('Passphrase must not be empty');
+    }
+
+    const passphraseBytes = new TextEncoder().encode(passphrase);
+    const totalLength =
+        files.reduce((sum, file) => sum + file.bytes.length, 0) + passphraseBytes.length;
+    const concatenated = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const file of files) {
+        concatenated.set(file.bytes, offset);
+        offset += file.bytes.length;
+    }
+    concatenated.set(passphraseBytes, offset);
+
+    const mergedParams = {
+        memoryCost: params?.memoryCost ?? 262144,
+        timeCost: params?.timeCost ?? 3,
+        parallelism: params?.parallelism ?? 4,
+        hashLength: 32,
+    };
+    const salt = new TextEncoder().encode(LEGACY_APPLICATION_SALT);
+    const seed = await deriveDeps.argon2id(concatenated, salt, mergedParams);
+    const keypair = deriveDeps.createSignKeyPairFromSeed(seed);
+
+    return {
+        seed,
+        publicKey: keypair.publicKey,
+        secretKey: keypair.secretKey,
+    };
 }
 
 export async function deriveKeyFromPhotos(
@@ -93,6 +143,29 @@ export async function deriveKeyFromPhotos(
             : undefined;
 
     return deriveRecoveryKey(files, pin, deriveDeps, params);
+}
+
+export async function deriveRecoveryKeyCandidatesFromPhotos(
+    options: PhotoKeyDerivationOptions,
+): Promise<DerivedKeyResult[]> {
+    const current = await deriveKeyFromPhotos(options);
+    const legacy = await deriveLegacyRecoveryKey(
+        options.images.map(bytes => ({bytes, mimeType: 'application/octet-stream'})),
+        options.pin,
+        {
+            memoryCost: options.memoryCost,
+            timeCost: options.timeCost,
+            parallelism: options.parallelism,
+        },
+    );
+
+    const keys = [current];
+    const currentPublicKeyHex = Array.from(current.publicKey, byte => byte.toString(16).padStart(2, '0')).join('');
+    const legacyPublicKeyHex = Array.from(legacy.publicKey, byte => byte.toString(16).padStart(2, '0')).join('');
+    if (legacyPublicKeyHex !== currentPublicKeyHex) {
+        keys.push(legacy);
+    }
+    return keys;
 }
 
 export function signRecoveryRequest(
