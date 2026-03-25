@@ -5,8 +5,8 @@
  * 1. Popup sends { type: 'fotos-id-ready' } to window.opener
  * 2. Opener sends { type: 'fotos-id-request', requestId, mode, ... }
  * 3. Popup walks user through photo key derivation + name entry
- * 4. Create mode registers identity on glue.one API (self-signed cert → counter-signed)
- * 5. Recover mode verifies the derived key matches the registered identity
+ * 4. Create mode registers identity on glue.one API (authority-signed cert → counter-signed)
+ * 5. Recover mode derives the recovery key and returns it to the opener
  * 6. Popup sends { type: 'fotos-id-result', requestId, success, data?, error? } back
  */
 
@@ -427,28 +427,6 @@ function FotosIdSetupForm(props: {
       const identity = nameToIdentity(displayName);
       const localPart = displayName.toLowerCase().replace(/[^a-z0-9]/g, '');
       if (mode === 'recover') {
-        setProgress('Verifying identity...');
-        const certRes = await fetch(`${API_BASE}/api/registration/cert/${encodeURIComponent(localPart)}`);
-        if (!certRes.ok) {
-          throw new Error('No registered identity found for this name');
-        }
-        const certResult = await certRes.json();
-        const latestPublicKeyHex = certResult.data?.cert?.subjectPublicKey;
-        let keyMatchesRegisteredIdentity =
-          typeof latestPublicKeyHex === 'string' && latestPublicKeyHex === fotosRootPublicKeyHex;
-
-        if (!keyMatchesRegisteredIdentity) {
-          const keyLookupRes = await fetch(`${API_BASE}/api/registration/certByPublicKey/${encodeURIComponent(fotosRootPublicKeyHex)}`);
-          if (keyLookupRes.ok) {
-            const keyLookup = await keyLookupRes.json();
-            keyMatchesRegisteredIdentity = keyLookup.data?.cert?.claims?.identity === identity;
-          }
-        }
-
-        if (!keyMatchesRegisteredIdentity) {
-          throw new Error('These photos do not match the registered key for this name');
-        }
-
         for (const img of images) {
           URL.revokeObjectURL(img.thumbnailUrl);
         }
@@ -535,6 +513,7 @@ function FotosIdSetupForm(props: {
         displayName: displayName.trim(),
         cert,
         publicKey: fotosRootPublicKeyHex,
+        privateKey: toBase64(derived.secretKey),
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : mode === 'recover' ? 'Identity recovery failed' : 'Identity creation failed';
