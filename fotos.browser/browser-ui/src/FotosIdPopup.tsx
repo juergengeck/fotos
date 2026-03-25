@@ -45,7 +45,7 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-type PopupPhase = 'waiting' | 'setup' | 'creating' | 'done' | 'error';
+type PopupPhase = 'waiting' | 'setup' | 'done' | 'error';
 type FotosIdMode = 'create' | 'recover';
 
 function getQueryMode(): FotosIdMode {
@@ -158,14 +158,7 @@ export function FotosIdPopup() {
           initialDisplayName={initialDisplayName}
           personPublicKey={requestRef.current?.personPublicKey}
           onCreated={handleCompleted}
-          onPhaseChange={setPhase}
         />
-      )}
-
-      {phase === 'creating' && (
-        <p style={{ color: '#aaa', textAlign: 'center' }}>
-          {mode === 'recover' ? 'Recovering identity...' : 'Creating identity...'}
-        </p>
       )}
 
       {phase === 'done' && (
@@ -269,9 +262,8 @@ function FotosIdSetupForm(props: {
     cert?: unknown;
     privateKey?: string;
   }) => void;
-  onPhaseChange: (phase: PopupPhase) => void;
 }) {
-  const { mode, initialDisplayName = '', personPublicKey, onCreated, onPhaseChange } = props;
+  const { mode, initialDisplayName = '', personPublicKey, onCreated } = props;
 
   const [step, setStep] = useState<SetupStep>('name');
 
@@ -416,7 +408,6 @@ function FotosIdSetupForm(props: {
     if (!canCreate) return;
 
     setStep('creating');
-    onPhaseChange('creating');
     setCreationError(null);
 
     try {
@@ -549,10 +540,9 @@ function FotosIdSetupForm(props: {
       const msg = err instanceof Error ? err.message : mode === 'recover' ? 'Identity recovery failed' : 'Identity creation failed';
       setCreationError(msg);
       setStep('photos');
-      onPhaseChange('setup');
       // Don't call onError — let user retry. onError sends a terminal failure to opener.
     }
-  }, [canCreate, displayName, images, mode, onCreated, onPhaseChange, pin]);
+  }, [canCreate, displayName, images, mode, onCreated, pin]);
 
   // ── Render ───────────────────────────────────────────────────────────
 
