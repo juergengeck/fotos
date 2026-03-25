@@ -1,12 +1,13 @@
 /**
- * Fotos id popup — handles photo-based identity creation for external apps.
+ * Fotos id popup — handles photo-based identity creation and recovery for external apps.
  *
  * Protocol (mirrors AuthPopup.tsx in glue.browser):
  * 1. Popup sends { type: 'fotos-id-ready' } to window.opener
- * 2. Opener sends { type: 'fotos-id-request', requestId } (no extra data needed)
+ * 2. Opener sends { type: 'fotos-id-request', requestId, mode, ... }
  * 3. Popup walks user through photo key derivation + name entry
- * 4. Popup registers identity on glue.one API (self-signed cert → counter-signed)
- * 5. Popup sends { type: 'fotos-id-result', requestId, success, data?, error? } back
+ * 4. Create mode registers identity on glue.one API (self-signed cert → counter-signed)
+ * 5. Recover mode verifies the derived key matches the registered identity
+ * 6. Popup sends { type: 'fotos-id-result', requestId, success, data?, error? } back
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -36,18 +37,38 @@ function nameToIdentity(displayName: string): string {
   return displayName.toLowerCase().replace(/[^a-z0-9]/g, '') + '@glue.one';
 }
 
+function toBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
+}
+
 type PopupPhase = 'waiting' | 'setup' | 'creating' | 'done' | 'error';
+type FotosIdMode = 'create' | 'recover';
 
 interface PopupRequest {
   requestId: string;
+  mode: FotosIdMode;
+  displayName?: string;
+  personPublicKey?: string;
 }
 
 export function FotosIdPopup() {
   const [phase, setPhase] = useState<PopupPhase>('waiting');
+  const [mode, setMode] = useState<FotosIdMode>('create');
+  const [initialDisplayName, setInitialDisplayName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const requestRef = useRef<PopupRequest | null>(null);
   const openerOriginRef = useRef<string>('');
   const handledRef = useRef(false);
+
+  useEffect(() => {
+    document.title = mode === 'recover'
+      ? 'fotos.one — Recover fotos id'
+      : 'fotos.one — Create fotos id';
+  }, [mode]);
 
   // Signal readiness to opener
   useEffect(() => {
@@ -68,7 +89,15 @@ export function FotosIdPopup() {
         if (handledRef.current) return;
         handledRef.current = true;
         openerOriginRef.current = event.origin;
-        requestRef.current = { requestId: data.requestId };
+        const nextMode: FotosIdMode = data.mode === 'recover' ? 'recover' : 'create';
+        setMode(nextMode);
+        setInitialDisplayName(typeof data.displayName === 'string' ? data.displayName : '');
+        requestRef.current = {
+          requestId: data.requestId,
+          mode: nextMode,
+          displayName: typeof data.displayName === 'string' ? data.displayName : undefined,
+          personPublicKey: data.personPublicKey,
+        };
         setPhase('setup');
       }
     }
@@ -92,28 +121,22 @@ export function FotosIdPopup() {
     }
   }, []);
 
-  // Handle successful identity creation
-  const handleIdentityCreated = useCallback((data: {
+  const handleCompleted = useCallback((data: {
+    mode: FotosIdMode;
     identity: string;
     displayName: string;
-    cert: unknown;
     publicKey: string;
+    cert?: unknown;
+    privateKey?: string;
   }) => {
     setPhase('done');
     sendResult({ success: true, data });
   }, [sendResult]);
 
-  // Handle error
-  const handleError = useCallback((err: string) => {
-    setPhase('error');
-    setError(err);
-    sendResult({ success: false, error: err });
-  }, [sendResult]);
-
   return (
     <div style={{ padding: '1.5rem', maxWidth: 420, margin: '0 auto' }}>
       <h2 style={{ fontSize: '1.1rem', marginBottom: '1rem', textAlign: 'center' }}>
-        Create fotos id
+        {mode === 'recover' ? 'Recover fotos id' : 'Create fotos id'}
       </h2>
 
       {phase === 'waiting' && (
@@ -122,18 +145,24 @@ export function FotosIdPopup() {
 
       {phase === 'setup' && (
         <FotosIdSetupForm
-          onCreated={handleIdentityCreated}
-          onError={handleError}
+          mode={mode}
+          initialDisplayName={initialDisplayName}
+          personPublicKey={requestRef.current?.personPublicKey}
+          onCreated={handleCompleted}
           onPhaseChange={setPhase}
         />
       )}
 
       {phase === 'creating' && (
-        <p style={{ color: '#aaa', textAlign: 'center' }}>Creating identity...</p>
+        <p style={{ color: '#aaa', textAlign: 'center' }}>
+          {mode === 'recover' ? 'Recovering identity...' : 'Creating identity...'}
+        </p>
       )}
 
       {phase === 'done' && (
-        <p style={{ color: '#4ade80', textAlign: 'center' }}>Identity created! Closing...</p>
+        <p style={{ color: '#4ade80', textAlign: 'center' }}>
+          {mode === 'recover' ? 'Identity recovered! Closing...' : 'Identity created! Closing...'}
+        </p>
       )}
 
       {phase === 'error' && (
@@ -220,16 +249,25 @@ const styles = {
 } as const;
 
 function FotosIdSetupForm(props: {
-  onCreated: (data: { identity: string; displayName: string; cert: unknown; publicKey: string }) => void;
-  onError: (err: string) => void;
+  mode: FotosIdMode;
+  initialDisplayName?: string;
+  personPublicKey?: string;
+  onCreated: (data: {
+    mode: FotosIdMode;
+    identity: string;
+    displayName: string;
+    publicKey: string;
+    cert?: unknown;
+    privateKey?: string;
+  }) => void;
   onPhaseChange: (phase: PopupPhase) => void;
 }) {
-  const { onCreated, onError, onPhaseChange } = props;
+  const { mode, initialDisplayName = '', personPublicKey, onCreated, onPhaseChange } = props;
 
   const [step, setStep] = useState<SetupStep>('name');
 
   // Name state
-  const [displayName, setDisplayName] = useState('');
+  const [displayName, setDisplayName] = useState(initialDisplayName);
   const [nameStatus, setNameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'error'>('idle');
   const [nameError, setNameError] = useState<string | null>(null);
   const checkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -264,7 +302,7 @@ function FotosIdSetupForm(props: {
 
       if (!res.ok) {
         setNameStatus('error');
-        setNameError('Could not check availability');
+        setNameError(mode === 'recover' ? 'Could not check whether this identity exists' : 'Could not check availability');
         return;
       }
 
@@ -273,9 +311,9 @@ function FotosIdSetupForm(props: {
       setNameStatus(available ? 'available' : 'taken');
     } catch {
       setNameStatus('error');
-      setNameError('Network error checking name');
+      setNameError(mode === 'recover' ? 'Network error checking identity' : 'Network error checking name');
     }
-  }, []);
+  }, [mode]);
 
   const handleNameChange = useCallback((value: string) => {
     setDisplayName(value);
@@ -290,6 +328,19 @@ function FotosIdSetupForm(props: {
     }
   }, [checkNameAvailability]);
 
+  useEffect(() => {
+    setDisplayName(initialDisplayName);
+    setNameStatus('idle');
+    setNameError(null);
+
+    if (checkTimerRef.current) clearTimeout(checkTimerRef.current);
+
+    const localPart = initialDisplayName.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (localPart.length >= 2) {
+      checkTimerRef.current = setTimeout(() => checkNameAvailability(initialDisplayName), 0);
+    }
+  }, [checkNameAvailability, initialDisplayName]);
+
   // Clean up timer on unmount
   useEffect(() => {
     return () => {
@@ -297,7 +348,9 @@ function FotosIdSetupForm(props: {
     };
   }, []);
 
-  const canProceedToPhotos = nameStatus === 'available' && displayName.trim().length >= 2;
+  const canProceedToPhotos =
+    displayName.trim().length >= 2 &&
+    (mode === 'recover' ? nameStatus === 'taken' : nameStatus === 'available');
 
   // ── Photo handling ───────────────────────────────────────────────────
 
@@ -346,7 +399,7 @@ function FotosIdSetupForm(props: {
     dragIndexRef.current = null;
   }, []);
 
-  // ── Create identity ──────────────────────────────────────────────────
+  // ── Create or recover identity ───────────────────────────────────────
 
   const canCreate = images.length > 0 && pin.length === 8;
 
@@ -366,15 +419,57 @@ function FotosIdSetupForm(props: {
         imageBytes.push(new Uint8Array(buf));
       }
 
-      // 2. Derive keypair from photos + PIN
+      // 2. Derive fotos ID root keypair from photos + PIN
       setProgress('Deriving key (this takes a few seconds)...');
       const derived = await deriveKeyFromPhotos({ images: imageBytes, pin });
-      const publicKeyHex = uint8arrayToHexString(derived.publicKey);
+      const fotosRootPublicKeyHex = uint8arrayToHexString(derived.publicKey);
 
-      // 3. Build self-signed cert (mirrors cert-builder.ts but without ONE.core keychain)
-      setProgress('Building certificate...');
       const identity = nameToIdentity(displayName);
       const localPart = displayName.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (mode === 'recover') {
+        setProgress('Verifying identity...');
+        const certRes = await fetch(`${API_BASE}/api/registration/cert/${encodeURIComponent(localPart)}`);
+        if (!certRes.ok) {
+          throw new Error('No registered identity found for this name');
+        }
+        const certResult = await certRes.json();
+        const latestPublicKeyHex = certResult.data?.cert?.subjectPublicKey;
+        let keyMatchesRegisteredIdentity =
+          typeof latestPublicKeyHex === 'string' && latestPublicKeyHex === fotosRootPublicKeyHex;
+
+        if (!keyMatchesRegisteredIdentity) {
+          const keyLookupRes = await fetch(`${API_BASE}/api/registration/certByPublicKey/${encodeURIComponent(fotosRootPublicKeyHex)}`);
+          if (keyLookupRes.ok) {
+            const keyLookup = await keyLookupRes.json();
+            keyMatchesRegisteredIdentity = keyLookup.data?.cert?.claims?.identity === identity;
+          }
+        }
+
+        if (!keyMatchesRegisteredIdentity) {
+          throw new Error('These photos do not match the registered key for this name');
+        }
+
+        for (const img of images) {
+          URL.revokeObjectURL(img.thumbnailUrl);
+        }
+
+        onCreated({
+          mode,
+          identity,
+          displayName: displayName.trim(),
+          publicKey: fotosRootPublicKeyHex,
+          privateKey: toBase64(derived.secretKey),
+        });
+        return;
+      }
+
+      // 3. Build cert: fotos root (L1) signs the browser's person key
+      // Subject = browser's existing person public sign key
+      // Issuer = fotos root public key (derived from photos+PIN)
+      setProgress('Building certificate...');
+      if (!personPublicKey) {
+        throw new Error('No person public key received from opener');
+      }
       const now = Date.now();
 
       const certPayload = {
@@ -382,10 +477,10 @@ function FotosIdSetupForm(props: {
         id: identity,
         certificateType: 'identity' as const,
         status: 'valid',
-        subject: publicKeyHex,
-        subjectPublicKey: publicKeyHex,
-        issuer: publicKeyHex,
-        issuerPublicKey: publicKeyHex,
+        subject: personPublicKey,
+        subjectPublicKey: personPublicKey,
+        issuer: fotosRootPublicKeyHex,
+        issuerPublicKey: fotosRootPublicKeyHex,
         validFrom: now,
         validUntil: now + 7 * 24 * 60 * 60 * 1000,
         chainDepth: 0,
@@ -434,15 +529,21 @@ function FotosIdSetupForm(props: {
       }
 
       // 6. Return result to opener
-      onCreated({ identity, displayName: displayName.trim(), cert, publicKey: publicKeyHex });
+      onCreated({
+        mode,
+        identity,
+        displayName: displayName.trim(),
+        cert,
+        publicKey: fotosRootPublicKeyHex,
+      });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Identity creation failed';
+      const msg = err instanceof Error ? err.message : mode === 'recover' ? 'Identity recovery failed' : 'Identity creation failed';
       setCreationError(msg);
       setStep('photos');
       onPhaseChange('setup');
       // Don't call onError — let user retry. onError sends a terminal failure to opener.
     }
-  }, [canCreate, images, pin, displayName, onCreated, onPhaseChange]);
+  }, [canCreate, displayName, images, mode, onCreated, onPhaseChange, pin]);
 
   // ── Render ───────────────────────────────────────────────────────────
 
@@ -466,7 +567,9 @@ function FotosIdSetupForm(props: {
       {step === 'name' && (
         <div>
           <div style={styles.hint}>
-            Choose a display name for your fotos id. This will be your identity on glue.one.
+            {mode === 'recover'
+              ? 'Enter the glue.one name you want to recover. We will re-derive the same key from your photos and PIN.'
+              : 'Choose a display name for your fotos id. This will be your identity on glue.one.'}
           </div>
 
           <div style={styles.section}>
@@ -494,13 +597,13 @@ function FotosIdSetupForm(props: {
               </div>
             )}
             {nameStatus === 'available' && (
-              <div style={{ fontSize: '11px', color: '#4ade80', marginTop: 4 }}>
-                Available
+              <div style={{ fontSize: '11px', color: mode === 'recover' ? '#ff6b6b' : '#4ade80', marginTop: 4 }}>
+                {mode === 'recover' ? 'No registered identity found for this name' : 'Available'}
               </div>
             )}
             {nameStatus === 'taken' && (
-              <div style={{ fontSize: '11px', color: '#ff6b6b', marginTop: 4 }}>
-                Name is already taken
+              <div style={{ fontSize: '11px', color: mode === 'recover' ? '#4ade80' : '#ff6b6b', marginTop: 4 }}>
+                {mode === 'recover' ? 'Registered identity found' : 'Name is already taken'}
               </div>
             )}
             {nameStatus === 'error' && nameError && (
@@ -541,8 +644,9 @@ function FotosIdSetupForm(props: {
           </div>
 
           <div style={styles.hint}>
-            Pick photos you'll remember and arrange them in order.
-            Then enter a date as your 8-digit PIN. Together these derive your identity key.
+            {mode === 'recover'
+              ? 'Pick the same photos in the same order, then enter the same 8-digit PIN. This re-derives the private key for your existing fotos id.'
+              : 'Pick photos you will remember and arrange them in order. Then enter a date as your 8-digit PIN. Together these derive your identity key.'}
           </div>
 
           {/* Hidden file input */}
@@ -637,13 +741,13 @@ function FotosIdSetupForm(props: {
             <div style={styles.error}>{creationError}</div>
           )}
 
-          {/* Create button */}
+          {/* Create / recover button */}
           {canCreate && (
             <button
               onClick={handleCreate}
               style={{ ...styles.button, ...styles.primaryButton, marginTop: 4 }}
             >
-              Create fotos id
+              {mode === 'recover' ? 'Recover fotos id' : 'Create fotos id'}
             </button>
           )}
         </div>
