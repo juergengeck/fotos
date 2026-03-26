@@ -12,9 +12,9 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { deriveKeyFromPhotos, deriveRecoveryKeyCandidatesFromPhotos } from '@/lib/photo-key-derivation.js';
-import { sign, ensurePublicSignKey, ensureSecretSignKey, signatureVerify } from '@refinio/one.core/lib/crypto/sign.js';
+import { sign, ensureSecretSignKey } from '@refinio/one.core/lib/crypto/sign.js';
 import { uint8arrayToHexString } from '@refinio/one.core/lib/util/arraybuffer-to-and-from-hex-string.js';
-import { fromByteArray as toBase64, toByteArray as fromBase64 } from 'base64-js';
+import { serializeRecoveryPrivateKey, selectRegistrarVerifiedRecoveryCandidate } from '@/lib/fotos-recovery.js';
 import { API_BASE } from '@/config.js';
 
 // Allowed origins that may open this popup
@@ -41,8 +41,6 @@ function nameToIdentity(displayName: string): string {
 type PopupPhase = 'waiting' | 'setup' | 'done' | 'error';
 type FotosIdMode = 'create' | 'recover';
 
-const RECOVERY_PROBE_MESSAGE = new TextEncoder().encode('fotos.one recovery probe');
-
 function getQueryMode(): FotosIdMode {
   const mode = new URLSearchParams(window.location.search).get('mode');
   return mode === 'recover' ? 'recover' : 'create';
@@ -57,63 +55,6 @@ interface PopupRequest {
   mode: FotosIdMode;
   displayName?: string;
   personPublicKey?: string;
-}
-
-function uint8ArraysEqual(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false;
-  }
-  return true;
-}
-
-function assertSerializedRecoveryKey(
-  privateKeyBase64: string,
-  expectedPublicKey: Uint8Array,
-): void {
-  const decodedSecretKey = ensureSecretSignKey(fromBase64(privateKeyBase64));
-  const embeddedPublicKey = ensurePublicSignKey(decodedSecretKey.slice(32));
-
-  if (!uint8ArraysEqual(embeddedPublicKey, expectedPublicKey)) {
-    throw new Error('Derived recovery key does not match its public key');
-  }
-
-  const signature = sign(RECOVERY_PROBE_MESSAGE, decodedSecretKey);
-  if (!signatureVerify(RECOVERY_PROBE_MESSAGE, signature, ensurePublicSignKey(expectedPublicKey))) {
-    throw new Error('Derived recovery key failed local signature verification');
-  }
-}
-
-async function verifyRecoveryKeyWithRegistrar(
-  identity: string,
-  privateKeyBase64: string,
-): Promise<void> {
-  const beginRes = await fetch(`${API_BASE}/api/registration/recoverWithKey/begin`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: identity }),
-  });
-
-  const beginBody = await beginRes.json().catch(() => ({ error: 'Recovery verification failed' }));
-  if (!beginRes.ok || !beginBody?.success || typeof beginBody?.data?.challenge !== 'string') {
-    throw new Error(beginBody?.error || `Recovery verification failed: ${beginRes.status}`);
-  }
-
-  const secretKey = ensureSecretSignKey(fromBase64(privateKeyBase64));
-  const signatureBytes = sign(new TextEncoder().encode(beginBody.data.challenge), secretKey);
-  const verifyRes = await fetch(`${API_BASE}/api/registration/recoverWithKey`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      name: identity,
-      signature: uint8arrayToHexString(signatureBytes),
-    }),
-  });
-
-  const verifyBody = await verifyRes.json().catch(() => ({ error: 'Recovery verification failed' }));
-  if (!verifyRes.ok || !verifyBody?.success) {
-    throw new Error(verifyBody?.error || `Recovery verification failed: ${verifyRes.status}`);
-  }
 }
 
 export function FotosIdPopup() {
@@ -478,28 +419,7 @@ function FotosIdSetupForm(props: {
       const identity = nameToIdentity(displayName);
       if (mode === 'recover') {
         const recoveryCandidates = await deriveRecoveryKeyCandidatesFromPhotos({ images: imageBytes, pin });
-        let verifiedPrivateKey: string | null = null;
-        let verifiedPublicKeyHex: string | null = null;
-        const recoveryErrors: string[] = [];
-
-        for (const candidate of recoveryCandidates) {
-          const privateKeyBase64 = toBase64(candidate.secretKey);
-          try {
-            assertSerializedRecoveryKey(privateKeyBase64, candidate.publicKey);
-            await verifyRecoveryKeyWithRegistrar(identity, privateKeyBase64);
-            verifiedPrivateKey = privateKeyBase64;
-            verifiedPublicKeyHex = uint8arrayToHexString(candidate.publicKey);
-            break;
-          } catch (error) {
-            const message = error instanceof Error ? error.message : 'Recovery verification failed';
-            recoveryErrors.push(message);
-            console.warn('[fotos.one] Recovery candidate rejected:', message);
-          }
-        }
-
-        if (!verifiedPrivateKey || !verifiedPublicKeyHex) {
-          throw new Error(recoveryErrors[0] || 'Identity recovery failed');
-        }
+        const verifiedCandidate = await selectRegistrarVerifiedRecoveryCandidate(identity, recoveryCandidates);
 
         for (const img of images) {
           URL.revokeObjectURL(img.thumbnailUrl);
@@ -509,8 +429,8 @@ function FotosIdSetupForm(props: {
           mode,
           identity,
           displayName: displayName.trim(),
-          publicKey: verifiedPublicKeyHex,
-          privateKey: verifiedPrivateKey,
+          publicKey: verifiedCandidate.publicKey,
+          privateKey: verifiedCandidate.privateKey,
         });
         return;
       }
@@ -591,7 +511,7 @@ function FotosIdSetupForm(props: {
         displayName: displayName.trim(),
         cert,
         publicKey: fotosRootPublicKeyHex,
-        privateKey: toBase64(derived.secretKey),
+        privateKey: serializeRecoveryPrivateKey(derived.secretKey),
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : mode === 'recover' ? 'Identity recovery failed' : 'Identity creation failed';
