@@ -4,6 +4,10 @@ import type { PhotoEntry } from '@/types/fotos';
 import { EMBEDDING_DIM } from '@refinio/fotos.core';
 import { InlineRenameField } from './InlineRenameField';
 
+const MIN_SCALE = 0.05;
+const MAX_SCALE = 20;
+const VIEWPORT_PADDING = 16;
+
 interface LightboxProps {
     photos: PhotoEntry[];
     index: number;
@@ -14,6 +18,35 @@ interface LightboxProps {
     onRenameFace?: (clusterId: string, name: string) => Promise<void> | void;
     onDeleteFace?: (clusterId: string) => void;
     getFileUrl: (relativePath: string) => Promise<string>;
+}
+
+function clamp(value: number, min: number, max: number) {
+    return Math.min(Math.max(value, min), max);
+}
+
+function clampPan(
+    pan: { x: number; y: number },
+    scale: number,
+    rotation: number,
+    viewport: HTMLDivElement | null,
+    image: HTMLImageElement | null,
+) {
+    if (!viewport || !image?.naturalWidth) {
+        return { x: 0, y: 0 };
+    }
+
+    const rotated = (rotation % 180) !== 0;
+    const width = (rotated ? image.naturalHeight : image.naturalWidth) * scale;
+    const height = (rotated ? image.naturalWidth : image.naturalHeight) * scale;
+    const availableWidth = Math.max(viewport.clientWidth - VIEWPORT_PADDING, 0);
+    const availableHeight = Math.max(viewport.clientHeight - VIEWPORT_PADDING, 0);
+    const maxX = Math.max(0, (width - availableWidth) / 2);
+    const maxY = Math.max(0, (height - availableHeight) / 2);
+
+    return {
+        x: clamp(pan.x, -maxX, maxX),
+        y: clamp(pan.y, -maxY, maxY),
+    };
 }
 
 export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onFaceSearch, onRenameFace, onDeleteFace, getFileUrl }: LightboxProps) {
@@ -30,7 +63,10 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onFa
     const [flipV, setFlipV] = useState(false);
     const vpRef = useRef<HTMLDivElement>(null);
     const imgRef = useRef<HTMLImageElement>(null);
+    const sidebarRef = useRef<HTMLElement>(null);
     const dragRef = useRef({ active: false, startX: 0, startY: 0, startPanX: 0, startPanY: 0 });
+    const [, setViewportRevision] = useState(0);
+    const [frozenSidebarWidth, setFrozenSidebarWidth] = useState<number | null>(null);
 
     // Reset on photo change
     useEffect(() => {
@@ -55,7 +91,9 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onFa
         const rotated = (rotation % 180) !== 0;
         const imgW = rotated ? natH : natW;
         const imgH = rotated ? natW : natH;
-        return Math.min((vp.clientWidth - 16) / imgW, (vp.clientHeight - 16) / imgH, 1);
+        const availableWidth = Math.max(vp.clientWidth - VIEWPORT_PADDING, 1);
+        const availableHeight = Math.max(vp.clientHeight - VIEWPORT_PADDING, 1);
+        return Math.min(availableWidth / imgW, availableHeight / imgH, 1);
     }, [rotation]);
 
     const getEffectiveScale = useCallback(() => {
@@ -75,7 +113,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onFa
     const zoomBy = useCallback((factor: number) => {
         setScale(prev => {
             const current = prev ?? getFitScale();
-            return Math.max(0.05, Math.min(20, current * factor));
+            return clamp(current * factor, MIN_SCALE, MAX_SCALE);
         });
     }, [getFitScale]);
 
@@ -140,6 +178,71 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onFa
         window.addEventListener('mouseup', onUp);
         return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
     }, []);
+
+    useEffect(() => {
+        if (fullscreen) {
+            setFrozenSidebarWidth(null);
+            return;
+        }
+
+        const sidebar = sidebarRef.current;
+        if (!sidebar) {
+            return;
+        }
+
+        const nextWidth = Math.round(sidebar.getBoundingClientRect().width);
+        if (nextWidth > 0) {
+            setFrozenSidebarWidth(current => current === nextWidth ? current : nextWidth);
+        }
+    }, [fullscreen]);
+
+    useEffect(() => {
+        if (typeof ResizeObserver === 'undefined') {
+            return;
+        }
+
+        const viewport = vpRef.current;
+        if (!viewport) {
+            return;
+        }
+
+        let frame = 0;
+        const syncViewport = () => {
+            if (frame) {
+                cancelAnimationFrame(frame);
+            }
+
+            frame = window.requestAnimationFrame(() => {
+                const image = imgRef.current;
+                if (!image?.naturalWidth) {
+                    setViewportRevision(revision => revision + 1);
+                    return;
+                }
+
+                if (scale === null) {
+                    // Fit mode should only refresh the image scale, not the surrounding chrome.
+                    setViewportRevision(revision => revision + 1);
+                    return;
+                }
+
+                setPan(current => {
+                    const next = clampPan(current, scale, rotation, viewport, image);
+                    return next.x === current.x && next.y === current.y ? current : next;
+                });
+            });
+        };
+
+        const observer = new ResizeObserver(syncViewport);
+        observer.observe(viewport);
+        syncViewport();
+
+        return () => {
+            if (frame) {
+                cancelAnimationFrame(frame);
+            }
+            observer.disconnect();
+        };
+    }, [rotation, scale]);
 
     // Wheel zoom. React's wheel listener is passive in this path, so bind natively.
     useEffect(() => {
@@ -311,7 +414,11 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onFa
                 </button>
             </div>
 
-            <aside className="w-72 h-full min-h-0 overflow-hidden flex flex-col bg-[#0d0d0d] border-l border-white/10 shrink-0 max-md:w-64">
+            <aside
+                ref={sidebarRef}
+                className="w-72 h-full min-h-0 overflow-hidden flex flex-col bg-[#0d0d0d] border-l border-white/10 shrink-0 max-md:w-64"
+                style={frozenSidebarWidth !== null ? { width: `${frozenSidebarWidth}px` } : undefined}
+            >
                 {/* Header — matches gallery sidebar tab bar shape */}
                 <div className="flex items-center border-b border-white/10">
                     <div className="flex-1 px-3 py-2">
