@@ -1,5 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import { deriveKeyFromPhotos, deriveRecoveryKeyCandidatesFromPhotos } from './photo-key-derivation.js';
+import { ensurePublicSignKey, ensureSecretSignKey, sign, signatureVerify } from '@refinio/one.core/lib/crypto/sign.js';
+import { fromByteArray as toBase64, toByteArray as fromBase64 } from 'base64-js';
 
 // Tiny deterministic test images (1x1 pixel PNGs with known byte content)
 const IMG_A = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01]);
@@ -104,6 +106,22 @@ describe('deriveKeyFromPhotos', () => {
         expect(result.publicKey.length).toBe(32);
         expect(result.secretKey).toBeInstanceOf(Uint8Array);
         expect(result.secretKey.length).toBe(64);
+    });
+
+    test('derived secret key survives base64 serialization and still verifies against its public key', async () => {
+        const result = await deriveKeyFromPhotos({
+            images: [IMG_A, IMG_B],
+            pin: PIN,
+            ...FAST_PARAMS,
+        });
+
+        const privateKeyBase64 = toBase64(result.secretKey);
+        const decodedSecretKey = ensureSecretSignKey(fromBase64(privateKeyBase64));
+        expect(decodedSecretKey.slice(32)).toEqual(result.publicKey);
+
+        const message = new TextEncoder().encode('fotos recovery serialization probe');
+        const signature = sign(message, decodedSecretKey);
+        expect(signatureVerify(message, signature, ensurePublicSignKey(result.publicKey))).toBe(true);
     });
 
     test('rejects PIN that is not exactly 8 digits', async () => {
