@@ -1367,7 +1367,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
 
                 // Write face crops to one/faces/ directory
                     if (result.cropBlobs.length > 0) {
-                    // Find the .one dir for this photo's parent folder
+                    // Find the one dir for this photo's parent folder
                         const segments = (photo.sourcePath).split('/').filter(Boolean);
                         let dirHandle = handle;
                         for (let s = 0; s < segments.length - 1; s++) {

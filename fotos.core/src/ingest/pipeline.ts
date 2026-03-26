@@ -16,7 +16,7 @@ export interface IngestFolderResult {
 
 /**
  * Ingest a single folder: scan images, extract EXIF, generate thumbnails,
- * write .one/index.html. Returns parsed entries for trie insertion.
+ * write one/index.html. Returns parsed entries for trie insertion.
  *
  * @param folderPath - Absolute path to the folder
  * @param relPath - Relative path from library root ('' for root)
@@ -126,7 +126,7 @@ export async function ingestFolder(
     // Discover child folder metadata from existing child one/index.html files
     const childrenMeta: FolderMetadata[] = discoverChildFolderMeta(folderPath, relPath);
 
-    // Write .one/index.html
+    // Write one/index.html
     const html = renderIndexHtml(relPath || '.', fsEntries, childrenMeta, Date.now());
     writeBytes(path.join(oneDir, 'index.html'), html);
 
@@ -142,7 +142,7 @@ export async function ingestFolder(
 }
 
 /**
- * Load preserved face/semantic attributes from an existing .one/index.html.
+ * Load preserved face/semantic attributes from an existing one/index.html.
  * Returns Map<contentHash, Record<attrName, value>>
  */
 function loadPreservedAttrs(indexPath: string): Map<string, Record<string, string>> {
@@ -337,7 +337,7 @@ function parsedEntriesToFsEntries(entries: ParsedPhotoEntry[], relPath: string):
 
         // Thumb — strip relPath prefix from thumb path to get the one-relative path
         if (e.thumb) {
-            const prefix = relPath ? `${relPath}/.one/` : '.one/';
+            const prefix = relPath ? `${relPath}/one/` : 'one/';
             data['thumb'] = e.thumb.startsWith(prefix) ? e.thumb.slice(prefix.length) : e.thumb;
         }
 

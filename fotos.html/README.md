@@ -2,6 +2,8 @@
 
 Portable fallback viewer for `one/` photo folders.
 
+Metadata folders are named `one/` throughout this repo. We do not use `.one/`.
+
 Intent:
 
 - `fotos.browser` is the primary PWA and sync client.

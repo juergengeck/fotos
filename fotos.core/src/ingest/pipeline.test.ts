@@ -9,7 +9,7 @@ import os from 'node:os';
 import sharp from 'sharp';
 
 describe('ingestFolder', () => {
-    it('processes images and writes .one/index.html', async () => {
+    it('processes images and writes one/index.html', async () => {
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fotos-pipeline-'));
 
         // Create a minimal valid JPEG using sharp
@@ -21,7 +21,7 @@ describe('ingestFolder', () => {
         const progress: IngestProgress[] = [];
         const result = await ingestFolder(tmp, '', (p) => progress.push({ ...p }));
 
-        // Check .one/index.html was written
+        // Check one/index.html was written
         const indexPath = path.join(tmp, 'one', 'index.html');
         expect(fs.existsSync(indexPath)).toBe(true);
 
@@ -49,7 +49,7 @@ describe('ingestFolder', () => {
         fs.rmSync(tmp, { recursive: true });
     });
 
-    it('preserves face data from existing .one/index.html', async () => {
+    it('preserves face data from existing one/index.html', async () => {
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fotos-pipeline-preserve-'));
 
         // Create a minimal valid JPEG
@@ -63,7 +63,7 @@ describe('ingestFolder', () => {
         expect(firstResult.entries).toHaveLength(1);
         const contentHash = firstResult.entries[0].contentHash;
 
-        // Manually inject face data into the .one/index.html
+        // Manually inject face data into the one/index.html
         const indexPath = path.join(tmp, 'one', 'index.html');
         let html = fs.readFileSync(indexPath, 'utf-8');
         html = html.replace(

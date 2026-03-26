@@ -6,7 +6,7 @@ export function PhotoGrid(props: SharedPhotoGridProps<PhotoEntry>) {
     return (
         <SharedPhotoGrid
             {...props}
-            loadingLabel="Scanning .one/ folders..."
+            loadingLabel="Scanning one/ folders..."
         />
     );
 }

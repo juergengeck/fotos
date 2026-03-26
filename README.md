@@ -9,4 +9,6 @@ Packages:
 - `fotos.html` - portable HTML fallback app and media-view plugin for `vger.html` / `glue.browser`, meant to live in `one/` folders when `fotos.browser` is unavailable
 - `fotos.ui` - shared React hooks and UI helpers
 
+Metadata folders are named `one/` throughout this repo. We do not use `.one/`.
+
 This checkout is designed to live beside `../vger` and consume VGER packages from that sibling repo.

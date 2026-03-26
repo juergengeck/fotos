@@ -75,7 +75,7 @@ describe('renderIndexHtml + parseIndexHtml roundtrip', () => {
         expect(p.contentHash).toBe('deadbeef');
         expect(p.sourcePath).toBe('vacation/sunset.jpg');
         expect(p.mime).toBe('image/jpeg');
-        expect(p.thumb).toBe('vacation/.one/thumbs/stream42.jpg');
+        expect(p.thumb).toBe('vacation/one/thumbs/stream42.jpg');
 
         // EXIF roundtrip
         expect(p.exif).toBeDefined();

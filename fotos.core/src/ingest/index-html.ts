@@ -405,7 +405,7 @@ function parseChildFoldersLegacy(html: string): FolderMetadata[] {
 }
 
 /**
- * Parse a .one/index.html file (the source of truth on disk) back into photo entries.
+ * Parse a one/index.html file (the source of truth on disk) back into photo entries.
  */
 export function parseIndexHtml(html: string, relPath: string): ParsedPhotoEntry[] {
     const entries: ParsedPhotoEntry[] = [];
@@ -433,7 +433,7 @@ export function parseIndexHtml(html: string, relPath: string): ParsedPhotoEntry[
             contentHash,
             streamId,
             sourcePath: relPath ? `${relPath}/${name}` : name,
-            thumb: thumb ? (relPath ? `${relPath}/.one/${thumb}` : `.one/${thumb}`) : undefined,
+            thumb: thumb ? (relPath ? `${relPath}/one/${thumb}` : `one/${thumb}`) : undefined,
             mime,
             size: parseSize(sizeText),
             tags: relPath ? [relPath.split('/')[0]] : [],

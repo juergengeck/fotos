@@ -16,6 +16,8 @@ Privacy-first photo management with face recognition. Runs entirely in the brows
 - Mobile ingests lightweight (hash + EXIF + thumbs), desktop enriches (faces), enrichment flows back
 - PWA with share target — share photos from your gallery app directly into fotos.one
 
+Metadata folders are named `one/` throughout the stack. We do not use `.one/`.
+
 ## Quick start
 
 ```bash
