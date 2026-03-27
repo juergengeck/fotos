@@ -287,7 +287,7 @@ export default defineConfig({
                 } as any,
             },
             injectManifest: {
-                globPatterns: ['**/*.{js,css,svg,png,woff2}'],
+                globPatterns: ['**/*.{js,css,svg,png,woff2}', 'index.html', 'fotos-id.html'],
                 globIgnores: ['**/_worker.js'],
             },
         }),

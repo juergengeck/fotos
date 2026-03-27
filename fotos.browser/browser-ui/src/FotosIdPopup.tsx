@@ -22,6 +22,7 @@ const ALLOWED_ORIGINS = [
   'https://glue.one',
   'https://vger.one',
   'https://fotos.one',
+  'https://reaktor.one',
   'https://seller.glue.one',
 ];
 
