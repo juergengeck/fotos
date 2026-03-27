@@ -19,7 +19,8 @@ import type { Person } from '@refinio/one.core/lib/recipes.js';
 import type { TrustPlan } from '@refinio/trust.core/plans/TrustPlan.js';
 
 // ModuleRegistry + modules
-import { ModuleRegistry, RefinioApiRecipes } from '@refinio/api/plan-system';
+import { ModuleRegistry } from '@refinio/api/plan-system';
+import { RefinioApiRecipes } from '@refinio/api/recipes';
 import { CoreModule } from '@vger/vger.core/modules/CoreModule.js';
 import { TrustModule } from '@vger/vger.core/modules/TrustModule.js';
 import { ConnectionModule } from '@vger/vger.core/modules/ConnectionModule.js';
@@ -95,6 +96,18 @@ export interface FotosModel {
 let oneInstance: MultiUser | null = null;
 let glueModuleInstance: GlueModule | null = null;
 let publicationIdentity: SHA256IdHash<Person> | null = null;
+
+type BrowserGlueModule = GlueModule & {
+  connectToPeerByKey?: (
+    encKey: string,
+    ownId: string,
+    caps?: string[],
+    remotePersonId?: string,
+  ) => Promise<void>;
+  connectToPeerDirectByKey?: (encKey: string, ownId: string, caps?: string[]) => Promise<void>;
+  disconnectPeerRelayByKey?: (encKey: string, ownId: string, remotePersonId: string) => Promise<void>;
+  shouldAcceptIncomingPeer?: (personId: string, remotePublicKey?: string) => Promise<boolean>;
+};
 
 // Mutable callback for external state updates (e.g., React)
 let modelUpdater: ((fn: (prev: FotosModel | null) => FotosModel | null) => void) | null = null;
@@ -275,28 +288,29 @@ async function initModules(
     glueModule.enableMailboxPairing = false;
 
     // Inject browser platform hooks
-    glueModule.onVisibilityChange = (cb: (visible: boolean) => void) => {
+    const browserGlueModule = glueModule as BrowserGlueModule;
+
+    browserGlueModule.onVisibilityChange = (cb: (visible: boolean) => void) => {
       const handler = () => cb(!document.hidden);
       document.addEventListener('visibilitychange', handler);
       return () => document.removeEventListener('visibilitychange', handler);
     };
-    glueModule.onBeforeUnload = (cb: () => void) => {
+    browserGlueModule.onBeforeUnload = (cb: () => void) => {
       window.addEventListener('beforeunload', cb);
       return () => window.removeEventListener('beforeunload', cb);
     };
-    glueModule.getLocalTransportCapabilities = async () => ['webrtc', 'commserver-relay'];
-    glueModule.connectToPeerDirectByKey = (encKey: string, ownId: string, caps?: string[]) =>
-      connectionModule!.connectToPeerByKey(encKey, ownId as any, caps);
-    glueModule.connectToPeerRelayByKey = (encKey: string, ownId: string, remotePersonId: string) =>
-      connectionModule!.connectToPeerRelayByKey(encKey, ownId as any, remotePersonId as any);
+    browserGlueModule.getLocalTransportCapabilities = async () => ['webrtc', 'commserver-relay'];
+    browserGlueModule.connectToPeerByKey = (encKey: string, ownId: string, caps?: string[], remotePersonId?: string) =>
+      connectionModule!.connectToPeerByKey(encKey, ownId as any, caps, remotePersonId as any);
+    browserGlueModule.connectToPeerDirectByKey = (encKey: string, ownId: string, caps?: string[]) =>
+      connectionModule!.connectToPeerDirectByKey(encKey, ownId as any, caps);
+    browserGlueModule.disconnectPeerRelayByKey = (encKey: string, ownId: string, _remotePersonId: string) =>
+      connectionModule!.disconnectPeerRelayByKey(encKey, ownId as any);
 
     // Incoming CHUM admission boundary
-    const glueModuleWithAdmission = glueModule as GlueModule & {
-      shouldAcceptIncomingPeer?: (personId: string) => boolean;
-    };
-    connectionModule.setUnknownPeerIdentityMatcher((remotePersonId) => {
+    connectionModule.setUnknownPeerIdentityMatcher((remotePersonId, remotePublicKey) => {
       const personId = String(remotePersonId);
-      return glueModuleWithAdmission.shouldAcceptIncomingPeer?.(personId) ?? false;
+      return browserGlueModule.shouldAcceptIncomingPeer?.(personId, remotePublicKey) ?? false;
     });
 
     registry.register(glueModule);
