@@ -10,12 +10,12 @@ import '@refinio/one.core/lib/system/browser/storage-streams.js';
 import { StrictMode } from 'react';
 import ReactDOM from 'react-dom/client';
 import { initGlueCore } from '@glueone/glue.core';
-import { createPlanRegistry } from '@/lib/PlanRegistry';
+import { createPlanRegistry, createPublicOperationCatalogPayload } from '@/lib/PlanRegistry';
 import { FotosPlan } from '@/lib/FotosPlan';
 import { bootFotosModel } from './lib/onecore-boot';
 import { installHangTrace, traceHang } from './lib/hangTrace';
 import { getRuntimeBrowserCryptoSupport } from './lib/browserCryptoSupport';
-import { API_BASE, TRUSTED_SYSTEM_PUBLIC_KEYS } from './config';
+import { API_BASE } from './config';
 import { App } from './App';
 import './index.css';
 
@@ -26,20 +26,25 @@ planRegistry.register('fotos', fotosPlan, {category: 'analytics', description: '
 
 // Debugging: window.__api('fotos', 'status') or window.__api('fotos', 'init')
 (window as any).__planRegistry = planRegistry;
-(window as any).__api = async (handler: string, method: string, params?: any) => {
-    const result = await planRegistry.call(handler, method, params);
+(window as any).__operationRegistry = planRegistry;
+(window as any).__api = async (operation: string, method: string, params?: any) => {
+    const result = await planRegistry.call(operation, method, params);
     if (!result.success) throw new Error(result.error?.message);
     return result.data;
 };
 
 // Keep glue.core aligned with fotos.browser runtime config.
-initGlueCore({ apiBase: API_BASE, trustedSystemPublicKeys: TRUSTED_SYSTEM_PUBLIC_KEYS });
+initGlueCore({ apiBase: API_BASE });
 
-// ── HMR bridge (dev only) — HTTP /api/:plan/:method → browser PlanRegistry ──
+// ── HMR bridge (dev only) — canonical GET /api + POST /api/:operation/:method ──
 if (import.meta.hot) {
-    import.meta.hot.on('fotos:api-request', async (msg: { id: string; handler: string; method: string; params?: any }) => {
+    import.meta.hot.on('fotos:api-request', async (msg: { id: string; operation?: string; handler?: string; method: string; params?: any }) => {
         try {
-            const result = await planRegistry.call(msg.handler, msg.method, msg.params);
+            const operation = msg.operation ?? msg.handler;
+            if (!operation) {
+                throw new Error('Missing operation name');
+            }
+            const result = await planRegistry.call(operation, msg.method, msg.params);
             import.meta.hot!.send('fotos:api-response', { id: msg.id, ...result });
         } catch (err) {
             import.meta.hot!.send('fotos:api-response', {
@@ -50,7 +55,17 @@ if (import.meta.hot) {
         }
     });
 
-    import.meta.hot.send('fotos:ready', { plans: planRegistry.listPlans() });
+    import.meta.hot.on('fotos:api-discovery-request', (msg: { id: string }) => {
+        import.meta.hot!.send('fotos:api-discovery-response', {
+            id: msg.id,
+            payload: createPublicOperationCatalogPayload(planRegistry),
+        });
+    });
+
+    import.meta.hot.send('fotos:ready', {
+        operations: planRegistry.listOperations(),
+        payload: createPublicOperationCatalogPayload(planRegistry),
+    });
 }
 
 // ── Boot ONE.core, then render ──────────────────────────────────────

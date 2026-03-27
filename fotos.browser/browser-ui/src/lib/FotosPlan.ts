@@ -1,5 +1,5 @@
 /**
- * FotosPlan — PlanRegistry-registered face detection + image analytics.
+ * FotosPlan — OperationRegistry-registered face detection + image analytics.
  *
  * Wraps the face worker so all operations are callable via:
  *   window.__api('fotos', 'analyzeImage', { ... })

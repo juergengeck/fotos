@@ -2,7 +2,7 @@
 /// <reference path="../../../../vger/packages/one.models/@OneObjectInterfaces.d.ts" />
 /// <reference path="../../../../vger/packages/vger.core/@OneObjectInterfaces.d.ts" />
 /// <reference path="../../../../vger/packages/glue.core/src/recipes/@OneObjectInterfaces.d.ts" />
-/// <reference path="../../../../vger/packages/refinio.api/@OneObjectInterfaces.d.ts" />
+/// <reference path="../../../../vger/packages/assembly.core/src/types/Assembly.ts" />
 
 declare module 'react/jsx-runtime.js' {
     export * from 'react/jsx-runtime';

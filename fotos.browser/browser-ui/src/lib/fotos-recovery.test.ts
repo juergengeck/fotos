@@ -27,7 +27,6 @@ describe('fotos recovery helpers', () => {
   test('selects the first recovery candidate that passes live registrar verification', async () => {
     const candidateA = createSignKeyPairFromSeed(new Uint8Array(32).fill(1));
     const candidateB = createSignKeyPairFromSeed(new Uint8Array(32).fill(2));
-    const candidateAKey = serializeRecoveryPrivateKey(candidateA.secretKey);
     const candidateBKey = serializeRecoveryPrivateKey(candidateB.secretKey);
     const challenge = 'recover-challenge';
     const expectedSignatureA = uint8arrayToHexString(sign(new TextEncoder().encode(challenge), candidateA.secretKey));
