@@ -5,16 +5,18 @@
  * 1. Popup sends { type: 'fotos-id-ready' } to window.opener
  * 2. Opener sends { type: 'fotos-id-request', requestId, mode, ... }
  * 3. Popup walks user through photo key derivation + name entry
- * 4. Create mode registers identity on glue.one API (authority-signed cert → counter-signed)
- * 5. Recover mode derives the recovery key and returns it to the opener
+ * 4. Create mode binds a photo-derived fotos proof to the existing glue.one identity
+ * 5. Recover mode re-derives the fotos proof key and signs the same server challenge payload
  * 6. Popup sends { type: 'fotos-id-result', requestId, success, data?, error? } back
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { deriveKeyFromPhotos, deriveRecoveryKeyCandidatesFromPhotos } from '@/lib/photo-key-derivation.js';
-import { sign, ensureSecretSignKey } from '@refinio/one.core/lib/crypto/sign.js';
 import { uint8arrayToHexString } from '@refinio/one.core/lib/util/arraybuffer-to-and-from-hex-string.js';
-import { serializeRecoveryPrivateKey, selectRegistrarVerifiedRecoveryCandidate } from '@/lib/fotos-recovery.js';
+import {
+  selectExpectedRecoveryCandidate,
+  signRecoveryPayload,
+} from '@/lib/fotos-recovery.js';
 import { API_BASE } from '@/config.js';
 
 // Allowed origins that may open this popup
@@ -55,7 +57,32 @@ interface PopupRequest {
   requestId: string;
   mode: FotosIdMode;
   displayName?: string;
+  personId?: string;
   personPublicKey?: string;
+  challengeId?: string;
+  challenge?: string;
+  expectedFotosPublicKey?: string;
+}
+
+function buildFotosClaimPayload(
+  mode: FotosIdMode,
+  identity: string,
+  personId: string,
+  gluePublicKey: string,
+  fotosPublicKey: string,
+  challengeId: string,
+  challenge: string,
+): string {
+  return JSON.stringify({
+    $type$: 'FotosNameClaim' as const,
+    action: mode === 'recover' ? 'recover' : 'register',
+    identity,
+    personId,
+    gluePublicKey,
+    fotosPublicKey,
+    challengeId,
+    challenge,
+  });
 }
 
 export function FotosIdPopup() {
@@ -99,7 +126,11 @@ export function FotosIdPopup() {
           requestId: data.requestId,
           mode: nextMode,
           displayName: typeof data.displayName === 'string' ? data.displayName : undefined,
+          personId: typeof data.personId === 'string' ? data.personId : undefined,
           personPublicKey: data.personPublicKey,
+          challengeId: typeof data.challengeId === 'string' ? data.challengeId : undefined,
+          challenge: typeof data.challenge === 'string' ? data.challenge : undefined,
+          expectedFotosPublicKey: typeof data.expectedFotosPublicKey === 'string' ? data.expectedFotosPublicKey : undefined,
         };
         setPhase('setup');
       }
@@ -129,9 +160,8 @@ export function FotosIdPopup() {
     identity: string;
     displayName: string;
     publicKey: string;
-    cert?: unknown;
-    privateKey?: string;
-    candidatePrivateKeys?: string[];
+    claimPayload?: string;
+    signature?: string;
   }) => {
     setPhase('done');
     sendResult({ success: true, data });
@@ -151,7 +181,11 @@ export function FotosIdPopup() {
         <FotosIdSetupForm
           mode={mode}
           initialDisplayName={initialDisplayName}
+          personId={requestRef.current?.personId}
           personPublicKey={requestRef.current?.personPublicKey}
+          challengeId={requestRef.current?.challengeId}
+          challenge={requestRef.current?.challenge}
+          expectedFotosPublicKey={requestRef.current?.expectedFotosPublicKey}
           onCreated={handleCompleted}
         />
       )}
@@ -248,20 +282,32 @@ const styles = {
 function FotosIdSetupForm(props: {
   mode: FotosIdMode;
   initialDisplayName?: string;
+  personId?: string;
   personPublicKey?: string;
+  challengeId?: string;
+  challenge?: string;
+  expectedFotosPublicKey?: string;
   onCreated: (data: {
     mode: FotosIdMode;
     identity: string;
     displayName: string;
     publicKey: string;
-    cert?: unknown;
-    privateKey?: string;
-    candidatePrivateKeys?: string[];
+    claimPayload?: string;
+    signature?: string;
   }) => void;
 }) {
-  const { mode, initialDisplayName = '', personPublicKey, onCreated } = props;
+  const {
+    mode,
+    initialDisplayName = '',
+    personId,
+    personPublicKey,
+    challengeId,
+    challenge,
+    expectedFotosPublicKey,
+    onCreated,
+  } = props;
 
-  const [step, setStep] = useState<SetupStep>('name');
+  const [step, setStep] = useState<SetupStep>(initialDisplayName.trim().length >= 2 ? 'photos' : 'name');
 
   // Name state
   const [displayName, setDisplayName] = useState(initialDisplayName);
@@ -278,10 +324,15 @@ function FotosIdSetupForm(props: {
   // Creation state
   const [progress, setProgress] = useState('');
   const [creationError, setCreationError] = useState<string | null>(null);
+  const nameLocked = initialDisplayName.trim().length >= 2;
 
   // ── Name availability check (debounced) ──────────────────────────────
 
   const checkNameAvailability = useCallback(async (name: string) => {
+    if (nameLocked) {
+      setNameStatus('idle');
+      return;
+    }
     const localPart = name.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (localPart.length < 2) {
       setNameStatus('idle');
@@ -310,7 +361,7 @@ function FotosIdSetupForm(props: {
       setNameStatus('error');
       setNameError(mode === 'recover' ? 'Network error checking identity' : 'Network error checking name');
     }
-  }, [mode]);
+  }, [mode, nameLocked]);
 
   const handleNameChange = useCallback((value: string) => {
     setDisplayName(value);
@@ -327,16 +378,20 @@ function FotosIdSetupForm(props: {
 
   useEffect(() => {
     setDisplayName(initialDisplayName);
+    setStep(initialDisplayName.trim().length >= 2 ? 'photos' : 'name');
     setNameStatus('idle');
     setNameError(null);
 
+    if (nameLocked) {
+      return;
+    }
     if (checkTimerRef.current) clearTimeout(checkTimerRef.current);
 
     const localPart = initialDisplayName.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (localPart.length >= 2) {
       checkTimerRef.current = setTimeout(() => checkNameAvailability(initialDisplayName), 0);
     }
-  }, [checkNameAvailability, initialDisplayName]);
+  }, [checkNameAvailability, initialDisplayName, nameLocked]);
 
   // Clean up timer on unmount
   useEffect(() => {
@@ -347,7 +402,10 @@ function FotosIdSetupForm(props: {
 
   const canProceedToPhotos =
     displayName.trim().length >= 2 &&
-    (mode === 'recover' ? nameStatus === 'taken' : nameStatus === 'available');
+    (
+      nameLocked ||
+      (mode === 'recover' ? nameStatus === 'taken' : nameStatus === 'available')
+    );
 
   // ── Photo handling ───────────────────────────────────────────────────
 
@@ -417,10 +475,46 @@ function FotosIdSetupForm(props: {
 
       // 2. Derive fotos ID root keypair from photos + PIN
       setProgress('Deriving key (this takes a few seconds)...');
-      const identity = nameToIdentity(displayName);
+      const trimmedDisplayName = displayName.trim();
+      const identity = nameToIdentity(trimmedDisplayName);
+      if (!personId) {
+        throw new Error('No glue person ID received from opener');
+      }
+      if (!personPublicKey) {
+        throw new Error('No glue public key received from opener');
+      }
+      if (!challengeId) {
+        throw new Error('No fotos challenge ID received from opener');
+      }
+      if (!challenge) {
+        throw new Error('No fotos challenge received from opener');
+      }
+
       if (mode === 'recover') {
+        if (!expectedFotosPublicKey) {
+          throw new Error('No expected fotos proof key received from opener');
+        }
         const recoveryCandidates = await deriveRecoveryKeyCandidatesFromPhotos({ images: imageBytes, pin });
-        const verifiedCandidate = await selectRegistrarVerifiedRecoveryCandidate(identity, recoveryCandidates);
+        setProgress('Matching fotos proof...');
+        const verifiedCandidate = await selectExpectedRecoveryCandidate(
+          expectedFotosPublicKey,
+          recoveryCandidates,
+        );
+
+        setProgress('Signing fotos proof...');
+        const claimPayload = buildFotosClaimPayload(
+          mode,
+          identity,
+          personId,
+          personPublicKey,
+          verifiedCandidate.publicKey,
+          challengeId,
+          challenge,
+        );
+        const signature = signRecoveryPayload(
+          claimPayload,
+          verifiedCandidate.candidate,
+        );
 
         for (const img of images) {
           URL.revokeObjectURL(img.thumbnailUrl);
@@ -429,90 +523,39 @@ function FotosIdSetupForm(props: {
         onCreated({
           mode,
           identity,
-          displayName: displayName.trim(),
+          displayName: trimmedDisplayName,
           publicKey: verifiedCandidate.publicKey,
-          privateKey: verifiedCandidate.privateKey,
+          claimPayload,
+          signature,
         });
         return;
       }
 
       const derived = await deriveKeyFromPhotos({ images: imageBytes, pin });
       const fotosRootPublicKeyHex = uint8arrayToHexString(derived.publicKey);
-      const localPart = displayName.toLowerCase().replace(/[^a-z0-9]/g, '');
-
-      // 3. Build cert: fotos root (L1) signs the browser's person key
-      // Subject = browser's existing person public sign key
-      // Issuer = fotos root public key (derived from photos+PIN)
-      setProgress('Building certificate...');
-      if (!personPublicKey) {
-        throw new Error('No person public key received from opener');
-      }
-      const now = Date.now();
-
-      const certPayload = {
-        $type$: 'SubscriptionCertificate' as const,
-        id: identity,
-        certificateType: 'identity' as const,
-        status: 'valid',
-        subject: personPublicKey,
-        subjectPublicKey: personPublicKey,
-        issuer: fotosRootPublicKeyHex,
-        issuerPublicKey: fotosRootPublicKeyHex,
-        validFrom: now,
-        validUntil: now + 7 * 24 * 60 * 60 * 1000,
-        chainDepth: 0,
-        claims: {
-          identity,
-          domain: 'glue.one',
-          localPart,
-          tier: 'user',
-          priceEur: 0,
-          subscriptionStatus: 'preliminary' as const,
-          paymentId: '',
-          depositAmount: 0,
-          autoRenew: false,
-          service: 'Identity attestation and verification',
-        },
-        issuedAt: now,
-        serialNumber: `fotosid-${now}`,
-      };
-
-      const payload = JSON.stringify(certPayload);
-      const signatureBytes = sign(
-        new TextEncoder().encode(payload),
-        ensureSecretSignKey(derived.secretKey),
+      setProgress('Signing fotos proof...');
+      const claimPayload = buildFotosClaimPayload(
+        mode,
+        identity,
+        personId,
+        personPublicKey,
+        fotosRootPublicKeyHex,
+        challengeId,
+        challenge,
       );
-      const cert = { ...certPayload, signature: uint8arrayToHexString(signatureBytes) };
+      const signature = signRecoveryPayload(claimPayload, derived);
 
-      // 4. Register on glue.one API
-      setProgress('Registering identity...');
-      const res = await fetch(`${API_BASE}/api/registration/registerName`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cert, instanceEncryptionKey: '' }),
-      });
-
-      if (!res.ok) {
-        const text = await res.text().catch(() => 'Unknown error');
-        if (res.status === 409) {
-          throw new Error('Name is already taken');
-        }
-        throw new Error(`Registration failed: ${res.status} ${text}`);
-      }
-
-      // 5. Clean up thumbnails
       for (const img of images) {
         URL.revokeObjectURL(img.thumbnailUrl);
       }
 
-      // 6. Return result to opener
       onCreated({
         mode,
         identity,
-        displayName: displayName.trim(),
-        cert,
+        displayName: trimmedDisplayName,
         publicKey: fotosRootPublicKeyHex,
-        privateKey: serializeRecoveryPrivateKey(derived.secretKey),
+        claimPayload,
+        signature,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : mode === 'recover' ? 'Identity recovery failed' : 'Identity creation failed';
@@ -545,8 +588,8 @@ function FotosIdSetupForm(props: {
         <div>
           <div style={styles.hint}>
             {mode === 'recover'
-              ? 'Enter the glue.one name you want to recover. We will re-derive the same key from your photos and PIN.'
-              : 'Choose a display name for your fotos id. This will be your identity on glue.one.'}
+              ? 'Enter the glue.one name you want to confirm with fotos id. We will re-derive the same fotos proof from your photos and PIN.'
+              : 'Enter the glue.one name that should be bound to your fotos proof. fotos id does not replace your glue key; it adds a second root you can re-derive.'}
           </div>
 
           <div style={styles.section}>
@@ -622,8 +665,8 @@ function FotosIdSetupForm(props: {
 
           <div style={styles.hint}>
             {mode === 'recover'
-              ? 'Pick the same photos in the same order, then enter the same 8-digit PIN. This re-derives the private key for your existing fotos id.'
-              : 'Pick photos you will remember and arrange them in order. Then enter a date as your 8-digit PIN. Together these derive your identity key.'}
+              ? 'Pick the same photos in the same order, then enter the same 8-digit PIN. This re-derives your fotos proof key locally so it can sign the headless challenge.'
+              : 'Pick photos you will remember and arrange them in order. Then enter a date as your 8-digit PIN. Together these derive the fotos proof key that will be bound to your glue.one name.'}
           </div>
 
           {/* Hidden file input */}
