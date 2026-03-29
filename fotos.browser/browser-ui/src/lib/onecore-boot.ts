@@ -33,7 +33,6 @@ import RecipesExperimental from '@refinio/one.models/lib/recipes/recipes-experim
 import GlueContentRecipes from '@glueone/glue.core/recipes/GlueContentRecipes.js';
 import PresenceRecipes from '@glueone/glue.core/recipes/PresenceRecipes.js';
 import TimeTrieRecipes from '@glueone/glue.core/recipes/TimeTrieRecipes.js';
-import PresenceTrieRecipes from '@glueone/glue.core/recipes/PresenceTrieRecipes.js';
 import {
   DEFAULT_GLUE_CONNECTION_BINDING_ID,
   getGlueBindingPersonId,
@@ -391,7 +390,6 @@ export async function bootFotosModel(
       ...GlueContentRecipes,
       ...PresenceRecipes,
       ...TimeTrieRecipes,
-      ...PresenceTrieRecipes,
       ...TrustCoreRecipes,
       ...SettingsRecipes,
       ...RefinioApiRecipes,
