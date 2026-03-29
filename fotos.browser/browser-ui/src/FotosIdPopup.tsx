@@ -127,7 +127,7 @@ export function FotosIdPopup() {
           mode: nextMode,
           displayName: typeof data.displayName === 'string' ? data.displayName : undefined,
           personId: typeof data.personId === 'string' ? data.personId : undefined,
-          personPublicKey: data.personPublicKey,
+          personPublicKey: typeof data.personPublicKey === 'string' ? data.personPublicKey : undefined,
           challengeId: typeof data.challengeId === 'string' ? data.challengeId : undefined,
           challenge: typeof data.challenge === 'string' ? data.challenge : undefined,
           expectedFotosPublicKey: typeof data.expectedFotosPublicKey === 'string' ? data.expectedFotosPublicKey : undefined,
@@ -381,11 +381,11 @@ function FotosIdSetupForm(props: {
     setStep(initialDisplayName.trim().length >= 2 ? 'photos' : 'name');
     setNameStatus('idle');
     setNameError(null);
+    if (checkTimerRef.current) clearTimeout(checkTimerRef.current);
 
     if (nameLocked) {
       return;
     }
-    if (checkTimerRef.current) clearTimeout(checkTimerRef.current);
 
     const localPart = initialDisplayName.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (localPart.length >= 2) {
@@ -599,6 +599,7 @@ function FotosIdSetupForm(props: {
               placeholder="e.g. Alice"
               value={displayName}
               onChange={e => handleNameChange(e.target.value)}
+              readOnly={nameLocked}
               style={styles.input}
               autoFocus
             />
