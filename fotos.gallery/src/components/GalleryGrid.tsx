@@ -12,6 +12,8 @@ export interface GalleryGridProps<T extends GalleryEntry = GalleryEntry> {
   onPhotoClick: (flatIndex: number) => void
   /** Minimum column width in px (default 148) */
   minColumnWidth?: number
+  /** Offset sticky day labels when an app header overlays the scroll surface. */
+  stickyHeaderOffset?: number
   emptyLabel?: ReactNode
 }
 
@@ -137,6 +139,7 @@ export function GalleryGrid<T extends GalleryEntry>({
   getImageUrl,
   onPhotoClick,
   minColumnWidth = 148,
+  stickyHeaderOffset = 0,
   emptyLabel = 'no images yet',
 }: GalleryGridProps<T>) {
   if (totalCount === 0) {
@@ -160,7 +163,7 @@ export function GalleryGrid<T extends GalleryEntry>({
             <div
               style={{
                 position: 'sticky',
-                top: 0,
+                top: stickyHeaderOffset,
                 zIndex: 3,
                 padding: '10px 16px 8px',
                 backdropFilter: 'blur(12px)',
