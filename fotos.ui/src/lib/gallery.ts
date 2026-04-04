@@ -1,4 +1,4 @@
-import {cosineSimilarity, EMBEDDING_DIM} from '../../../fotos.core/src/index.js';
+import {cosineSimilarity, EMBEDDING_DIM} from '@refinio/fotos.core';
 import type {PhotoEntry, SemanticInfo} from '../types/fotos.js';
 
 export interface DayGroup<TPhoto extends PhotoEntry = PhotoEntry> {

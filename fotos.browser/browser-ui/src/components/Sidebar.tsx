@@ -4,6 +4,7 @@ import type { FotosSettings, StorageMode, DisplaySettings } from '@/types/fotos'
 import type { FotosModel } from '@/lib/onecore-boot';
 import type { FaceClusterSummary, SimilarFaceMatch } from '@/lib/cluster-gallery';
 import type { FotosHistoryBranchNode } from '@/lib/fotosHistorySettings';
+import { readStoredSidebarTab, writeStoredSidebarTab } from '@/lib/authFlowState';
 import { FotosSettings as FotosSettingsPanel } from './FotosSettings';
 import { ClusterCard } from './ClusterGallery';
 import { InlineRenameField } from './InlineRenameField';
@@ -92,8 +93,12 @@ export function Sidebar({
     onRenameFace,
     onDeleteFace,
 }: SidebarProps) {
-    const [tab, setTab] = useState<Tab>('browse');
+    const [tab, setTab] = useState<Tab>(() => readStoredSidebarTab() ?? 'browse');
     const [collapsed, setCollapsed] = useState(false);
+
+    useEffect(() => {
+        writeStoredSidebarTab(tab);
+    }, [tab]);
 
     // Mobile: inline panel, no overlay/drawer
     if (mobile) {

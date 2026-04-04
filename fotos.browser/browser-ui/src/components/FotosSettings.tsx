@@ -7,6 +7,11 @@ import {
     getGlueIdentityProfile,
     nameToIdentity,
 } from '@glueone/glue.core';
+import {
+    clearPendingAuthenticationContinuation,
+    hasPendingAuthenticationContinuation,
+    queueAuthenticationContinuation,
+} from '@/lib/authFlowState';
 import { API_BASE } from '../config.js';
 
 import { ChevronDown } from 'lucide-react';
@@ -47,13 +52,15 @@ export function FotosSettings({ model }: FotosSettingsProps) {
     const [certState, setCertState] = useState<CertState>('ephemeral');
     const [certValidUntil, setCertValidUntil] = useState<string | null>(null);
     const [passkeyCount, setPasskeyCount] = useState(0);
-    const [signingIn, setSigningIn] = useState(false);
-    const [signInError, setSignInError] = useState<string | null>(null);
+    const [authenticating, setAuthenticating] = useState(false);
+    const [authError, setAuthError] = useState<string | null>(null);
     const [hasRecoveryKey, setHasRecoveryKey] = useState(false);
     const [showPasskeyPrompt, setShowPasskeyPrompt] = useState(false);
     const [registeringPasskey, setRegisteringPasskey] = useState(false);
+    const [showAuthenticationHint, setShowAuthenticationHint] = useState(() => hasPendingAuthenticationContinuation());
 
     const publicationIdentity = model?.publicationIdentity ?? null;
+    const identityReadyForAuthentication = Boolean(publicationIdentity && displayName);
 
     // Load identity state from settings
     useEffect(() => {
@@ -121,6 +128,10 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                 }
 
                 setFedCMLoginStatus(nextCertState === 'certified' ? 'logged-in' : 'logged-out');
+                if (nextCertState === 'certified') {
+                    clearPendingAuthenticationContinuation();
+                    setShowAuthenticationHint(false);
+                }
             } catch {
                 if (cancelled) return;
                 setCertState('ephemeral');
@@ -132,6 +143,12 @@ export function FotosSettings({ model }: FotosSettingsProps) {
             cancelled = true;
         };
     }, [model?.settingsPlan, model?.publicationIdentity]);
+
+    useEffect(() => {
+        if (certState !== 'certified') return;
+        clearPendingAuthenticationContinuation();
+        setShowAuthenticationHint(false);
+    }, [certState]);
 
     // Load passkey count
     useEffect(() => {
@@ -168,16 +185,20 @@ export function FotosSettings({ model }: FotosSettingsProps) {
             .catch(() => {});
     }, [certState, publicationIdentity]);
 
-    // Sign in: enable sync, then certify via glue.one passkey popup.
-    // Passkey auth handles both first-time registration and returning users.
-    const handleSignIn = useCallback(async () => {
+    // Authentication happens in two steps:
+    // 1. Enable sync so ONE.core can establish the local device identity.
+    // 2. Authenticate via the glue.one passkey popup.
+    const handleAuthenticate = useCallback(async () => {
         if (!model?.settingsPlan) return;
-        setSigningIn(true);
-        setSignInError(null);
+        setAuthenticating(true);
+        setAuthError(null);
+        let queuedContinuation = false;
 
         try {
-            // Enable sync first if needed — reload to let ONE.core establish identity
+            // Enable sync first if needed and bring the user back to settings after reload.
             if (!syncEnabled) {
+                queueAuthenticationContinuation();
+                queuedContinuation = true;
                 await model.settingsPlan.updateSection({
                     moduleId: 'glue',
                     values: { syncEnabled: true },
@@ -187,10 +208,10 @@ export function FotosSettings({ model }: FotosSettingsProps) {
             }
 
             if (!model.publicationIdentity || !displayName) {
-                throw new Error('Identity not ready — sync may still be loading');
+                throw new Error('Authentication is still preparing. Try again in a moment.');
             }
 
-            // Certify via glue.one passkey popup (handles both registration and auth)
+            // The passkey popup handles both first-time registration and returning users.
             const { authenticateWithPasskeyViaPopup } = await import('@glueone/auth.core');
             const result = await authenticateWithPasskeyViaPopup(model.publicationIdentity, displayName);
             if (result.success) {
@@ -199,22 +220,28 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                     setCertValidUntil(new Date(result.data.cert.validUntil).toLocaleDateString());
                 }
                 setFedCMLoginStatus('logged-in');
-                // Offer passkey save if this was the first certification
+                clearPendingAuthenticationContinuation();
+                setShowAuthenticationHint(false);
+                // Offer passkey save if this was the first authentication.
                 if (passkeyCount === 0) {
                     const dismissed = localStorage.getItem('fotos_passkey_prompt_dismissed');
                     if (!dismissed) setShowPasskeyPrompt(true);
                 }
             } else {
-                setSignInError(result.error || 'Sign-in failed');
+                setAuthError(result.error || 'Authentication failed');
             }
         } catch (err) {
-            setSignInError((err as Error).message);
+            if (queuedContinuation) {
+                clearPendingAuthenticationContinuation();
+                setShowAuthenticationHint(false);
+            }
+            setAuthError((err as Error).message);
         } finally {
-            setSigningIn(false);
+            setAuthenticating(false);
         }
     }, [model?.settingsPlan, model?.publicationIdentity, syncEnabled, displayName, passkeyCount]);
 
-    // Register a passkey after successful sign-in
+    // Register a passkey after successful authentication.
     const handleSavePasskey = useCallback(async () => {
         if (!model?.publicationIdentity || !displayName) return;
         setRegisteringPasskey(true);
@@ -229,8 +256,8 @@ export function FotosSettings({ model }: FotosSettingsProps) {
         setShowPasskeyPrompt(false);
     }, [model?.publicationIdentity, displayName]);
 
-    // Sign out: disable sync and reload
-    const handleSignOut = useCallback(async () => {
+    // Disable sync and reload.
+    const handleDisableSync = useCallback(async () => {
         if (!model?.settingsPlan) return;
         try {
             await model.settingsPlan.updateSection({
@@ -238,47 +265,71 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                 values: { syncEnabled: false },
             });
             setFedCMLoginStatus('logged-out');
+            clearPendingAuthenticationContinuation();
+            setShowAuthenticationHint(false);
             window.location.reload();
         } catch (err) {
-            setSignInError((err as Error).message);
+            setAuthError((err as Error).message);
         }
     }, [model?.settingsPlan]);
 
-    const signedIn = certState === 'certified' && syncEnabled;
+    const authenticated = certState === 'certified' && syncEnabled;
+    const showPreparationState = syncEnabled && !identityReadyForAuthentication && !authenticated;
+    const authenticationButtonDisabled = authenticating
+        || !model?.settingsPlan
+        || showPreparationState;
+    const authenticationButtonLabel = authenticating
+        ? 'Authenticating...'
+        : !syncEnabled
+            ? 'Enable sync'
+            : showPreparationState
+                ? 'Preparing authentication...'
+                : 'Authenticate';
+    const authenticationDescription = !syncEnabled
+        ? 'Authentication happens in two steps. First enable sync on this device. fotos will reload and bring you back to settings for step 2.'
+        : showAuthenticationHint
+            ? 'Sync is ready on this device. Authenticate below to finish linking your fotos id.'
+            : 'Authenticate to sync your photos across devices and use your identity on other ONE apps.';
 
     return (
         <CollapsibleSection label="fotos id">
             <div className="space-y-2">
-                {/* ── Signed out ── */}
-                {!signedIn && (
+                {/* ── Not authenticated yet ── */}
+                {!authenticated && (
                     <>
                         <div className="px-2.5 py-2 bg-white/5 rounded-md text-[11px] text-white/40 leading-relaxed">
-                            Sign in to sync your photos across devices and use your identity on other ONE apps.
+                            {authenticationDescription}
                         </div>
 
-                        {/* Sign-in button */}
+                        {/* Authentication action */}
                         <button
-                            onClick={handleSignIn}
-                            disabled={signingIn || !model?.settingsPlan}
+                            onClick={() => void handleAuthenticate()}
+                            disabled={authenticationButtonDisabled}
                             className={`w-full flex items-center justify-center gap-1.5 px-2.5 py-2.5 rounded-md text-[11px] font-medium transition-colors ${
-                                signingIn
+                                authenticationButtonDisabled
                                     ? 'bg-white/5 text-white/20 cursor-wait'
                                     : 'bg-[#e94560]/80 text-white hover:bg-[#e94560]'
                             }`}
                         >
-                            {signingIn && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                            {(authenticating || showPreparationState) && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                             <Shield className="w-3.5 h-3.5" />
-                            {signingIn ? 'Signing in...' : 'Sign in'}
+                            {authenticationButtonLabel}
                         </button>
 
-                        {signInError && (
-                            <div className="px-2.5 text-[10px] text-red-400/70">{signInError}</div>
+                        {!syncEnabled && (
+                            <div className="px-2.5 text-[10px] text-white/25">
+                                fotos will reopen this tab in settings after the reload.
+                            </div>
+                        )}
+
+                        {authError && (
+                            <div className="px-2.5 text-[10px] text-red-400/70">{authError}</div>
                         )}
                     </>
                 )}
 
-                {/* ── Signed in ── */}
-                {signedIn && displayName && (
+                {/* ── Authenticated ── */}
+                {authenticated && displayName && (
                     <>
                         {/* Identity card */}
                         <div className="flex items-center gap-2 px-2.5 py-2 bg-white/5 rounded-md text-[11px] text-white/60">
@@ -311,11 +362,11 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                             )}
                         </div>
 
-                        {/* Passkey save prompt (shown after OneAuth sign-in) */}
+                        {/* Passkey save prompt (shown after first successful authentication) */}
                         {showPasskeyPrompt && (
                             <div className="px-2.5 py-2 bg-[#e94560]/8 border border-[#e94560]/20 rounded-md space-y-2">
                                 <div className="text-[10px] text-white/50">
-                                    Save a passkey for faster sign-in next time?
+                                    Save a passkey for faster authentication next time?
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <button
@@ -371,11 +422,11 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                                 Manage identity <ExternalLink className="w-2.5 h-2.5" />
                             </a>
                             <button
-                                onClick={() => void handleSignOut()}
+                                onClick={() => void handleDisableSync()}
                                 className="flex items-center gap-1 text-[10px] text-white/25 hover:text-red-400/60 transition-colors ml-auto"
                             >
                                 <LogOut className="w-2.5 h-2.5" />
-                                Sign out
+                                Disable sync
                             </button>
                         </div>
                     </>
