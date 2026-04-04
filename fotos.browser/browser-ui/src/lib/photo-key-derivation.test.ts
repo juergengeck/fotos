@@ -1,12 +1,18 @@
 import { describe, test, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { deriveKeyFromPhotos, deriveRecoveryKeyCandidatesFromPhotos } from './photo-key-derivation.js';
 import { ensurePublicSignKey, ensureSecretSignKey, sign, signatureVerify } from '@refinio/one.core/lib/crypto/sign.js';
 import { fromByteArray as toBase64, toByteArray as fromBase64 } from 'base64-js';
 
-// Tiny deterministic test images (1x1 pixel PNGs with known byte content)
-const IMG_A = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01]);
-const IMG_B = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x02]);
-const IMG_C = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x03]);
+// Deterministic photo fixtures generated from ImageMagick's built-in `rose:`
+// sample so fotos-id derivation runs against real JPEG/PNG payloads.
+function loadFixture(relativePath: string): Uint8Array {
+    return new Uint8Array(readFileSync(new URL(relativePath, import.meta.url)));
+}
+
+const IMG_A = loadFixture('./__fixtures__/photos/rose-center.jpg');
+const IMG_B = loadFixture('./__fixtures__/photos/rose-top-left.jpg');
+const IMG_C = loadFixture('./__fixtures__/photos/rose-detail.png');
 
 const PIN = '19450508';
 
