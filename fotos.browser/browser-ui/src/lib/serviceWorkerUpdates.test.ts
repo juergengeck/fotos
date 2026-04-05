@@ -27,6 +27,10 @@ vi.mock('virtual:pwa-register', () => ({
 }));
 
 type EventTargetWithProps<T extends object> = EventTarget & T;
+const nativeSetTimeout = globalThis.setTimeout;
+const nativeClearTimeout = globalThis.clearTimeout;
+const nativeSetInterval = globalThis.setInterval;
+const nativeClearInterval = globalThis.clearInterval;
 
 type ServiceWorkerHarness = {
     documentMock: Document;
@@ -92,10 +96,10 @@ function createHarness(): ServiceWorkerHarness {
             replace: locationReplace,
         } as unknown as Location,
         localStorage: localStorageMock,
-        setTimeout: globalThis.setTimeout.bind(globalThis),
-        clearTimeout: globalThis.clearTimeout.bind(globalThis),
-        setInterval: globalThis.setInterval.bind(globalThis),
-        clearInterval: globalThis.clearInterval.bind(globalThis),
+        setTimeout: nativeSetTimeout.bind(globalThis),
+        clearTimeout: nativeClearTimeout.bind(globalThis),
+        setInterval: nativeSetInterval.bind(globalThis),
+        clearInterval: nativeClearInterval.bind(globalThis),
     }) as unknown as Window & typeof globalThis;
 
     return {
@@ -201,6 +205,38 @@ describe('serviceWorkerUpdates', () => {
 
         expect(harness.waitingPostMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' });
         expect(swRegisterMockState.state.updateServiceWorkerMock).toHaveBeenCalled();
+        expect(snapshots.at(-1)).toMatchObject({
+            needRefresh: false,
+            hasDeployedBuildUpdate: false,
+            hasWaitingWorker: true,
+        });
+    });
+
+    it('does not silently activate a waiting worker on reload-driven page loads', async () => {
+        const harness = createHarness();
+        const navigationEntriesSpy = vi.spyOn(globalThis.performance, 'getEntriesByType')
+            .mockReturnValue([{ type: 'reload' }] as unknown as PerformanceEntryList);
+        globalThis.window = harness.windowMock;
+        globalThis.document = harness.documentMock;
+        Object.defineProperty(globalThis, 'navigator', {
+            configurable: true,
+            value: { serviceWorker: harness.serviceWorkerTarget as unknown as ServiceWorkerContainer },
+        });
+
+        const serviceWorkerUpdates = await import('./serviceWorkerUpdates');
+        const snapshots: ReturnType<typeof serviceWorkerUpdates.useServiceWorkerUpdates>[] = [];
+        const unsubscribe = serviceWorkerUpdates.subscribeToServiceWorkerUpdates((nextSnapshot) => {
+            snapshots.push(nextSnapshot);
+        });
+
+        serviceWorkerUpdates.startServiceWorkerUpdates();
+        swRegisterMockState.state.options?.onNeedRefresh?.();
+        await flushPromises();
+        unsubscribe();
+        navigationEntriesSpy.mockRestore();
+
+        expect(harness.waitingPostMessage).not.toHaveBeenCalled();
+        expect(swRegisterMockState.state.updateServiceWorkerMock).not.toHaveBeenCalled();
         expect(snapshots.at(-1)).toMatchObject({
             needRefresh: false,
             hasDeployedBuildUpdate: false,

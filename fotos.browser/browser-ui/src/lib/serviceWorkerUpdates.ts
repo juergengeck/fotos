@@ -28,6 +28,42 @@ const FOREGROUND_RETRY_DELAYS_MS = [1_500, 4_000, 8_000, 15_000];
 const BUILD_UPDATE_STORAGE_KEY = 'fotos.browser.deployed-build-update';
 const CURRENT_BUILD_ID = typeof __APP_BUILD_ID__ === 'string' ? __APP_BUILD_ID__ : '';
 
+function didStartFromServiceWorkerReload(): boolean {
+    if (typeof window === 'undefined') {
+        return false;
+    }
+
+    try {
+        return new URL(window.location.href).searchParams.has(SERVICE_WORKER_RELOAD_PARAM);
+    } catch {
+        return false;
+    }
+}
+
+function didStartFromReloadNavigation(): boolean {
+    if (typeof performance === 'undefined') {
+        return false;
+    }
+
+    const navigationEntries = performance.getEntriesByType?.('navigation');
+    const firstNavigationEntry = navigationEntries?.[0] as PerformanceNavigationTiming | undefined;
+    if (firstNavigationEntry?.type) {
+        return firstNavigationEntry.type === 'reload';
+    }
+
+    const legacyNavigation = performance.navigation;
+    if (!legacyNavigation) {
+        return false;
+    }
+
+    return legacyNavigation.type === legacyNavigation.TYPE_RELOAD || legacyNavigation.type === 1;
+}
+
+const SHOULD_DEFER_WAITING_WORKER_ACTIVATION_ON_THIS_LOAD = (
+    didStartFromServiceWorkerReload()
+    || didStartFromReloadNavigation()
+);
+
 const listeners = new Set<(snapshot: ServiceWorkerSnapshot) => void>();
 
 let snapshot: ServiceWorkerSnapshot = {
@@ -202,7 +238,14 @@ function reconcileWaitingWorker(registration = snapshot.registration): void {
 
     // The service worker only owns share-target interception and a small set of
     // static assets. A waiting worker by itself is not a user-facing app update.
+    // Chrome DevTools "Update on reload" can create a waiting worker on each
+    // reload; activating it during that same navigation can bounce the page
+    // into a reload loop. Keep the prompt hidden either way, but only promote
+    // the worker silently on non-reload page loads.
     setSnapshot({ needRefresh: false });
+    if (SHOULD_DEFER_WAITING_WORKER_ACTIVATION_ON_THIS_LOAD) {
+        return;
+    }
     void activateWaitingWorkerSilently(registration);
 }
 
