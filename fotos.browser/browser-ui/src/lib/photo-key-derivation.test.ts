@@ -14,7 +14,7 @@ const IMG_A = loadFixture('./__fixtures__/photos/rose-center.jpg');
 const IMG_B = loadFixture('./__fixtures__/photos/rose-top-left.jpg');
 const IMG_C = loadFixture('./__fixtures__/photos/rose-detail.png');
 
-const PIN = '19450508';
+const PASSPHRASE = 'morning-lake-rail';
 
 // Use fast Argon2 params for testing (low memory + iterations)
 const FAST_PARAMS = { memoryCost: 1024, timeCost: 1, parallelism: 1 };
@@ -23,12 +23,12 @@ describe('deriveKeyFromPhotos', () => {
     test('same inputs in same order produce same key (deterministic)', async () => {
         const result1 = await deriveKeyFromPhotos({
             images: [IMG_A, IMG_B],
-            pin: PIN,
+            passphrase: PASSPHRASE,
             ...FAST_PARAMS,
         });
         const result2 = await deriveKeyFromPhotos({
             images: [IMG_A, IMG_B],
-            pin: PIN,
+            passphrase: PASSPHRASE,
             ...FAST_PARAMS,
         });
 
@@ -40,12 +40,12 @@ describe('deriveKeyFromPhotos', () => {
     test('recovery candidates include the current derivation and legacy fallback when they differ', async () => {
         const current = await deriveKeyFromPhotos({
             images: [IMG_A, IMG_B],
-            pin: PIN,
+            passphrase: PASSPHRASE,
             ...FAST_PARAMS,
         });
         const candidates = await deriveRecoveryKeyCandidatesFromPhotos({
             images: [IMG_A, IMG_B],
-            pin: PIN,
+            passphrase: PASSPHRASE,
             ...FAST_PARAMS,
         });
 
@@ -57,27 +57,27 @@ describe('deriveKeyFromPhotos', () => {
     test('same images in different order produce different key', async () => {
         const resultAB = await deriveKeyFromPhotos({
             images: [IMG_A, IMG_B],
-            pin: PIN,
+            passphrase: PASSPHRASE,
             ...FAST_PARAMS,
         });
         const resultBA = await deriveKeyFromPhotos({
             images: [IMG_B, IMG_A],
-            pin: PIN,
+            passphrase: PASSPHRASE,
             ...FAST_PARAMS,
         });
 
         expect(resultAB.seed).not.toEqual(resultBA.seed);
     });
 
-    test('same images, different PIN produce different key', async () => {
+    test('same images, different passphrase produce different key', async () => {
         const result1 = await deriveKeyFromPhotos({
             images: [IMG_A, IMG_B],
-            pin: '19450508',
+            passphrase: 'morning-lake-rail',
             ...FAST_PARAMS,
         });
         const result2 = await deriveKeyFromPhotos({
             images: [IMG_A, IMG_B],
-            pin: '08051945',
+            passphrase: 'evening-storm-bridge',
             ...FAST_PARAMS,
         });
 
@@ -87,12 +87,12 @@ describe('deriveKeyFromPhotos', () => {
     test('additional image appended produces different key', async () => {
         const result2 = await deriveKeyFromPhotos({
             images: [IMG_A, IMG_B],
-            pin: PIN,
+            passphrase: PASSPHRASE,
             ...FAST_PARAMS,
         });
         const result3 = await deriveKeyFromPhotos({
             images: [IMG_A, IMG_B, IMG_C],
-            pin: PIN,
+            passphrase: PASSPHRASE,
             ...FAST_PARAMS,
         });
 
@@ -102,7 +102,7 @@ describe('deriveKeyFromPhotos', () => {
     test('derived public key is valid Ed25519 (32 bytes)', async () => {
         const result = await deriveKeyFromPhotos({
             images: [IMG_A],
-            pin: PIN,
+            passphrase: PASSPHRASE,
             ...FAST_PARAMS,
         });
 
@@ -117,7 +117,7 @@ describe('deriveKeyFromPhotos', () => {
     test('derived secret key survives base64 serialization and still verifies against its public key', async () => {
         const result = await deriveKeyFromPhotos({
             images: [IMG_A, IMG_B],
-            pin: PIN,
+            passphrase: PASSPHRASE,
             ...FAST_PARAMS,
         });
 
@@ -130,29 +130,25 @@ describe('deriveKeyFromPhotos', () => {
         expect(signatureVerify(message, signature, ensurePublicSignKey(result.publicKey))).toBe(true);
     });
 
-    test('rejects PIN that is not exactly 8 digits', async () => {
+    test('rejects an empty passphrase', async () => {
         await expect(
-            deriveKeyFromPhotos({ images: [IMG_A], pin: '1234567', ...FAST_PARAMS }),
+            deriveKeyFromPhotos({ images: [IMG_A], passphrase: '', ...FAST_PARAMS }),
         ).rejects.toThrow();
 
         await expect(
-            deriveKeyFromPhotos({ images: [IMG_A], pin: '123456789', ...FAST_PARAMS }),
-        ).rejects.toThrow();
-
-        await expect(
-            deriveKeyFromPhotos({ images: [IMG_A], pin: '1234abcd', ...FAST_PARAMS }),
+            deriveKeyFromPhotos({ images: [IMG_A], passphrase: '   ', ...FAST_PARAMS }),
         ).rejects.toThrow();
     });
 
     test('rejects empty images array', async () => {
         await expect(
-            deriveKeyFromPhotos({ images: [], pin: PIN, ...FAST_PARAMS }),
+            deriveKeyFromPhotos({ images: [], passphrase: PASSPHRASE, ...FAST_PARAMS }),
         ).rejects.toThrow();
     });
 
     test('rejects empty image entry', async () => {
         await expect(
-            deriveKeyFromPhotos({ images: [new Uint8Array(0)], pin: PIN, ...FAST_PARAMS }),
+            deriveKeyFromPhotos({ images: [new Uint8Array(0)], passphrase: PASSPHRASE, ...FAST_PARAMS }),
         ).rejects.toThrow();
     });
 });

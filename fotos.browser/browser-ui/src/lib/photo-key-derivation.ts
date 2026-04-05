@@ -60,7 +60,7 @@ const LEGACY_APPLICATION_SALT = 'one.photo.key.v1';
 
 interface PhotoKeyDerivationOptions {
     images: Uint8Array[];
-    pin: string;
+    passphrase: string;
     memoryCost?: number;
     timeCost?: number;
     parallelism?: number;
@@ -126,11 +126,10 @@ async function deriveLegacyRecoveryKey(
 export async function deriveKeyFromPhotos(
     options: PhotoKeyDerivationOptions,
 ): Promise<DerivedKeyResult> {
-    const {images, pin, memoryCost, timeCost, parallelism} = options;
+    const {images, passphrase, memoryCost, timeCost, parallelism} = options;
 
-    // PIN validation stays here — recovery.core accepts any non-empty passphrase
-    if (!/^\d{8}$/.test(pin)) {
-        throw new Error('PIN must be exactly 8 digits');
+    if (passphrase.trim().length === 0) {
+        throw new Error('Passphrase must not be empty');
     }
 
     // Wrap raw bytes as files with opaque mimeType so extractRecoverableBytes
@@ -142,7 +141,7 @@ export async function deriveKeyFromPhotos(
             ? {memoryCost, timeCost, parallelism}
             : undefined;
 
-    return deriveRecoveryKey(files, pin, deriveDeps, params);
+    return deriveRecoveryKey(files, passphrase, deriveDeps, params);
 }
 
 export async function deriveRecoveryKeyCandidatesFromPhotos(
@@ -151,7 +150,7 @@ export async function deriveRecoveryKeyCandidatesFromPhotos(
     const current = await deriveKeyFromPhotos(options);
     const legacy = await deriveLegacyRecoveryKey(
         options.images.map(bytes => ({bytes, mimeType: 'application/octet-stream'})),
-        options.pin,
+        options.passphrase,
         {
             memoryCost: options.memoryCost,
             timeCost: options.timeCost,

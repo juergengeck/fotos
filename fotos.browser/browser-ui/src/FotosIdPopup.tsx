@@ -214,7 +214,7 @@ export function FotosIdPopup() {
   );
 }
 
-// ── Setup form — name + photo selection + PIN + derivation + registration ──
+// ── Setup form — name + photo selection + passphrase + derivation + registration ──
 
 type SetupStep = 'name' | 'photos' | 'creating';
 
@@ -317,7 +317,7 @@ function FotosIdSetupForm(props: {
 
   // Photo state
   const [images, setImages] = useState<SelectedImage[]>([]);
-  const [pin, setPin] = useState('');
+  const [passphrase, setPassphrase] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragIndexRef = useRef<number | null>(null);
 
@@ -456,7 +456,7 @@ function FotosIdSetupForm(props: {
 
   // ── Create or recover identity ───────────────────────────────────────
 
-  const canCreate = images.length > 0 && pin.length === 8;
+  const canCreate = images.length > 0 && passphrase.trim().length > 0;
 
   const handleCreate = useCallback(async () => {
     if (!canCreate) return;
@@ -473,7 +473,7 @@ function FotosIdSetupForm(props: {
         imageBytes.push(new Uint8Array(buf));
       }
 
-      // 2. Derive fotos ID root keypair from photos + PIN
+      // 2. Derive fotos ID root keypair from photos + passphrase
       setProgress('Deriving key (this takes a few seconds)...');
       const trimmedDisplayName = displayName.trim();
       const identity = nameToIdentity(trimmedDisplayName);
@@ -494,7 +494,7 @@ function FotosIdSetupForm(props: {
         if (!expectedFotosPublicKey) {
           throw new Error('No expected fotos proof key received from opener');
         }
-        const recoveryCandidates = await deriveRecoveryKeyCandidatesFromPhotos({ images: imageBytes, pin });
+        const recoveryCandidates = await deriveRecoveryKeyCandidatesFromPhotos({ images: imageBytes, passphrase });
         setProgress('Matching fotos proof...');
         const verifiedCandidate = await selectExpectedRecoveryCandidate(
           expectedFotosPublicKey,
@@ -531,7 +531,7 @@ function FotosIdSetupForm(props: {
         return;
       }
 
-      const derived = await deriveKeyFromPhotos({ images: imageBytes, pin });
+      const derived = await deriveKeyFromPhotos({ images: imageBytes, passphrase });
       const fotosRootPublicKeyHex = uint8arrayToHexString(derived.publicKey);
       setProgress('Signing fotos proof...');
       const claimPayload = buildFotosClaimPayload(
@@ -563,7 +563,7 @@ function FotosIdSetupForm(props: {
       setStep('photos');
       // Don't call onError — let user retry. onError sends a terminal failure to opener.
     }
-  }, [canCreate, displayName, images, mode, onCreated, pin]);
+  }, [canCreate, displayName, images, mode, onCreated, passphrase]);
 
   // ── Render ───────────────────────────────────────────────────────────
 
@@ -588,8 +588,8 @@ function FotosIdSetupForm(props: {
         <div>
           <div style={styles.hint}>
             {mode === 'recover'
-              ? 'Enter the glue.one name you want to confirm with fotos id. We will re-derive the same fotos proof from your photos and PIN.'
-              : 'Enter the glue.one name that should be bound to your fotos proof. fotos id does not replace your glue key; it adds a second root you can re-derive.'}
+              ? 'Enter the glue.one name you want to confirm with fotos id. We will re-derive the same fotos proof from your private recovery factors.'
+              : 'Enter the glue.one name that should be bound to your fotos proof. fotos id does not replace your glue key; it adds a second root you can re-derive from your private recovery factors.'}
           </div>
 
           <div style={styles.section}>
@@ -646,7 +646,7 @@ function FotosIdSetupForm(props: {
         </div>
       )}
 
-      {/* ── Step 2: Photos + PIN ──────────────────────────────────────── */}
+      {/* ── Step 2: Photos + passphrase ───────────────────────────────── */}
       {step === 'photos' && (
         <div>
           <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
@@ -666,8 +666,8 @@ function FotosIdSetupForm(props: {
 
           <div style={styles.hint}>
             {mode === 'recover'
-              ? 'Pick the same photos in the same order, then enter the same 8-digit PIN. This re-derives your fotos proof key locally so it can sign the headless challenge.'
-              : 'Pick photos you will remember and arrange them in order. Then enter a date as your 8-digit PIN. Together these derive the fotos proof key that will be bound to your glue.one name.'}
+              ? 'Pick the same photos in the same order, then enter the same passphrase. This re-derives your fotos proof key locally so it can sign the headless challenge.'
+              : 'Pick photos you will remember and arrange them in order. Then enter a passphrase. Together these derive the fotos proof key that will be bound to your glue.one name.'}
           </div>
 
           {/* Hidden file input */}
@@ -741,18 +741,17 @@ function FotosIdSetupForm(props: {
             {images.length === 0 ? 'Pick photos' : 'Add more photos'}
           </button>
 
-          {/* PIN input */}
+          {/* Passphrase input */}
           {images.length > 0 && (
             <div style={styles.section}>
-              <label style={styles.label}>Date PIN (DDMMYYYY)</label>
+              <label style={styles.label}>Passphrase</label>
               <input
-                type="text"
-                inputMode="numeric"
-                maxLength={8}
-                placeholder="DDMMYYYY"
-                value={pin}
-                onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
-                style={{ ...styles.input, fontFamily: 'monospace', letterSpacing: 2 }}
+                type="password"
+                autoComplete="new-password"
+                placeholder="Enter your passphrase"
+                value={passphrase}
+                onChange={e => setPassphrase(e.target.value)}
+                style={styles.input}
               />
             </div>
           )}

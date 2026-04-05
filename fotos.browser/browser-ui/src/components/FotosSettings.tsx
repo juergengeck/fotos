@@ -12,6 +12,7 @@ import { ensureConfiguredGlueIdentity } from '@/lib/glueIdentity';
 import { resolveGlueIdentityState } from '@/lib/glueIdentityState';
 import { resolveGlueCertificationState } from '@/lib/glueCertification';
 import { classifyGlueFailure, toGlueHandle, type AuthLoginWarning } from '@/lib/authLoginBridge';
+import { runFotosRecoveryFlow } from '@/lib/fotosIdRecovery';
 import { API_BASE } from '../config.js';
 
 import { ChevronDown } from 'lucide-react';
@@ -68,6 +69,7 @@ export function FotosSettings({
     const [hasRecoveryKey, setHasRecoveryKey] = useState(false);
     const [showPasskeyPrompt, setShowPasskeyPrompt] = useState(false);
     const [registeringPasskey, setRegisteringPasskey] = useState(false);
+    const [recoveringWithFotos, setRecoveringWithFotos] = useState(false);
     const [showAuthenticationHint, setShowAuthenticationHint] = useState(() => hasPendingAuthenticationContinuation());
     const requestedDisplayName = draftDisplayName.trim();
     const requestedGlueHandle = requestedDisplayName ? toGlueHandle(requestedDisplayName) : '';
@@ -176,6 +178,100 @@ export function FotosSettings({
     // Authentication happens in two steps:
     // 1. Enable sync so ONE.core can establish the local device identity.
     // 2. Authenticate via the glue.one passkey popup.
+    const getFotosRecoveryTarget = useCallback(async (
+        personId: SHA256IdHash<Person>,
+    ): Promise<{
+        personId: SHA256IdHash<Person>;
+        personPublicKeyHex: string;
+        instanceEncryptionKeyHex: string;
+    }> => {
+        const { getDefaultKeys } = await import('@refinio/one.core/lib/keychain/keychain.js');
+        const { getPublicKeys } = await import('@refinio/one.core/lib/keychain/key-storage-public.js');
+        const { getInstanceIdHash } = await import('@refinio/one.core/lib/instance.js');
+        const { uint8arrayToHexString } = await import('@refinio/one.core/lib/util/arraybuffer-to-and-from-hex-string.js');
+
+        const personKeysHash = await getDefaultKeys(personId as any);
+        const { publicSignKey } = await getPublicKeys(personKeysHash);
+        const personPublicKeyHex = uint8arrayToHexString(publicSignKey);
+
+        const instanceIdHash = getInstanceIdHash();
+        if (!instanceIdHash) {
+            throw new Error('No instance ID');
+        }
+
+        const instanceKeysHash = await getDefaultKeys(instanceIdHash);
+        const { publicEncryptionKey } = await getPublicKeys(instanceKeysHash);
+        const instanceEncryptionKeyHex = uint8arrayToHexString(publicEncryptionKey);
+
+        return {
+            personId,
+            personPublicKeyHex,
+            instanceEncryptionKeyHex,
+        };
+    }, []);
+
+    const signFotosClaimWithGlueKey = useCallback(async (
+        personId: SHA256IdHash<Person>,
+        claimPayload: string,
+    ): Promise<string> => {
+        const { getDefaultSecretKeysAsBase64 } = await import('@refinio/one.core/lib/keychain/keychain.js');
+        const { ensureSecretSignKey, sign } = await import('@refinio/one.core/lib/crypto/sign.js');
+        const { uint8arrayToHexString } = await import('@refinio/one.core/lib/util/arraybuffer-to-and-from-hex-string.js');
+        const { toByteArray: fromBase64 } = await import('base64-js');
+
+        const { secretSignKey } = await getDefaultSecretKeysAsBase64(personId as any);
+        const signatureBytes = sign(
+            new TextEncoder().encode(claimPayload),
+            ensureSecretSignKey(fromBase64(secretSignKey)),
+        );
+        return uint8arrayToHexString(signatureBytes);
+    }, []);
+
+    const prepareAuthenticationIdentity = useCallback(async (
+        trimmedDisplayName: string,
+    ): Promise<{
+        publicationIdentity: SHA256IdHash<Person>;
+        requiresReload: boolean;
+    }> => {
+        if (!model?.settingsPlan) {
+            throw new Error('Authentication is unavailable right now.');
+        }
+
+        let nextPublicationIdentity = publicationIdentity;
+        const needsIdentityPreparation =
+            !nextPublicationIdentity
+            || trimmedDisplayName !== (displayName?.trim() ?? '');
+
+        if (needsIdentityPreparation) {
+            const prepared = await ensureConfiguredGlueIdentity(
+                model.settingsPlan,
+                model.leuteModel,
+                trimmedDisplayName,
+                model.ownerId,
+            );
+            nextPublicationIdentity = prepared.personId;
+            setPublicationIdentity(nextPublicationIdentity);
+            setDisplayName(trimmedDisplayName);
+        }
+
+        if (!nextPublicationIdentity) {
+            throw new Error('Authentication is still preparing. Try again in a moment.');
+        }
+
+        return {
+            publicationIdentity: nextPublicationIdentity,
+            requiresReload:
+                !syncEnabled
+                || !publicationIdentity
+                || nextPublicationIdentity !== publicationIdentity,
+        };
+    }, [
+        model,
+        publicationIdentity,
+        displayName,
+        syncEnabled,
+    ]);
+
     const handleAuthenticate = useCallback(async () => {
         if (!model?.settingsPlan) return;
         setAuthenticating(true);
@@ -193,31 +289,10 @@ export function FotosSettings({
                 throw new Error('Display name must contain at least one letter or number.');
             }
 
-            let nextPublicationIdentity = publicationIdentity;
-            const needsIdentityPreparation =
-                !nextPublicationIdentity
-                || trimmedDisplayName !== (displayName?.trim() ?? '');
-
-            if (needsIdentityPreparation) {
-                const prepared = await ensureConfiguredGlueIdentity(
-                    model.settingsPlan,
-                    model.leuteModel,
-                    trimmedDisplayName,
-                    model.ownerId,
-                );
-                nextPublicationIdentity = prepared.personId;
-                setPublicationIdentity(nextPublicationIdentity);
-                setDisplayName(trimmedDisplayName);
-            }
-
-            if (!nextPublicationIdentity) {
-                throw new Error('Authentication is still preparing. Try again in a moment.');
-            }
-
-            const shouldReload =
-                !syncEnabled
-                || !publicationIdentity
-                || nextPublicationIdentity !== publicationIdentity;
+            const {
+                publicationIdentity: nextPublicationIdentity,
+                requiresReload: shouldReload,
+            } = await prepareAuthenticationIdentity(trimmedDisplayName);
 
             if (shouldReload) {
                 queueAuthenticationContinuation();
@@ -284,6 +359,78 @@ export function FotosSettings({
         displayName,
         passkeyCount,
         publicationIdentity,
+        prepareAuthenticationIdentity,
+    ]);
+
+    const handleRecoverWithFotosProof = useCallback(async () => {
+        if (!model?.settingsPlan) return;
+        setRecoveringWithFotos(true);
+        setAuthError(null);
+        let queuedContinuation = false;
+
+        try {
+            const trimmedDisplayName = requestedDisplayName || displayName?.trim() || '';
+            if (!trimmedDisplayName) {
+                throw new Error('Enter the name you want to recover first.');
+            }
+            const trimmedGlueHandle = toGlueHandle(trimmedDisplayName);
+            if (!trimmedGlueHandle) {
+                throw new Error('Display name must contain at least one letter or number.');
+            }
+
+            const {
+                publicationIdentity: nextPublicationIdentity,
+                requiresReload: shouldReload,
+            } = await prepareAuthenticationIdentity(trimmedDisplayName);
+
+            if (shouldReload) {
+                queueAuthenticationContinuation();
+                queuedContinuation = true;
+                await model.settingsPlan.updateSection({
+                    moduleId: 'glue',
+                    values: { syncEnabled: true },
+                });
+                window.location.reload();
+                return;
+            }
+
+            const result = await runFotosRecoveryFlow({
+                requestedDisplayName: trimmedDisplayName,
+                requestedIdentity: `${trimmedGlueHandle}@glue.one`,
+                getFotosRecoveryTarget: async () => await getFotosRecoveryTarget(nextPublicationIdentity),
+                signClaimWithGlueKey: signFotosClaimWithGlueKey,
+            });
+
+            setCertState('certified');
+            setPublicationIdentity(result.personId);
+            setDisplayName(trimmedDisplayName);
+            if (result.cert?.validUntil) {
+                setCertValidUntil(new Date(result.cert.validUntil).toLocaleDateString());
+            }
+            setFedCMLoginStatus('logged-in');
+            clearPendingAuthenticationContinuation();
+            setShowAuthenticationHint(false);
+            if (passkeyCount === 0) {
+                const dismissed = localStorage.getItem('fotos_passkey_prompt_dismissed');
+                if (!dismissed) setShowPasskeyPrompt(true);
+            }
+        } catch (err) {
+            if (queuedContinuation) {
+                clearPendingAuthenticationContinuation();
+                setShowAuthenticationHint(false);
+            }
+            setAuthError(err instanceof Error ? err.message : 'Fotos recovery failed');
+        } finally {
+            setRecoveringWithFotos(false);
+        }
+    }, [
+        model,
+        requestedDisplayName,
+        displayName,
+        getFotosRecoveryTarget,
+        passkeyCount,
+        prepareAuthenticationIdentity,
+        signFotosClaimWithGlueKey,
     ]);
 
     // Register a passkey after successful authentication.
@@ -322,10 +469,13 @@ export function FotosSettings({
     const needsPreparation = !syncEnabled || !identityReadyForAuthentication;
     const missingDisplayName = requestedDisplayName.length === 0 || requestedIdentity === null;
     const authenticationButtonDisabled = authenticating
+        || recoveringWithFotos
         || !model?.settingsPlan
         || missingDisplayName;
     const authenticationButtonLabel = authenticating
         ? (needsPreparation ? 'Preparing authentication...' : 'Authenticating...')
+        : recoveringWithFotos
+            ? 'Opening fotos recovery...'
         : missingDisplayName
             ? 'Enter display name'
             : needsPreparation
@@ -355,7 +505,7 @@ export function FotosSettings({
                                 value={draftDisplayName}
                                 onChange={event => setDraftDisplayName(event.target.value)}
                                 placeholder="Your name on glue.one"
-                                disabled={authenticating}
+                                disabled={authenticating || recoveringWithFotos}
                                 className="w-full px-2.5 py-2 bg-white/5 border border-white/10 rounded-md text-[11px] text-white/70 placeholder:text-white/20 focus:outline-none focus:border-white/20"
                             />
                             {requestedIdentity && (
@@ -394,6 +544,26 @@ export function FotosSettings({
                             <div className="px-2.5 py-2 bg-amber-500/10 border border-amber-400/20 rounded-md text-[10px] text-amber-100/85 leading-relaxed">
                                 <div className="font-medium text-amber-100">{authWarning.title}</div>
                                 <div className="mt-1 text-amber-100/75">{authWarning.message}</div>
+                                {authWarning.code === 'glue_name_taken' && (
+                                    <div className="mt-2 space-y-2">
+                                        <div className="text-amber-100/75">
+                                            If this is your identity and you already bound fotos id, finish with the same private recovery factors instead of retrying the passkey popup.
+                                        </div>
+                                        <button
+                                            onClick={() => void handleRecoverWithFotosProof()}
+                                            disabled={recoveringWithFotos || !model?.settingsPlan || missingDisplayName}
+                                            className={`w-full flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-md text-[10px] font-medium transition-colors ${
+                                                recoveringWithFotos || !model?.settingsPlan || missingDisplayName
+                                                    ? 'bg-white/5 text-white/25 cursor-wait'
+                                                    : 'bg-amber-500/15 text-amber-100 hover:bg-amber-500/25'
+                                            }`}
+                                        >
+                                            {recoveringWithFotos && <Loader2 className="w-3 h-3 animate-spin" />}
+                                            <KeyRound className="w-3 h-3" />
+                                            {recoveringWithFotos ? 'Opening fotos recovery...' : 'Recover with fotos proof'}
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -570,7 +740,7 @@ function RecoverySecretSection({
 }) {
     const [phase, setPhase] = useState<RecoveryPhase>('idle');
     const [images, setImages] = useState<SelectedImage[]>([]);
-    const [pin, setPin] = useState('');
+    const [passphrase, setPassphrase] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [progress, setProgress] = useState('');
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -627,8 +797,8 @@ function RecoverySecretSection({
 
     const handleDerive = useCallback(async () => {
         if (images.length === 0) return;
-        if (!/^\d{8}$/.test(pin)) {
-            setError('Enter a date as 8 digits: DDMMYYYY');
+        if (passphrase.trim().length === 0) {
+            setError('Enter a passphrase');
             return;
         }
 
@@ -648,7 +818,7 @@ function RecoverySecretSection({
             const { deriveKeyFromPhotos, signRecoveryRequest } = await import('@/lib/photo-key-derivation.js');
             const result = await deriveKeyFromPhotos({
                 images: imageBytes,
-                pin,
+                passphrase,
             });
 
             setPhase('submitting');
@@ -681,14 +851,14 @@ function RecoverySecretSection({
             setError(err instanceof Error ? err.message : 'Key derivation failed');
             setProgress('');
         }
-    }, [images, pin, publicationIdentity, onComplete]);
+    }, [images, passphrase, publicationIdentity, onComplete]);
 
     const handleReset = useCallback(() => {
         for (const img of images) {
             URL.revokeObjectURL(img.thumbnailUrl);
         }
         setImages([]);
-        setPin('');
+        setPassphrase('');
         setPhase('idle');
         setError(null);
         setProgress('');
@@ -699,8 +869,8 @@ function RecoverySecretSection({
     return (
         <div className="space-y-2">
             <p className="px-2.5 text-[10px] leading-relaxed text-white/30">
-                Pick photos you'll remember, arrange them in order, and enter a date as PIN.
-                This derives a recovery key from your photos.
+                Pick photos you'll remember, arrange them in order, and enter a passphrase.
+                The same photos in the same order with the same passphrase derive the same recovery key.
             </p>
 
             {phase === 'done' ? (
@@ -767,27 +937,26 @@ function RecoverySecretSection({
                         {images.length === 0 ? 'Pick photos' : 'Add more photos'}
                     </button>
 
-                    {/* PIN input */}
+                    {/* Passphrase input */}
                     {images.length > 0 && (
                         <div className="space-y-1">
                             <label className="block text-[10px] text-white/25 px-2.5">
-                                Date PIN (DDMMYYYY)
+                                Passphrase
                             </label>
                             <input
-                                type="text"
-                                inputMode="numeric"
-                                maxLength={8}
-                                placeholder="DDMMYYYY"
-                                value={pin}
-                                onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                                type="password"
+                                autoComplete="new-password"
+                                placeholder="Enter your passphrase"
+                                value={passphrase}
+                                onChange={e => setPassphrase(e.target.value)}
                                 disabled={busy}
-                                className="w-full px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-md text-[11px] text-white/60 font-mono placeholder:text-white/15 focus:outline-none focus:border-white/20"
+                                className="w-full px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-md text-[11px] text-white/60 placeholder:text-white/15 focus:outline-none focus:border-white/20"
                             />
                         </div>
                     )}
 
                     {/* Derive button */}
-                    {images.length > 0 && pin.length === 8 && (
+                    {images.length > 0 && passphrase.trim().length > 0 && (
                         <button
                             onClick={handleDerive}
                             disabled={busy}
