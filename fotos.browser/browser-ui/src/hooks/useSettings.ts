@@ -14,6 +14,7 @@ import {
     FOTOS_SETTINGS_MODULE_ID,
     deserializeFotosSettings,
     isFotosSectionAtDefaults,
+    resolveAcceptSharingPreference,
     serializeFotosSettings,
     type FotosSettingsSectionValues,
 } from '@/lib/fotosSettings';
@@ -26,6 +27,9 @@ export function useSettings(model: FotosModel | null, storageKey = DEFAULT_SETTI
     const [settings, setSettingsState] = useState<FotosSettings>(() =>
         loadFotosSettings(globalThis.localStorage, storageKey),
     );
+    const [acceptSharing, setAcceptSharingState] = useState<boolean>(
+        DEFAULT_FOTOS_SECTION_VALUES.acceptSharing,
+    );
 
     useEffect(() => {
         if (!model?.settingsPlan) {
@@ -34,12 +38,16 @@ export function useSettings(model: FotosModel | null, storageKey = DEFAULT_SETTI
 
         let cancelled = false;
 
-        const applySettings = (next: FotosSettings) => {
+        const applySection = (
+            nextSettings: FotosSettings,
+            nextAcceptSharing: boolean,
+        ) => {
             if (cancelled) {
                 return;
             }
-            persistLocalSettings(next, storageKey);
-            setSettingsState(next);
+            persistLocalSettings(nextSettings, storageKey);
+            setSettingsState(nextSettings);
+            setAcceptSharingState(nextAcceptSharing);
         };
 
         const syncSettings = async () => {
@@ -48,19 +56,22 @@ export function useSettings(model: FotosModel | null, storageKey = DEFAULT_SETTI
                     moduleId: FOTOS_SETTINGS_MODULE_ID,
                 });
                 const remoteSettings = deserializeFotosSettings(values);
+                const remoteAcceptSharing = resolveAcceptSharingPreference(values);
                 const localSettingsRaw = globalThis.localStorage?.getItem(storageKey);
 
                 if (localSettingsRaw && isFotosSectionAtDefaults(values)) {
                     const localSettings = loadFotosSettings(globalThis.localStorage, storageKey);
                     await model.settingsPlan.updateSection({
                         moduleId: FOTOS_SETTINGS_MODULE_ID,
-                        values: serializeFotosSettings(localSettings),
+                        values: serializeFotosSettings(localSettings, {
+                            acceptSharing: remoteAcceptSharing,
+                        }),
                     });
-                    applySettings(localSettings);
+                    applySection(localSettings, remoteAcceptSharing);
                     return;
                 }
 
-                applySettings(remoteSettings);
+                applySection(remoteSettings, remoteAcceptSharing);
             } catch (error) {
                 console.warn('[fotos.settings] Failed to load settings from SettingsPlan:', error);
             }
@@ -71,7 +82,10 @@ export function useSettings(model: FotosModel | null, storageKey = DEFAULT_SETTI
         const unsubscribe = model.settingsPlan.subscribe((allSettings: Record<string, unknown>) => {
             const section = (allSettings[FOTOS_SETTINGS_MODULE_ID] as Partial<FotosSettingsSectionValues> | undefined)
                 ?? DEFAULT_FOTOS_SECTION_VALUES;
-            applySettings(deserializeFotosSettings(section));
+            applySection(
+                deserializeFotosSettings(section),
+                resolveAcceptSharingPreference(section),
+            );
         });
 
         return () => {
@@ -86,14 +100,14 @@ export function useSettings(model: FotosModel | null, storageKey = DEFAULT_SETTI
         if (model?.settingsPlan) {
             void model.settingsPlan.updateSection({
                 moduleId: FOTOS_SETTINGS_MODULE_ID,
-                values: serializeFotosSettings(next),
+                values: serializeFotosSettings(next, { acceptSharing }),
             }).catch((error: unknown) => {
                 console.warn('[fotos.settings] Failed to persist settings via SettingsPlan:', error);
             });
         }
 
         return next;
-    }, [model?.settingsPlan, storageKey]);
+    }, [acceptSharing, model?.settingsPlan, storageKey]);
 
     const updateStorage = useCallback((updates: Partial<StorageSettings>) => {
         setSettingsState((prev: FotosSettings) => persist({
@@ -123,5 +137,26 @@ export function useSettings(model: FotosModel | null, storageKey = DEFAULT_SETTI
         }));
     }, [persist]);
 
-    return { settings, updateStorage, updateDisplay, updateDeviceName, updateAnalysis };
+    const updateAcceptSharing = useCallback((enabled: boolean) => {
+        setAcceptSharingState(enabled);
+
+        if (model?.settingsPlan) {
+            void model.settingsPlan.updateSection({
+                moduleId: FOTOS_SETTINGS_MODULE_ID,
+                values: { acceptSharing: enabled },
+            }).catch((error: unknown) => {
+                console.warn('[fotos.settings] Failed to persist acceptSharing via SettingsPlan:', error);
+            });
+        }
+    }, [model?.settingsPlan]);
+
+    return {
+        settings,
+        acceptSharing,
+        updateStorage,
+        updateDisplay,
+        updateDeviceName,
+        updateAnalysis,
+        updateAcceptSharing,
+    };
 }

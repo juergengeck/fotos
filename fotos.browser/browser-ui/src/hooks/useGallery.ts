@@ -3,6 +3,8 @@ import { GalleryTrieManager } from '@refinio/fotos.core';
 import { groupPhotosByDay, useFotosGalleryState } from '@refinio/fotos.ui';
 import type { PhotoEntry } from '@/types/fotos';
 import { buildFaceClusterSummaries, buildSimilarFaceMatches } from '@/lib/cluster-gallery';
+import type { FotosCollectionDefinition } from '@/lib/fotosCollections';
+import { collectionMatchesPhoto } from '@/lib/fotosCollections';
 import { createSemanticWorker } from '@/lib/semanticWorkerClient';
 import type { FolderAccess } from './useFolderAccess';
 import { useFolderAccess } from './useFolderAccess';
@@ -14,6 +16,7 @@ export interface UseGalleryOptions {
     clusterSensitivity?: number;
     faceAnalyticsEnabled?: boolean;
     semanticSearchEnabled?: boolean;
+    collections?: FotosCollectionDefinition[];
     /** When provided, this folder source is used instead of creating one via useFolderAccess. */
     folder?: FolderAccess;
 }
@@ -49,24 +52,41 @@ export function useGallery(options: UseGalleryOptions = {}) {
     });
     const [galleryMode, setGalleryMode] = useState<FotosGalleryMode>('images');
     const [activeClusterId, setActiveClusterId] = useState<string | null>(null);
+    const [activeCollectionId, setActiveCollectionId] = useState<string | null>(null);
     const semanticWorkerRef = useRef<ReturnType<typeof createSemanticWorker> | null>(null);
     const semanticRequestIdRef = useRef(0);
 
-    const clusters = useMemo(() => buildFaceClusterSummaries(folder.entries), [folder.entries]);
+    const allClusters = useMemo(() => buildFaceClusterSummaries(folder.entries), [folder.entries]);
     const activeCluster = useMemo(
-        () => clusters.find(cluster => cluster.clusterId === activeClusterId) ?? null,
-        [clusters, activeClusterId],
+        () => allClusters.find(cluster => cluster.clusterId === activeClusterId) ?? null,
+        [allClusters, activeClusterId],
+    );
+    const activeCollection = useMemo(
+        () => options.collections?.find(collection => collection.id === activeCollectionId) ?? null,
+        [activeCollectionId, options.collections],
     );
 
     useEffect(() => {
         if (!activeClusterId) {
             return;
         }
-        if (clusters.some(cluster => cluster.clusterId === activeClusterId)) {
+        if (allClusters.some(cluster => cluster.clusterId === activeClusterId)) {
             return;
         }
         setActiveClusterId(null);
-    }, [activeClusterId, clusters]);
+    }, [activeClusterId, allClusters]);
+
+    useEffect(() => {
+        if (!activeCollectionId) {
+            return;
+        }
+
+        if (options.collections?.some(collection => collection.id === activeCollectionId)) {
+            return;
+        }
+
+        setActiveCollectionId(null);
+    }, [activeCollectionId, options.collections]);
 
     const clusterPhotos = useMemo(() => {
         if (!activeClusterId || !activeCluster) {
@@ -81,19 +101,30 @@ export function useGallery(options: UseGalleryOptions = {}) {
         () => groupPhotosByDay(clusterPhotos),
         [clusterPhotos],
     );
+    const collectionPhotos = useMemo(() => {
+        if (!activeCollection) {
+            return [] as PhotoEntry[];
+        }
+
+        return gallery.photos.filter(photo => collectionMatchesPhoto(activeCollection, photo));
+    }, [activeCollection, gallery.photos]);
+    const collectionDayGroups = useMemo(
+        () => groupPhotosByDay(collectionPhotos),
+        [collectionPhotos],
+    );
 
     const clusterQuery = gallery.searchQuery.trim().toLowerCase();
     const visibleClusters = useMemo(() => {
         if (!clusterQuery) {
-            return clusters;
+            return allClusters;
         }
-        return clusters.filter(cluster =>
+        return allClusters.filter(cluster =>
             cluster.label.toLowerCase().includes(clusterQuery)
             || cluster.clusterId.toLowerCase().includes(clusterQuery)
             || cluster.memberClusterIds.some(clusterId => clusterId.toLowerCase().includes(clusterQuery))
             || (cluster.personName ?? '').toLowerCase().includes(clusterQuery),
         );
-    }, [clusters, clusterQuery]);
+    }, [allClusters, clusterQuery]);
 
     const people = useMemo(
         () => visibleClusters.filter(cluster => Boolean(cluster.personName) || Boolean(cluster.personId)),
@@ -134,8 +165,8 @@ export function useGallery(options: UseGalleryOptions = {}) {
             }];
         }
 
-        return clusters.filter(cluster => clusterIds.has(cluster.clusterId));
-    }, [gallery.searchFace, similarFaces, clusters]);
+        return allClusters.filter(cluster => clusterIds.has(cluster.clusterId));
+    }, [gallery.searchFace, similarFaces, allClusters]);
 
     const semanticSearchQuery = galleryMode === 'images' && !gallery.searchFace
         ? gallery.searchQuery.trim()
@@ -231,9 +262,15 @@ export function useGallery(options: UseGalleryOptions = {}) {
         folder,
         galleryMode,
         setGalleryMode,
+        allClusters,
         clusters: visibleClusters,
         people,
         groups,
+        activeCollectionId,
+        activeCollection,
+        setActiveCollectionId,
+        collectionPhotos,
+        collectionDayGroups,
         similarFaces,
         searchClusters,
         activeClusterId,

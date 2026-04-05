@@ -9,6 +9,7 @@ import { ClusterGallery } from '@/components/ClusterGallery';
 import { useGallery } from '@/hooks/useGallery';
 import { useHeadlessSource } from '@/hooks/useHeadlessSource';
 import { useBreadcrumbHistory } from '@/hooks/useBreadcrumbHistory';
+import { useFotosCollections } from '@/hooks/useFotosCollections';
 import { useSettings } from '@/hooks/useSettings';
 import { shareFile } from '@/lib/platform';
 import { UpdatePrompt } from '@/components/UpdatePrompt';
@@ -22,6 +23,12 @@ import { traceHang } from './lib/hangTrace';
 import type { SimilarFaceMatch } from '@/lib/cluster-gallery';
 import { shouldExposeFotosDebugApi } from '@/lib/fotosLiveDiagnostics';
 import { fotosShareController, type FotosShareSnapshot } from '@/lib/fotosShareController';
+import { buildFotosCollectionSummaries } from '@/lib/fotosCollections';
+import {
+    buildAcceptedIncomingSharingPeerIds,
+    collectSharedPersonIds,
+    shouldAdvertiseSharingIdentity,
+} from '@/lib/fotosSharingPolicy';
 import { isSnapshotEqual, type FotosBreadcrumbSnapshot } from '@/lib/fotosHistorySettings';
 import { grantFotosAccess } from '@/lib/fotos-manifest';
 import { ensureConfiguredGlueIdentity } from '@/lib/glueIdentity';
@@ -30,6 +37,7 @@ import {
     parsePersistentPhotoRouteTarget,
 } from '@/lib/photoRoute';
 import { resolveGlueIdentityState } from '@/lib/glueIdentityState';
+import type { SharePeerOption } from '@/components/ShareWithField';
 
 interface AppProps {
     fotosModel?: FotosModel;
@@ -39,6 +47,11 @@ interface RouteLocationSnapshot {
     pathname: string;
     search: string;
     hash: string;
+}
+
+interface PersistedShareContact {
+    personId: string;
+    displayName: string | null;
 }
 
 function getCurrentRouteLocation(): RouteLocationSnapshot {
@@ -172,25 +185,84 @@ export function App({ fotosModel: initialModel }: AppProps) {
     const [headlessUrl, setHeadlessUrl] = useState<string | null>(null);
     const [headlessInput, setHeadlessInput] = useState('');
     const [showHeadlessConnect, setShowHeadlessConnect] = useState(false);
+    const [photoSelectionEnabled, setPhotoSelectionEnabled] = useState(false);
+    const [clusterSelectionEnabled, setClusterSelectionEnabled] = useState(false);
+    const [selectedPhotoHashes, setSelectedPhotoHashes] = useState<string[]>([]);
+    const [selectedClusterIds, setSelectedClusterIds] = useState<string[]>([]);
+    const [sharePeerOptions, setSharePeerOptions] = useState<SharePeerOption[]>([]);
+    const [contactPersonIds, setContactPersonIds] = useState<string[]>([]);
 
     // Wire up model updater so async state changes (e.g. headlessConnected) trigger re-renders
     useEffect(() => {
         setModelUpdater(setFotosModel);
         return () => setModelUpdater(null);
     }, []);
-    const { settings, updateStorage, updateDisplay, updateDeviceName, updateAnalysis } = useSettings(fotosModel);
+    const {
+        settings,
+        acceptSharing,
+        updateStorage,
+        updateDisplay,
+        updateDeviceName,
+        updateAnalysis,
+        updateAcceptSharing,
+    } = useSettings(fotosModel);
+    const fotosCollections = useFotosCollections(fotosModel);
     const headlessFolder = useHeadlessSource(headlessUrl);
     const gallery = useGallery({
         faceAnalyticsEnabled: settings.analysis.faceAnalyticsEnabled,
         semanticSearchEnabled: settings.analysis.semanticSearchEnabled,
         clusterSensitivity: settings.analysis.clusterSensitivity,
+        collections: fotosCollections.collections,
         folder: headlessUrl ? headlessFolder : undefined,
     });
     const scrollRef = useRef<HTMLDivElement>(null);
     const [routeLocation, setRouteLocation] = useState<RouteLocationSnapshot>(getCurrentRouteLocation);
+    const selectedPhotoHashSet = useMemo(() => new Set(selectedPhotoHashes), [selectedPhotoHashes]);
+    const selectedClusterIdSet = useMemo(() => new Set(selectedClusterIds), [selectedClusterIds]);
+    const ownKnownPersonIds = useMemo(
+        () => new Set(
+            [fotosModel?.ownerId, fotosModel?.publicationIdentity]
+                .map(personId => typeof personId === 'string' ? personId.trim() : '')
+                .filter(personId => personId.length > 0),
+        ),
+        [fotosModel?.ownerId, fotosModel?.publicationIdentity],
+    );
+    const collectionSummaries = useMemo(
+        () => buildFotosCollectionSummaries(fotosCollections.collections, gallery.folder.entries),
+        [fotosCollections.collections, gallery.folder.entries],
+    );
+    const selectedPhotosForCollections = useMemo(
+        () => gallery.folder.entries.filter(photo => selectedPhotoHashSet.has(photo.hash)),
+        [gallery.folder.entries, selectedPhotoHashSet],
+    );
+    const selectedClustersForCollections = useMemo(
+        () => gallery.allClusters.filter(cluster => selectedClusterIdSet.has(cluster.clusterId)),
+        [gallery.allClusters, selectedClusterIdSet],
+    );
+    const sharedPersonIds = useMemo(
+        () => collectSharedPersonIds(fotosCollections.sharing).filter(personId => !ownKnownPersonIds.has(personId)),
+        [fotosCollections.sharing, ownKnownPersonIds],
+    );
+    const acceptedIncomingPeerIds = useMemo(
+        () => buildAcceptedIncomingSharingPeerIds({
+            sharing: fotosCollections.sharing,
+            contactPersonIds,
+            acceptSharing,
+        }).filter(personId => !ownKnownPersonIds.has(personId)),
+        [acceptSharing, contactPersonIds, fotosCollections.sharing, ownKnownPersonIds],
+    );
+    const advertiseSharingIdentity = useMemo(
+        () => shouldAdvertiseSharingIdentity({
+            sharing: fotosCollections.sharing,
+            acceptSharing,
+        }),
+        [acceptSharing, fotosCollections.sharing],
+    );
 
     const visiblePhotos = gallery.galleryMode === 'clusters' && gallery.activeClusterId
         ? gallery.clusterPhotos
+        : gallery.galleryMode === 'images' && gallery.activeCollectionId
+            ? gallery.collectionPhotos
         : gallery.photos;
     const comparisonPhoto = gallery.selectedIndex !== null
         ? visiblePhotos[gallery.selectedIndex] ?? null
@@ -200,10 +272,13 @@ export function App({ fotosModel: initialModel }: AppProps) {
         : 'first visible photo';
     const visibleDayGroups = gallery.galleryMode === 'clusters' && gallery.activeClusterId
         ? gallery.clusterDayGroups
+        : gallery.galleryMode === 'images' && gallery.activeCollectionId
+            ? gallery.collectionDayGroups
         : gallery.dayGroups;
     const showClusterGallery = gallery.galleryMode === 'clusters' && !gallery.activeClusterId;
     const trimmedSearchQuery = gallery.searchQuery.trim();
     const hasGalleryDetail = gallery.galleryMode === 'clusters'
+        || gallery.activeCollectionId !== null
         || gallery.activeTag !== null
         || trimmedSearchQuery.length > 0
         || gallery.searchFace !== null
@@ -233,6 +308,264 @@ export function App({ fotosModel: initialModel }: AppProps) {
     const handleSeparatePersonGroup = useCallback((personId: string) => {
         void gallery.folder.separatePersonGroup(personId);
     }, [gallery.folder]);
+
+    useEffect(() => {
+        const activePresenceService = fotosModel?.glueModule?.presenceTrieService;
+        const activeContactsPlan = fotosModel?.contactsPlan;
+        if (!activePresenceService && !activeContactsPlan) {
+            setSharePeerOptions([]);
+            setContactPersonIds([]);
+            return;
+        }
+
+        let cancelled = false;
+
+        const refreshPeers = async () => {
+            const peerOptionsByPersonId = new Map<string, SharePeerOption>();
+            const onlinePersonIds = activePresenceService?.getOnlinePeerIds() ?? [];
+            for (const personId of onlinePersonIds) {
+                if (ownKnownPersonIds.has(personId)) {
+                    continue;
+                }
+
+                peerOptionsByPersonId.set(personId, {
+                    personId,
+                    displayName: activePresenceService?.getDisplayName(personId) ?? null,
+                    online: true,
+                    hasVerifiedIdentity: activePresenceService?.hasVerifiedIdentity(personId) ?? false,
+                    persistent: false,
+                });
+            }
+
+            if (activeContactsPlan) {
+                try {
+                    const listResult = activeContactsPlan.listContacts
+                        ? await activeContactsPlan.listContacts({ limit: 500, sortBy: 'name', sortOrder: 'asc' })
+                        : null;
+                    const getResult = !listResult?.success && activeContactsPlan.getContacts
+                        ? await activeContactsPlan.getContacts()
+                        : null;
+                    const rawContacts = listResult?.success
+                        ? (listResult.contacts ?? [])
+                        : getResult?.success
+                            ? (getResult.data ?? [])
+                            : [];
+                    const contacts: PersistedShareContact[] = rawContacts.map((contact) => {
+                            const personId = typeof contact.personId === 'string' ? contact.personId.trim() : '';
+                            const displayName = typeof contact.name === 'string' ? contact.name.trim() : '';
+                            if (!personId || ownKnownPersonIds.has(personId)) {
+                                return null;
+                            }
+
+                            return {
+                                personId,
+                                displayName: displayName || null,
+                            };
+                        }).filter((contact): contact is PersistedShareContact => contact !== null);
+
+                    for (const contact of contacts) {
+                        const existing = peerOptionsByPersonId.get(contact.personId);
+                        peerOptionsByPersonId.set(contact.personId, {
+                            personId: contact.personId,
+                            displayName: existing?.displayName ?? contact.displayName,
+                            online: existing?.online ?? false,
+                            hasVerifiedIdentity: existing?.hasVerifiedIdentity ?? false,
+                            persistent: true,
+                        });
+                    }
+
+                    if (!cancelled) {
+                        setContactPersonIds(contacts.map(contact => contact.personId));
+                    }
+                } catch (error) {
+                    console.warn('[fotos.share] Failed to load glue contacts for sharing:', error);
+                    if (!cancelled) {
+                        setContactPersonIds([]);
+                    }
+                }
+            } else if (!cancelled) {
+                setContactPersonIds([]);
+            }
+
+            const nextPeers = Array.from(peerOptionsByPersonId.values())
+                .sort((left, right) => {
+                    if (left.persistent !== right.persistent) {
+                        return left.persistent ? -1 : 1;
+                    }
+
+                    if (left.online !== right.online) {
+                        return left.online ? -1 : 1;
+                    }
+
+                    const leftLabel = left.displayName ?? left.personId;
+                    const rightLabel = right.displayName ?? right.personId;
+                    return leftLabel.localeCompare(rightLabel);
+                });
+
+            if (!cancelled) {
+                setSharePeerOptions(nextPeers);
+            }
+        };
+
+        void refreshPeers();
+        const intervalId = window.setInterval(() => {
+            void refreshPeers();
+        }, 5_000);
+        return () => {
+            cancelled = true;
+            window.clearInterval(intervalId);
+        };
+    }, [
+        fotosModel?.contactsPlan,
+        fotosModel?.glueModule?.presenceTrieService,
+        fotosModel?.ownerId,
+        fotosModel?.publicationIdentity,
+        ownKnownPersonIds,
+    ]);
+
+    useEffect(() => {
+        const activeGlueModule = fotosModel?.glueModule as (FotosModel['glueModule'] & {
+            setRouteWantedPeerIds?: (personIds: string[]) => void;
+            setAcceptedIncomingPeerIds?: (personIds: string[]) => void;
+            setOwnPresencePublishingEnabled?: (enabled: boolean) => Promise<void>;
+        }) | null;
+        if (!activeGlueModule) {
+            return;
+        }
+
+        activeGlueModule.setRouteWantedPeerIds?.(sharedPersonIds);
+        activeGlueModule.setAcceptedIncomingPeerIds?.(acceptedIncomingPeerIds);
+        void activeGlueModule.setOwnPresencePublishingEnabled?.(advertiseSharingIdentity);
+    }, [
+        acceptedIncomingPeerIds,
+        advertiseSharingIdentity,
+        fotosModel?.glueModule,
+        sharedPersonIds,
+    ]);
+
+    useEffect(() => {
+        const availableHashes = new Set(gallery.folder.entries.map(photo => photo.hash));
+        setSelectedPhotoHashes(currentHashes => (
+            currentHashes.filter(hash => availableHashes.has(hash))
+        ));
+    }, [gallery.folder.entries]);
+
+    useEffect(() => {
+        const availableClusterIds = new Set(gallery.allClusters.map(cluster => cluster.clusterId));
+        setSelectedClusterIds(currentIds => (
+            currentIds.filter(clusterId => availableClusterIds.has(clusterId))
+        ));
+    }, [gallery.allClusters]);
+
+    const toggleSelectedPhotoHash = useCallback((photoHash: string) => {
+        setSelectedPhotoHashes(currentHashes => (
+            currentHashes.includes(photoHash)
+                ? currentHashes.filter(hash => hash !== photoHash)
+                : [...currentHashes, photoHash]
+        ));
+    }, []);
+
+    const toggleSelectedClusterId = useCallback((clusterId: string) => {
+        setSelectedClusterIds(currentIds => (
+            currentIds.includes(clusterId)
+                ? currentIds.filter(id => id !== clusterId)
+                : [...currentIds, clusterId]
+        ));
+    }, []);
+
+    const clearCollectionSelection = useCallback(() => {
+        setSelectedPhotoHashes([]);
+        setSelectedClusterIds([]);
+    }, []);
+
+    const selectAllVisiblePhotos = useCallback(() => {
+        setSelectedPhotoHashes(currentHashes => {
+            const nextHashes = new Set(currentHashes);
+            for (const photo of visiblePhotos) {
+                nextHashes.add(photo.hash);
+            }
+            return [...nextHashes];
+        });
+    }, [visiblePhotos]);
+
+    const handleGalleryModeChange = useCallback((mode: 'images' | 'clusters') => {
+        if (mode === 'clusters') {
+            gallery.setActiveCollectionId(null);
+        }
+        gallery.setGalleryMode(mode);
+    }, [gallery]);
+
+    const handleCollectionSelect = useCallback((collectionId: string | null) => {
+        gallery.setGalleryMode('images');
+        gallery.setActiveClusterId(null);
+        gallery.setActiveCollectionId(collectionId);
+    }, [gallery]);
+
+    const handleClusterSelect = useCallback((clusterId: string | null) => {
+        if (clusterId) {
+            gallery.setActiveCollectionId(null);
+            gallery.setGalleryMode('clusters');
+        }
+        gallery.setActiveClusterId(clusterId);
+    }, [gallery]);
+
+    const handleCreateCollection = useCallback((name: string) => {
+        if (selectedPhotosForCollections.length === 0 && selectedClustersForCollections.length === 0) {
+            return false;
+        }
+
+        const nextCollection = fotosCollections.createCollection(
+            name,
+            selectedPhotosForCollections,
+            selectedClustersForCollections,
+        );
+        clearCollectionSelection();
+        setPhotoSelectionEnabled(false);
+        setClusterSelectionEnabled(false);
+        handleCollectionSelect(nextCollection.id);
+        return true;
+    }, [
+        clearCollectionSelection,
+        fotosCollections,
+        handleCollectionSelect,
+        selectedClustersForCollections,
+        selectedPhotosForCollections,
+    ]);
+
+    const grantPhotosAccessToPeer = useCallback(async (personId: string) => {
+        await grantFotosAccess(personId as any);
+        fotosShareController.recordGrant(personId);
+    }, []);
+
+    const grantNewPeers = useCallback(async (previousIds: readonly string[], nextIds: readonly string[]) => {
+        const previousSet = new Set(previousIds);
+        const addedIds = nextIds.filter(personId => !previousSet.has(personId));
+        for (const personId of addedIds) {
+            try {
+                await grantPhotosAccessToPeer(personId);
+            } catch (error) {
+                console.warn('[fotos.share] Failed to grant access to peer:', personId, error);
+            }
+        }
+    }, [grantPhotosAccessToPeer]);
+
+    const handleGalleryShareChange = useCallback(async (nextPersonIds: string[]) => {
+        const previousIds = fotosCollections.sharing.galleryPersonIds;
+        fotosCollections.setGallerySharePersonIds(nextPersonIds);
+        await grantNewPeers(previousIds, nextPersonIds);
+    }, [fotosCollections, grantNewPeers]);
+
+    const handleCollectionShareChange = useCallback(async (collectionId: string, nextPersonIds: string[]) => {
+        const previousIds = fotosCollections.sharing.collectionPersonIds[collectionId] ?? [];
+        fotosCollections.setCollectionSharePersonIds(collectionId, nextPersonIds);
+        await grantNewPeers(previousIds, nextPersonIds);
+    }, [fotosCollections, grantNewPeers]);
+
+    const handleClusterShareChange = useCallback(async (clusterId: string, nextPersonIds: string[]) => {
+        const previousIds = fotosCollections.sharing.clusterPersonIds[clusterId] ?? [];
+        fotosCollections.setClusterSharePersonIds(clusterId, nextPersonIds);
+        await grantNewPeers(previousIds, nextPersonIds);
+    }, [fotosCollections, grantNewPeers]);
 
     const mobile = gallery.folder.mobile;
     const intakePlan = gallery.folder.defaultIntakePlan;
@@ -374,6 +707,18 @@ export function App({ fotosModel: initialModel }: AppProps) {
         }
     }, [mobile, gallery, openPhotoRouteIndex, visiblePhotos]);
 
+    const handleGridPhotoClick = useCallback((index: number) => {
+        if (photoSelectionEnabled) {
+            const photo = visiblePhotos[index];
+            if (photo) {
+                toggleSelectedPhotoHash(photo.hash);
+            }
+            return;
+        }
+
+        void handlePhotoClick(index);
+    }, [handlePhotoClick, photoSelectionEnabled, toggleSelectedPhotoHash, visiblePhotos]);
+
     const progress = gallery.folder.ingestProgress;
     const totalDetectedFaces = gallery.folder.entries.reduce(
         (count, photo) => count + getFaceCount(photo.faces),
@@ -458,14 +803,28 @@ export function App({ fotosModel: initialModel }: AppProps) {
             items.push({
                 key: 'mode',
                 label: 'Photos',
-                onClick: gallery.activeTag !== null || trimmedSearchQuery.length > 0 || gallery.searchFace !== null
+                onClick: gallery.activeCollectionId !== null || gallery.activeTag !== null || trimmedSearchQuery.length > 0 || gallery.searchFace !== null
                     ? () => {
+                        gallery.setActiveCollectionId(null);
                         gallery.setActiveTag(null);
                         gallery.setSearchQuery('');
                         gallery.setSearchFace(null);
                     }
                     : undefined,
             });
+
+            if (gallery.activeCollection) {
+                items.push({
+                    key: 'collection',
+                    label: gallery.activeCollection.name,
+                    onClick: trimmedSearchQuery.length > 0 || gallery.searchFace !== null
+                        ? () => {
+                            gallery.setSearchQuery('');
+                            gallery.setSearchFace(null);
+                        }
+                        : undefined,
+                });
+            }
 
             if (gallery.activeTag !== null) {
                 items.push({
@@ -504,10 +863,13 @@ export function App({ fotosModel: initialModel }: AppProps) {
     }, [
         gallery.activeCluster,
         gallery.activeClusterId,
+        gallery.activeCollection,
+        gallery.activeCollectionId,
         gallery.activeTag,
         gallery.folder.folderName,
         gallery.galleryMode,
         gallery.searchFace,
+        gallery.setActiveCollectionId,
         gallery.setActiveClusterId,
         gallery.setActiveTag,
         gallery.setGalleryMode,
@@ -546,12 +908,14 @@ export function App({ fotosModel: initialModel }: AppProps) {
             version: 1,
             ...(gallery.folder.folderName ? { folderName: gallery.folder.folderName } : {}),
             galleryMode: gallery.galleryMode,
+            ...(gallery.activeCollectionId ? { activeCollectionId: gallery.activeCollectionId } : {}),
             ...(gallery.activeTag ? { activeTag: gallery.activeTag } : {}),
             ...(gallery.activeClusterId ? { activeClusterId: gallery.activeClusterId } : {}),
             ...(trimmedSearchQuery.length > 0 ? { searchQuery: trimmedSearchQuery } : {}),
             ...(gallery.searchFace ? { searchFace: Array.from(gallery.searchFace) } : {}),
         };
     }, [
+        gallery.activeCollectionId,
         gallery.activeClusterId,
         gallery.activeTag,
         gallery.folder.folderName,
@@ -591,6 +955,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
 
         closePhotoRoute({ replace: true });
         gallery.setGalleryMode(targetState.galleryMode);
+        gallery.setActiveCollectionId(targetState.activeCollectionId ?? null);
         gallery.setActiveTag(targetState.activeTag ?? null);
         gallery.setActiveClusterId(targetState.activeClusterId ?? null);
         gallery.setSearchQuery(targetState.searchQuery ?? '');
@@ -601,6 +966,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
         breadcrumbHistory.restoreEntry,
         gallery.folder.isOpen,
         gallery.folder.folderName,
+        gallery.setActiveCollectionId,
         gallery.setActiveClusterId,
         gallery.setActiveTag,
         gallery.setGalleryMode,
@@ -1057,7 +1423,10 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                     dayGroups={visibleDayGroups}
                                     photos={visiblePhotos}
                                     thumbScale={settings.display.thumbScale}
-                                    onPhotoClick={handlePhotoClick}
+                                    onPhotoClick={handleGridPhotoClick}
+                                    selectionMode={photoSelectionEnabled}
+                                    selectedPhotoHashes={selectedPhotoHashSet}
+                                    onPhotoToggleSelection={(photo) => toggleSelectedPhotoHash(photo.hash)}
                                     loading={gallery.loading}
                                     getThumbUrl={gallery.folder.getThumbUrl}
                                     mobile={mobile}
@@ -1084,12 +1453,16 @@ export function App({ fotosModel: initialModel }: AppProps) {
                             ? gallery.activeCluster
                                 ? `${gallery.clusterPhotos.length} photos in ${gallery.activeCluster.label}`
                                 : `${gallery.clusters.length} clusters`
+                            : gallery.activeCollection
+                                ? `${visiblePhotos.length} photos in ${gallery.activeCollection.name}`
                             : `${gallery.totalCount} photos` + (totalDetectedFaces > 0 ? ` · ${totalDetectedFaces} faces` : '')}
                         settings={settings}
+                        acceptSharing={acceptSharing}
                         onUpdateStorage={updateStorage}
                         onUpdateDisplay={updateDisplay}
                         onUpdateDeviceName={updateDeviceName}
                         onUpdateAnalysis={updateAnalysis}
+                        onAcceptSharingChange={updateAcceptSharing}
                         historyEnabled={breadcrumbHistory.enabled}
                         historyReady={breadcrumbHistory.ready}
                         historyCurrentEventId={breadcrumbHistory.currentEventId}
@@ -1113,14 +1486,31 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         footerMarquee={configMarquee}
                         analysisProgress={analysisProgress}
                         galleryMode={gallery.galleryMode}
-                        onGalleryModeChange={gallery.setGalleryMode}
+                        onGalleryModeChange={handleGalleryModeChange}
+                        collections={collectionSummaries}
+                        activeCollectionId={gallery.activeCollectionId}
+                        onCollectionSelect={handleCollectionSelect}
+                        photoSelectionEnabled={photoSelectionEnabled}
+                        onPhotoSelectionModeChange={setPhotoSelectionEnabled}
+                        selectedPhotoCount={selectedPhotoHashes.length}
+                        onSelectAllVisiblePhotos={selectAllVisiblePhotos}
+                        clusterSelectionEnabled={clusterSelectionEnabled}
+                        onClusterSelectionModeChange={setClusterSelectionEnabled}
+                        selectedClusterIds={selectedClusterIds}
+                        selectedClusterCount={selectedClusterIds.length}
+                        onToggleSelectedCluster={toggleSelectedClusterId}
+                        onClearCollectionSelection={clearCollectionSelection}
+                        onCreateCollection={handleCreateCollection}
+                        onRenameCollection={fotosCollections.renameCollection}
+                        onDeleteCollection={fotosCollections.deleteCollection}
                         clusters={gallery.clusters}
+                        allClusters={gallery.allClusters}
                         people={gallery.people}
                         groups={gallery.groups}
                         similarFaces={gallery.similarFaces}
                         searchClusters={gallery.searchClusters}
                         activeClusterId={gallery.activeClusterId}
-                        onClusterSelect={gallery.setActiveClusterId}
+                        onClusterSelect={handleClusterSelect}
                         getFileUrl={gallery.folder.getFileUrl}
                         onAssociateFaceWithCluster={handleAssociateFaceWithCluster}
                         onMergeFaceClusters={handleMergeFaceClusters}
@@ -1130,6 +1520,13 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         onDeletePhoto={handleDelete}
                         onRenameFace={handleRenameFace}
                         onDeleteFace={handleDeleteFace}
+                        sharePeerOptions={sharePeerOptions}
+                        gallerySharePersonIds={fotosCollections.sharing.galleryPersonIds}
+                        collectionSharePersonIds={fotosCollections.sharing.collectionPersonIds}
+                        clusterSharePersonIds={fotosCollections.sharing.clusterPersonIds}
+                        onGalleryShareChange={handleGalleryShareChange}
+                        onCollectionShareChange={handleCollectionShareChange}
+                        onClusterShareChange={handleClusterShareChange}
                     />
                 </div>
 

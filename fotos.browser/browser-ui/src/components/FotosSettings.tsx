@@ -36,6 +36,8 @@ type CertState = 'ephemeral' | 'anchored' | 'certified';
 
 interface FotosSettingsProps {
     model: FotosModel | null;
+    acceptSharing: boolean;
+    onAcceptSharingChange: (enabled: boolean) => void;
 }
 
 function setFedCMLoginStatus(status: 'logged-in' | 'logged-out') {
@@ -46,7 +48,11 @@ function setFedCMLoginStatus(status: 'logged-in' | 'logged-out') {
     } catch {}
 }
 
-export function FotosSettings({ model }: FotosSettingsProps) {
+export function FotosSettings({
+    model,
+    acceptSharing,
+    onAcceptSharingChange,
+}: FotosSettingsProps) {
     const [syncEnabled, setSyncEnabled] = useState(false);
     const [displayName, setDisplayName] = useState<string | null>(null);
     const [draftDisplayName, setDraftDisplayName] = useState('');
@@ -332,6 +338,7 @@ export function FotosSettings({ model }: FotosSettingsProps) {
         : showAuthenticationHint
             ? 'Sync is ready on this device. Authenticate below to finish linking your fotos id.'
             : 'Authenticate to sync your photos across devices and use your identity on other ONE apps.';
+    const sharingToggleDisabled = !syncEnabled || !publicationIdentity;
 
     return (
         <CollapsibleSection label="fotos id">
@@ -505,6 +512,31 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                         </div>
                     </>
                 )}
+
+                <label className={`flex items-start gap-2 rounded-md border px-2.5 py-2 ${
+                    sharingToggleDisabled
+                        ? 'border-white/8 bg-white/[0.03]'
+                        : 'border-white/10 bg-white/5'
+                }`}>
+                    <input
+                        type="checkbox"
+                        checked={acceptSharing}
+                        disabled={sharingToggleDisabled}
+                        onChange={event => onAcceptSharingChange(event.target.checked)}
+                        className="mt-0.5 h-3.5 w-3.5 accent-[#e94560]"
+                    />
+                    <div className="space-y-1">
+                        <div className="text-[11px] text-white/72">Accept sharing</div>
+                        <p className="text-[10px] leading-relaxed text-white/30">
+                            Advertise this fotos identity to your glue contacts while sharing is active so shared photos can connect automatically.
+                        </p>
+                        {sharingToggleDisabled && (
+                            <p className="text-[10px] leading-relaxed text-white/22">
+                                Authenticate this fotos id first to allow automatic contact from trusted peers.
+                            </p>
+                        )}
+                    </div>
+                </label>
 
                 {/* Learn more — always visible */}
                 <a

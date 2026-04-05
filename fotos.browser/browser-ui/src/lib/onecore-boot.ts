@@ -86,6 +86,33 @@ export interface FotosModel {
   ownerId: SHA256IdHash<Person> | null;
   publicationIdentity: SHA256IdHash<Person> | null;
   leuteModel: LeuteModel;
+  contactsPlan: {
+    getContacts?: () => Promise<{
+      success: boolean;
+      data?: Array<{
+        personId?: unknown;
+        name?: unknown;
+        createdAt?: unknown;
+        updatedAt?: unknown;
+      }>;
+      error?: string;
+    }>;
+    listContacts?: (options?: {
+      offset?: number;
+      limit?: number;
+      sortBy?: string;
+      sortOrder?: 'asc' | 'desc';
+    }) => Promise<{
+      success: boolean;
+      contacts?: Array<{
+        personId?: unknown;
+        name?: unknown;
+        createdAt?: unknown;
+        updatedAt?: unknown;
+      }>;
+      error?: string;
+    }>;
+  };
   connectionsModel: ConnectionsModel | null;
   connectionModule: ConnectionModuleType | null;
   trustPlan: TrustPlan;
@@ -356,6 +383,7 @@ async function initModules(
     ownerId,
     publicationIdentity,
     leuteModel,
+    contactsPlan: chatModule.contactsPlan,
     connectionsModel,
     connectionModule,
     trustPlan: trustModule.trustPlan,

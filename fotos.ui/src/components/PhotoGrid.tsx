@@ -8,6 +8,9 @@ export interface PhotoGridProps<TPhoto extends PhotoEntry = PhotoEntry> {
     photos: TPhoto[];
     thumbScale: number;
     onPhotoClick: (index: number) => void;
+    selectionMode?: boolean;
+    selectedPhotoHashes?: ReadonlySet<string>;
+    onPhotoToggleSelection?: (photo: TPhoto, index: number) => void;
     loading?: boolean;
     getThumbUrl: (entry: TPhoto) => Promise<string | null>;
     mobile?: boolean;
@@ -53,6 +56,9 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
     photos,
     thumbScale,
     onPhotoClick,
+    selectionMode = false,
+    selectedPhotoHashes,
+    onPhotoToggleSelection,
     loading,
     getThumbUrl,
     analysisProgress,
@@ -102,7 +108,14 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
                 case 'Enter':
                     if (cursor >= 0) {
                         e.preventDefault();
-                        onPhotoClick(cursor);
+                        if (selectionMode && onPhotoToggleSelection) {
+                            const photo = photos[cursor];
+                            if (photo) {
+                                onPhotoToggleSelection(photo, cursor);
+                            }
+                        } else {
+                            onPhotoClick(cursor);
+                        }
                     }
                     return;
                 default:
@@ -119,7 +132,7 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
 
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
-    }, [cursor, photos.length, getColumnCount, onPhotoClick]);
+    }, [cursor, photos, getColumnCount, onPhotoClick, onPhotoToggleSelection, selectionMode]);
 
     // Reset cursor when photos change
     useEffect(() => { setCursor(-1); }, [photos]);
@@ -199,7 +212,16 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
                                         photo={photo}
                                         flatIndex={fi}
                                         focused={fi === cursor}
-                                        onClick={() => onPhotoClick(fi)}
+                                        selected={selectedPhotoHashes?.has(photo.hash) === true}
+                                        selectionMode={selectionMode}
+                                        onClick={() => {
+                                            if (selectionMode && onPhotoToggleSelection) {
+                                                onPhotoToggleSelection(photo, fi);
+                                                return;
+                                            }
+
+                                            onPhotoClick(fi);
+                                        }}
                                         getThumbUrl={getThumbUrl}
                                     />
                                 );
@@ -216,12 +238,16 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
     photo,
     flatIndex,
     focused,
+    selected,
+    selectionMode,
     onClick,
     getThumbUrl,
 }: {
     photo: TPhoto;
     flatIndex: number;
     focused: boolean;
+    selected: boolean;
+    selectionMode: boolean;
     onClick: () => void;
     getThumbUrl: (entry: TPhoto) => Promise<string | null>;
 }) {
@@ -247,7 +273,11 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
             type="button"
             onClick={onClick}
             data-photo-index={flatIndex}
-            className={`group relative aspect-square overflow-hidden cursor-pointer touch-manipulation appearance-none p-0 text-left ${focused ? 'ring-2 ring-[#e94560] ring-offset-1 ring-offset-black border-0' : 'border-0'}`}
+            className={`group relative aspect-square overflow-hidden cursor-pointer touch-manipulation appearance-none p-0 text-left ${
+                focused ? 'ring-2 ring-[#e94560] ring-offset-1 ring-offset-black border-0' : 'border-0'
+            } ${
+                selected ? 'ring-2 ring-[#ff9db0] ring-inset' : ''
+            }`}
             style={{background: hashColor(photo.hash)}}
         >
             {thumbSrc && (
@@ -258,6 +288,18 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
                     onLoad={() => setLoaded(true)}
                     className={`w-full h-full object-cover transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`}
                 />
+            )}
+
+            {selectionMode && (
+                <div
+                    className={`absolute left-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full border text-[11px] font-semibold shadow-[0_6px_18px_rgba(0,0,0,0.28)] backdrop-blur-sm ${
+                        selected
+                            ? 'border-[#ff9db0]/80 bg-[#e94560]/90 text-white'
+                            : 'border-white/20 bg-black/45 text-white/50'
+                    }`}
+                >
+                    {selected ? '✓' : ''}
+                </div>
             )}
 
             {photo.faces === undefined && (

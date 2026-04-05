@@ -11,6 +11,7 @@ export interface FotosBreadcrumbSnapshot {
   version: 1;
   folderName?: string;
   galleryMode: 'images' | 'clusters';
+  activeCollectionId?: string;
   activeTag?: string;
   activeClusterId?: string;
   searchQuery?: string;
@@ -86,6 +87,9 @@ export function normalizeBreadcrumbSnapshot(
     version: 1,
     ...(normalizeOptionalString(snapshot.folderName) ? { folderName: normalizeOptionalString(snapshot.folderName) } : {}),
     galleryMode: snapshot.galleryMode === 'clusters' ? 'clusters' : 'images',
+    ...(normalizeOptionalString(snapshot.activeCollectionId)
+      ? { activeCollectionId: normalizeOptionalString(snapshot.activeCollectionId) }
+      : {}),
     ...(normalizeOptionalString(snapshot.activeTag) ? { activeTag: normalizeOptionalString(snapshot.activeTag) } : {}),
     ...(normalizeOptionalString(snapshot.activeClusterId)
       ? { activeClusterId: normalizeOptionalString(snapshot.activeClusterId) }
@@ -106,6 +110,7 @@ function deserializeBreadcrumbSnapshot(value: unknown): FotosBreadcrumbSnapshot 
     version: 1,
     folderName: typeof value.folderName === 'string' ? value.folderName : undefined,
     galleryMode: value.galleryMode === 'clusters' ? 'clusters' : 'images',
+    activeCollectionId: typeof value.activeCollectionId === 'string' ? value.activeCollectionId : undefined,
     activeTag: typeof value.activeTag === 'string' ? value.activeTag : undefined,
     activeClusterId: typeof value.activeClusterId === 'string' ? value.activeClusterId : undefined,
     searchQuery: typeof value.searchQuery === 'string' ? value.searchQuery : undefined,

@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Search, FolderOpen, Download, SlidersHorizontal, ChevronLeft, ChevronRight, ChevronDown, Trash2, Check } from 'lucide-react';
+import { Search, FolderOpen, Download, SlidersHorizontal, ChevronLeft, ChevronRight, ChevronDown, Trash2, Check, Plus } from 'lucide-react';
 import type { FotosSettings, StorageMode, DisplaySettings, PhotoEntry } from '@/types/fotos';
 import type { FotosModel } from '@/lib/onecore-boot';
 import type { FaceClusterSummary, SimilarFaceMatch } from '@/lib/cluster-gallery';
+import type { FotosCollectionSummary } from '@/lib/fotosCollections';
 import type { FotosHistoryBranchNode } from '@/lib/fotosHistorySettings';
 import { readStoredSidebarTab, writeStoredSidebarTab } from '@/lib/authFlowState';
 import { FotosSettings as FotosSettingsPanel } from './FotosSettings';
 import { ClusterCard } from './ClusterGallery';
 import { InlineRenameField } from './InlineRenameField';
 import { LLMComparisonPanel } from './LLMComparisonPanel';
+import { ShareWithField, type SharePeerOption } from './ShareWithField';
 
 type Tab = 'browse' | 'manage' | 'settings';
 
@@ -20,10 +22,12 @@ interface SidebarProps {
     onSearchChange: (q: string) => void;
     browseSummary: string;
     settings: FotosSettings;
+    acceptSharing: boolean;
     onUpdateStorage: (updates: Partial<FotosSettings['storage']>) => void;
     onUpdateDisplay: (updates: Partial<DisplaySettings>) => void;
     onUpdateDeviceName: (name: string) => void;
     onUpdateAnalysis: (updates: Partial<FotosSettings['analysis']>) => void;
+    onAcceptSharingChange: (enabled: boolean) => void;
     historyEnabled: boolean;
     historyReady: boolean;
     historyCurrentEventId: string;
@@ -54,7 +58,24 @@ interface SidebarProps {
     } | null;
     galleryMode: 'images' | 'clusters';
     onGalleryModeChange: (mode: 'images' | 'clusters') => void;
+    collections: FotosCollectionSummary[];
+    activeCollectionId: string | null;
+    onCollectionSelect: (collectionId: string | null) => void;
+    photoSelectionEnabled: boolean;
+    onPhotoSelectionModeChange: (enabled: boolean) => void;
+    selectedPhotoCount: number;
+    onSelectAllVisiblePhotos: () => void;
+    clusterSelectionEnabled: boolean;
+    onClusterSelectionModeChange: (enabled: boolean) => void;
+    selectedClusterIds: string[];
+    selectedClusterCount: number;
+    onToggleSelectedCluster: (clusterId: string) => void;
+    onClearCollectionSelection: () => void;
+    onCreateCollection: (name: string) => boolean;
+    onRenameCollection: (collectionId: string, name: string) => void;
+    onDeleteCollection: (collectionId: string) => void;
     clusters: FaceClusterSummary[];
+    allClusters: FaceClusterSummary[];
     people: FaceClusterSummary[];
     groups: FaceClusterSummary[];
     similarFaces: SimilarFaceMatch[];
@@ -70,13 +91,20 @@ interface SidebarProps {
     onDeletePhoto: (hash: string) => void;
     onRenameFace: (clusterId: string, name: string) => Promise<void> | void;
     onDeleteFace: (clusterId: string) => void;
+    sharePeerOptions: SharePeerOption[];
+    gallerySharePersonIds: string[];
+    collectionSharePersonIds: Record<string, string[]>;
+    clusterSharePersonIds: Record<string, string[]>;
+    onGalleryShareChange: (personIds: string[]) => Promise<void> | void;
+    onCollectionShareChange: (collectionId: string, personIds: string[]) => Promise<void> | void;
+    onClusterShareChange: (clusterId: string, personIds: string[]) => Promise<void> | void;
 }
 
 export function Sidebar({
     tags, activeTag, onTagClick,
     searchQuery, onSearchChange,
     browseSummary,
-    settings, onUpdateStorage, onUpdateDisplay, onUpdateDeviceName, onUpdateAnalysis,
+    settings, acceptSharing, onUpdateStorage, onUpdateDisplay, onUpdateDeviceName, onUpdateAnalysis,
     historyEnabled, historyReady, historyCurrentEventId, historyBranchTree,
     historyVisibleEntryCount, historyBranchCount,
     onHistoryEnabledChange, onHistoryNavigate, onHistoryDelete, currentFolderName,
@@ -88,7 +116,24 @@ export function Sidebar({
     footerMarquee,
     analysisProgress,
     galleryMode, onGalleryModeChange,
+    collections,
+    activeCollectionId,
+    onCollectionSelect,
+    photoSelectionEnabled,
+    onPhotoSelectionModeChange,
+    selectedPhotoCount,
+    onSelectAllVisiblePhotos,
+    clusterSelectionEnabled,
+    onClusterSelectionModeChange,
+    selectedClusterIds,
+    selectedClusterCount,
+    onToggleSelectedCluster,
+    onClearCollectionSelection,
+    onCreateCollection,
+    onRenameCollection,
+    onDeleteCollection,
     clusters, people, groups,
+    allClusters,
     similarFaces, searchClusters,
     activeClusterId, onClusterSelect,
     getFileUrl,
@@ -100,6 +145,14 @@ export function Sidebar({
     onDeletePhoto,
     onRenameFace,
     onDeleteFace,
+    sharePeerOptions,
+    gallerySharePersonIds,
+    collectionSharePersonIds,
+    clusterSharePersonIds,
+    onGalleryShareChange,
+    onCollectionShareChange,
+    onClusterShareChange,
+    onAcceptSharingChange,
 }: SidebarProps) {
     const [tab, setTab] = useState<Tab>(() => readStoredSidebarTab() ?? 'browse');
     const [collapsed, setCollapsed] = useState(false);
@@ -151,6 +204,22 @@ export function Sidebar({
                             sortOrder={settings.display.sortOrder} onSortOrderChange={sortOrder => onUpdateDisplay({ sortOrder })}
                             galleryMode={galleryMode}
                             onGalleryModeChange={onGalleryModeChange}
+                            collections={collections}
+                            activeCollectionId={activeCollectionId}
+                            onCollectionSelect={onCollectionSelect}
+                            photoSelectionEnabled={photoSelectionEnabled}
+                            onPhotoSelectionModeChange={onPhotoSelectionModeChange}
+                            selectedPhotoCount={selectedPhotoCount}
+                            onSelectAllVisiblePhotos={onSelectAllVisiblePhotos}
+                            clusterSelectionEnabled={clusterSelectionEnabled}
+                            onClusterSelectionModeChange={onClusterSelectionModeChange}
+                            selectedClusterIds={selectedClusterIds}
+                            selectedClusterCount={selectedClusterCount}
+                            onToggleSelectedCluster={onToggleSelectedCluster}
+                            onClearCollectionSelection={onClearCollectionSelection}
+                            onCreateCollection={onCreateCollection}
+                            onRenameCollection={onRenameCollection}
+                            onDeleteCollection={onDeleteCollection}
                             clusters={clusters}
                             people={people}
                             groups={groups}
@@ -179,6 +248,17 @@ export function Sidebar({
                             onReanalyze={onReanalyze}
                             llmComparisonPhoto={llmComparisonPhoto ?? null}
                             llmComparisonPhotoLabel={llmComparisonPhotoLabel ?? 'photo'}
+                            collections={collections}
+                            onRenameCollection={onRenameCollection}
+                            onDeleteCollection={onDeleteCollection}
+                            clusters={allClusters}
+                            sharePeerOptions={sharePeerOptions}
+                            gallerySharePersonIds={gallerySharePersonIds}
+                            collectionSharePersonIds={collectionSharePersonIds}
+                            clusterSharePersonIds={clusterSharePersonIds}
+                            onGalleryShareChange={onGalleryShareChange}
+                            onCollectionShareChange={onCollectionShareChange}
+                            onClusterShareChange={onClusterShareChange}
                         />
                     )}
                     {tab === 'settings' && (
@@ -186,6 +266,8 @@ export function Sidebar({
                             settings={settings} onUpdateStorage={onUpdateStorage}
                             onUpdateDeviceName={onUpdateDeviceName}
                             onUpdateAnalysis={onUpdateAnalysis}
+                            acceptSharing={acceptSharing}
+                            onAcceptSharingChange={onAcceptSharingChange}
                             historyEnabled={historyEnabled}
                             historyReady={historyReady}
                             historyCurrentEventId={historyCurrentEventId}
@@ -275,6 +357,22 @@ export function Sidebar({
                         onSortOrderChange={sortOrder => onUpdateDisplay({ sortOrder })}
                         galleryMode={galleryMode}
                         onGalleryModeChange={onGalleryModeChange}
+                        collections={collections}
+                        activeCollectionId={activeCollectionId}
+                        onCollectionSelect={onCollectionSelect}
+                        photoSelectionEnabled={photoSelectionEnabled}
+                        onPhotoSelectionModeChange={onPhotoSelectionModeChange}
+                        selectedPhotoCount={selectedPhotoCount}
+                        onSelectAllVisiblePhotos={onSelectAllVisiblePhotos}
+                        clusterSelectionEnabled={clusterSelectionEnabled}
+                        onClusterSelectionModeChange={onClusterSelectionModeChange}
+                        selectedClusterIds={selectedClusterIds}
+                        selectedClusterCount={selectedClusterCount}
+                        onToggleSelectedCluster={onToggleSelectedCluster}
+                        onClearCollectionSelection={onClearCollectionSelection}
+                        onCreateCollection={onCreateCollection}
+                        onRenameCollection={onRenameCollection}
+                        onDeleteCollection={onDeleteCollection}
                         clusters={clusters}
                         people={people}
                         groups={groups}
@@ -297,13 +395,24 @@ export function Sidebar({
                     <ManageTab
                         settings={settings}
                         onUpdateStorage={onUpdateStorage}
-                            folderName={folderName}
-                            onOpenFolder={onOpenFolder}
-                            onRescan={onRescan}
-                            onReanalyze={onReanalyze}
-                            llmComparisonPhoto={llmComparisonPhoto ?? null}
-                            llmComparisonPhotoLabel={llmComparisonPhotoLabel ?? 'photo'}
-                        />
+                        folderName={folderName}
+                        onOpenFolder={onOpenFolder}
+                        onRescan={onRescan}
+                        onReanalyze={onReanalyze}
+                        llmComparisonPhoto={llmComparisonPhoto ?? null}
+                        llmComparisonPhotoLabel={llmComparisonPhotoLabel ?? 'photo'}
+                        collections={collections}
+                        onRenameCollection={onRenameCollection}
+                        onDeleteCollection={onDeleteCollection}
+                        clusters={allClusters}
+                        sharePeerOptions={sharePeerOptions}
+                        gallerySharePersonIds={gallerySharePersonIds}
+                        collectionSharePersonIds={collectionSharePersonIds}
+                        clusterSharePersonIds={clusterSharePersonIds}
+                        onGalleryShareChange={onGalleryShareChange}
+                        onCollectionShareChange={onCollectionShareChange}
+                        onClusterShareChange={onClusterShareChange}
+                    />
                 )}
                 {tab === 'settings' && (
                     <SettingsTab
@@ -311,6 +420,8 @@ export function Sidebar({
                         onUpdateStorage={onUpdateStorage}
                         onUpdateDeviceName={onUpdateDeviceName}
                         onUpdateAnalysis={onUpdateAnalysis}
+                        acceptSharing={acceptSharing}
+                        onAcceptSharingChange={onAcceptSharingChange}
                         historyEnabled={historyEnabled}
                         historyReady={historyReady}
                         historyCurrentEventId={historyCurrentEventId}
@@ -494,6 +605,10 @@ function BrowseTab({
     sortBy, onSortByChange,
     sortOrder, onSortOrderChange,
     galleryMode, onGalleryModeChange,
+    collections, activeCollectionId, onCollectionSelect,
+    photoSelectionEnabled, onPhotoSelectionModeChange, selectedPhotoCount, onSelectAllVisiblePhotos,
+    clusterSelectionEnabled, onClusterSelectionModeChange, selectedClusterIds, selectedClusterCount,
+    onToggleSelectedCluster, onClearCollectionSelection, onCreateCollection, onRenameCollection, onDeleteCollection,
     clusters, people, groups,
     similarFaces, searchClusters,
     activeClusterId, onClusterSelect,
@@ -521,6 +636,22 @@ function BrowseTab({
     onSortOrderChange: (o: 'asc' | 'desc') => void;
     galleryMode: 'images' | 'clusters';
     onGalleryModeChange: (mode: 'images' | 'clusters') => void;
+    collections: FotosCollectionSummary[];
+    activeCollectionId: string | null;
+    onCollectionSelect: (collectionId: string | null) => void;
+    photoSelectionEnabled: boolean;
+    onPhotoSelectionModeChange: (enabled: boolean) => void;
+    selectedPhotoCount: number;
+    onSelectAllVisiblePhotos: () => void;
+    clusterSelectionEnabled: boolean;
+    onClusterSelectionModeChange: (enabled: boolean) => void;
+    selectedClusterIds: string[];
+    selectedClusterCount: number;
+    onToggleSelectedCluster: (clusterId: string) => void;
+    onClearCollectionSelection: () => void;
+    onCreateCollection: (name: string) => boolean;
+    onRenameCollection: (collectionId: string, name: string) => void;
+    onDeleteCollection: (collectionId: string) => void;
     clusters: FaceClusterSummary[];
     people: FaceClusterSummary[];
     groups: FaceClusterSummary[];
@@ -548,6 +679,8 @@ function BrowseTab({
         ? activeCluster.personId
         : null;
     const [selectedClusterCandidateIds, setSelectedClusterCandidateIds] = useState<string[]>([]);
+    const [collectionDraftName, setCollectionDraftName] = useState('');
+    const selectedClusterIdSet = new Set(selectedClusterIds);
 
     useEffect(() => {
         setSelectedClusterCandidateIds([]);
@@ -577,6 +710,13 @@ function BrowseTab({
         setSelectedClusterCandidateIds([]);
     };
 
+    const submitCollection = () => {
+        const created = onCreateCollection(collectionDraftName);
+        if (created) {
+            setCollectionDraftName('');
+        }
+    };
+
     return (
         <>
             {/* Stats */}
@@ -599,6 +739,109 @@ function BrowseTab({
                     />
                 </div>
             </div>
+
+            <CollapsibleSection
+                label="Collections"
+                defaultOpen={collections.length > 0 || selectedPhotoCount > 0 || selectedClusterCount > 0}
+            >
+                <div className="rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-2 space-y-2">
+                    <div className="text-[10px] leading-relaxed text-white/35">
+                        Build reusable groups from selected images and named people or clusters.
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                        <button
+                            type="button"
+                            onClick={() => onPhotoSelectionModeChange(!photoSelectionEnabled)}
+                            className={`rounded-md border px-2 py-1 text-[10px] uppercase tracking-[0.16em] transition-colors ${
+                                photoSelectionEnabled
+                                    ? 'border-[#e94560]/35 bg-[#e94560]/10 text-[#ff9db0]'
+                                    : 'border-white/10 bg-white/5 text-white/38 hover:text-white/60'
+                            }`}
+                        >
+                            {photoSelectionEnabled ? 'Done Images' : 'Select Images'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => onClusterSelectionModeChange(!clusterSelectionEnabled)}
+                            className={`rounded-md border px-2 py-1 text-[10px] uppercase tracking-[0.16em] transition-colors ${
+                                clusterSelectionEnabled
+                                    ? 'border-[#e94560]/35 bg-[#e94560]/10 text-[#ff9db0]'
+                                    : 'border-white/10 bg-white/5 text-white/38 hover:text-white/60'
+                            }`}
+                        >
+                            {clusterSelectionEnabled ? 'Done People' : 'Select People'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={onSelectAllVisiblePhotos}
+                            className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-white/38 transition-colors hover:text-white/60"
+                        >
+                            Select Visible
+                        </button>
+                        {(selectedPhotoCount > 0 || selectedClusterCount > 0) && (
+                            <button
+                                type="button"
+                                onClick={onClearCollectionSelection}
+                                className="rounded-md border border-white/10 bg-black/20 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-white/32 transition-colors hover:text-white/58"
+                            >
+                                Clear
+                            </button>
+                        )}
+                    </div>
+                    <div className="text-[10px] text-white/28">
+                        {selectedPhotoCount} selected image{selectedPhotoCount === 1 ? '' : 's'} · {selectedClusterCount} selected people/cluster{selectedClusterCount === 1 ? '' : 's'}
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="text"
+                            value={collectionDraftName}
+                            onChange={event => setCollectionDraftName(event.target.value)}
+                            onKeyDown={event => {
+                                if (event.key === 'Enter') {
+                                    event.preventDefault();
+                                    submitCollection();
+                                }
+                            }}
+                            placeholder="Collection name"
+                            className="min-w-0 flex-1 rounded-md border border-white/10 bg-black/20 px-2.5 py-1.5 text-[11px] text-white/72 placeholder:text-white/20 focus:border-white/20 focus:outline-none"
+                        />
+                        <button
+                            type="button"
+                            onClick={submitCollection}
+                            disabled={selectedPhotoCount === 0 && selectedClusterCount === 0}
+                            className={`rounded-md border px-2.5 py-1.5 text-[10px] uppercase tracking-[0.16em] transition-colors ${
+                                selectedPhotoCount === 0 && selectedClusterCount === 0
+                                    ? 'border-white/10 bg-white/5 text-white/20 cursor-not-allowed'
+                                    : 'border-[#e94560]/25 bg-[#e94560]/10 text-[#ff9db0] hover:bg-[#e94560]/16'
+                            }`}
+                        >
+                            <span className="inline-flex items-center gap-1">
+                                <Plus className="h-3 w-3" />
+                                Create
+                            </span>
+                        </button>
+                    </div>
+                </div>
+
+                {collections.length === 0 ? (
+                    <div className="rounded-md border border-dashed border-white/10 px-2.5 py-2 text-[10px] text-white/24">
+                        Select images or people, then create your first collection here.
+                    </div>
+                ) : (
+                    <div className="space-y-1.5">
+                        {collections.map(collection => (
+                            <CollectionRow
+                                key={collection.id}
+                                collection={collection}
+                                active={collection.id === activeCollectionId}
+                                onClick={() => onCollectionSelect(collection.id === activeCollectionId ? null : collection.id)}
+                                onRename={onRenameCollection}
+                                onDelete={onDeleteCollection}
+                            />
+                        ))}
+                    </div>
+                )}
+            </CollapsibleSection>
 
             {/* Search */}
             <div className="relative">
@@ -719,6 +962,9 @@ function BrowseTab({
                                         showMergeCheckbox={Boolean(selectedAssociationClusterId) && cluster.memberClusterIds.length === 1 && cluster.memberClusterIds[0] !== selectedAssociationClusterId}
                                         mergeSelected={selectedClusterCandidateIds.includes(cluster.memberClusterIds[0] ?? cluster.clusterId)}
                                         onToggleMergeSelected={() => toggleClusterCandidate(cluster.memberClusterIds[0] ?? cluster.clusterId)}
+                                        showSelectionCheckbox={clusterSelectionEnabled && !(selectedAssociationClusterId && cluster.memberClusterIds.length === 1 && cluster.memberClusterIds[0] !== selectedAssociationClusterId)}
+                                        selectionChecked={selectedClusterIdSet.has(cluster.clusterId)}
+                                        onToggleSelection={() => onToggleSelectedCluster(cluster.clusterId)}
                                         onRename={onRenameFace}
                                         onDelete={cluster.memberClusterIds.length === 1 ? onDeleteFace : undefined}
                                     />
@@ -741,6 +987,9 @@ function BrowseTab({
                                         showMergeCheckbox={Boolean(selectedAssociationClusterId) && cluster.memberClusterIds.length === 1 && cluster.memberClusterIds[0] !== selectedAssociationClusterId}
                                         mergeSelected={selectedClusterCandidateIds.includes(cluster.memberClusterIds[0] ?? cluster.clusterId)}
                                         onToggleMergeSelected={() => toggleClusterCandidate(cluster.memberClusterIds[0] ?? cluster.clusterId)}
+                                        showSelectionCheckbox={clusterSelectionEnabled && !(selectedAssociationClusterId && cluster.memberClusterIds.length === 1 && cluster.memberClusterIds[0] !== selectedAssociationClusterId)}
+                                        selectionChecked={selectedClusterIdSet.has(cluster.clusterId)}
+                                        onToggleSelection={() => onToggleSelectedCluster(cluster.clusterId)}
                                         onRename={onRenameFace}
                                         onDelete={cluster.memberClusterIds.length === 1 ? onDeleteFace : undefined}
                                     />
@@ -764,6 +1013,9 @@ function BrowseTab({
                                         active={cluster.clusterId === activeClusterId}
                                         onClick={() => onClusterSelect(cluster.clusterId)}
                                         getFileUrl={getFileUrl}
+                                        showSelectionCheckbox={clusterSelectionEnabled}
+                                        selectionChecked={selectedClusterIdSet.has(cluster.clusterId)}
+                                        onToggleSelection={() => onToggleSelectedCluster(cluster.clusterId)}
                                         onRename={onRenameFace}
                                         onDelete={cluster.memberClusterIds.length === 1 ? onDeleteFace : undefined}
                                     />
@@ -878,6 +1130,9 @@ function BrowseTab({
                                             onClusterSelect(cluster.clusterId);
                                         }}
                                         getFileUrl={getFileUrl}
+                                        showSelectionCheckbox={clusterSelectionEnabled}
+                                        selectionChecked={selectedClusterIdSet.has(cluster.clusterId)}
+                                        onToggleSelection={() => onToggleSelectedCluster(cluster.clusterId)}
                                         onRename={onRenameFace}
                                         onDelete={cluster.memberClusterIds.length === 1 ? onDeleteFace : undefined}
                                     />
@@ -921,6 +1176,60 @@ function TogglePill({ active, onClick, label }: { active: boolean; onClick: () =
     );
 }
 
+function CollectionRow({
+    collection,
+    active,
+    onClick,
+    onRename,
+    onDelete,
+}: {
+    collection: FotosCollectionSummary;
+    active: boolean;
+    onClick: () => void;
+    onRename: (collectionId: string, name: string) => void;
+    onDelete: (collectionId: string) => void;
+}) {
+    return (
+        <div
+            role="button"
+            tabIndex={0}
+            onClick={onClick}
+            onKeyDown={event => handleButtonLikeKeyDown(event, onClick)}
+            className={`group flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left transition-colors ${
+                active
+                    ? 'border-[#e94560]/50 bg-[#e94560]/10'
+                    : 'border-white/10 bg-white/5 hover:bg-white/10'
+            }`}
+        >
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-black/20 text-[10px] font-semibold text-white/45">
+                {collection.photoCount}
+            </div>
+            <div className="min-w-0 flex-1">
+                <InlineRenameField
+                    value={collection.name}
+                    fallback={collection.name}
+                    placeholder="Name this collection"
+                    onSubmit={name => onRename(collection.id, name)}
+                />
+                <div className="text-[10px] text-white/25">
+                    {collection.photoCount} photo{collection.photoCount === 1 ? '' : 's'} · {collection.faceCount} face{collection.faceCount === 1 ? '' : 's'}
+                </div>
+            </div>
+            <button
+                onClick={event => {
+                    event.stopPropagation();
+                    onDelete(collection.id);
+                }}
+                onKeyDown={event => event.stopPropagation()}
+                className="text-white/20 hover:text-red-400 transition-colors"
+                title="Delete collection"
+            >
+                <Trash2 className="h-3 w-3" />
+            </button>
+        </div>
+    );
+}
+
 function handleButtonLikeKeyDown(event: React.KeyboardEvent, onActivate: () => void) {
     if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
@@ -936,6 +1245,9 @@ function ClusterBrowseRow({
     showMergeCheckbox,
     mergeSelected,
     onToggleMergeSelected,
+    showSelectionCheckbox,
+    selectionChecked,
+    onToggleSelection,
     onRename,
     onDelete,
 }: {
@@ -946,6 +1258,9 @@ function ClusterBrowseRow({
     showMergeCheckbox?: boolean;
     mergeSelected?: boolean;
     onToggleMergeSelected?: () => void;
+    showSelectionCheckbox?: boolean;
+    selectionChecked?: boolean;
+    onToggleSelection?: () => void;
     onRename?: (clusterId: string, name: string) => Promise<void> | void;
     onDelete?: (clusterId: string) => void;
 }) {
@@ -1008,7 +1323,7 @@ function ClusterBrowseRow({
                     {cluster.memberClusterIds.length > 1 ? ` · ${cluster.memberClusterIds.length} clusters` : ''}
                 </div>
             </div>
-            {(showMergeCheckbox || onDelete) && (
+            {(showMergeCheckbox || showSelectionCheckbox || onDelete) && (
                 <div className="flex shrink-0 items-center gap-1.5">
                     {onDelete && (
                         <button
@@ -1023,6 +1338,20 @@ function ClusterBrowseRow({
                             <Trash2 className="h-3 w-3" />
                         </button>
                     )}
+                    {showSelectionCheckbox ? (
+                        <input
+                            type="checkbox"
+                            checked={Boolean(selectionChecked)}
+                            onChange={event => {
+                                event.stopPropagation();
+                                onToggleSelection?.();
+                            }}
+                            onClick={event => event.stopPropagation()}
+                            onKeyDown={event => event.stopPropagation()}
+                            className="h-4 w-4 shrink-0 rounded-sm border border-white/20 bg-black/20 accent-[#e94560]"
+                            title={selectionChecked ? 'Remove from collection selection' : 'Add to collection selection'}
+                        />
+                    ) : null}
                     {showMergeCheckbox ? (
                         <input
                             type="checkbox"
@@ -1169,6 +1498,17 @@ function ManageTab({
     onReanalyze,
     llmComparisonPhoto,
     llmComparisonPhotoLabel,
+    collections,
+    onRenameCollection,
+    onDeleteCollection,
+    clusters,
+    sharePeerOptions,
+    gallerySharePersonIds,
+    collectionSharePersonIds,
+    clusterSharePersonIds,
+    onGalleryShareChange,
+    onCollectionShareChange,
+    onClusterShareChange,
 }: {
     settings: FotosSettings;
     onUpdateStorage: (updates: Partial<FotosSettings['storage']>) => void;
@@ -1178,6 +1518,17 @@ function ManageTab({
     onReanalyze?: () => void;
     llmComparisonPhoto?: PhotoEntry | null;
     llmComparisonPhotoLabel?: string;
+    collections: FotosCollectionSummary[];
+    onRenameCollection: (collectionId: string, name: string) => void;
+    onDeleteCollection: (collectionId: string) => void;
+    clusters: FaceClusterSummary[];
+    sharePeerOptions: SharePeerOption[];
+    gallerySharePersonIds: string[];
+    collectionSharePersonIds: Record<string, string[]>;
+    clusterSharePersonIds: Record<string, string[]>;
+    onGalleryShareChange: (personIds: string[]) => Promise<void> | void;
+    onCollectionShareChange: (collectionId: string, personIds: string[]) => Promise<void> | void;
+    onClusterShareChange: (clusterId: string, personIds: string[]) => Promise<void> | void;
 }) {
     return (
         <>
@@ -1258,6 +1609,62 @@ function ManageTab({
                 Export as HTML
             </button>
 
+            <CollapsibleSection label="Gallery Sharing">
+                <div className="space-y-2">
+                    <div className="text-[10px] leading-relaxed text-white/30">
+                        Grant synced gallery access to selected glue.one identities.
+                    </div>
+                    <ShareWithField
+                        value={gallerySharePersonIds}
+                        peers={sharePeerOptions}
+                        onChange={onGalleryShareChange}
+                        emptyLabel="No gallery peers selected"
+                    />
+                </div>
+            </CollapsibleSection>
+
+            <CollapsibleSection label="Collection Sharing" defaultOpen={collections.length > 0}>
+                {collections.length === 0 ? (
+                    <div className="rounded-md border border-dashed border-white/10 px-2.5 py-2 text-[10px] text-white/24">
+                        Create collections in Browse to manage sharing here.
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {collections.map(collection => (
+                            <ManageCollectionShareRow
+                                key={collection.id}
+                                collection={collection}
+                                peers={sharePeerOptions}
+                                sharePersonIds={collectionSharePersonIds[collection.id] ?? []}
+                                onRename={onRenameCollection}
+                                onDelete={onDeleteCollection}
+                                onShareChange={personIds => onCollectionShareChange(collection.id, personIds)}
+                            />
+                        ))}
+                    </div>
+                )}
+            </CollapsibleSection>
+
+            <CollapsibleSection label="Cluster Sharing" defaultOpen={clusters.length > 0}>
+                {clusters.length === 0 ? (
+                    <div className="rounded-md border border-dashed border-white/10 px-2.5 py-2 text-[10px] text-white/24">
+                        No face clusters yet.
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {clusters.map(cluster => (
+                            <ManageClusterShareRow
+                                key={cluster.clusterId}
+                                cluster={cluster}
+                                peers={sharePeerOptions}
+                                sharePersonIds={clusterSharePersonIds[cluster.clusterId] ?? []}
+                                onShareChange={personIds => onClusterShareChange(cluster.clusterId, personIds)}
+                            />
+                        ))}
+                    </div>
+                )}
+            </CollapsibleSection>
+
             <SectionLabel>AI Audit</SectionLabel>
             <LLMComparisonPanel
                 photo={llmComparisonPhoto ?? null}
@@ -1291,6 +1698,88 @@ function ManageOptionButton({
     );
 }
 
+function ManageCollectionShareRow({
+    collection,
+    peers,
+    sharePersonIds,
+    onRename,
+    onDelete,
+    onShareChange,
+}: {
+    collection: FotosCollectionSummary;
+    peers: SharePeerOption[];
+    sharePersonIds: string[];
+    onRename: (collectionId: string, name: string) => void;
+    onDelete: (collectionId: string) => void;
+    onShareChange: (personIds: string[]) => Promise<void> | void;
+}) {
+    return (
+        <div className="space-y-2 rounded-md border border-white/10 bg-white/[0.035] px-2.5 py-2">
+            <div className="flex items-start gap-2">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-white/10 bg-black/20 text-[10px] font-semibold text-white/45">
+                    {collection.photoCount}
+                </div>
+                <div className="min-w-0 flex-1">
+                    <InlineRenameField
+                        value={collection.name}
+                        fallback={collection.name}
+                        placeholder="Name this collection"
+                        onSubmit={name => onRename(collection.id, name)}
+                        labelClassName="truncate text-[11px] text-white/75"
+                    />
+                    <div className="text-[10px] text-white/25">
+                        {collection.photoCount} photo{collection.photoCount === 1 ? '' : 's'} · {collection.faceCount} face{collection.faceCount === 1 ? '' : 's'}
+                    </div>
+                </div>
+                <button
+                    type="button"
+                    onClick={() => onDelete(collection.id)}
+                    className="text-white/20 hover:text-red-400 transition-colors"
+                    title="Delete collection"
+                >
+                    <Trash2 className="h-3.5 w-3.5" />
+                </button>
+            </div>
+            <ShareWithField
+                value={sharePersonIds}
+                peers={peers}
+                onChange={onShareChange}
+                emptyLabel="No collection peers selected"
+            />
+        </div>
+    );
+}
+
+function ManageClusterShareRow({
+    cluster,
+    peers,
+    sharePersonIds,
+    onShareChange,
+}: {
+    cluster: FaceClusterSummary;
+    peers: SharePeerOption[];
+    sharePersonIds: string[];
+    onShareChange: (personIds: string[]) => Promise<void> | void;
+}) {
+    return (
+        <div className="space-y-2 rounded-md border border-white/10 bg-white/[0.035] px-2.5 py-2">
+            <div className="space-y-0.5">
+                <div className="truncate text-[11px] text-white/72">{cluster.label}</div>
+                <div className="text-[10px] text-white/25">
+                    {cluster.photoCount} photo{cluster.photoCount === 1 ? '' : 's'} · {cluster.faceCount} face{cluster.faceCount === 1 ? '' : 's'}
+                    {cluster.memberClusterIds.length > 1 ? ` · ${cluster.memberClusterIds.length} clusters` : ''}
+                </div>
+            </div>
+            <ShareWithField
+                value={sharePersonIds}
+                peers={peers}
+                onChange={onShareChange}
+                emptyLabel="No cluster peers selected"
+            />
+        </div>
+    );
+}
+
 function SourceRow({ icon, label }: { icon: React.ReactNode; label: string }) {
     return (
         <div className="flex items-center gap-2 px-2.5 py-1.5 bg-white/5 rounded-md text-[11px] text-white/40">
@@ -1306,6 +1795,8 @@ function SettingsTab({
     onUpdateStorage,
     onUpdateDeviceName,
     onUpdateAnalysis,
+    acceptSharing,
+    onAcceptSharingChange,
     historyEnabled,
     historyReady,
     historyCurrentEventId,
@@ -1326,6 +1817,8 @@ function SettingsTab({
     onUpdateStorage: (updates: Partial<FotosSettings['storage']>) => void;
     onUpdateDeviceName: (name: string) => void;
     onUpdateAnalysis: (updates: Partial<FotosSettings['analysis']>) => void;
+    acceptSharing: boolean;
+    onAcceptSharingChange: (enabled: boolean) => void;
     historyEnabled: boolean;
     historyReady: boolean;
     historyCurrentEventId: string;
@@ -1344,7 +1837,11 @@ function SettingsTab({
 }) {
     return (
         <>
-            <FotosSettingsPanel model={fotosModel} />
+            <FotosSettingsPanel
+                model={fotosModel}
+                acceptSharing={acceptSharing}
+                onAcceptSharingChange={onAcceptSharingChange}
+            />
 
             <div className="border-t border-white/10 pt-4 mt-2" />
 

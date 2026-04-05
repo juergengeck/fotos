@@ -11,8 +11,10 @@ import {
 } from '@refinio/fotos.ui';
 
 export const FOTOS_SETTINGS_MODULE_ID = 'fotos';
+export const FOTOS_ACCEPT_SHARING_FIELD = 'acceptSharing';
 
 export interface FotosSettingsSectionValues extends SectionValues {
+  acceptSharing: boolean;
   faceAnalyticsEnabled: boolean;
   semanticSearchEnabled: boolean;
   defaultMode: StorageMode;
@@ -30,6 +32,7 @@ export interface FotosSettingsSectionValues extends SectionValues {
 }
 
 export const DEFAULT_FOTOS_SECTION_VALUES: FotosSettingsSectionValues = {
+  acceptSharing: false,
   faceAnalyticsEnabled: DEFAULT_SETTINGS.analysis.faceAnalyticsEnabled,
   semanticSearchEnabled: DEFAULT_SETTINGS.analysis.semanticSearchEnabled,
   defaultMode: DEFAULT_SETTINGS.storage.defaultMode,
@@ -58,6 +61,13 @@ export const FotosSettingsSection = defineSection({
   module: 'fotos.browser',
   order: 40,
   fields: [
+    defineField({
+      key: FOTOS_ACCEPT_SHARING_FIELD,
+      type: 'boolean',
+      label: 'Accept Sharing',
+      description: 'Advertise this fotos identity to trusted glue contacts so shared content can connect automatically.',
+      default: DEFAULT_FOTOS_SECTION_VALUES.acceptSharing,
+    }),
     defineField({
       key: 'faceAnalyticsEnabled',
       type: 'boolean',
@@ -183,8 +193,18 @@ export function registerFotosSettings(): void {
   }
 }
 
-export function serializeFotosSettings(settings: FotosSettings): FotosSettingsSectionValues {
+export function resolveAcceptSharingPreference(
+  values: Partial<FotosSettingsSectionValues> | null | undefined,
+): boolean {
+  return values?.acceptSharing === true;
+}
+
+export function serializeFotosSettings(
+  settings: FotosSettings,
+  options: { acceptSharing?: boolean } = {},
+): FotosSettingsSectionValues {
   return {
+    acceptSharing: options.acceptSharing ?? DEFAULT_FOTOS_SECTION_VALUES.acceptSharing,
     faceAnalyticsEnabled: settings.analysis.faceAnalyticsEnabled,
     semanticSearchEnabled: settings.analysis.semanticSearchEnabled,
     defaultMode: settings.storage.defaultMode,
@@ -244,7 +264,10 @@ export function deserializeFotosSettings(
 export function isFotosSectionAtDefaults(
   values: Partial<FotosSettingsSectionValues> | null | undefined,
 ): boolean {
-  const normalized = serializeFotosSettings(deserializeFotosSettings(values));
+  const normalized = serializeFotosSettings(
+    deserializeFotosSettings(values),
+    { acceptSharing: resolveAcceptSharingPreference(values) },
+  );
   return Object.entries(DEFAULT_FOTOS_SECTION_VALUES)
     .every(([key, value]) => normalized[key as keyof FotosSettingsSectionValues] === value);
 }

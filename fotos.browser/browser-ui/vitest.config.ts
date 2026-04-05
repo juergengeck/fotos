@@ -8,6 +8,7 @@ export default defineConfig({
     resolve: {
         alias: [
             {find: '@', replacement: path.resolve(__dirname, 'src')},
+            {find: '@refinio/fotos.ui', replacement: path.resolve(__dirname, '../../fotos.ui/src/index.ts')},
             {find: '@refinio/recovery.core', replacement: path.resolve(__dirname, '../../../vger/packages/recovery.core/dist')},
         ],
     },
