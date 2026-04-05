@@ -192,6 +192,12 @@ export function App({ fotosModel: initialModel }: AppProps) {
     const visiblePhotos = gallery.galleryMode === 'clusters' && gallery.activeClusterId
         ? gallery.clusterPhotos
         : gallery.photos;
+    const comparisonPhoto = gallery.selectedIndex !== null
+        ? visiblePhotos[gallery.selectedIndex] ?? null
+        : visiblePhotos[0] ?? null;
+    const comparisonPhotoLabel = gallery.selectedIndex !== null
+        ? 'selected photo'
+        : 'first visible photo';
     const visibleDayGroups = gallery.galleryMode === 'clusters' && gallery.activeClusterId
         ? gallery.clusterDayGroups
         : gallery.dayGroups;
@@ -1098,6 +1104,8 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         onOpenFolder={gallery.folder.openFolder}
                         onRescan={gallery.folder.rescan}
                         onReanalyze={canReanalyze ? gallery.folder.reanalyzeFaces : undefined}
+                        llmComparisonPhoto={comparisonPhoto}
+                        llmComparisonPhotoLabel={comparisonPhotoLabel}
                         faceSearchActive={gallery.searchFace !== null}
                         onClearFaceSearch={() => gallery.setSearchFace(null)}
                         fotosModel={fotosModel}

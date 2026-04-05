@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Search, FolderOpen, Download, SlidersHorizontal, ChevronLeft, ChevronRight, ChevronDown, Trash2, Check } from 'lucide-react';
-import type { FotosSettings, StorageMode, DisplaySettings } from '@/types/fotos';
+import type { FotosSettings, StorageMode, DisplaySettings, PhotoEntry } from '@/types/fotos';
 import type { FotosModel } from '@/lib/onecore-boot';
 import type { FaceClusterSummary, SimilarFaceMatch } from '@/lib/cluster-gallery';
 import type { FotosHistoryBranchNode } from '@/lib/fotosHistorySettings';
@@ -8,6 +8,7 @@ import { readStoredSidebarTab, writeStoredSidebarTab } from '@/lib/authFlowState
 import { FotosSettings as FotosSettingsPanel } from './FotosSettings';
 import { ClusterCard } from './ClusterGallery';
 import { InlineRenameField } from './InlineRenameField';
+import { LLMComparisonPanel } from './LLMComparisonPanel';
 
 type Tab = 'browse' | 'manage' | 'settings';
 
@@ -37,6 +38,8 @@ interface SidebarProps {
     onOpenFolder?: () => void;
     onRescan?: () => void;
     onReanalyze?: () => void;
+    llmComparisonPhoto?: PhotoEntry | null;
+    llmComparisonPhotoLabel?: string;
     faceSearchActive?: boolean;
     onClearFaceSearch?: () => void;
     fotosModel?: FotosModel | null;
@@ -78,6 +81,7 @@ export function Sidebar({
     historyVisibleEntryCount, historyBranchCount,
     onHistoryEnabledChange, onHistoryNavigate, onHistoryDelete, currentFolderName,
     folderName, onOpenFolder, onRescan, onReanalyze,
+    llmComparisonPhoto, llmComparisonPhotoLabel,
     faceSearchActive, onClearFaceSearch,
     fotosModel,
     mobile,
@@ -173,6 +177,8 @@ export function Sidebar({
                             onOpenFolder={onOpenFolder}
                             onRescan={onRescan}
                             onReanalyze={onReanalyze}
+                            llmComparisonPhoto={llmComparisonPhoto ?? null}
+                            llmComparisonPhotoLabel={llmComparisonPhotoLabel ?? 'photo'}
                         />
                     )}
                     {tab === 'settings' && (
@@ -291,11 +297,13 @@ export function Sidebar({
                     <ManageTab
                         settings={settings}
                         onUpdateStorage={onUpdateStorage}
-                        folderName={folderName}
-                        onOpenFolder={onOpenFolder}
-                        onRescan={onRescan}
-                        onReanalyze={onReanalyze}
-                    />
+                            folderName={folderName}
+                            onOpenFolder={onOpenFolder}
+                            onRescan={onRescan}
+                            onReanalyze={onReanalyze}
+                            llmComparisonPhoto={llmComparisonPhoto ?? null}
+                            llmComparisonPhotoLabel={llmComparisonPhotoLabel ?? 'photo'}
+                        />
                 )}
                 {tab === 'settings' && (
                     <SettingsTab
@@ -1159,6 +1167,8 @@ function ManageTab({
     onOpenFolder,
     onRescan,
     onReanalyze,
+    llmComparisonPhoto,
+    llmComparisonPhotoLabel,
 }: {
     settings: FotosSettings;
     onUpdateStorage: (updates: Partial<FotosSettings['storage']>) => void;
@@ -1166,6 +1176,8 @@ function ManageTab({
     onOpenFolder?: () => void;
     onRescan?: () => void;
     onReanalyze?: () => void;
+    llmComparisonPhoto?: PhotoEntry | null;
+    llmComparisonPhotoLabel?: string;
 }) {
     return (
         <>
@@ -1245,6 +1257,12 @@ function ManageTab({
                 <Download className="w-3 h-3" />
                 Export as HTML
             </button>
+
+            <SectionLabel>AI Audit</SectionLabel>
+            <LLMComparisonPanel
+                photo={llmComparisonPhoto ?? null}
+                photoSourceLabel={llmComparisonPhotoLabel ?? 'photo'}
+            />
         </>
     );
 }

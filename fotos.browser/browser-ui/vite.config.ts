@@ -324,6 +324,8 @@ export default defineConfig({
             {find: '@whiskeysockets/baileys', replacement: path.resolve(__dirname, './src/stubs/empty.ts')},
             {find: '@whiskeysockets/libsignal-node', replacement: path.resolve(__dirname, './src/stubs/empty.ts')},
             {find: 'werift', replacement: path.resolve(__dirname, './src/stubs/empty.ts')},
+            {find: 'isomorphic-ws', replacement: path.resolve(__dirname, './src/stubs/empty.ts')},
+            {find: 'tweetnacl', replacement: path.resolve(__dirname, 'node_modules/tweetnacl')},
             // nodePolyfills plugin injects shim imports that Rollup can't resolve for pre-built deps
             {find: 'vite-plugin-node-polyfills/shims/buffer', replacement: path.resolve(__dirname, 'node_modules/vite-plugin-node-polyfills/shims/buffer/dist/index.js')},
             {find: 'vite-plugin-node-polyfills/shims/process', replacement: path.resolve(__dirname, 'node_modules/vite-plugin-node-polyfills/shims/process/dist/index.js')},

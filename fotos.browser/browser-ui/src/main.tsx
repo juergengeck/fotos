@@ -12,6 +12,7 @@ import ReactDOM from 'react-dom/client';
 import { initGlueCore } from '@glueone/glue.core';
 import { createPlanRegistry, createPublicOperationCatalogPayload } from '@/lib/PlanRegistry';
 import { FotosPlan } from '@/lib/FotosPlan';
+import { fotosLLMPlan } from '@/lib/FotosLLMPlan';
 import { bootFotosModel } from './lib/onecore-boot';
 import { installHangTrace, traceHang } from './lib/hangTrace';
 import { getRuntimeBrowserCryptoSupport } from './lib/browserCryptoSupport';
@@ -27,6 +28,7 @@ import './index.css';
 const planRegistry = createPlanRegistry();
 const fotosPlan = new FotosPlan();
 planRegistry.register('fotos', fotosPlan, {category: 'analytics', description: 'Face detection and image analytics'});
+planRegistry.register('fotosAI', fotosLLMPlan, { category: 'analytics', description: 'Local LLM comparison and analytics auditing' });
 
 // Debugging: window.__api('fotos', 'status') or window.__api('fotos', 'init')
 (window as any).__planRegistry = planRegistry;

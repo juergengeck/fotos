@@ -259,9 +259,12 @@ async function handleInit(): Promise<void> {
     if (initialized) return;
     reportProgress('init-start');
 
+    // `onnxruntime-web/webgpu` expects the standard threaded runtime. Pointing
+    // it at the JSEP artifacts leaves WebGPU half-initialized and ORT silently
+    // drops to slow WASM with `webgpuInit is not a function`.
     ort.env.wasm.wasmPaths = {
-        mjs: '/ort/ort-wasm-simd-threaded.jsep.mjs',
-        wasm: '/ort/ort-wasm-simd-threaded.jsep.wasm',
+        mjs: '/ort/ort-wasm-simd-threaded.mjs',
+        wasm: '/ort/ort-wasm-simd-threaded.wasm',
     };
     ort.env.wasm.numThreads = 1;
 
