@@ -301,6 +301,7 @@ export function cosineSimilarity(a: ArrayLike<number>, b: ArrayLike<number>): nu
 export interface FaceClusterInfo {
     clusterId: string;
     personName?: string;
+    personId?: string;
     qrPath?: string;
 }
 
@@ -347,6 +348,11 @@ export function facesToDataAttrs(
         data['face-names'] = clusterInfo
             .map(c => c.personName ?? 'Unknown')
             .join(';');
+        if (clusterInfo.some(c => c.personId)) {
+            data['face-person-ids'] = clusterInfo
+                .map(c => c.personId ?? '')
+                .join(';');
+        }
         if (clusterInfo.some(c => c.qrPath)) {
             data['face-qrcodes'] = clusterInfo
                 .map(c => c.qrPath ?? '')
@@ -397,10 +403,12 @@ export function dataAttrsToFaceExport(data: Record<string, string>): FaceExportD
     if (data['face-cluster-hashes']) {
         const hashes = data['face-cluster-hashes'].split(';');
         const names = data['face-names']?.split(';');
+        const personIds = data['face-person-ids']?.split(';');
         const qrPaths = data['face-qrcodes']?.split(';');
         clusterInfo = hashes.map((clusterId, i) => ({
             clusterId,
             personName: names?.[i] === 'Unknown' ? undefined : names?.[i],
+            personId: personIds?.[i] || undefined,
             qrPath: qrPaths?.[i] || undefined,
         }));
     }

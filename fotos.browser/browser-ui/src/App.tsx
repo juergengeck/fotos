@@ -111,6 +111,14 @@ export function App({ fotosModel: initialModel }: AppProps) {
         void gallery.folder.mergeFaceClusters(targetClusterId, sourceClusterIds);
     }, [gallery.folder]);
 
+    const handleGroupFaceClustersAsPerson = useCallback((clusterIds: string[]) => {
+        void gallery.folder.groupFaceClustersAsPerson(clusterIds);
+    }, [gallery.folder]);
+
+    const handleSeparatePersonGroup = useCallback((personId: string) => {
+        void gallery.folder.separatePersonGroup(personId);
+    }, [gallery.folder]);
+
     const mobile = gallery.folder.mobile;
     const intakePlan = gallery.folder.defaultIntakePlan;
     const canRunFaceAnalytics = settings.analysis.faceAnalyticsEnabled
@@ -760,6 +768,8 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         getFileUrl={gallery.folder.getFileUrl}
                         onAssociateFaceWithCluster={handleAssociateFaceWithCluster}
                         onMergeFaceClusters={handleMergeFaceClusters}
+                        onGroupFaceClustersAsPerson={handleGroupFaceClustersAsPerson}
+                        onSeparatePersonGroup={handleSeparatePersonGroup}
                         onOpenSimilarFace={handleOpenSimilarFace}
                         onDeletePhoto={handleDelete}
                         onRenameFace={handleRenameFace}

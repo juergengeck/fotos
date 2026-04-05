@@ -3,12 +3,14 @@ import type { PhotoEntry } from '@/types/fotos';
 
 export interface FaceClusterSummary {
     clusterId: string;
+    personId?: string;
     personName?: string;
     label: string;
     avatarPath?: string;
     faceCount: number;
     photoCount: number;
     photoHashes: string[];
+    memberClusterIds: string[];
 }
 
 export interface SimilarFaceMatch {
@@ -17,6 +19,7 @@ export interface SimilarFaceMatch {
     similarity: number;
     cropPath?: string;
     clusterId?: string;
+    personId?: string;
     personName?: string;
 }
 
@@ -35,18 +38,22 @@ export function buildFaceClusterSummaries(photos: PhotoEntry[]): FaceClusterSumm
                 continue;
             }
 
+            const personId = faces.personIds?.[index]?.trim() || undefined;
             const personName = faces.names?.[index]?.trim() || undefined;
-            const existing = clusters.get(clusterId);
+            const summaryId = personId ? `person:${personId}` : clusterId;
+            const existing = clusters.get(summaryId);
 
             if (!existing) {
-                clusters.set(clusterId, {
-                    clusterId,
+                clusters.set(summaryId, {
+                    clusterId: summaryId,
+                    personId,
                     personName,
-                    label: personName ?? `Group ${clusterId.slice(0, 8)}`,
+                    label: personName ?? (personId ? `Person ${personId.slice(0, 8)}` : `Group ${clusterId.slice(0, 8)}`),
                     avatarPath: faces.crops[index] || undefined,
                     faceCount: 1,
                     photoCount: 1,
                     photoHashes: [photo.hash],
+                    memberClusterIds: [clusterId],
                 });
                 continue;
             }
@@ -63,12 +70,17 @@ export function buildFaceClusterSummaries(photos: PhotoEntry[]): FaceClusterSumm
                 existing.photoHashes.push(photo.hash);
                 existing.photoCount += 1;
             }
+            if (!existing.memberClusterIds.includes(clusterId)) {
+                existing.memberClusterIds.push(clusterId);
+            }
         }
     }
 
     return [...clusters.values()].sort((left, right) => {
-        if (Boolean(left.personName) !== Boolean(right.personName)) {
-            return left.personName ? -1 : 1;
+        const leftIsPerson = Boolean(left.personName) || Boolean(left.personId);
+        const rightIsPerson = Boolean(right.personName) || Boolean(right.personId);
+        if (leftIsPerson !== rightIsPerson) {
+            return leftIsPerson ? -1 : 1;
         }
         if (left.faceCount !== right.faceCount) {
             return right.faceCount - left.faceCount;
@@ -106,6 +118,7 @@ export function buildSimilarFaceMatches(
                 similarity,
                 cropPath: faces.crops[index] || undefined,
                 clusterId: faces.clusterIds?.[index],
+                personId: faces.personIds?.[index]?.trim() || undefined,
                 personName: faces.names?.[index],
             });
         }

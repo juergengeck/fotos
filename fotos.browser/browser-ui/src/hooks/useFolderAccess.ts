@@ -218,17 +218,20 @@ function inferFaceInfoCount({
     detailedFaceCount,
     clusterIds,
     names,
+    personIds,
 }: {
     parsedCount: number;
     detailedFaceCount: number;
     clusterIds?: string[];
     names?: string[];
+    personIds?: string[];
 }): number {
     return Math.max(
         parsedCount,
         detailedFaceCount,
         clusterIds?.filter(Boolean).length ?? 0,
         names?.length ?? 0,
+        personIds?.filter(Boolean).length ?? 0,
     );
 }
 
@@ -289,13 +292,16 @@ function parseOneIndex(html: string, relPath: string): PhotoEntry[] {
                 faceMetaRows += 1;
                 const clusterHashes = row.getAttribute('data-face-cluster-hashes');
                 const faceNames = row.getAttribute('data-face-names');
+                const facePersonIds = row.getAttribute('data-face-person-ids');
                 const clusterIds = clusterHashes ? clusterHashes.split(';') : undefined;
                 const names = faceNames ? faceNames.split(';') : undefined;
+                const personIds = facePersonIds ? facePersonIds.split(';') : undefined;
                 const inferredCount = inferFaceInfoCount({
                     parsedCount,
                     detailedFaceCount: 0,
                     clusterIds,
                     names,
+                    personIds,
                 });
 
                 if (inferredCount === 0) {
@@ -323,6 +329,7 @@ function parseOneIndex(html: string, relPath: string): PhotoEntry[] {
                         detailedFaceCount: result.faces.length,
                         clusterIds,
                         names,
+                        personIds,
                     });
 
                     const detailedEmbeddings = result.faces.some(face => face.embedding.some(value => value !== 0))
@@ -343,6 +350,7 @@ function parseOneIndex(html: string, relPath: string): PhotoEntry[] {
                         crops: Array.from({length: count}, (_, i) => result.faces[i]?.cropPath ?? ''),
                         clusterIds,
                         names,
+                        personIds,
                     };
                     if ((faces.clusterIds?.length ?? 0) > 0) {
                         clusteredRows += 1;
@@ -536,6 +544,19 @@ function normalizeClusterName(name: string | null | undefined): string | undefin
     return trimmed;
 }
 
+function normalizePersonId(personId: string | null | undefined): string | undefined {
+    const trimmed = personId?.trim();
+    return trimmed ? trimmed : undefined;
+}
+
+function createExplicitPersonId(): string {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function stripStoredFaceCropPath(photo: PhotoEntry, cropPath: string | undefined): string | undefined {
     if (!cropPath) {
         return undefined;
@@ -578,6 +599,7 @@ function buildFaceClusterInfoFromEntry(photo: PhotoEntry): FaceClusterInfo[] | u
     return faces.clusterIds.map((clusterId, index) => ({
         clusterId,
         personName: normalizeClusterName(faces.names?.[index]),
+        personId: normalizePersonId(faces.personIds?.[index]),
     }));
 }
 
@@ -628,6 +650,12 @@ function buildFaceDataAttrsFromEntry(photo: PhotoEntry): Record<string, string> 
             .slice(0, faces.count)
             .map((_, index) => normalizeClusterName(faces.names?.[index]) ?? 'Unknown')
             .join(';');
+        if (faces.personIds?.some(personId => Boolean(normalizePersonId(personId)))) {
+            data['face-person-ids'] = faces.clusterIds
+                .slice(0, faces.count)
+                .map((_, index) => normalizePersonId(faces.personIds?.[index]) ?? '')
+                .join(';');
+        }
     }
 
     return data;
@@ -692,6 +720,56 @@ function findClusterNameInEntries(photos: PhotoEntry[], clusterId: string): stri
     }
 
     return undefined;
+}
+
+function findClusterPersonIdInEntries(photos: PhotoEntry[], clusterId: string): string | undefined {
+    for (const photo of photos) {
+        const faces = photo.faces;
+        if (!faces?.clusterIds?.length) {
+            continue;
+        }
+
+        for (let faceIndex = 0; faceIndex < faces.clusterIds.length; faceIndex++) {
+            if (faces.clusterIds[faceIndex] !== clusterId) {
+                continue;
+            }
+
+            const personId = normalizePersonId(faces.personIds?.[faceIndex]);
+            if (personId) {
+                return personId;
+            }
+        }
+    }
+
+    return undefined;
+}
+
+function findClusterIdsForPersonInEntries(photos: PhotoEntry[], personId: string): string[] {
+    const normalizedPersonId = normalizePersonId(personId);
+    if (!normalizedPersonId) {
+        return [];
+    }
+
+    const clusterIds = new Set<string>();
+    for (const photo of photos) {
+        const faces = photo.faces;
+        if (!faces?.clusterIds?.length) {
+            continue;
+        }
+
+        for (let faceIndex = 0; faceIndex < faces.clusterIds.length; faceIndex++) {
+            if (normalizePersonId(faces.personIds?.[faceIndex]) !== normalizedPersonId) {
+                continue;
+            }
+
+            const clusterId = faces.clusterIds[faceIndex];
+            if (clusterId) {
+                clusterIds.add(clusterId);
+            }
+        }
+    }
+
+    return [...clusterIds];
 }
 
 interface ClusterRebuildResult {
@@ -829,6 +907,10 @@ export interface FolderAccess {
     associateFaceWithCluster: (photoHash: string, faceIndex: number, clusterId: string) => Promise<void>;
     /** Merge source clusters into one target cluster */
     mergeFaceClusters: (targetClusterId: string, sourceClusterIds: string[]) => Promise<void>;
+    /** Explicitly manage multiple clusters as one named person without merging them */
+    groupFaceClustersAsPerson: (clusterIds: string[]) => Promise<void>;
+    /** Remove the explicit person collapse for a grouped person */
+    separatePersonGroup: (personId: string) => Promise<void>;
 }
 
 // ── Persist last-opened folder handle via IndexedDB ──────────────────
@@ -1166,6 +1248,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     ): Promise<ClusterRebuildResult> => {
         const dim = new FaceClusterDimension(threshold);
         const preferredNames = new Map<string, string>();
+        const preferredPersonIds = new Map<string, string>();
 
         for (const photo of photos) {
             const faces = photo.faces;
@@ -1178,6 +1261,11 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                 const personName = normalizeClusterName(faces.names?.[faceIndex]);
                 if (clusterId && personName && !preferredNames.has(clusterId)) {
                     preferredNames.set(clusterId, personName);
+                }
+
+                const personId = normalizePersonId(faces.personIds?.[faceIndex]);
+                if (clusterId && personId && !preferredPersonIds.has(clusterId)) {
+                    preferredPersonIds.set(clusterId, personId);
                 }
             }
         }
@@ -1196,6 +1284,8 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                 const oldClusterId = photo.faces?.clusterIds?.[faceIndex];
                 const preferredName = normalizeClusterName(photo.faces?.names?.[faceIndex])
                     ?? (oldClusterId ? preferredNames.get(oldClusterId) : undefined);
+                const preferredPersonId = normalizePersonId(photo.faces?.personIds?.[faceIndex])
+                    ?? (oldClusterId ? preferredPersonIds.get(oldClusterId) : undefined);
                 const clusterId = dim.assign(faceResult.faces[faceIndex].embedding, photo.hash, faceIndex);
                 const cluster = dim.getCluster(clusterId);
                 if (preferredName && cluster && !cluster.personName) {
@@ -1204,13 +1294,16 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                 clusterInfo.push({
                     clusterId,
                     personName: dim.getCluster(clusterId)?.personName,
+                    personId: preferredPersonId,
                 });
             }
 
             const nextClusterIds = clusterInfo.map(info => info.clusterId);
             const nextNames = clusterInfo.map(info => info.personName ?? 'Unknown');
+            const nextPersonIds = clusterInfo.map(info => info.personId ?? '');
             const changed = !isSameStringArray(photo.faces?.clusterIds, nextClusterIds)
-                || !isSameStringArray(photo.faces?.names, nextNames);
+                || !isSameStringArray(photo.faces?.names, nextNames)
+                || !isSameStringArray(photo.faces?.personIds, nextPersonIds);
 
             if (!changed) {
                 continue;
@@ -1223,6 +1316,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                     ...photo.faces!,
                     clusterIds: nextClusterIds,
                     names: nextNames,
+                    personIds: nextPersonIds,
                 },
             };
         }
@@ -1392,9 +1486,11 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                             const face = parsed.faces[fi];
                             const clusterId = dim.assign(face.embedding, photo.hash, fi);
                             const cluster = dim.getCluster(clusterId);
+                            const personId = findClusterPersonIdInEntries(photos, clusterId);
                             clusterInfos.push({
                                 clusterId,
                                 personName: cluster?.personName,
+                                personId,
                             });
                         }
                     }
@@ -1426,6 +1522,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                             crops: parsed.faces.map(f => f.cropPath ? `${prefix}${f.cropPath}` : ''),
                             clusterIds: clusterInfos.map(c => c.clusterId),
                             names: clusterInfos.map(c => c.personName ?? 'Unknown'),
+                            personIds: clusterInfos.map(c => c.personId ?? ''),
                         };
                         photo.faces = faceInfo;
                     } else {
@@ -2063,24 +2160,44 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
 
         const dim = await ensureClusterDimensionForEditing();
         const normalizedName = normalizeClusterName(name) ?? '';
+        const personId = findClusterPersonIdInEntries(entries, clusterId);
+        const affectedClusterIds = new Set(
+            personId
+                ? findClusterIdsForPersonInEntries(entries, personId)
+                : [clusterId],
+        );
 
-        if (dim?.getCluster(clusterId)) {
-            dim.nameCluster(clusterId, normalizedName);
+        if (dim) {
+            for (const affectedClusterId of affectedClusterIds) {
+                if (dim.getCluster(affectedClusterId)) {
+                    dim.nameCluster(affectedClusterId, normalizedName);
+                }
+            }
             await saveClusterState(handle, dim);
         }
 
         const affectedEntries: PhotoEntry[] = [];
         const nextEntries = entries.map(entry => {
-            if (!entry.faces?.clusterIds) return entry;
-            const hasCluster = entry.faces.clusterIds.includes(clusterId);
-            if (!hasCluster) return entry;
-            const names = [...(entry.faces.names ?? entry.faces.clusterIds.map(() => 'Unknown'))];
-            entry.faces.clusterIds.forEach((id, index) => {
-                if (id === clusterId) {
+            const faces = entry.faces;
+            if (!faces?.clusterIds) return entry;
+            const names = [...(faces.names ?? faces.clusterIds.map(() => 'Unknown'))];
+            let entryChanged = false;
+
+            faces.clusterIds.forEach((id, index) => {
+                const samePerson = personId
+                    ? normalizePersonId(faces.personIds?.[index]) === personId
+                    : false;
+                if (affectedClusterIds.has(id) || samePerson) {
                     names[index] = normalizedName || 'Unknown';
+                    entryChanged = true;
                 }
             });
-            const updated = { ...entry, faces: { ...entry.faces, names } };
+
+            if (!entryChanged) {
+                return entry;
+            }
+
+            const updated: PhotoEntry = { ...entry, faces: { ...faces, names } };
             affectedEntries.push(updated);
             return updated;
         });
@@ -2110,6 +2227,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             if (idx < 0) return entry;
             const clusterIds = entry.faces.clusterIds.filter((_, i) => i !== idx);
             const names = (entry.faces.names ?? []).filter((_, i) => i !== idx);
+            const personIds = (entry.faces.personIds ?? []).filter((_, i) => i !== idx);
             const bboxes = entry.faces.bboxes.filter((_, i) => i !== idx);
             const scores = entry.faces.scores.filter((_, i) => i !== idx);
             const crops = entry.faces.crops.filter((_, i) => i !== idx);
@@ -2122,6 +2240,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                         count: clusterIds.length,
                         clusterIds,
                         names,
+                        personIds,
                         bboxes,
                         scores,
                         crops,
@@ -2157,6 +2276,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
 
         const affectedEntries: PhotoEntry[] = [];
         let updatedTargetName = findClusterNameInEntries(entries, clusterId);
+        const updatedTargetPersonId = findClusterPersonIdInEntries(entries, clusterId);
         let changed = false;
 
         const nextEntries = entries.map(entry => {
@@ -2171,12 +2291,18 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             const names = faces.names
                 ? [...faces.names]
                 : Array.from({ length: faces.count }, () => 'Unknown');
+            const personIds = faces.personIds
+                ? [...faces.personIds]
+                : Array.from({ length: faces.count }, () => '');
 
             while (clusterIds.length < faces.count) {
                 clusterIds.push('');
             }
             while (names.length < faces.count) {
                 names.push('Unknown');
+            }
+            while (personIds.length < faces.count) {
+                personIds.push('');
             }
 
             let entryChanged = false;
@@ -2197,6 +2323,13 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                 const nextName = updatedTargetName ?? 'Unknown';
                 if (names[faceIndex] !== nextName) {
                     names[faceIndex] = nextName;
+                    entryChanged = true;
+                    changed = true;
+                }
+
+                const nextPersonId = updatedTargetPersonId ?? '';
+                if ((personIds[faceIndex] ?? '') !== nextPersonId) {
+                    personIds[faceIndex] = nextPersonId;
                     entryChanged = true;
                     changed = true;
                 }
@@ -2221,6 +2354,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                     ...faces,
                     clusterIds,
                     names,
+                    personIds,
                 },
             };
             affectedEntries.push(updated);
@@ -2262,6 +2396,8 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
 
         const targetName = findClusterNameInEntries(entries, targetClusterId)
             ?? [...sourceSet].map(clusterId => findClusterNameInEntries(entries, clusterId)).find(Boolean);
+        const targetPersonId = findClusterPersonIdInEntries(entries, targetClusterId)
+            ?? [...sourceSet].map(clusterId => findClusterPersonIdInEntries(entries, clusterId)).find(Boolean);
 
         const affectedEntries: PhotoEntry[] = [];
         let changed = false;
@@ -2276,9 +2412,15 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             const names = faces.names
                 ? [...faces.names]
                 : Array.from({ length: faces.count }, () => 'Unknown');
+            const personIds = faces.personIds
+                ? [...faces.personIds]
+                : Array.from({ length: faces.count }, () => '');
 
             while (names.length < faces.count) {
                 names.push('Unknown');
+            }
+            while (personIds.length < faces.count) {
+                personIds.push('');
             }
 
             let entryChanged = false;
@@ -2304,6 +2446,13 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                         entryChanged = true;
                         changed = true;
                     }
+
+                    const nextPersonId = targetPersonId ?? '';
+                    if ((personIds[index] ?? '') !== nextPersonId) {
+                        personIds[index] = nextPersonId;
+                        entryChanged = true;
+                        changed = true;
+                    }
                 }
             }
 
@@ -2317,6 +2466,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                     ...faces,
                     clusterIds,
                     names,
+                    personIds,
                 },
             };
             affectedEntries.push(updated);
@@ -2337,6 +2487,171 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         clusterDimRef.current = await rebuildPersistedClusterStateFromEntries(handle, nextEntries, clusterThreshold);
         clusterThresholdRef.current = clusterThreshold;
     }, [clusterThreshold, entries]);
+
+    const groupFaceClustersAsPerson = useCallback(async (clusterIds: string[]) => {
+        const handle = rootHandleRef.current;
+        if (!handle) {
+            throw new Error('No folder open');
+        }
+
+        const uniqueClusterIds = [...new Set(
+            clusterIds
+                .map(clusterId => clusterId.trim())
+                .filter(Boolean),
+        )];
+        if (uniqueClusterIds.length < 2) {
+            return;
+        }
+
+        const personId = uniqueClusterIds
+            .map(clusterId => findClusterPersonIdInEntries(entries, clusterId))
+            .find(Boolean)
+            ?? createExplicitPersonId();
+        const personName = uniqueClusterIds
+            .map(clusterId => findClusterNameInEntries(entries, clusterId))
+            .find(Boolean);
+        const clusterIdSet = new Set(uniqueClusterIds);
+
+        const dim = await ensureClusterDimensionForEditing();
+        if (dim && personName) {
+            for (const clusterId of uniqueClusterIds) {
+                if (dim.getCluster(clusterId)) {
+                    dim.nameCluster(clusterId, personName);
+                }
+            }
+            await saveClusterState(handle, dim);
+        }
+
+        const affectedEntries: PhotoEntry[] = [];
+        let changed = false;
+
+        const nextEntries = entries.map(entry => {
+            const faces = entry.faces;
+            if (!faces?.clusterIds?.length) {
+                return entry;
+            }
+
+            const names = faces.names
+                ? [...faces.names]
+                : Array.from({ length: faces.count }, () => 'Unknown');
+            const personIds = faces.personIds
+                ? [...faces.personIds]
+                : Array.from({ length: faces.count }, () => '');
+
+            while (names.length < faces.count) {
+                names.push('Unknown');
+            }
+            while (personIds.length < faces.count) {
+                personIds.push('');
+            }
+
+            let entryChanged = false;
+
+            for (let index = 0; index < faces.clusterIds.length; index++) {
+                if (!clusterIdSet.has(faces.clusterIds[index])) {
+                    continue;
+                }
+
+                if ((personIds[index] ?? '') !== personId) {
+                    personIds[index] = personId;
+                    entryChanged = true;
+                    changed = true;
+                }
+
+                if (personName && names[index] !== personName) {
+                    names[index] = personName;
+                    entryChanged = true;
+                    changed = true;
+                }
+            }
+
+            if (!entryChanged) {
+                return entry;
+            }
+
+            const updated = {
+                ...entry,
+                faces: {
+                    ...faces,
+                    names,
+                    personIds,
+                },
+            };
+            affectedEntries.push(updated);
+            return updated;
+        });
+
+        if (!changed) {
+            return;
+        }
+
+        setEntries(nextEntries);
+        await Promise.all(
+            affectedEntries.map(entry =>
+                updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry))
+            ),
+        );
+    }, [ensureClusterDimensionForEditing, entries]);
+
+    const separatePersonGroup = useCallback(async (personId: string) => {
+        const handle = rootHandleRef.current;
+        if (!handle) {
+            throw new Error('No folder open');
+        }
+
+        const normalizedPersonId = normalizePersonId(personId);
+        if (!normalizedPersonId) {
+            return;
+        }
+
+        const affectedEntries: PhotoEntry[] = [];
+        let changed = false;
+
+        const nextEntries = entries.map(entry => {
+            const faces = entry.faces;
+            if (!faces?.personIds?.length) {
+                return entry;
+            }
+
+            const personIds = [...faces.personIds];
+            let entryChanged = false;
+
+            for (let index = 0; index < personIds.length; index++) {
+                if (normalizePersonId(personIds[index]) !== normalizedPersonId) {
+                    continue;
+                }
+
+                personIds[index] = '';
+                entryChanged = true;
+                changed = true;
+            }
+
+            if (!entryChanged) {
+                return entry;
+            }
+
+            const updated = {
+                ...entry,
+                faces: {
+                    ...faces,
+                    personIds,
+                },
+            };
+            affectedEntries.push(updated);
+            return updated;
+        });
+
+        if (!changed) {
+            return;
+        }
+
+        setEntries(nextEntries);
+        await Promise.all(
+            affectedEntries.map(entry =>
+                updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry))
+            ),
+        );
+    }, [entries]);
 
     return {
         isOpen,
@@ -2360,5 +2675,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         deleteFace,
         associateFaceWithCluster,
         mergeFaceClusters,
+        groupFaceClustersAsPerson,
+        separatePersonGroup,
     };
 }

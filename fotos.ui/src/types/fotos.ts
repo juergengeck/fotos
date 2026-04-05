@@ -10,6 +10,7 @@ export interface FaceInfo {
     crops: string[];
     clusterIds?: string[];
     names?: string[];
+    personIds?: string[];
     qrPaths?: string[];
 }
 
@@ -95,6 +96,7 @@ export function getFaceCount(faces?: FaceInfo): number {
         faces.crops.filter(Boolean).length,
         faces.clusterIds?.filter(Boolean).length ?? 0,
         faces.names?.filter(Boolean).length ?? 0,
+        faces.personIds?.filter(Boolean).length ?? 0,
     ];
 
     if (faces.embeddings) {

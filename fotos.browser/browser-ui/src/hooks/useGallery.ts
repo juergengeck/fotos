@@ -69,11 +69,14 @@ export function useGallery(options: UseGalleryOptions = {}) {
     }, [activeClusterId, clusters]);
 
     const clusterPhotos = useMemo(() => {
-        if (!activeClusterId) {
+        if (!activeClusterId || !activeCluster) {
             return [] as PhotoEntry[];
         }
-        return gallery.photos.filter(photo => photo.faces?.clusterIds?.includes(activeClusterId) ?? false);
-    }, [gallery.photos, activeClusterId]);
+        const activeClusterIds = new Set(activeCluster.memberClusterIds);
+        return gallery.photos.filter(photo =>
+            photo.faces?.clusterIds?.some(clusterId => activeClusterIds.has(clusterId)) ?? false,
+        );
+    }, [activeCluster, activeClusterId, gallery.photos]);
     const clusterDayGroups = useMemo(
         () => groupPhotosByDay(clusterPhotos),
         [clusterPhotos],
@@ -87,16 +90,17 @@ export function useGallery(options: UseGalleryOptions = {}) {
         return clusters.filter(cluster =>
             cluster.label.toLowerCase().includes(clusterQuery)
             || cluster.clusterId.toLowerCase().includes(clusterQuery)
+            || cluster.memberClusterIds.some(clusterId => clusterId.toLowerCase().includes(clusterQuery))
             || (cluster.personName ?? '').toLowerCase().includes(clusterQuery),
         );
     }, [clusters, clusterQuery]);
 
     const people = useMemo(
-        () => visibleClusters.filter(cluster => Boolean(cluster.personName)),
+        () => visibleClusters.filter(cluster => Boolean(cluster.personName) || Boolean(cluster.personId)),
         [visibleClusters],
     );
     const groups = useMemo(
-        () => visibleClusters.filter(cluster => !cluster.personName),
+        () => visibleClusters.filter(cluster => !cluster.personName && !cluster.personId),
         [visibleClusters],
     );
     const similarFaces = useMemo(
@@ -110,7 +114,7 @@ export function useGallery(options: UseGalleryOptions = {}) {
 
         const clusterIds = new Set(
             similarFaces
-                .map(match => match.clusterId)
+                .map(match => match.personId ? `person:${match.personId}` : match.clusterId)
                 .filter((value): value is string => Boolean(value)),
         );
 
@@ -126,6 +130,7 @@ export function useGallery(options: UseGalleryOptions = {}) {
                 faceCount: similarFaces.length,
                 photoCount: new Set(similarFaces.map(match => match.photo.hash)).size,
                 photoHashes: [...new Set(similarFaces.map(match => match.photo.hash))],
+                memberClusterIds: [],
             }];
         }
 

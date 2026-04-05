@@ -61,6 +61,8 @@ interface SidebarProps {
     getFileUrl: (relativePath: string) => Promise<string>;
     onAssociateFaceWithCluster: (photoHash: string, faceIndex: number, clusterId: string) => void;
     onMergeFaceClusters: (targetClusterId: string, sourceClusterIds: string[]) => void;
+    onGroupFaceClustersAsPerson: (clusterIds: string[]) => void;
+    onSeparatePersonGroup: (personId: string) => void;
     onOpenSimilarFace: (match: SimilarFaceMatch) => void;
     onDeletePhoto: (hash: string) => void;
     onRenameFace: (clusterId: string, name: string) => Promise<void> | void;
@@ -88,6 +90,8 @@ export function Sidebar({
     getFileUrl,
     onAssociateFaceWithCluster,
     onMergeFaceClusters,
+    onGroupFaceClustersAsPerson,
+    onSeparatePersonGroup,
     onOpenSimilarFace,
     onDeletePhoto,
     onRenameFace,
@@ -113,26 +117,7 @@ export function Sidebar({
                 </div>
 
                 <div className="px-3 py-2 border-b border-white/10">
-                    {folderName ? (
-                        <div className="flex items-center gap-2">
-                            <FolderOpen className="w-3.5 h-3.5 text-white/40 shrink-0" />
-                            <span className="text-xs text-white/60 truncate flex-1">{folderName}</span>
-                            {onRescan && (
-                                <button onClick={onRescan} className="text-[10px] text-white/30 hover:text-white/60">rescan</button>
-                            )}
-                            {onReanalyze && (
-                                <button onClick={onReanalyze} className="text-[10px] text-[#ff9db0]/50 hover:text-[#ff9db0]">reanalyze</button>
-                            )}
-                            {onOpenFolder && (
-                                <button onClick={onOpenFolder} className="text-[10px] text-white/30 hover:text-white/60">change</button>
-                            )}
-                        </div>
-                    ) : onOpenFolder ? (
-                        <button onClick={onOpenFolder} className="flex items-center gap-2 text-xs text-white/40 hover:text-white/60">
-                            <FolderOpen className="w-3.5 h-3.5" />
-                            Open folder...
-                        </button>
-                    ) : null}
+                    <FolderHeader folderName={folderName} onOpenFolder={onOpenFolder} />
                 </div>
 
                 {faceSearchActive && (
@@ -172,6 +157,8 @@ export function Sidebar({
                             getFileUrl={getFileUrl}
                             onAssociateFaceWithCluster={onAssociateFaceWithCluster}
                             onMergeFaceClusters={onMergeFaceClusters}
+                            onGroupFaceClustersAsPerson={onGroupFaceClustersAsPerson}
+                            onSeparatePersonGroup={onSeparatePersonGroup}
                             onOpenSimilarFace={onOpenSimilarFace}
                             onDeletePhoto={onDeletePhoto}
                             onRenameFace={onRenameFace}
@@ -179,7 +166,14 @@ export function Sidebar({
                         />
                     )}
                     {tab === 'manage' && (
-                        <ManageTab settings={settings} onUpdateStorage={onUpdateStorage} />
+                        <ManageTab
+                            settings={settings}
+                            onUpdateStorage={onUpdateStorage}
+                            folderName={folderName}
+                            onOpenFolder={onOpenFolder}
+                            onRescan={onRescan}
+                            onReanalyze={onReanalyze}
+                        />
                     )}
                     {tab === 'settings' && (
                         <SettingsTab
@@ -238,26 +232,7 @@ export function Sidebar({
 
             {/* Folder controls */}
             <div className="px-3 py-2 border-b border-white/10">
-                {folderName ? (
-                    <div className="flex items-center gap-2">
-                        <FolderOpen className="w-3.5 h-3.5 text-white/40 shrink-0" />
-                        <span className="text-xs text-white/60 truncate flex-1">{folderName}</span>
-                        {onRescan && (
-                            <button onClick={onRescan} className="text-[10px] text-white/30 hover:text-white/60">rescan</button>
-                        )}
-                        {onReanalyze && (
-                            <button onClick={onReanalyze} className="text-[10px] text-[#ff9db0]/50 hover:text-[#ff9db0]">reanalyze</button>
-                        )}
-                        {onOpenFolder && (
-                            <button onClick={onOpenFolder} className="text-[10px] text-white/30 hover:text-white/60">change</button>
-                        )}
-                    </div>
-                ) : onOpenFolder ? (
-                    <button onClick={onOpenFolder} className="flex items-center gap-2 text-xs text-white/40 hover:text-white/60">
-                        <FolderOpen className="w-3.5 h-3.5" />
-                        Open folder...
-                    </button>
-                ) : null}
+                <FolderHeader folderName={folderName} onOpenFolder={onOpenFolder} />
             </div>
 
             {/* Face search indicator */}
@@ -304,6 +279,8 @@ export function Sidebar({
                         getFileUrl={getFileUrl}
                         onAssociateFaceWithCluster={onAssociateFaceWithCluster}
                         onMergeFaceClusters={onMergeFaceClusters}
+                        onGroupFaceClustersAsPerson={onGroupFaceClustersAsPerson}
+                        onSeparatePersonGroup={onSeparatePersonGroup}
                         onOpenSimilarFace={onOpenSimilarFace}
                         onDeletePhoto={onDeletePhoto}
                         onRenameFace={onRenameFace}
@@ -311,7 +288,14 @@ export function Sidebar({
                     />
                 )}
                 {tab === 'manage' && (
-                    <ManageTab settings={settings} onUpdateStorage={onUpdateStorage} />
+                    <ManageTab
+                        settings={settings}
+                        onUpdateStorage={onUpdateStorage}
+                        folderName={folderName}
+                        onOpenFolder={onOpenFolder}
+                        onRescan={onRescan}
+                        onReanalyze={onReanalyze}
+                    />
                 )}
                 {tab === 'settings' && (
                     <SettingsTab
@@ -432,21 +416,62 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
     );
 }
 
+function FolderHeader({
+    folderName,
+    onOpenFolder,
+}: {
+    folderName?: string | null;
+    onOpenFolder?: () => void;
+}) {
+    if (folderName) {
+        return (
+            <div className="flex items-center gap-2">
+                <FolderOpen className="w-3.5 h-3.5 text-white/40 shrink-0" />
+                <span className="text-xs text-white/60 truncate">{folderName}</span>
+            </div>
+        );
+    }
+
+    if (onOpenFolder) {
+        return (
+            <button onClick={onOpenFolder} className="flex items-center gap-2 text-xs text-white/40 hover:text-white/60">
+                <FolderOpen className="w-3.5 h-3.5" />
+                Open folder...
+            </button>
+        );
+    }
+
+    return null;
+}
+
 function SectionLabel({ children }: { children: React.ReactNode }) {
     return <div className="text-[10px] text-white/25 uppercase tracking-wider font-medium">{children}</div>;
 }
 
-function CollapsibleSection({ label, defaultOpen = true, children }: { label: string; defaultOpen?: boolean; children: React.ReactNode }) {
+function CollapsibleSection({
+    label,
+    defaultOpen = true,
+    actions,
+    children,
+}: {
+    label: string;
+    defaultOpen?: boolean;
+    actions?: React.ReactNode;
+    children: React.ReactNode;
+}) {
     const [open, setOpen] = useState(defaultOpen);
     return (
         <div>
-            <button
-                onClick={() => setOpen(o => !o)}
-                className="flex w-full items-center gap-1 text-[10px] text-white/25 uppercase tracking-wider font-medium hover:text-white/40 transition-colors"
-            >
-                <ChevronDown className={`w-3 h-3 transition-transform ${open ? '' : '-rotate-90'}`} />
-                {label}
-            </button>
+            <div className="flex items-center justify-between gap-2">
+                <button
+                    onClick={() => setOpen(o => !o)}
+                    className="flex min-w-0 flex-1 items-center gap-1 text-[10px] text-white/25 uppercase tracking-wider font-medium hover:text-white/40 transition-colors"
+                >
+                    <ChevronDown className={`w-3 h-3 transition-transform ${open ? '' : '-rotate-90'}`} />
+                    {label}
+                </button>
+                {actions ? <div className="flex shrink-0 items-center">{actions}</div> : null}
+            </div>
             {open && <div className="mt-1.5 space-y-2">{children}</div>}
         </div>
     );
@@ -467,6 +492,8 @@ function BrowseTab({
     getFileUrl,
     onAssociateFaceWithCluster,
     onMergeFaceClusters,
+    onGroupFaceClustersAsPerson,
+    onSeparatePersonGroup,
     onOpenSimilarFace, onDeletePhoto,
     onRenameFace, onDeleteFace,
 }: {
@@ -496,19 +523,27 @@ function BrowseTab({
     getFileUrl: (relativePath: string) => Promise<string>;
     onAssociateFaceWithCluster: (photoHash: string, faceIndex: number, clusterId: string) => void;
     onMergeFaceClusters: (targetClusterId: string, sourceClusterIds: string[]) => void;
+    onGroupFaceClustersAsPerson: (clusterIds: string[]) => void;
+    onSeparatePersonGroup: (personId: string) => void;
     onOpenSimilarFace: (match: SimilarFaceMatch) => void;
     onDeletePhoto: (hash: string) => void;
     onRenameFace: (clusterId: string, name: string) => Promise<void> | void;
     onDeleteFace: (clusterId: string) => void;
 }) {
-    const selectedAssociationClusterId = activeClusterId && activeClusterId !== 'current-match'
-        ? activeClusterId
+    const activeCluster = clusters.find(cluster => cluster.clusterId === activeClusterId) ?? null;
+    const selectedAssociationClusterId = activeCluster
+        && activeCluster.clusterId !== 'current-match'
+        && activeCluster.memberClusterIds.length === 1
+        ? activeCluster.memberClusterIds[0]
+        : null;
+    const activePersonGroupId = activeCluster?.personId && activeCluster.memberClusterIds.length > 1
+        ? activeCluster.personId
         : null;
     const [selectedClusterCandidateIds, setSelectedClusterCandidateIds] = useState<string[]>([]);
 
     useEffect(() => {
         setSelectedClusterCandidateIds([]);
-    }, [selectedAssociationClusterId]);
+    }, [activeCluster?.clusterId]);
 
     const toggleClusterCandidate = (clusterId: string) => {
         setSelectedClusterCandidateIds(current => (
@@ -523,6 +558,14 @@ function BrowseTab({
             return;
         }
         onMergeFaceClusters(selectedAssociationClusterId, selectedClusterCandidateIds);
+        setSelectedClusterCandidateIds([]);
+    };
+
+    const collapseClustersAsPerson = () => {
+        if (!selectedAssociationClusterId || selectedClusterCandidateIds.length === 0) {
+            return;
+        }
+        onGroupFaceClustersAsPerson([selectedAssociationClusterId, ...selectedClusterCandidateIds]);
         setSelectedClusterCandidateIds([]);
     };
 
@@ -603,7 +646,7 @@ function BrowseTab({
                     {selectedAssociationClusterId && (
                         <div className="rounded-md border border-[#e94560]/25 bg-[#1a1115] px-2.5 py-2">
                             <div className="text-[10px] text-white/50">
-                                Check thumbnails on the right that belong to this cluster.
+                                Check thumbnails on the right, then either merge them into this cluster or manage them as one person.
                             </div>
                             <div className="mt-2 flex items-center gap-1.5">
                                 <button
@@ -615,7 +658,18 @@ function BrowseTab({
                                             : 'bg-white/5 text-white/25 cursor-not-allowed'
                                     }`}
                                 >
-                                    Add Selected {selectedClusterCandidateIds.length > 0 ? `(${selectedClusterCandidateIds.length})` : ''}
+                                    Merge Selected {selectedClusterCandidateIds.length > 0 ? `(${selectedClusterCandidateIds.length})` : ''}
+                                </button>
+                                <button
+                                    onClick={collapseClustersAsPerson}
+                                    disabled={selectedClusterCandidateIds.length === 0}
+                                    className={`rounded-md px-2 py-1 text-[10px] uppercase tracking-[0.16em] transition-colors ${
+                                        selectedClusterCandidateIds.length > 0
+                                            ? 'bg-white/10 text-[#ff9db0] hover:bg-white/15'
+                                            : 'bg-white/5 text-white/25 cursor-not-allowed'
+                                    }`}
+                                >
+                                    One Person
                                 </button>
                                 {selectedClusterCandidateIds.length > 0 && (
                                     <button
@@ -626,6 +680,20 @@ function BrowseTab({
                                     </button>
                                 )}
                             </div>
+                        </div>
+                    )}
+
+                    {activePersonGroupId && (
+                        <div className="rounded-md border border-white/10 bg-white/5 px-2.5 py-2">
+                            <div className="text-[10px] text-white/45">
+                                This person is an explicit collapse of {activeCluster?.memberClusterIds.length ?? 0} clusters.
+                            </div>
+                            <button
+                                onClick={() => onSeparatePersonGroup(activePersonGroupId)}
+                                className="mt-2 rounded-md border border-white/10 bg-black/20 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-white/55 transition-colors hover:bg-black/30 hover:text-white/75"
+                            >
+                                Separate Clusters
+                            </button>
                         </div>
                     )}
 
@@ -640,11 +708,11 @@ function BrowseTab({
                                         active={cluster.clusterId === activeClusterId}
                                         onClick={() => onClusterSelect(cluster.clusterId)}
                                         getFileUrl={getFileUrl}
-                                        showMergeCheckbox={Boolean(selectedAssociationClusterId) && cluster.clusterId !== selectedAssociationClusterId}
-                                        mergeSelected={selectedClusterCandidateIds.includes(cluster.clusterId)}
-                                        onToggleMergeSelected={() => toggleClusterCandidate(cluster.clusterId)}
+                                        showMergeCheckbox={Boolean(selectedAssociationClusterId) && cluster.memberClusterIds.length === 1 && cluster.memberClusterIds[0] !== selectedAssociationClusterId}
+                                        mergeSelected={selectedClusterCandidateIds.includes(cluster.memberClusterIds[0] ?? cluster.clusterId)}
+                                        onToggleMergeSelected={() => toggleClusterCandidate(cluster.memberClusterIds[0] ?? cluster.clusterId)}
                                         onRename={onRenameFace}
-                                        onDelete={onDeleteFace}
+                                        onDelete={cluster.memberClusterIds.length === 1 ? onDeleteFace : undefined}
                                     />
                                 ))}
                             </div>
@@ -662,11 +730,11 @@ function BrowseTab({
                                         active={cluster.clusterId === activeClusterId}
                                         onClick={() => onClusterSelect(cluster.clusterId)}
                                         getFileUrl={getFileUrl}
-                                        showMergeCheckbox={Boolean(selectedAssociationClusterId) && cluster.clusterId !== selectedAssociationClusterId}
-                                        mergeSelected={selectedClusterCandidateIds.includes(cluster.clusterId)}
-                                        onToggleMergeSelected={() => toggleClusterCandidate(cluster.clusterId)}
+                                        showMergeCheckbox={Boolean(selectedAssociationClusterId) && cluster.memberClusterIds.length === 1 && cluster.memberClusterIds[0] !== selectedAssociationClusterId}
+                                        mergeSelected={selectedClusterCandidateIds.includes(cluster.memberClusterIds[0] ?? cluster.clusterId)}
+                                        onToggleMergeSelected={() => toggleClusterCandidate(cluster.memberClusterIds[0] ?? cluster.clusterId)}
                                         onRename={onRenameFace}
-                                        onDelete={onDeleteFace}
+                                        onDelete={cluster.memberClusterIds.length === 1 ? onDeleteFace : undefined}
                                     />
                                 ))}
                             </div>
@@ -689,7 +757,7 @@ function BrowseTab({
                                         onClick={() => onClusterSelect(cluster.clusterId)}
                                         getFileUrl={getFileUrl}
                                         onRename={onRenameFace}
-                                        onDelete={onDeleteFace}
+                                        onDelete={cluster.memberClusterIds.length === 1 ? onDeleteFace : undefined}
                                     />
                                 ))}
                             </div>
@@ -803,7 +871,7 @@ function BrowseTab({
                                         }}
                                         getFileUrl={getFileUrl}
                                         onRename={onRenameFace}
-                                        onDelete={onDeleteFace}
+                                        onDelete={cluster.memberClusterIds.length === 1 ? onDeleteFace : undefined}
                                     />
                                 ))}
                             </div>
@@ -921,13 +989,16 @@ function ClusterBrowseRow({
                     <InlineRenameField
                         value={cluster.personName}
                         fallback={cluster.label}
-                        placeholder="Name this cluster"
-                        onSubmit={name => onRename(cluster.clusterId, name)}
+                        placeholder={cluster.memberClusterIds.length > 1 ? 'Name this person' : 'Name this cluster'}
+                        onSubmit={name => onRename(cluster.memberClusterIds[0] ?? cluster.clusterId, name)}
                     />
                 ) : (
                     <div className="truncate text-[11px] text-white/75">{cluster.label}</div>
                 )}
-                <div className="text-[10px] text-white/25">{cluster.faceCount} faces · {cluster.photoCount} photos</div>
+                <div className="text-[10px] text-white/25">
+                    {cluster.faceCount} faces · {cluster.photoCount} photos
+                    {cluster.memberClusterIds.length > 1 ? ` · ${cluster.memberClusterIds.length} clusters` : ''}
+                </div>
             </div>
             {(showMergeCheckbox || onDelete) && (
                 <div className="flex shrink-0 items-center gap-1.5">
@@ -935,7 +1006,7 @@ function ClusterBrowseRow({
                         <button
                             onClick={event => {
                                 event.stopPropagation();
-                                onDelete(cluster.clusterId);
+                                onDelete(cluster.memberClusterIds[0] ?? cluster.clusterId);
                             }}
                             onKeyDown={event => event.stopPropagation()}
                             className="text-white/20 hover:text-red-400 transition-colors"
@@ -1081,12 +1152,67 @@ function SimilarFaceRow({
     );
 }
 
-function ManageTab({ settings, onUpdateStorage }: {
+function ManageTab({
+    settings,
+    onUpdateStorage,
+    folderName,
+    onOpenFolder,
+    onRescan,
+    onReanalyze,
+}: {
     settings: FotosSettings;
     onUpdateStorage: (updates: Partial<FotosSettings['storage']>) => void;
+    folderName?: string | null;
+    onOpenFolder?: () => void;
+    onRescan?: () => void;
+    onReanalyze?: () => void;
 }) {
     return (
         <>
+            {(folderName || onOpenFolder || onRescan || onReanalyze) && (
+                <CollapsibleSection
+                    label="Folder"
+                    actions={onOpenFolder ? (
+                        <button
+                            type="button"
+                            onClick={onOpenFolder}
+                            className="flex h-5 w-5 items-center justify-center rounded-sm border border-white/10 bg-white/5 text-[12px] leading-none text-white/45 transition-colors hover:bg-white/10 hover:text-white/75"
+                            aria-label="Open folder picker"
+                            title="Open folder picker"
+                        >
+                            +
+                        </button>
+                    ) : undefined}
+                >
+                    <div className="space-y-1.5">
+                        {folderName ? (
+                            <div className="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-2 text-[11px] text-white/55">
+                                <FolderOpen className="h-3 w-3 shrink-0 text-white/35" />
+                                <span className="min-w-0 flex-1 truncate">{folderName}</span>
+                                <span className="text-[9px] uppercase tracking-[0.18em] text-white/18">current</span>
+                            </div>
+                        ) : (
+                            <div className="rounded-md border border-dashed border-white/10 bg-white/[0.03] px-2.5 py-2 text-[11px] text-white/30">
+                                No folder selected
+                            </div>
+                        )}
+
+                        <div className="grid gap-1">
+                            {onRescan && (
+                                <ManageOptionButton onClick={onRescan}>
+                                    Rescan folder
+                                </ManageOptionButton>
+                            )}
+                            {onReanalyze && (
+                                <ManageOptionButton onClick={onReanalyze} accent>
+                                    Reanalyze image AI
+                                </ManageOptionButton>
+                            )}
+                        </div>
+                    </div>
+                </CollapsibleSection>
+            )}
+
             <SectionLabel>Ingestion</SectionLabel>
 
             <div>
@@ -1120,6 +1246,30 @@ function ManageTab({ settings, onUpdateStorage }: {
                 Export as HTML
             </button>
         </>
+    );
+}
+
+function ManageOptionButton({
+    children,
+    onClick,
+    accent = false,
+}: {
+    children: React.ReactNode;
+    onClick: () => void;
+    accent?: boolean;
+}) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className={`w-full rounded-md border px-2.5 py-1.5 text-left text-[11px] transition-colors ${
+                accent
+                    ? 'border-[#e94560]/25 bg-[#e94560]/8 text-[#ff9db0]/75 hover:bg-[#e94560]/14 hover:text-[#ffc3cf]'
+                    : 'border-white/10 bg-white/5 text-white/45 hover:bg-white/10 hover:text-white/68'
+            }`}
+        >
+            {children}
+        </button>
     );
 }
 

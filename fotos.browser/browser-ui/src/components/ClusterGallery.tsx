@@ -120,7 +120,7 @@ export function ClusterCard({
                             value={cluster.personName}
                             fallback={cluster.label}
                             placeholder="Name this cluster"
-                            onSubmit={name => onRename(cluster.clusterId, name)}
+                            onSubmit={name => onRename(cluster.memberClusterIds[0] ?? cluster.clusterId, name)}
                             labelClassName="truncate text-sm font-medium text-white/85"
                             inputClassName="min-w-0 flex-1 rounded-md border border-[#e94560]/35 bg-[#1a1115] px-2 py-1.5 text-sm text-white placeholder:text-white/20 focus:border-[#ff9db0]/60 focus:outline-none"
                         />
@@ -128,7 +128,11 @@ export function ClusterCard({
                         <div className="text-sm font-medium text-white/85 truncate">{cluster.label}</div>
                     )}
                     <div className="text-[11px] text-white/35">
-                        {cluster.personName ? 'Person cluster' : 'Face group'}
+                        {cluster.memberClusterIds.length > 1
+                            ? `Person · ${cluster.memberClusterIds.length} clusters`
+                            : cluster.personName
+                                ? 'Person cluster'
+                                : 'Face group'}
                     </div>
                 </div>
             </div>

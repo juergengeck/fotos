@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+    dataAttrsToFaceExport,
     disposeFaceModels,
+    facesToDataAttrs,
     initFaceDetectionModel,
     initFaceModels,
     initFaceRecognitionModel,
@@ -130,5 +132,32 @@ describe('face model lifecycle', () => {
             '/models/det_10g.onnx',
             '/models/w600k_r50.onnx',
         ]);
+    });
+
+    it('preserves explicit person ids in face metadata attrs', () => {
+        const attrs = facesToDataAttrs({
+            faces: [{
+                detection: {
+                    bbox: [1, 2, 3, 4],
+                    score: 0.99,
+                    landmarks: [],
+                },
+                embedding: new Array(512).fill(0),
+                cropPath: 'faces/a.jpg',
+            }],
+        }, [{
+            clusterId: 'cluster-a',
+            personName: 'Konrad',
+            personId: 'person-1',
+        }]);
+
+        const exported = dataAttrsToFaceExport(attrs);
+
+        expect(exported.clusterInfo).toEqual([{
+            clusterId: 'cluster-a',
+            personName: 'Konrad',
+            personId: 'person-1',
+            qrPath: undefined,
+        }]);
     });
 });

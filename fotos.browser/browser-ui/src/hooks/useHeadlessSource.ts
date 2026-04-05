@@ -189,6 +189,14 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
         // Future: POST to headless
     }, []);
 
+    const groupFaceClustersAsPerson = useCallback(async (_clusterIds: string[]) => {
+        // Future: POST to headless
+    }, []);
+
+    const separatePersonGroup = useCallback(async (_personId: string) => {
+        // Future: POST to headless
+    }, []);
+
     return {
         isOpen,
         surface,
@@ -211,5 +219,7 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
         deleteFace,
         associateFaceWithCluster,
         mergeFaceClusters,
+        groupFaceClustersAsPerson,
+        separatePersonGroup,
     };
 }
