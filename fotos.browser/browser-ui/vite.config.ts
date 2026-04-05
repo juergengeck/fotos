@@ -50,16 +50,31 @@ function getDevHmrOptions(): HmrOptions | undefined {
 }
 
 function buildVersionPlugin(buildId: string): Plugin {
+    const source = JSON.stringify({
+        buildId,
+        builtAt: buildId,
+    }, null, 2);
+
     return {
         name: 'build-version',
+        configureServer(server) {
+            server.middlewares.use((req, res, next) => {
+                const url = new URL(req.url ?? '/', 'http://localhost');
+                if (url.pathname !== '/version.json') {
+                    next();
+                    return;
+                }
+
+                res.setHeader('Content-Type', 'application/json');
+                res.setHeader('Cache-Control', 'no-store');
+                res.end(source);
+            });
+        },
         generateBundle() {
             this.emitFile({
                 type: 'asset',
                 fileName: 'version.json',
-                source: JSON.stringify({
-                    buildId,
-                    builtAt: buildId,
-                }, null, 2),
+                source,
             });
         },
     };
@@ -287,7 +302,10 @@ export default defineConfig({
                 } as any,
             },
             injectManifest: {
-                globPatterns: ['**/*.{js,css,svg,png,woff2}', 'index.html', 'fotos-id.html'],
+                // Keep the worker limited to static icons. HTML and hashed
+                // bundles stay network-fetched so a rollout race can never
+                // leave the app shell stuck on stale assets.
+                globPatterns: ['cam.svg', 'apple-touch-icon.png', 'manifest.webmanifest'],
                 globIgnores: ['**/_worker.js'],
             },
         }),

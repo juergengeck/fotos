@@ -2,6 +2,9 @@ import { defineConfig } from 'vitest/config';
 import path from 'path';
 
 export default defineConfig({
+    define: {
+        __APP_BUILD_ID__: JSON.stringify('current-build'),
+    },
     resolve: {
         alias: [
             {find: '@', replacement: path.resolve(__dirname, 'src')},

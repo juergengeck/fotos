@@ -15,6 +15,10 @@ import { FotosPlan } from '@/lib/FotosPlan';
 import { bootFotosModel } from './lib/onecore-boot';
 import { installHangTrace, traceHang } from './lib/hangTrace';
 import { getRuntimeBrowserCryptoSupport } from './lib/browserCryptoSupport';
+import {
+    SERVICE_WORKER_RELOAD_PARAM,
+    startServiceWorkerUpdates,
+} from './lib/serviceWorkerUpdates';
 import { API_BASE } from './config';
 import { App } from './App';
 import './index.css';
@@ -35,6 +39,14 @@ planRegistry.register('fotos', fotosPlan, {category: 'analytics', description: '
 
 // Keep glue.core aligned with fotos.browser runtime config.
 initGlueCore({ apiBase: API_BASE });
+
+const startupUrl = new URL(window.location.href);
+if (startupUrl.searchParams.has(SERVICE_WORKER_RELOAD_PARAM)) {
+    startupUrl.searchParams.delete(SERVICE_WORKER_RELOAD_PARAM);
+    window.history.replaceState({}, '', startupUrl.toString());
+}
+
+startServiceWorkerUpdates();
 
 // ── HMR bridge (dev only) — canonical GET /api + POST /api/:operation/:method ──
 if (import.meta.hot) {
