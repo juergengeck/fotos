@@ -1,17 +1,16 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Shield, ExternalLink, Check, KeyRound, GripVertical, X, Loader2, LogOut, Key } from 'lucide-react';
+import type { Person } from '@refinio/one.core/lib/recipes.js';
+import type { SHA256IdHash } from '@refinio/one.core/lib/util/type-checks.js';
 import type { FotosModel } from '@/lib/onecore-boot';
-import {
-    DEFAULT_GLUE_CONNECTION_BINDING_ID,
-    getGlueBindingPersonId,
-    getGlueIdentityProfile,
-    nameToIdentity,
-} from '@glueone/glue.core';
 import {
     clearPendingAuthenticationContinuation,
     hasPendingAuthenticationContinuation,
     queueAuthenticationContinuation,
 } from '@/lib/authFlowState';
+import { ensureConfiguredGlueIdentity } from '@/lib/glueIdentity';
+import { resolveGlueIdentityState } from '@/lib/glueIdentityState';
+import { classifyGlueFailure, toGlueHandle, type AuthLoginWarning } from '@/lib/authLoginBridge';
 import { API_BASE } from '../config.js';
 
 import { ChevronDown } from 'lucide-react';
@@ -49,18 +48,24 @@ function setFedCMLoginStatus(status: 'logged-in' | 'logged-out') {
 export function FotosSettings({ model }: FotosSettingsProps) {
     const [syncEnabled, setSyncEnabled] = useState(false);
     const [displayName, setDisplayName] = useState<string | null>(null);
+    const [draftDisplayName, setDraftDisplayName] = useState('');
+    const [publicationIdentity, setPublicationIdentity] = useState<SHA256IdHash<Person> | null>(
+        model?.publicationIdentity ?? null,
+    );
     const [certState, setCertState] = useState<CertState>('ephemeral');
     const [certValidUntil, setCertValidUntil] = useState<string | null>(null);
     const [passkeyCount, setPasskeyCount] = useState(0);
     const [authenticating, setAuthenticating] = useState(false);
     const [authError, setAuthError] = useState<string | null>(null);
+    const [authWarning, setAuthWarning] = useState<AuthLoginWarning | null>(null);
     const [hasRecoveryKey, setHasRecoveryKey] = useState(false);
     const [showPasskeyPrompt, setShowPasskeyPrompt] = useState(false);
     const [registeringPasskey, setRegisteringPasskey] = useState(false);
     const [showAuthenticationHint, setShowAuthenticationHint] = useState(() => hasPendingAuthenticationContinuation());
-
-    const publicationIdentity = model?.publicationIdentity ?? null;
-    const identityReadyForAuthentication = Boolean(publicationIdentity && displayName);
+    const requestedDisplayName = draftDisplayName.trim();
+    const requestedGlueHandle = requestedDisplayName ? toGlueHandle(requestedDisplayName) : '';
+    const requestedIdentity = requestedGlueHandle ? `${requestedGlueHandle}@glue.one` : null;
+    const identityReadyForAuthentication = Boolean(publicationIdentity && requestedDisplayName);
 
     // Load identity state from settings
     useEffect(() => {
@@ -70,24 +75,17 @@ export function FotosSettings({ model }: FotosSettingsProps) {
             try {
                 const { values } = await model.settingsPlan.getSection({ moduleId: 'glue' });
                 const nextSyncEnabled = values.syncEnabled === true;
+                const resolvedIdentity = resolveGlueIdentityState(
+                    values,
+                    model?.publicationIdentity ? String(model.publicationIdentity) : null,
+                );
                 if (cancelled) return;
                 setSyncEnabled(nextSyncEnabled);
+                setPublicationIdentity(resolvedIdentity.publicationIdentity as SHA256IdHash<Person> | null);
+                setDisplayName(resolvedIdentity.displayName);
+                setDraftDisplayName(prev => prev.trim().length > 0 ? prev : (resolvedIdentity.displayName ?? ''));
 
-                const configuredPublicationIdentity = getGlueBindingPersonId(
-                    values,
-                    DEFAULT_GLUE_CONNECTION_BINDING_ID,
-                );
-                const boundProfile = configuredPublicationIdentity
-                    ? getGlueIdentityProfile(values, configuredPublicationIdentity)
-                    : null;
-                const name = typeof boundProfile?.displayName === 'string'
-                    ? boundProfile.displayName.trim()
-                    : typeof values.glueDisplayName === 'string'
-                        ? values.glueDisplayName.trim()
-                        : null;
-                setDisplayName(name);
-
-                if (!nextSyncEnabled || !name || !configuredPublicationIdentity) {
+                if (!nextSyncEnabled || !resolvedIdentity.displayName || !resolvedIdentity.publicationIdentity) {
                     setCertState('ephemeral');
                     setCertValidUntil(null);
                     setFedCMLoginStatus('logged-out');
@@ -95,14 +93,14 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                 }
 
                 // Check registration + cert status
-                const identity = nameToIdentity(name);
+                const identity = `${toGlueHandle(resolvedIdentity.displayName)}@glue.one`;
                 const res = await fetch(`${API_BASE}/api/registration/check/${encodeURIComponent(identity)}`);
                 let nextCertState: CertState = 'ephemeral';
                 if (res.ok) {
                     const result = await res.json();
                     const registered = !(result.available ?? true);
                     if (registered) {
-                        const certRes = await fetch(`${API_BASE}/api/registration/cert/${encodeURIComponent(name)}`);
+                        const certRes = await fetch(`${API_BASE}/api/registration/cert/${encodeURIComponent(resolvedIdentity.displayName)}`);
                         if (certRes.ok) {
                             const certResult = await certRes.json();
                             if (certResult.success && certResult.data?.cert?.validUntil) {
@@ -134,6 +132,7 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                 }
             } catch {
                 if (cancelled) return;
+                setPublicationIdentity(null);
                 setCertState('ephemeral');
                 setCertValidUntil(null);
                 setFedCMLoginStatus('logged-out');
@@ -192,11 +191,46 @@ export function FotosSettings({ model }: FotosSettingsProps) {
         if (!model?.settingsPlan) return;
         setAuthenticating(true);
         setAuthError(null);
+        setAuthWarning(null);
         let queuedContinuation = false;
 
         try {
-            // Enable sync first if needed and bring the user back to settings after reload.
-            if (!syncEnabled) {
+            const trimmedDisplayName = requestedDisplayName || displayName?.trim() || '';
+            if (!trimmedDisplayName) {
+                throw new Error('Enter the name you want to use before authenticating.');
+            }
+            const trimmedGlueHandle = toGlueHandle(trimmedDisplayName);
+            if (!trimmedGlueHandle) {
+                throw new Error('Display name must contain at least one letter or number.');
+            }
+
+            let nextPublicationIdentity = publicationIdentity;
+            const needsIdentityPreparation =
+                !nextPublicationIdentity
+                || trimmedDisplayName !== (displayName?.trim() ?? '');
+
+            if (needsIdentityPreparation) {
+                const prepared = await ensureConfiguredGlueIdentity(
+                    model.settingsPlan,
+                    model.leuteModel,
+                    trimmedDisplayName,
+                    model.ownerId,
+                );
+                nextPublicationIdentity = prepared.personId;
+                setPublicationIdentity(nextPublicationIdentity);
+                setDisplayName(trimmedDisplayName);
+            }
+
+            if (!nextPublicationIdentity) {
+                throw new Error('Authentication is still preparing. Try again in a moment.');
+            }
+
+            const shouldReload =
+                !syncEnabled
+                || !publicationIdentity
+                || nextPublicationIdentity !== publicationIdentity;
+
+            if (shouldReload) {
                 queueAuthenticationContinuation();
                 queuedContinuation = true;
                 await model.settingsPlan.updateSection({
@@ -207,15 +241,13 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                 return;
             }
 
-            if (!model.publicationIdentity || !displayName) {
-                throw new Error('Authentication is still preparing. Try again in a moment.');
-            }
-
-            // The passkey popup handles both first-time registration and returning users.
-            const { authenticateWithPasskeyViaPopup } = await import('@glueone/auth.core');
-            const result = await authenticateWithPasskeyViaPopup(model.publicationIdentity, displayName);
+            // Certification handles both first-time registration and returning users.
+            const { certifyViaPopup } = await import('@glueone/auth.core');
+            const result = await certifyViaPopup(nextPublicationIdentity, trimmedDisplayName);
             if (result.success) {
                 setCertState('certified');
+                setPublicationIdentity(nextPublicationIdentity);
+                setDisplayName(trimmedDisplayName);
                 if (result.data?.cert?.validUntil) {
                     setCertValidUntil(new Date(result.data.cert.validUntil).toLocaleDateString());
                 }
@@ -228,33 +260,57 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                     if (!dismissed) setShowPasskeyPrompt(true);
                 }
             } else {
-                setAuthError(result.error || 'Authentication failed');
+                const warning = classifyGlueFailure(
+                    result.error || 'Authentication failed',
+                    `${trimmedGlueHandle}@glue.one`,
+                );
+                setAuthWarning(warning);
             }
         } catch (err) {
             if (queuedContinuation) {
                 clearPendingAuthenticationContinuation();
                 setShowAuthenticationHint(false);
             }
-            setAuthError((err as Error).message);
+            const message = err instanceof Error ? err.message : 'Authentication failed';
+            if (
+                message.startsWith('Enter the name')
+                || message.startsWith('Authentication is still preparing')
+            ) {
+                setAuthError(message);
+            } else {
+                const warning = classifyGlueFailure(
+                    err,
+                    requestedIdentity ?? 'yourname@glue.one',
+                );
+                setAuthWarning(warning);
+            }
         } finally {
             setAuthenticating(false);
         }
-    }, [model?.settingsPlan, model?.publicationIdentity, syncEnabled, displayName, passkeyCount]);
+    }, [
+        model,
+        syncEnabled,
+        requestedDisplayName,
+        requestedIdentity,
+        displayName,
+        passkeyCount,
+        publicationIdentity,
+    ]);
 
     // Register a passkey after successful authentication.
     const handleSavePasskey = useCallback(async () => {
-        if (!model?.publicationIdentity || !displayName) return;
+        if (!publicationIdentity || !displayName) return;
         setRegisteringPasskey(true);
         try {
             const { registerPasskeyViaPopup } = await import('@glueone/auth.core');
-            const result = await registerPasskeyViaPopup(model.publicationIdentity, displayName);
+            const result = await registerPasskeyViaPopup(publicationIdentity, displayName);
             if (result.success) {
                 setPasskeyCount(prev => prev + 1);
             }
         } catch { /* user cancelled or error — non-fatal */ }
         setRegisteringPasskey(false);
         setShowPasskeyPrompt(false);
-    }, [model?.publicationIdentity, displayName]);
+    }, [publicationIdentity, displayName]);
 
     // Disable sync and reload.
     const handleDisableSync = useCallback(async () => {
@@ -274,19 +330,22 @@ export function FotosSettings({ model }: FotosSettingsProps) {
     }, [model?.settingsPlan]);
 
     const authenticated = certState === 'certified' && syncEnabled;
-    const showPreparationState = syncEnabled && !identityReadyForAuthentication && !authenticated;
+    const needsPreparation = !syncEnabled || !identityReadyForAuthentication;
+    const missingDisplayName = requestedDisplayName.length === 0 || requestedIdentity === null;
     const authenticationButtonDisabled = authenticating
         || !model?.settingsPlan
-        || showPreparationState;
+        || missingDisplayName;
     const authenticationButtonLabel = authenticating
-        ? 'Authenticating...'
-        : !syncEnabled
-            ? 'Enable sync'
-            : showPreparationState
-                ? 'Preparing authentication...'
+        ? (needsPreparation ? 'Preparing authentication...' : 'Authenticating...')
+        : missingDisplayName
+            ? 'Enter display name'
+            : needsPreparation
+                ? 'Prepare authentication'
                 : 'Authenticate';
-    const authenticationDescription = !syncEnabled
-        ? 'Authentication happens in two steps. First enable sync on this device. fotos will reload and bring you back to settings for step 2.'
+    const authenticationDescription = missingDisplayName
+        ? 'Choose the name you want to use for your fotos id and glue.one identity.'
+        : needsPreparation
+            ? 'Authentication happens in two steps. fotos will prepare your local identity, enable sync on this device, reload, and bring you back here for glue.one certification.'
         : showAuthenticationHint
             ? 'Sync is ready on this device. Authenticate below to finish linking your fotos id.'
             : 'Authenticate to sync your photos across devices and use your identity on other ONE apps.';
@@ -297,6 +356,25 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                 {/* ── Not authenticated yet ── */}
                 {!authenticated && (
                     <>
+                        <div className="space-y-1">
+                            <label className="block px-2.5 text-[10px] text-white/25 uppercase tracking-wider">
+                                Display name
+                            </label>
+                            <input
+                                type="text"
+                                value={draftDisplayName}
+                                onChange={event => setDraftDisplayName(event.target.value)}
+                                placeholder="Your name on glue.one"
+                                disabled={authenticating}
+                                className="w-full px-2.5 py-2 bg-white/5 border border-white/10 rounded-md text-[11px] text-white/70 placeholder:text-white/20 focus:outline-none focus:border-white/20"
+                            />
+                            {requestedIdentity && (
+                                <div className="px-2.5 text-[10px] text-white/25">
+                                    {requestedIdentity}
+                                </div>
+                            )}
+                        </div>
+
                         <div className="px-2.5 py-2 bg-white/5 rounded-md text-[11px] text-white/40 leading-relaxed">
                             {authenticationDescription}
                         </div>
@@ -311,14 +389,21 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                                     : 'bg-[#e94560]/80 text-white hover:bg-[#e94560]'
                             }`}
                         >
-                            {(authenticating || showPreparationState) && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                            {authenticating && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                             <Shield className="w-3.5 h-3.5" />
                             {authenticationButtonLabel}
                         </button>
 
-                        {!syncEnabled && (
+                        {needsPreparation && !missingDisplayName && (
                             <div className="px-2.5 text-[10px] text-white/25">
                                 fotos will reopen this tab in settings after the reload.
+                            </div>
+                        )}
+
+                        {authWarning && (
+                            <div className="px-2.5 py-2 bg-amber-500/10 border border-amber-400/20 rounded-md text-[10px] text-amber-100/85 leading-relaxed">
+                                <div className="font-medium text-amber-100">{authWarning.title}</div>
+                                <div className="mt-1 text-amber-100/75">{authWarning.message}</div>
                             </div>
                         )}
 
@@ -396,13 +481,19 @@ export function FotosSettings({ model }: FotosSettingsProps) {
 
                         {/* Inline recovery setup when not configured */}
                         {!hasRecoveryKey && (
-                            <RecoverySecretSection model={model} onComplete={() => setHasRecoveryKey(true)} />
+                            <RecoverySecretSection
+                                publicationIdentity={publicationIdentity}
+                                onComplete={() => setHasRecoveryKey(true)}
+                            />
                         )}
 
                         {/* When recovery IS configured, allow changing it */}
                         {hasRecoveryKey && (
                             <CollapsibleSection label="Change recovery key" defaultOpen={false}>
-                                <RecoverySecretSection model={model} onComplete={() => setHasRecoveryKey(true)} />
+                                <RecoverySecretSection
+                                    publicationIdentity={publicationIdentity}
+                                    onComplete={() => setHasRecoveryKey(true)}
+                                />
                             </CollapsibleSection>
                         )}
 
@@ -455,7 +546,13 @@ interface SelectedImage {
     thumbnailUrl: string;
 }
 
-function RecoverySecretSection({ model, onComplete }: { model: FotosModel | null; onComplete?: () => void }) {
+function RecoverySecretSection({
+    publicationIdentity,
+    onComplete,
+}: {
+    publicationIdentity: string | null;
+    onComplete?: () => void;
+}) {
     const [phase, setPhase] = useState<RecoveryPhase>('idle');
     const [images, setImages] = useState<SelectedImage[]>([]);
     const [pin, setPin] = useState('');
@@ -542,7 +639,7 @@ function RecoverySecretSection({ model, onComplete }: { model: FotosModel | null
             setPhase('submitting');
             setProgress('Registering recovery key...');
 
-            const personId = model?.publicationIdentity ?? '';
+            const personId = publicationIdentity ?? '';
             const body = signRecoveryRequest(result, personId);
 
             const res = await fetch(`${API_BASE}/api/recovery/recover`, {
@@ -569,7 +666,7 @@ function RecoverySecretSection({ model, onComplete }: { model: FotosModel | null
             setError(err instanceof Error ? err.message : 'Key derivation failed');
             setProgress('');
         }
-    }, [images, pin, model, onComplete]);
+    }, [images, pin, publicationIdentity, onComplete]);
 
     const handleReset = useCallback(() => {
         for (const img of images) {

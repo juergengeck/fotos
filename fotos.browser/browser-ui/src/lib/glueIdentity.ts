@@ -1,13 +1,19 @@
 import type LeuteModel from '@refinio/one.models/lib/models/Leute/LeuteModel.js';
 import type { SettingsPlan } from '@refinio/settings.core';
+import {
+  clearGlueIdentityBinding,
+  DEFAULT_GLUE_CONNECTION_BINDING_ID,
+  getGlueBindingPersonId,
+  removeGlueIdentityProfile,
+  updateGlueIdentityBinding,
+  updateGlueIdentityProfile,
+} from '@glueone/glue.core';
 import { getDefaultSecretKeysAsBase64 } from '@refinio/one.core/lib/keychain/keychain.js';
 import { sign, ensureSecretSignKey } from '@refinio/one.core/lib/crypto/sign.js';
 import { getDefaultKeys } from '@refinio/one.core/lib/keychain/keychain.js';
 import { getPublicKeys } from '@refinio/one.core/lib/keychain/key-storage-public.js';
 import { calculateIdHashOfObj } from '@refinio/one.core/lib/util/object.js';
-import {
-  uint8arrayToHexString,
-} from '@refinio/one.core/lib/util/arraybuffer-to-and-from-hex-string.js';
+import { uint8arrayToHexString } from '@refinio/one.core/lib/util/arraybuffer-to-and-from-hex-string.js';
 import { fromByteArray as toBase64, toByteArray as fromBase64 } from 'base64-js';
 import { storeVersionedObject } from '@refinio/one.core/lib/storage-versioned-objects.js';
 import type { SHA256IdHash } from '@refinio/one.core/lib/util/type-checks.js';
@@ -19,8 +25,10 @@ async function getConfiguredGlueIdentity(
   settingsPlan: SettingsPlan,
 ): Promise<SHA256IdHash<Person>> {
   const { values } = await settingsPlan.getSection({ moduleId: 'glue' });
-  const publicationIdentity =
-    typeof values.publicationIdentity === 'string' ? values.publicationIdentity.trim() : '';
+  const publicationIdentity = getGlueBindingPersonId(
+    values,
+    DEFAULT_GLUE_CONNECTION_BINDING_ID,
+  ) ?? '';
 
   if (!publicationIdentity) {
     throw new Error('No glue publication identity configured');
@@ -103,11 +111,18 @@ function isRecoverableConfiguredIdentityError(error: unknown): boolean {
 async function clearConfiguredGlueIdentity(
   settingsPlan: SettingsPlan,
   glueDisplayName?: string | null,
+  configuredPublicationIdentity?: SHA256IdHash<Person> | null,
 ): Promise<void> {
+  const { values } = await settingsPlan
+    .getSection({ moduleId: 'glue' })
+    .catch(() => ({ values: {} as Record<string, unknown> }));
   await settingsPlan.updateSection({
     moduleId: 'glue',
     values: {
-      publicationIdentity: '',
+      ...clearGlueIdentityBinding(values, DEFAULT_GLUE_CONNECTION_BINDING_ID),
+      ...(configuredPublicationIdentity
+        ? removeGlueIdentityProfile(values, configuredPublicationIdentity)
+        : {}),
       ...(glueDisplayName ? { glueDisplayName } : {}),
     },
   });
@@ -132,7 +147,7 @@ async function validateConfiguredGlueIdentity(
     }
 
     console.warn('[fotos.one] Resetting stale configured glue identity:', error);
-    await clearConfiguredGlueIdentity(settingsPlan, glueDisplayName);
+    await clearConfiguredGlueIdentity(settingsPlan, glueDisplayName, configuredPublicationIdentity);
     return null;
   }
 }
@@ -178,7 +193,10 @@ export async function ensureConfiguredGlueIdentity(
   const { values } = await settingsPlan
     .getSection({ moduleId: 'glue' })
     .catch(() => ({ values: {} as Record<string, unknown> }));
-  let configuredPublicationIdentity = asTrimmedString(values.publicationIdentity);
+  let configuredPublicationIdentity = getGlueBindingPersonId(
+    values,
+    DEFAULT_GLUE_CONNECTION_BINDING_ID,
+  );
   if (configuredPublicationIdentity && configuredPublicationIdentity !== ownerId) {
     configuredPublicationIdentity = await validateConfiguredGlueIdentity(
       settingsPlan,
@@ -191,10 +209,33 @@ export async function ensureConfiguredGlueIdentity(
     !configuredPublicationIdentity || configuredPublicationIdentity === ownerId;
 
   if (!needsFreshGlueIdentity) {
-    if (values.glueDisplayName !== trimmedDisplayName) {
+    const nextValues = {
+      ...values,
+      ...updateGlueIdentityProfile(
+        values,
+        configuredPublicationIdentity as SHA256IdHash<Person>,
+        { displayName: trimmedDisplayName },
+      ),
+    };
+    const currentPublicationIdentity = getGlueBindingPersonId(
+      values,
+      DEFAULT_GLUE_CONNECTION_BINDING_ID,
+    );
+    const requiresSettingsUpdate =
+      currentPublicationIdentity !== configuredPublicationIdentity
+      || values.glueDisplayName !== trimmedDisplayName;
+
+    if (requiresSettingsUpdate) {
       await settingsPlan.updateSection({
         moduleId: 'glue',
-        values: { glueDisplayName: trimmedDisplayName },
+        values: {
+          ...nextValues,
+          ...updateGlueIdentityBinding(
+            nextValues,
+            configuredPublicationIdentity as SHA256IdHash<Person>,
+            DEFAULT_GLUE_CONNECTION_BINDING_ID,
+          ),
+        },
       });
     }
     // Ensure PersonName is on the glue Person's profile (retroactive fix + name changes)
@@ -240,8 +281,19 @@ export async function ensureConfiguredGlueIdentity(
   await settingsPlan.updateSection({
     moduleId: 'glue',
     values: {
-      publicationIdentity,
-      glueDisplayName: trimmedDisplayName,
+      ...updateGlueIdentityProfile(values, publicationIdentity, {
+        displayName: trimmedDisplayName,
+      }),
+      ...updateGlueIdentityBinding(
+        {
+          ...values,
+          ...updateGlueIdentityProfile(values, publicationIdentity, {
+            displayName: trimmedDisplayName,
+          }),
+        },
+        publicationIdentity,
+        DEFAULT_GLUE_CONNECTION_BINDING_ID,
+      ),
     },
   });
 
@@ -266,7 +318,10 @@ export async function ensureStartupGlueIdentity(
     .getSection({ moduleId: 'subscription' })
     .catch(() => ({ values: {} as Record<string, unknown> }));
 
-  let configuredPublicationIdentity = asTrimmedString(glueSection.values.publicationIdentity);
+  let configuredPublicationIdentity = getGlueBindingPersonId(
+    glueSection.values,
+    DEFAULT_GLUE_CONNECTION_BINDING_ID,
+  );
   const storedGlueDisplayName = asTrimmedString(glueSection.values.glueDisplayName);
   const subscriptionDisplayName = asTrimmedString(subscriptionSection.values.displayName);
 

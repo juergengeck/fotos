@@ -37,7 +37,6 @@ import PresenceRecipes from '@glueone/glue.core/recipes/PresenceRecipes.js';
 import TimeTrieRecipes from '@glueone/glue.core/recipes/TimeTrieRecipes.js';
 import {
   DEFAULT_GLUE_CONNECTION_BINDING_ID,
-  getGlueBindingPersonId,
 } from '@glueone/glue.core';
 import { AllRecipes as TrustCoreRecipes } from '@refinio/trust.core/recipes';
 import { CubeCoreRecipes } from '../../../../vger/packages/cube.core/dist/recipes/index.js';
@@ -61,6 +60,7 @@ import { registerFotosSettings } from './fotosSettings.js';
 import { grantFotosAccess } from './fotos-manifest.js';
 import { fotosContentRules } from './fotosSyncRules.js';
 import { API_BASE, COMM_SERVER_URL } from '../config.js';
+import { resolveGluePublicationIdentity } from './glueIdentityState.js';
 
 // ---------------------------------------------------------------------------
 // Credentials (auto-generated, stored in localStorage/sessionStorage)
@@ -182,8 +182,9 @@ async function getConfiguredPublicationIdentity(
 }> {
   try {
     const { values } = await settingsPlan.getSection({ moduleId: 'glue' });
-    const configuredPublicationIdentity = getGlueBindingPersonId(
+    const configuredPublicationIdentity = resolveGluePublicationIdentity(
       values,
+      null,
       DEFAULT_GLUE_CONNECTION_BINDING_ID,
     );
     const syncEnabled = values.syncEnabled === true;

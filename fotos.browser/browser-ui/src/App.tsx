@@ -14,8 +14,6 @@ import { shareFile } from '@/lib/platform';
 import { UpdatePrompt } from '@/components/UpdatePrompt';
 import {
     DEFAULT_GLUE_CONNECTION_BINDING_ID,
-    getGlueBindingPersonId,
-    getGlueIdentityProfile,
 } from '@glueone/glue.core';
 import { getFaceCount } from '@refinio/fotos.ui';
 import type { FotosModel } from './lib/onecore-boot';
@@ -31,6 +29,7 @@ import {
     buildPersistentPhotoPath,
     parsePersistentPhotoRouteTarget,
 } from '@/lib/photoRoute';
+import { resolveGlueIdentityState } from '@/lib/glueIdentityState';
 
 interface AppProps {
     fotosModel?: FotosModel;
@@ -153,23 +152,16 @@ async function getLocalIdentitySnapshot(
     const { values } = await targetModel.settingsPlan
         .getSection({ moduleId: 'glue' })
         .catch(() => ({ values: {} as Record<string, unknown> }));
-    const publicationIdentity = getGlueBindingPersonId(
+    const resolvedIdentity = resolveGlueIdentityState(
         values,
+        targetModel.publicationIdentity ? String(targetModel.publicationIdentity) : null,
         DEFAULT_GLUE_CONNECTION_BINDING_ID,
-    ) ?? targetModel.publicationIdentity;
-    const boundProfile = publicationIdentity
-        ? getGlueIdentityProfile(values, publicationIdentity)
-        : null;
-    const glueDisplayName = typeof boundProfile?.displayName === 'string'
-        ? boundProfile.displayName.trim()
-        : typeof values.glueDisplayName === 'string'
-            ? values.glueDisplayName.trim()
-            : null;
+    );
 
     return {
         ownerId: targetModel.ownerId ? String(targetModel.ownerId) : null,
-        publicationIdentity: publicationIdentity ? String(publicationIdentity) : null,
-        glueDisplayName,
+        publicationIdentity: resolvedIdentity.publicationIdentity,
+        glueDisplayName: resolvedIdentity.displayName,
         syncEnabled: values.syncEnabled === true,
         headlessConnected: Boolean(targetModel.headlessConnected),
     };
