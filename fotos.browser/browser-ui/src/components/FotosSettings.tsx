@@ -10,6 +10,7 @@ import {
 } from '@/lib/authFlowState';
 import { ensureConfiguredGlueIdentity } from '@/lib/glueIdentity';
 import { resolveGlueIdentityState } from '@/lib/glueIdentityState';
+import { resolveGlueCertificationState } from '@/lib/glueCertification';
 import { classifyGlueFailure, toGlueHandle, type AuthLoginWarning } from '@/lib/authLoginBridge';
 import { API_BASE } from '../config.js';
 
@@ -88,45 +89,27 @@ export function FotosSettings({ model }: FotosSettingsProps) {
                 if (!nextSyncEnabled || !resolvedIdentity.displayName || !resolvedIdentity.publicationIdentity) {
                     setCertState('ephemeral');
                     setCertValidUntil(null);
+                    setPasskeyCount(0);
+                    setHasRecoveryKey(false);
                     setFedCMLoginStatus('logged-out');
                     return;
                 }
 
-                // Check registration + cert status
-                const identity = `${toGlueHandle(resolvedIdentity.displayName)}@glue.one`;
-                const res = await fetch(`${API_BASE}/api/registration/check/${encodeURIComponent(identity)}`);
-                let nextCertState: CertState = 'ephemeral';
-                if (res.ok) {
-                    const result = await res.json();
-                    const registered = !(result.available ?? true);
-                    if (registered) {
-                        const certRes = await fetch(`${API_BASE}/api/registration/cert/${encodeURIComponent(resolvedIdentity.displayName)}`);
-                        if (certRes.ok) {
-                            const certResult = await certRes.json();
-                            if (certResult.success && certResult.data?.cert?.validUntil) {
-                                if (cancelled) return;
-                                nextCertState = 'certified';
-                                setCertState('certified');
-                                setCertValidUntil(new Date(certResult.data.cert.validUntil).toLocaleDateString());
-                            } else {
-                                if (cancelled) return;
-                                nextCertState = 'anchored';
-                                setCertState('anchored');
-                            }
-                        } else {
-                            if (cancelled) return;
-                            nextCertState = 'anchored';
-                            setCertState('anchored');
-                        }
-                    } else {
-                        if (cancelled) return;
-                        nextCertState = 'anchored';
-                        setCertState('anchored');
-                    }
+                const certificationState = await resolveGlueCertificationState({
+                    publicationIdentity: resolvedIdentity.publicationIdentity as SHA256IdHash<Person>,
+                    displayName: resolvedIdentity.displayName,
+                });
+                if (cancelled) return;
+
+                setCertState(certificationState.certState);
+                setCertValidUntil(certificationState.certValidUntil);
+                if (certificationState.certState !== 'certified') {
+                    setPasskeyCount(0);
+                    setHasRecoveryKey(false);
                 }
 
-                setFedCMLoginStatus(nextCertState === 'certified' ? 'logged-in' : 'logged-out');
-                if (nextCertState === 'certified') {
+                setFedCMLoginStatus(certificationState.certState === 'certified' ? 'logged-in' : 'logged-out');
+                if (certificationState.certState === 'certified') {
                     clearPendingAuthenticationContinuation();
                     setShowAuthenticationHint(false);
                 }
