@@ -12,6 +12,7 @@ import {
 import type {
     FaceAnalysisResult,
     FaceClusterInfo,
+    FotosEntry,
     GalleryIntakePlan,
     GallerySurface,
     GallerySurfaceProfile,
@@ -24,6 +25,7 @@ import {
     syncPhotosToOneCore,
     listenForFotosUpdates,
     extractFaceDataFromEntry,
+    extractThumbUrlFromEntry,
     writeFaceCropsToFilesystem,
 } from '@/lib/fotos-sync';
 import { traceHang } from '@/lib/hangTrace';
@@ -431,6 +433,212 @@ function parseOneIndex(html: string, relPath: string): PhotoEntry[] {
     });
 
     return entries;
+}
+
+function basenameFromPath(value?: string): string | null {
+    if (!value) {
+        return null;
+    }
+
+    const segments = value.split('/').filter(Boolean);
+    return segments.length > 0 ? segments[segments.length - 1]! : null;
+}
+
+function dirnameFromPath(value?: string): string | undefined {
+    if (!value || !value.includes('/')) {
+        return undefined;
+    }
+
+    const segments = value.split('/').filter(Boolean);
+    if (segments.length <= 1) {
+        return undefined;
+    }
+
+    return segments.slice(0, -1).join('/');
+}
+
+function buildExifFromFotosEntry(entry: FotosEntry): ExifData | undefined {
+    const remoteEntry = entry as FotosEntry & Record<string, unknown>;
+    const gpsLat = typeof remoteEntry.exifGpsLat === 'number' ? remoteEntry.exifGpsLat : undefined;
+    const gpsLon = typeof remoteEntry.exifGpsLon === 'number' ? remoteEntry.exifGpsLon : undefined;
+    const exif: ExifData = {
+        ...(typeof remoteEntry.exifDate === 'string' ? { date: remoteEntry.exifDate } : {}),
+        ...(typeof remoteEntry.exifCamera === 'string' ? { camera: remoteEntry.exifCamera } : {}),
+        ...(typeof remoteEntry.exifLens === 'string' ? { lens: remoteEntry.exifLens } : {}),
+        ...(typeof remoteEntry.exifFocalLength === 'string' ? { focalLength: remoteEntry.exifFocalLength } : {}),
+        ...(typeof remoteEntry.exifAperture === 'string' ? { aperture: remoteEntry.exifAperture } : {}),
+        ...(typeof remoteEntry.exifShutter === 'string' ? { shutter: remoteEntry.exifShutter } : {}),
+        ...(typeof remoteEntry.exifIso === 'number' ? { iso: remoteEntry.exifIso } : {}),
+        ...(typeof remoteEntry.exifWidth === 'number' ? { width: remoteEntry.exifWidth } : {}),
+        ...(typeof remoteEntry.exifHeight === 'number' ? { height: remoteEntry.exifHeight } : {}),
+        ...(gpsLat !== undefined && gpsLon !== undefined ? { gps: { lat: gpsLat, lon: gpsLon } } : {}),
+    };
+
+    return Object.keys(exif).length > 0 ? exif : undefined;
+}
+
+function buildFaceInfoFromExtractedEntry(
+    entry: FotosEntry,
+    cropPaths: string[],
+    faceData: Awaited<ReturnType<typeof extractFaceDataFromEntry>>,
+): FaceInfo | undefined {
+    if (!entry.faceCount || entry.faceCount <= 0) {
+        return undefined;
+    }
+
+    if (!faceData) {
+        return {
+            count: entry.faceCount,
+            bboxes: [],
+            scores: [],
+            embeddings: null,
+            crops: [],
+        };
+    }
+
+    const faces = faceData.faces.faces;
+    return {
+        count: faces.length,
+        bboxes: faces.map(face => face.detection.bbox),
+        scores: faces.map(face => face.detection.score),
+        embeddings: faces.some(face => face.embedding.some(value => value !== 0))
+            ? (() => {
+                const flat = new Float32Array(faces.length * EMBEDDING_DIM);
+                for (let index = 0; index < faces.length; index++) {
+                    flat.set(faces[index].embedding, index * EMBEDDING_DIM);
+                }
+                return flat;
+            })()
+            : null,
+        crops: cropPaths,
+    };
+}
+
+function buildFilesystemFaceInfoFromRemoteEntry(
+    photo: PhotoEntry,
+    entry: FotosEntry,
+    faceData: Awaited<ReturnType<typeof extractFaceDataFromEntry>>,
+): FaceInfo | undefined {
+    if (!entry.faceCount || entry.faceCount <= 0) {
+        return undefined;
+    }
+
+    const relPath = (photo.sourcePath ?? '').includes('/')
+        ? (photo.sourcePath ?? '').split('/').slice(0, -1).join('/')
+        : '';
+    const prefix = relPath ? `${relPath}/one/` : 'one/';
+
+    if (!faceData) {
+        return {
+            count: entry.faceCount,
+            bboxes: [],
+            scores: [],
+            embeddings: null,
+            crops: [],
+        };
+    }
+
+    const faces = faceData.faces.faces;
+    return {
+        count: faces.length,
+        bboxes: faces.map(face => face.detection.bbox),
+        scores: faces.map(face => face.detection.score),
+        embeddings: faces.some(face => face.embedding.some(value => value !== 0))
+            ? (() => {
+                const flat = new Float32Array(faces.length * EMBEDDING_DIM);
+                for (let index = 0; index < faces.length; index++) {
+                    flat.set(faces[index].embedding, index * EMBEDDING_DIM);
+                }
+                return flat;
+            })()
+            : null,
+        crops: faces.map(face => face.cropPath ? `${prefix}${face.cropPath}` : ''),
+    };
+}
+
+async function materializeRemoteFotosEntry(
+    entry: FotosEntry,
+): Promise<{
+    photo: PhotoEntry;
+    cacheEntries: Array<[key: string, url: string]>;
+    faceData: Awaited<ReturnType<typeof extractFaceDataFromEntry>>;
+}> {
+    const thumbUrl = await extractThumbUrlFromEntry(entry);
+    const faceData = await extractFaceDataFromEntry(entry);
+    const cacheEntries: Array<[key: string, url: string]> = [];
+    const remoteSourceKey = thumbUrl ? `remote:${entry.contentHash}` : undefined;
+
+    if (thumbUrl && remoteSourceKey) {
+        cacheEntries.push([remoteSourceKey, thumbUrl]);
+    }
+
+    const cropPaths = (faceData?.cropBlobs ?? []).map((cropBlob, index) => {
+        const cropKey = `remote-face:${entry.contentHash}:${index}`;
+        const cropUrl = URL.createObjectURL(new Blob([cropBlob], { type: 'image/jpeg' }));
+        cacheEntries.push([cropKey, cropUrl]);
+        return cropKey;
+    });
+
+    const capturedAt = entry.capturedAt
+        ?? buildExifFromFotosEntry(entry)?.date
+        ?? entry.updatedAt
+        ?? new Date().toISOString();
+    const updatedAt = entry.updatedAt ?? capturedAt;
+    const originalSourcePath = typeof entry.sourcePath === 'string' ? entry.sourcePath : undefined;
+    const folderPath = typeof entry.folderPath === 'string'
+        ? entry.folderPath
+        : dirnameFromPath(originalSourcePath);
+    const remoteName = basenameFromPath(originalSourcePath) ?? `${entry.contentHash.slice(0, 12)}.photo`;
+
+    return {
+        photo: {
+            hash: entry.contentHash,
+            name: remoteName,
+            managed: 'metadata',
+            ...(remoteSourceKey ? { sourcePath: remoteSourceKey } : {}),
+            ...(folderPath ? { folderPath } : {}),
+            ...(entry.mime ? { mimeType: entry.mime } : {}),
+            ...(remoteSourceKey ? { thumb: remoteSourceKey } : {}),
+            tags: folderPath ? [folderPath.split('/')[0]!] : [],
+            capturedAt,
+            updatedAt,
+            exif: buildExifFromFotosEntry(entry),
+            addedAt: updatedAt,
+            size: entry.size,
+            faces: buildFaceInfoFromExtractedEntry(entry, cropPaths, faceData),
+        },
+        cacheEntries,
+        faceData,
+    };
+}
+
+function shouldAdoptIncomingFaces(currentFaces: FaceInfo | undefined, nextFaces: FaceInfo | undefined): boolean {
+    const currentCount = currentFaces?.count ?? 0;
+    const nextCount = nextFaces?.count ?? 0;
+    return nextCount > currentCount;
+}
+
+function isRemoteGalleryEntry(entry: PhotoEntry): boolean {
+    return entry.sourcePath?.startsWith('remote:') === true
+        || entry.thumb?.startsWith('remote:') === true;
+}
+
+function mergeWithRemoteEntries(
+    nextEntries: PhotoEntry[],
+    previousEntries: readonly PhotoEntry[],
+): PhotoEntry[] {
+    const merged = [...nextEntries];
+    const seenHashes = new Set(nextEntries.map(entry => entry.hash));
+
+    for (const previousEntry of previousEntries) {
+        if (!isRemoteGalleryEntry(previousEntry) || seenHashes.has(previousEntry.hash)) {
+            continue;
+        }
+
+        merged.push(previousEntry);
+    }
+
+    return merged;
 }
 
 /**
@@ -887,6 +1095,8 @@ export interface FolderAccess {
     mobile: boolean;
     /** Trigger the primary intake action for this surface. */
     openFolder: () => void;
+    /** Debug/test helper that always opens the file-input intake path. */
+    openLocalFiles: () => boolean;
     /** Rescan the current folder */
     rescan: () => Promise<void>;
     /** Force rerun of enabled analysis for the current folder */
@@ -1098,106 +1308,118 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     ]);
 
     // Listen for FotosEntry objects arriving via CHUM sync from remote peers.
-    // When a remote peer enriches a photo with face data, extract full face data
-    // from BLOBs, write to one/index.html + one/faces/, and update in-memory state.
+    // Materialize remote-only entries so shared thumbs appear in the gallery,
+    // and merge face enrichment into matching local files when available.
     useEffect(() => {
         const unsub = listenForFotosUpdates((entry) => {
-            // Only interested in entries that carry face enrichment
-            if (!entry.faceCount || entry.faceCount <= 0) return;
-
-            // Extract face data from BLOBs and write to filesystem (async, fire-and-forget)
             void (async () => {
                 const rootHandle = rootHandleRef.current;
-
-                // Extract full face data from ONE.core BLOBs
-                const faceData = await extractFaceDataFromEntry(entry);
+                const materialized = await materializeRemoteFotosEntry(entry);
+                let shouldKeepRemoteAssets = false;
+                let shouldOpenRemoteGallery = false;
+                let shouldWriteFilesystemFaces = false;
+                let filesystemPhoto: PhotoEntry | null = null;
 
                 setEntries(prev => {
-                    // Find matching local photo by contentHash
                     const idx = prev.findIndex(p => p.hash === entry.contentHash);
-                    if (idx < 0) return prev;
+                    if (idx < 0) {
+                        shouldKeepRemoteAssets = true;
+                        shouldOpenRemoteGallery = !isOpen && !rootHandle;
+                        console.log(
+                            `[fotos-sync] Remote photo imported: ${materialized.photo.name}`,
+                        );
+                        return [...prev, materialized.photo];
+                    }
 
                     const photo = prev[idx];
+                    const nextFaces = shouldAdoptIncomingFaces(photo.faces, materialized.photo.faces)
+                        ? (
+                            rootHandle
+                                ? buildFilesystemFaceInfoFromRemoteEntry(photo, entry, materialized.faceData)
+                                : materialized.photo.faces
+                        )
+                        : photo.faces;
+                    const nextPhoto: PhotoEntry = {
+                        ...photo,
+                        capturedAt: photo.capturedAt ?? materialized.photo.capturedAt,
+                        updatedAt: materialized.photo.updatedAt ?? photo.updatedAt,
+                        exif: photo.exif ?? materialized.photo.exif,
+                        folderPath: photo.folderPath ?? materialized.photo.folderPath,
+                        mimeType: photo.mimeType ?? materialized.photo.mimeType,
+                        thumb: photo.thumb ?? materialized.photo.thumb,
+                        sourcePath: photo.sourcePath ?? materialized.photo.sourcePath,
+                        faces: nextFaces,
+                    };
 
-                    // Skip if local photo already has face data
-                    if (photo.faces && photo.faces.count > 0) return prev;
+                    const changed = nextPhoto.capturedAt !== photo.capturedAt
+                        || nextPhoto.updatedAt !== photo.updatedAt
+                        || nextPhoto.exif !== photo.exif
+                        || nextPhoto.folderPath !== photo.folderPath
+                        || nextPhoto.mimeType !== photo.mimeType
+                        || nextPhoto.thumb !== photo.thumb
+                        || nextPhoto.sourcePath !== photo.sourcePath
+                        || nextPhoto.faces !== photo.faces;
+                    if (!changed) {
+                        return prev;
+                    }
 
-                    // Build face info from extracted data or fall back to count-only
-                    const relPath = (photo.sourcePath ?? '').includes('/')
-                        ? (photo.sourcePath ?? '').split('/').slice(0, -1).join('/')
-                        : '';
-                    const prefix = relPath ? `${relPath}/one/` : 'one/';
-
-                    let faceInfo: FaceInfo;
-                    if (faceData) {
-                        const faces = faceData.faces.faces;
-                        faceInfo = {
-                            count: faces.length,
-                            bboxes: faces.map(f => f.detection.bbox),
-                            scores: faces.map(f => f.detection.score),
-                            embeddings: faces.some(f => f.embedding.some(v => v !== 0))
-                                ? (() => {
-                                    const flat = new Float32Array(faces.length * EMBEDDING_DIM);
-                                    for (let i = 0; i < faces.length; i++) {
-                                        flat.set(faces[i].embedding, i * EMBEDDING_DIM);
-                                    }
-                                    return flat;
-                                })()
-                                : null,
-                            crops: faces.map(f => f.cropPath ? `${prefix}${f.cropPath}` : ''),
-                        };
-                    } else {
-                        faceInfo = {
-                            count: entry.faceCount!,
-                            bboxes: [],
-                            scores: [],
-                            embeddings: null,
-                            crops: [],
-                        };
+                    shouldKeepRemoteAssets = true;
+                    if (rootHandle && nextPhoto.faces !== photo.faces && materialized.faceData) {
+                        shouldWriteFilesystemFaces = true;
+                        filesystemPhoto = nextPhoto;
                     }
 
                     const updated = [...prev];
-                    updated[idx] = {...photo, faces: faceInfo};
+                    updated[idx] = nextPhoto;
 
                     console.log(
-                        `[fotos-sync] Remote enrichment: ${photo.name} → ${entry.faceCount} faces`
-                        + (faceData ? ` (${faceData.cropBlobs.length} crops)` : ' (count only)'),
+                        `[fotos-sync] Remote update: ${photo.name}`
+                        + (entry.faceCount ? ` → ${entry.faceCount} faces` : ''),
                     );
-
-                    // Write to filesystem in the background (non-blocking)
-                    if (rootHandle && faceData) {
-                        void (async () => {
-                            try {
-                                // Write face data attributes to one/index.html
-                                await updateIndexHtmlFaceData(rootHandle, photo, faceData.dataAttrs);
-
-                                // Write face crops to one/faces/
-                                await writeFaceCropsToFilesystem(
-                                    rootHandle,
-                                    photo,
-                                    entry.contentHash,
-                                    faceData.cropBlobs,
-                                );
-
-                                console.log(
-                                    `[fotos-sync] Wrote face data to filesystem for ${photo.name}`,
-                                );
-                            } catch (err) {
-                                console.warn(
-                                    `[fotos-sync] Failed to write face data for ${photo.name}:`,
-                                    err,
-                                );
-                            }
-                        })();
-                    }
-
                     return updated;
                 });
+
+                if (shouldKeepRemoteAssets) {
+                    for (const [key, url] of materialized.cacheEntries) {
+                        urlCacheRef.current.set(key, url);
+                    }
+                } else {
+                    for (const [, url] of materialized.cacheEntries) {
+                        URL.revokeObjectURL(url);
+                    }
+                }
+
+                if (shouldOpenRemoteGallery) {
+                    setFolderName(currentFolderName => currentFolderName ?? 'shared');
+                    setIsOpen(true);
+                }
+
+                if (rootHandle && shouldWriteFilesystemFaces && filesystemPhoto && materialized.faceData) {
+                    const photoForWrite = filesystemPhoto as PhotoEntry;
+                    try {
+                        await updateIndexHtmlFaceData(rootHandle, photoForWrite, materialized.faceData.dataAttrs);
+                        await writeFaceCropsToFilesystem(
+                            rootHandle,
+                            photoForWrite,
+                            entry.contentHash,
+                            materialized.faceData.cropBlobs,
+                        );
+
+                        console.log(
+                            `[fotos-sync] Wrote face data to filesystem for ${photoForWrite.name}`,
+                        );
+                    } catch (err) {
+                        console.warn(
+                            `[fotos-sync] Failed to write face data for ${photoForWrite.name}:`,
+                            err,
+                        );
+                    }
+                }
             })();
         });
 
         return unsub;
-    }, []);
+    }, [isOpen]);
 
     const updateFacePreparationProgress = useCallback((progress: FaceWorkerProgress) => {
         const activePass = facePassProgressRef.current;
@@ -1705,10 +1927,19 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     }, [entries, runBackgroundSemanticPass]);
 
     const clearUrlCache = useCallback(() => {
-        for (const url of urlCacheRef.current.values()) {
+        for (const [key, url] of urlCacheRef.current.entries()) {
+            if (key.startsWith('remote:') || key.startsWith('remote-face:')) {
+                continue;
+            }
             URL.revokeObjectURL(url);
         }
-        urlCacheRef.current.clear();
+        for (const key of Array.from(urlCacheRef.current.keys())) {
+            if (key.startsWith('remote:') || key.startsWith('remote-face:')) {
+                continue;
+            }
+
+            urlCacheRef.current.delete(key);
+        }
     }, []);
 
     /** Open a directory handle: scan, ingest if needed, background face pass, sync */
@@ -1741,9 +1972,9 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             if (allowsLocalFaceEnrichment) {
                 const ensured = await ensureClusterDimension(handle, ingested, clusterThreshold);
                 ingested = ensured.entries;
-                setEntries(ingested);
                 void runBackgroundFacePass(handle, ingested);
             }
+            setEntries(prev => mergeWithRemoteEntries(ingested, prev));
             syncPhotosToOneCore(ingested, handle).catch(err =>
                 console.warn('[fotos-sync]', err));
         } else {
@@ -1755,9 +1986,9 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             if (allowsLocalFaceEnrichment) {
                 const ensured = await ensureClusterDimension(handle, currentEntries, clusterThreshold);
                 currentEntries = ensured.entries;
-                setEntries(currentEntries);
                 void runBackgroundFacePass(handle, currentEntries);
             }
+            setEntries(prev => mergeWithRemoteEntries(currentEntries, prev));
             syncPhotosToOneCore(currentEntries, handle).catch(err =>
                 console.warn('[fotos-sync]', err));
         }
@@ -1807,7 +2038,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             setIngestProgress(null);
             const photoEntries: PhotoEntry[] = mobileEntries.map(m => {
                 if (m.objectUrl) urlCacheRef.current.set(m.sourcePath, m.objectUrl);
-                if (m.thumb) urlCacheRef.current.set(`thumb:${m.hash}`, m.thumb);
+                if (m.thumb) urlCacheRef.current.set(m.thumb, m.thumb);
                 return {
                     hash: m.hash,
                     name: m.name,
@@ -1815,7 +2046,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                     sourcePath: m.sourcePath,
                     folderPath: m.folderPath,
                     mimeType: m.mimeType,
-                    thumb: m.thumb ? `thumb:${m.hash}` : undefined,
+                    thumb: m.thumb,
                     tags: m.tags,
                     capturedAt: m.capturedAt,
                     updatedAt: m.updatedAt,
@@ -1824,7 +2055,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                     size: m.size,
                 };
             });
-            setEntries(photoEntries);
+            setEntries(prev => mergeWithRemoteEntries(photoEntries, prev));
             syncPhotosToOneCore(photoEntries, null).catch(err =>
                 console.warn('[fotos-sync]', err));
             console.log(`[share-target] Imported ${files.length} shared photos`);
@@ -1859,7 +2090,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             // Convert to PhotoEntry and cache object URLs
             const photoEntries: PhotoEntry[] = mobileEntries.map(m => {
                 if (m.objectUrl) urlCacheRef.current.set(m.sourcePath, m.objectUrl);
-                if (m.thumb) urlCacheRef.current.set(`thumb:${m.hash}`, m.thumb);
+                if (m.thumb) urlCacheRef.current.set(m.thumb, m.thumb);
                 return {
                     hash: m.hash,
                     name: m.name,
@@ -1867,7 +2098,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                     sourcePath: m.sourcePath,
                     folderPath: m.folderPath,
                     mimeType: m.mimeType,
-                    thumb: m.thumb ? `thumb:${m.hash}` : undefined,
+                    thumb: m.thumb,
                     tags: m.tags,
                     capturedAt: m.capturedAt,
                     updatedAt: m.updatedAt,
@@ -1876,7 +2107,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                     size: m.size,
                 };
             });
-            setEntries(photoEntries);
+            setEntries(prev => mergeWithRemoteEntries(photoEntries, prev));
             // Fire-and-forget ONE.core sync (no rootHandle on mobile — no thumbnails)
             syncPhotosToOneCore(photoEntries, null).catch(err =>
                 console.warn('[fotos-sync]', err));
@@ -1890,20 +2121,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     // NOT async — iOS Safari PWA drops user-activation for programmatic
     // input.click() when the handler is async, causing the photo picker to
     // silently refuse to open (requiring multiple taps).
-    const openFolder = useCallback(() => {
-        if (usesWritableLibraryAttach && 'showDirectoryPicker' in window) {
-            void (async () => {
-                try {
-                    const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
-                    saveLastFolder(handle).catch(() => {});
-                    await openFromHandle(handle);
-                } catch {
-                    // User cancelled the directory picker.
-                }
-            })();
-            return;
-        }
-
+    const openLocalFiles = useCallback(() => {
         // Reuse a persistent hidden file input so Safari treats it as a
         // trusted element.  Creating a fresh <input> on every tap is unreliable
         // in iOS Safari standalone/PWA mode.
@@ -1930,7 +2148,25 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             void handleMobileFiles(input);
         };
         input.click();
-    }, [handleMobileFiles, openFromHandle, usesWritableLibraryAttach]);
+        return true;
+    }, [handleMobileFiles]);
+
+    const openFolder = useCallback(() => {
+        if (usesWritableLibraryAttach && 'showDirectoryPicker' in window) {
+            void (async () => {
+                try {
+                    const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
+                    saveLastFolder(handle).catch(() => {});
+                    await openFromHandle(handle);
+                } catch {
+                    // User cancelled the directory picker.
+                }
+            })();
+            return;
+        }
+
+        openLocalFiles();
+    }, [openFromHandle, openLocalFiles, usesWritableLibraryAttach]);
 
     const rescan = useCallback(async () => {
         if (!rootHandleRef.current) return;
@@ -1943,9 +2179,9 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             if (allowsLocalFaceEnrichment) {
                 const ensured = await ensureClusterDimension(handle, found, clusterThreshold);
                 found = ensured.entries;
-                setEntries(found);
                 void runBackgroundFacePass(handle, found);
             }
+            setEntries(prev => mergeWithRemoteEntries(found, prev));
             syncPhotosToOneCore(found, handle).catch(err =>
                 console.warn('[fotos-sync]', err));
         } finally {
@@ -2123,6 +2359,9 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     const getFileUrl = useCallback(async (relativePath: string): Promise<string> => {
         const cached = urlCacheRef.current.get(relativePath);
         if (cached) return cached;
+        if (relativePath.startsWith('blob:') || relativePath.startsWith('data:')) {
+            return relativePath;
+        }
 
         if (!rootHandleRef.current) throw new Error('No folder open');
         const file = await readFileFromHandle(rootHandleRef.current, relativePath);
@@ -2136,6 +2375,9 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
 
         const cached = urlCacheRef.current.get(entry.thumb);
         if (cached) return cached;
+        if (entry.thumb.startsWith('blob:') || entry.thumb.startsWith('data:')) {
+            return entry.thumb;
+        }
 
         if (!rootHandleRef.current) return null;
 
@@ -2665,6 +2907,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         ingestProgress,
         mobile,
         openFolder,
+        openLocalFiles,
         rescan,
         reanalyzeFaces,
         ensureSemanticEmbeddings,

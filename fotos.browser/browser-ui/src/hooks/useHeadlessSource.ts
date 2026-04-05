@@ -165,6 +165,8 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
         // No-op: already connected to headless
     }, []);
 
+    const openLocalFiles = useCallback(() => false, []);
+
     const reanalyzeFaces = useCallback(async () => {
         // Future: trigger server-side face analysis
     }, []);
@@ -209,6 +211,7 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
         ingestProgress: null,
         mobile: false,
         openFolder,
+        openLocalFiles,
         rescan,
         reanalyzeFaces,
         ensureSemanticEmbeddings,

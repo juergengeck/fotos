@@ -4,7 +4,7 @@
  * Follows the same pattern as glue.browser's bootGlueModel():
  *   1. Create MultiUser with all required recipes
  *   2. Login or register with auto-generated credentials (localStorage/sessionStorage)
- *   3. Initialize ModuleRegistry (CoreModule, TrustModule, ConnectionModule, GlueModule)
+ *   3. Initialize ModuleRegistry (CoreModule, ChatModule, IndexModule, TrustModule, ConnectionModule, GlueModule)
  *   4. Activate glue.one only when sync is explicitly enabled
  *   5. Fire-and-forget headless connection when sync is enabled
  *   6. Return FotosModel
@@ -15,17 +15,19 @@ import type LeuteModel from '@refinio/one.models/lib/models/Leute/LeuteModel.js'
 import type ConnectionsModel from '@refinio/one.models/lib/models/ConnectionsModel.js';
 import type { ConnectionModule as ConnectionModuleType } from '@vger/vger.core/modules/ConnectionModule.js';
 import type { SHA256IdHash } from '@refinio/one.core/lib/util/type-checks.js';
-import type { Person } from '@refinio/one.core/lib/recipes.js';
+import type { Person, Recipe } from '@refinio/one.core/lib/recipes.js';
 import type { TrustPlan } from '@refinio/trust.core/plans/TrustPlan.js';
 
 // ModuleRegistry + modules
 import { ModuleRegistry } from '@refinio/api/plan-system';
 import { RefinioApiRecipes } from '@refinio/api/recipes';
 import { CoreModule } from '@vger/vger.core/modules/CoreModule.js';
+import { ChatModule } from '@vger/vger.core/modules/ChatModule.js';
+import { IndexModule } from '@vger/vger.core/modules/IndexModule.js';
 import { TrustModule } from '@vger/vger.core/modules/TrustModule.js';
 import { ConnectionModule } from '@vger/vger.core/modules/ConnectionModule.js';
-import { contentRules } from '@vger/vger.core/modules';
 import { GlueModule } from '@vger/vger.glue';
+import { ExportPlan } from '@vger/vger.core/plans/ExportPlan.js';
 
 // Recipes
 import RecipesStable from '@refinio/one.models/lib/recipes/recipes-stable.js';
@@ -38,6 +40,8 @@ import {
   getGlueBindingPersonId,
 } from '@glueone/glue.core';
 import { AllRecipes as TrustCoreRecipes } from '@refinio/trust.core/recipes';
+import { CubeCoreRecipes } from '../../../../vger/packages/cube.core/dist/recipes/index.js';
+import { CHAT_CORE_RECIPES } from '../../../../vger/packages/chat.core/dist/recipes/index.js';
 import { FotosRecipes } from '@refinio/fotos.core';
 import {
   SettingsRecipes,
@@ -55,6 +59,7 @@ import { getDefaultKeys } from '@refinio/one.core/lib/keychain/keychain.js';
 import { registerFotosHistorySettings } from './fotosHistorySettings.js';
 import { registerFotosSettings } from './fotosSettings.js';
 import { grantFotosAccess } from './fotos-manifest.js';
+import { fotosContentRules } from './fotosSyncRules.js';
 import { API_BASE, COMM_SERVER_URL } from '../config.js';
 
 // ---------------------------------------------------------------------------
@@ -227,10 +232,13 @@ async function initModules(
   const syncEnabled = glueStartup.syncEnabled;
   publicationIdentity = glueStartup.publicationIdentity;
 
-  // ModuleRegistry: CoreModule -> TrustModule -> ConnectionModule -> GlueModule
+  // ModuleRegistry: CoreModule -> ChatModule -> IndexModule -> TrustModule -> ConnectionModule -> GlueModule
   const registry = new ModuleRegistry();
 
+  const exportPlan = new ExportPlan();
   const coreModule = new CoreModule(commServerUrl);
+  const chatModule = new ChatModule();
+  const indexModule = new IndexModule();
   const trustModule = new TrustModule();
   let connectionModule: ConnectionModuleType | null = null;
   let connectionModuleWithFotos: (ConnectionModuleType & {
@@ -250,9 +258,12 @@ async function initModules(
     getInfo() { return { initialized: true, ownerId: getInstanceOwnerIdHash() }; },
   };
   registry.supply('OneCore', oneCore);
-  registry.supply('SyncRules', contentRules);
+  registry.supply('SyncRules', fotosContentRules);
   registry.supply('SettingsPlan', settingsPlan);
+  registry.supply('ExportPlan', exportPlan);
   registry.register(coreModule);
+  registry.register(chatModule);
+  registry.register(indexModule);
   registry.register(trustModule);
 
   let glueModule: GlueModule | null = null;
@@ -391,10 +402,12 @@ export async function bootFotosModel(
       ...PresenceRecipes,
       ...TimeTrieRecipes,
       ...TrustCoreRecipes,
+      ...CubeCoreRecipes,
       ...SettingsRecipes,
+      ...CHAT_CORE_RECIPES,
       ...RefinioApiRecipes,
       ...FotosRecipes,
-    ],
+    ] as Recipe[],
   });
   oneInstance = one;
 

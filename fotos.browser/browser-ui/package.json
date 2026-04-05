@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test:integration:fotos-share": "node ./scripts/fotos-browser-sync-dev-integration.mjs",
+    "test:live:fotos-share": "node ./scripts/fotos-live-integration.mjs",
     "test": "node ./scripts/run-vitest.mjs run",
     "typecheck": "tsc --noEmit"
   },

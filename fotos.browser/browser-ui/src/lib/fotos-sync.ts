@@ -87,6 +87,23 @@ async function storeThumbnailBlob(
     }
 }
 
+async function storeEphemeralThumbnailBlob(
+    thumbUrl: string,
+): Promise<SHA256Hash<BLOB> | undefined> {
+    try {
+        const response = await fetch(thumbUrl);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        const buffer = await response.arrayBuffer();
+        const result = await storeArrayBufferAsBlob(buffer);
+        return result.hash;
+    } catch (err) {
+        console.warn(`[fotos-sync] Failed to store ephemeral thumbnail ${thumbUrl}:`, err);
+        return undefined;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Face data extraction from CHUM-synced FotosEntry BLOBs
 // ---------------------------------------------------------------------------
@@ -172,6 +189,22 @@ export async function extractFaceDataFromEntry(entry: FotosEntry): Promise<Extra
     return {faces, dataAttrs, cropBlobs};
 }
 
+export async function extractThumbUrlFromEntry(entry: FotosEntry): Promise<string | null> {
+    if (!entry.thumb) {
+        return null;
+    }
+
+    try {
+        const buffer = await readBlobAsArrayBuffer(entry.thumb);
+        return URL.createObjectURL(new Blob([buffer], {
+            type: entry.mime || 'application/octet-stream',
+        }));
+    } catch (err) {
+        console.warn('[fotos-sync] Failed to read thumb BLOB:', err);
+        return null;
+    }
+}
+
 /**
  * Write face crop images to one/faces/ directory via File System Access API.
  *
@@ -250,8 +283,12 @@ export async function syncPhotoToOneCore(
     }
 
     // Store thumbnail as BLOB if available
-    if (photo.thumb && rootHandle) {
-        const thumbHash = await storeThumbnailBlob(rootHandle, photo.thumb);
+    if (photo.thumb) {
+        const thumbHash = rootHandle
+            ? await storeThumbnailBlob(rootHandle, photo.thumb)
+            : (photo.thumb.startsWith('blob:') || photo.thumb.startsWith('data:'))
+                ? await storeEphemeralThumbnailBlob(photo.thumb)
+                : undefined;
         if (thumbHash) {
             entry.thumb = thumbHash;
         }
@@ -319,11 +356,14 @@ export async function syncPhotosToOneCore(
  * Skips entries with status 'exists' (already in storage) to avoid processing
  * objects we just stored ourselves.
  *
- * @param onEntryReceived - Called with the full FotosEntry when a new version arrives
+ * @param onEntryReceived - Called with the full FotosEntry and its version hash when a new version arrives
  * @returns Unsubscribe function for cleanup
  */
 export function listenForFotosUpdates(
-    onEntryReceived: (entry: FotosEntry) => void,
+    onEntryReceived: (
+        entry: FotosEntry,
+        metadata: { versionHash: string | null },
+    ) => void,
 ): () => void {
     return onVersionedObj.addListener(result => {
         // Only process newly stored objects, not re-reads of existing ones
@@ -333,6 +373,8 @@ export function listenForFotosUpdates(
         if ((result.obj as { $type$: string }).$type$ !== 'FotosEntry') return;
 
         const entry = result.obj as unknown as FotosEntry;
-        onEntryReceived(entry);
+        onEntryReceived(entry, {
+            versionHash: typeof result.hash === 'string' ? result.hash : null,
+        });
     });
 }

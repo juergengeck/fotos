@@ -12,12 +12,21 @@ import { useBreadcrumbHistory } from '@/hooks/useBreadcrumbHistory';
 import { useSettings } from '@/hooks/useSettings';
 import { shareFile } from '@/lib/platform';
 import { UpdatePrompt } from '@/components/UpdatePrompt';
+import {
+    DEFAULT_GLUE_CONNECTION_BINDING_ID,
+    getGlueBindingPersonId,
+    getGlueIdentityProfile,
+} from '@glueone/glue.core';
 import { getFaceCount } from '@refinio/fotos.ui';
 import type { FotosModel } from './lib/onecore-boot';
 import { setModelUpdater } from './lib/onecore-boot';
 import { traceHang } from './lib/hangTrace';
 import type { SimilarFaceMatch } from '@/lib/cluster-gallery';
+import { shouldExposeFotosDebugApi } from '@/lib/fotosLiveDiagnostics';
+import { fotosShareController, type FotosShareSnapshot } from '@/lib/fotosShareController';
 import { isSnapshotEqual, type FotosBreadcrumbSnapshot } from '@/lib/fotosHistorySettings';
+import { grantFotosAccess } from '@/lib/fotos-manifest';
+import { ensureConfiguredGlueIdentity } from '@/lib/glueIdentity';
 import {
     buildPersistentPhotoPath,
     parsePersistentPhotoRouteTarget,
@@ -56,6 +65,114 @@ function areRouteLocationsEqual(
     return left.pathname === right.pathname
         && left.search === right.search
         && left.hash === right.hash;
+}
+
+interface FotosDebugApi {
+    getStatus: () => {
+        initialized: boolean;
+        ownerId: string | null;
+        publicationIdentity: string | null;
+        headlessConnected: boolean;
+        isOpen: boolean;
+        folderName: string | null;
+        entryCount: number;
+        visiblePhotoCount: number;
+    };
+    getLocalIdentitySnapshot: () => Promise<{
+        ownerId: string | null;
+        publicationIdentity: string | null;
+        glueDisplayName: string | null;
+        syncEnabled: boolean;
+        headlessConnected: boolean;
+    }>;
+    prepareIdentity: (displayName: string) => Promise<{
+        personId: string;
+        created: boolean;
+        syncEnabled: boolean;
+        reloadRequired: boolean;
+    }>;
+    getPresenceSnapshot: () => Promise<unknown | null>;
+    getOnlinePeers: () => Array<{
+        personId: string;
+        displayName: string | null;
+        hasVerifiedIdentity: boolean;
+        transportCapabilities: string[];
+    }>;
+    getPeerConnectionInfo: (personId: string) => {
+        online: boolean;
+        advertisedDisplayName: string | null;
+        certifiedDisplayName: string | null;
+        advertisedEncryptionKey: string | null;
+        coordinatorState: string | null;
+        encryptionKey: string | null;
+        certifiedEncryptionKeys: string[];
+        certifiedCredentialIssuedAt: number | null;
+        transportCapabilities: string[];
+        hasVerifiedIdentity: boolean;
+    };
+    forceRouteKeyConnect: (personId: string, keySource?: 'advertised' | 'certified') => Promise<{
+        started: true;
+        encryptionKey: string;
+        transportCapabilities: string[];
+        keySource: 'advertised' | 'certified';
+    }>;
+    grantFotosAccess: (personId: string) => Promise<{ granted: true; personId: string }>;
+    getFotosSyncState: () => Promise<FotosShareSnapshot>;
+    getShareState: () => Promise<FotosShareSnapshot>;
+    getGalleryState: () => {
+        isOpen: boolean;
+        folderName: string | null;
+        totalCount: number;
+        visibleCount: number;
+        items: Array<{
+            hash: string;
+            name: string;
+            sourcePath?: string;
+            thumb?: string;
+            capturedAt?: string;
+            updatedAt?: string;
+            faceCount: number;
+        }>;
+    };
+    openLocalPicker: () => boolean;
+}
+
+async function getLocalIdentitySnapshot(
+    targetModel: FotosModel | null | undefined,
+): Promise<Awaited<ReturnType<FotosDebugApi['getLocalIdentitySnapshot']>>> {
+    if (!targetModel?.initialized) {
+        return {
+            ownerId: null,
+            publicationIdentity: null,
+            glueDisplayName: null,
+            syncEnabled: false,
+            headlessConnected: false,
+        };
+    }
+
+    const { values } = await targetModel.settingsPlan
+        .getSection({ moduleId: 'glue' })
+        .catch(() => ({ values: {} as Record<string, unknown> }));
+    const publicationIdentity = getGlueBindingPersonId(
+        values,
+        DEFAULT_GLUE_CONNECTION_BINDING_ID,
+    ) ?? targetModel.publicationIdentity;
+    const boundProfile = publicationIdentity
+        ? getGlueIdentityProfile(values, publicationIdentity)
+        : null;
+    const glueDisplayName = typeof boundProfile?.displayName === 'string'
+        ? boundProfile.displayName.trim()
+        : typeof values.glueDisplayName === 'string'
+            ? values.glueDisplayName.trim()
+            : null;
+
+    return {
+        ownerId: targetModel.ownerId ? String(targetModel.ownerId) : null,
+        publicationIdentity: publicationIdentity ? String(publicationIdentity) : null,
+        glueDisplayName,
+        syncEnabled: values.syncEnabled === true,
+        headlessConnected: Boolean(targetModel.headlessConnected),
+    };
 }
 
 export function App({ fotosModel: initialModel }: AppProps) {
@@ -554,6 +671,245 @@ export function App({ fotosModel: initialModel }: AppProps) {
         gallery.setActiveClusterId(null);
         openPhotoRoute(match.photo.hash);
     }, [gallery, openPhotoRoute]);
+
+    const debugRuntimeRef = useRef({
+        model: fotosModel,
+        folder: gallery.folder,
+        visiblePhotos,
+        entries: gallery.folder.entries,
+    });
+    debugRuntimeRef.current = {
+        model: fotosModel,
+        folder: gallery.folder,
+        visiblePhotos,
+        entries: gallery.folder.entries,
+    };
+
+    useEffect(() => {
+        if (!fotosModel?.initialized) {
+            fotosShareController.reset();
+            return;
+        }
+
+        void fotosShareController.start();
+
+        return () => {
+            fotosShareController.stop();
+        };
+    }, [fotosModel?.initialized]);
+
+    useEffect(() => {
+        fotosShareController.updateState({
+            isOpen: gallery.folder.isOpen,
+            folderName: gallery.folder.folderName,
+            entries: gallery.folder.entries,
+            visibleHashes: visiblePhotos.map(photo => photo.hash),
+        });
+    }, [
+        gallery.folder.entries,
+        gallery.folder.folderName,
+        gallery.folder.isOpen,
+        visiblePhotos,
+    ]);
+
+    useEffect(() => {
+        if (!shouldExposeFotosDebugApi(import.meta.env.DEV, window.location.search)) {
+            return;
+        }
+
+        const debugWindow = window as Window & { __fotosDebug?: FotosDebugApi };
+        const debugApi: FotosDebugApi = {
+            getStatus: () => {
+                const { model: activeModel, folder, visiblePhotos: activeVisiblePhotos, entries: activeEntries } = debugRuntimeRef.current;
+                return {
+                    initialized: Boolean(activeModel?.initialized),
+                    ownerId: activeModel?.ownerId ? String(activeModel.ownerId) : null,
+                    publicationIdentity: activeModel?.publicationIdentity ? String(activeModel.publicationIdentity) : null,
+                    headlessConnected: Boolean(activeModel?.headlessConnected),
+                    isOpen: folder.isOpen,
+                    folderName: folder.folderName,
+                    entryCount: activeEntries.length,
+                    visiblePhotoCount: activeVisiblePhotos.length,
+                };
+            },
+            getLocalIdentitySnapshot: async () => await getLocalIdentitySnapshot(debugRuntimeRef.current.model),
+            prepareIdentity: async (displayName: string) => {
+                const activeModel = debugRuntimeRef.current.model;
+                if (!activeModel?.settingsPlan) {
+                    throw new Error('fotos.one model is not initialized');
+                }
+
+                const snapshot = await getLocalIdentitySnapshot(activeModel);
+                const result = await ensureConfiguredGlueIdentity(
+                    activeModel.settingsPlan,
+                    activeModel.leuteModel,
+                    displayName,
+                    activeModel.ownerId,
+                );
+
+                if (!snapshot.syncEnabled) {
+                    await activeModel.settingsPlan.updateSection({
+                        moduleId: 'glue',
+                        values: { syncEnabled: true },
+                    });
+                }
+
+                const reloadRequired = !snapshot.syncEnabled || snapshot.publicationIdentity !== result.personId;
+                return {
+                    personId: String(result.personId),
+                    created: result.created,
+                    syncEnabled: true,
+                    reloadRequired,
+                };
+            },
+            getPresenceSnapshot: async () => {
+                const activeModel = debugRuntimeRef.current.model;
+                if (!activeModel?.glueModule?.presenceTrieService) {
+                    return null;
+                }
+
+                return await activeModel.glueModule.presenceTrieService.getDebugSnapshot(24);
+            },
+            getOnlinePeers: () => {
+                const activeModel = debugRuntimeRef.current.model;
+                const presenceService = activeModel?.glueModule?.presenceTrieService;
+                if (!presenceService) {
+                    return [];
+                }
+
+                return presenceService.getOnlinePeerIds().map(personId => ({
+                    personId,
+                    displayName: presenceService.getDisplayName(personId) ?? null,
+                    hasVerifiedIdentity: presenceService.hasVerifiedIdentity(personId) ?? false,
+                    transportCapabilities: presenceService.getTransportCapabilities(personId) ?? [],
+                }));
+            },
+            getPeerConnectionInfo: (personId: string) => {
+                const activeModel = debugRuntimeRef.current.model;
+                const presenceService = activeModel?.glueModule?.presenceTrieService;
+                const peerDebugInfo = presenceService?.getPeerDebugInfo(personId);
+                const glueModuleWithPeerState = activeModel?.glueModule as {
+                    getPeerConnectionState?: (targetPersonId: string) => string | undefined;
+                } | undefined;
+
+                return {
+                    online: peerDebugInfo?.online ?? false,
+                    advertisedDisplayName: peerDebugInfo?.advertisedDisplayName ?? null,
+                    certifiedDisplayName: peerDebugInfo?.certifiedDisplayName ?? null,
+                    advertisedEncryptionKey: peerDebugInfo?.advertisedEncryptionKey ?? null,
+                    coordinatorState: glueModuleWithPeerState?.getPeerConnectionState?.(personId) ?? null,
+                    encryptionKey: presenceService?.getEncryptionKey(personId) ?? null,
+                    certifiedEncryptionKeys: peerDebugInfo?.certifiedEncryptionKeys ?? [],
+                    certifiedCredentialIssuedAt: peerDebugInfo?.certifiedCredentialIssuedAt ?? null,
+                    transportCapabilities: presenceService?.getTransportCapabilities(personId) ?? [],
+                    hasVerifiedIdentity: presenceService?.hasVerifiedIdentity(personId) ?? false,
+                };
+            },
+            forceRouteKeyConnect: async (personId: string, keySource: 'advertised' | 'certified' = 'advertised') => {
+                const activeModel = debugRuntimeRef.current.model;
+                if (
+                    !activeModel?.initialized ||
+                    !activeModel.publicationIdentity ||
+                    !activeModel.glueModule?.presenceTrieService
+                ) {
+                    throw new Error('fotos.one glue runtime is not initialized');
+                }
+
+                const presenceService = activeModel.glueModule.presenceTrieService;
+                const peerDebugInfo = presenceService.getPeerDebugInfo(personId);
+                const advertisedEncryptionKey = peerDebugInfo?.advertisedEncryptionKey ?? null;
+                const certifiedEncryptionKey = presenceService.getEncryptionKey(personId);
+                const encryptionKey =
+                    keySource === 'certified'
+                        ? certifiedEncryptionKey
+                        : advertisedEncryptionKey ?? certifiedEncryptionKey;
+
+                if (!encryptionKey) {
+                    throw new Error(`No ${keySource} encryption key available for ${personId}`);
+                }
+
+                const glueModuleWithRequest = activeModel.glueModule as {
+                    requestPeerConnection?: (targetPersonId: string) => boolean;
+                };
+                const transportCapabilities = presenceService.getTransportCapabilities(personId) ?? ['webrtc', 'commserver-relay'];
+                if (
+                    keySource !== 'certified' &&
+                    typeof glueModuleWithRequest.requestPeerConnection === 'function' &&
+                    glueModuleWithRequest.requestPeerConnection(personId)
+                ) {
+                    return {
+                        started: true as const,
+                        encryptionKey,
+                        transportCapabilities,
+                        keySource: 'advertised' as const,
+                    };
+                }
+
+                await activeModel.connectionModule?.connectToPeerByKey(
+                    encryptionKey,
+                    activeModel.publicationIdentity,
+                    transportCapabilities,
+                    personId as any,
+                );
+
+                return {
+                    started: true as const,
+                    encryptionKey,
+                    transportCapabilities,
+                    keySource:
+                        keySource === 'advertised' && advertisedEncryptionKey
+                            ? 'advertised'
+                            : 'certified',
+                };
+            },
+            grantFotosAccess: async (personId: string) => {
+                await grantFotosAccess(personId as any);
+                fotosShareController.recordGrant(personId);
+                return {
+                    granted: true as const,
+                    personId,
+                };
+            },
+            getFotosSyncState: async () => {
+                await fotosShareController.refreshManifest();
+                return fotosShareController.getSnapshot();
+            },
+            getShareState: async () => {
+                await fotosShareController.refreshManifest();
+                return fotosShareController.getSnapshot();
+            },
+            getGalleryState: () => {
+                const { folder, visiblePhotos: activeVisiblePhotos, entries: activeEntries } = debugRuntimeRef.current;
+                return {
+                    isOpen: folder.isOpen,
+                    folderName: folder.folderName,
+                    totalCount: activeEntries.length,
+                    visibleCount: activeVisiblePhotos.length,
+                    items: activeEntries.map(photo => ({
+                        hash: photo.hash,
+                        name: photo.name,
+                        ...(photo.sourcePath ? { sourcePath: photo.sourcePath } : {}),
+                        ...(photo.thumb ? { thumb: photo.thumb } : {}),
+                        ...(photo.capturedAt ? { capturedAt: photo.capturedAt } : {}),
+                        ...(photo.updatedAt ? { updatedAt: photo.updatedAt } : {}),
+                        faceCount: getFaceCount(photo.faces),
+                    })),
+                };
+            },
+            openLocalPicker: () => {
+                debugRuntimeRef.current.folder.openLocalFiles();
+                return true;
+            },
+        };
+
+        debugWindow.__fotosDebug = debugApi;
+
+        return () => {
+            if (debugWindow.__fotosDebug === debugApi) {
+                delete debugWindow.__fotosDebug;
+            }
+        };
+    }, []);
 
     const appContent = (() => {
         // Ingestion in progress — show progress overlay
