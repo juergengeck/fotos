@@ -52,6 +52,7 @@ interface RouteLocationSnapshot {
 interface PersistedShareContact {
     personId: string;
     displayName: string | null;
+    glueIdentity: string | null;
 }
 
 function getCurrentRouteLocation(): RouteLocationSnapshot {
@@ -353,6 +354,12 @@ export function App({ fotosModel: initialModel }: AppProps) {
                     const contacts: PersistedShareContact[] = rawContacts.map((contact) => {
                             const personId = typeof contact.personId === 'string' ? contact.personId.trim() : '';
                             const displayName = typeof contact.name === 'string' ? contact.name.trim() : '';
+                            const contactEmail = typeof contact.email === 'string' ? contact.email.trim().toLowerCase() : '';
+                            const contactIdentity = typeof contact.identity === 'string' ? contact.identity.trim().toLowerCase() : '';
+                            const glueIdentity = (
+                                contactIdentity
+                                || contactEmail
+                            ) || null;
                             if (!personId || ownKnownPersonIds.has(personId)) {
                                 return null;
                             }
@@ -360,6 +367,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                             return {
                                 personId,
                                 displayName: displayName || null,
+                                glueIdentity,
                             };
                         }).filter((contact): contact is PersistedShareContact => contact !== null);
 
@@ -368,6 +376,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         peerOptionsByPersonId.set(contact.personId, {
                             personId: contact.personId,
                             displayName: existing?.displayName ?? contact.displayName,
+                            glueIdentity: existing?.glueIdentity ?? contact.glueIdentity,
                             online: existing?.online ?? false,
                             hasVerifiedIdentity: existing?.hasVerifiedIdentity ?? false,
                             persistent: true,

@@ -92,6 +92,8 @@ export interface FotosModel {
       data?: Array<{
         personId?: unknown;
         name?: unknown;
+        email?: unknown;
+        identity?: unknown;
         createdAt?: unknown;
         updatedAt?: unknown;
       }>;
@@ -107,6 +109,8 @@ export interface FotosModel {
       contacts?: Array<{
         personId?: unknown;
         name?: unknown;
+        email?: unknown;
+        identity?: unknown;
         createdAt?: unknown;
         updatedAt?: unknown;
       }>;

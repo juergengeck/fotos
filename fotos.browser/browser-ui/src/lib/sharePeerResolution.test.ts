@@ -1,3 +1,4 @@
+import '@refinio/one.core/lib/system/load-nodejs.js';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -27,7 +28,7 @@ describe('resolveGlueIdentityForPeer', () => {
 });
 
 describe('resolveTokenToPersonId', () => {
-    it('prefers persistent glue contacts for plain names without an @', () => {
+    it('prefers persistent glue contacts for plain names without an @', async () => {
         const peers: SharePeerOption[] = [
             createPeer({
                 personId: 'person-online',
@@ -41,10 +42,10 @@ describe('resolveTokenToPersonId', () => {
             }),
         ];
 
-        expect(resolveTokenToPersonId('alice', peers)).toBe('person-contact');
+        await expect(resolveTokenToPersonId('alice', peers)).resolves.toBe('person-contact');
     });
 
-    it('resolves explicit glue handles against persistent contacts', () => {
+    it('resolves explicit glue handles against persistent contacts', async () => {
         const peers: SharePeerOption[] = [
             createPeer({
                 personId: 'person-contact',
@@ -53,11 +54,21 @@ describe('resolveTokenToPersonId', () => {
             }),
         ];
 
-        expect(resolveTokenToPersonId('@alice', peers)).toBe('person-contact');
-        expect(resolveTokenToPersonId('alice@glue.one', peers)).toBe('person-contact');
+        await expect(resolveTokenToPersonId('@alice', peers)).resolves.toBe('person-contact');
+        await expect(resolveTokenToPersonId('alice@glue.one', peers)).resolves.toBe('person-contact');
     });
 
-    it('still accepts direct person id input', () => {
+    it('derives a person id from an explicit glue identity when no peer is known yet', async () => {
+        const fullIdentityPersonId = await resolveTokenToPersonId('fu@glue.one', []);
+        const shorthandPersonId = await resolveTokenToPersonId('@fu', []);
+        const bareNamePersonId = await resolveTokenToPersonId('fu', []);
+
+        expect(fullIdentityPersonId).toMatch(/^[0-9a-f]{64}$/i);
+        expect(shorthandPersonId).toBe(fullIdentityPersonId);
+        expect(bareNamePersonId).toBe(fullIdentityPersonId);
+    });
+
+    it('still accepts direct person id input', async () => {
         const peers: SharePeerOption[] = [
             createPeer({
                 personId: '0123456789abcdef0123456789abcdef',
@@ -66,7 +77,7 @@ describe('resolveTokenToPersonId', () => {
             }),
         ];
 
-        expect(resolveTokenToPersonId('0123456789abcdef0123456789abcdef', peers)).toBe(
+        await expect(resolveTokenToPersonId('0123456789abcdef0123456789abcdef', peers)).resolves.toBe(
             '0123456789abcdef0123456789abcdef',
         );
     });
