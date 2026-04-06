@@ -62,7 +62,7 @@ export function FotosSettings({
     );
     const [certState, setCertState] = useState<CertState>('ephemeral');
     const [certValidUntil, setCertValidUntil] = useState<string | null>(null);
-    const [passkeyCount, setPasskeyCount] = useState(0);
+    const [passkeyCount, setPasskeyCount] = useState<number | null>(null);
     const [authenticating, setAuthenticating] = useState(false);
     const [authError, setAuthError] = useState<string | null>(null);
     const [authWarning, setAuthWarning] = useState<AuthLoginWarning | null>(null);
@@ -97,7 +97,7 @@ export function FotosSettings({
                 if (!nextSyncEnabled || !resolvedIdentity.displayName || !resolvedIdentity.publicationIdentity) {
                     setCertState('ephemeral');
                     setCertValidUntil(null);
-                    setPasskeyCount(0);
+                    setPasskeyCount(null);
                     setHasRecoveryKey(false);
                     setFedCMLoginStatus('logged-out');
                     return;
@@ -112,7 +112,7 @@ export function FotosSettings({
                 setCertState(certificationState.certState);
                 setCertValidUntil(certificationState.certValidUntil);
                 if (certificationState.certState !== 'certified') {
-                    setPasskeyCount(0);
+                    setPasskeyCount(null);
                     setHasRecoveryKey(false);
                 }
 
@@ -126,6 +126,7 @@ export function FotosSettings({
                 setPublicationIdentity(null);
                 setCertState('ephemeral');
                 setCertValidUntil(null);
+                setPasskeyCount(null);
                 setFedCMLoginStatus('logged-out');
             }
         })();
@@ -140,29 +141,49 @@ export function FotosSettings({
         setShowAuthenticationHint(false);
     }, [certState]);
 
+    const refreshPasskeyCount = useCallback(async (
+        nextPublicationIdentity: SHA256IdHash<Person>,
+        nextDisplayName: string,
+    ): Promise<number | null> => {
+        try {
+            const { signOwnershipProof } = await import('@glueone/glue.core');
+            const { identity, publicKey, signature } = await signOwnershipProof(
+                nextPublicationIdentity,
+                nextDisplayName,
+                'passkey-list:{identity}',
+            );
+            const res = await fetch(`${API_BASE}/api/registration/passkey/list`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: identity, publicKey, signature }),
+            });
+
+            if (!res.ok) {
+                setPasskeyCount(null);
+                return null;
+            }
+
+            const result = await res.json();
+            if (result.success && result.data?.passkeys) {
+                const nextCount = result.data.passkeys.length;
+                setPasskeyCount(nextCount);
+                return nextCount;
+            }
+        } catch {
+            // passkey count is informational
+        }
+
+        setPasskeyCount(null);
+        return null;
+    }, []);
+
     // Load passkey count
     useEffect(() => {
         if (certState !== 'certified' || !syncEnabled || !displayName || !publicationIdentity) return;
         (async () => {
-            try {
-                const { signOwnershipProof } = await import('@glueone/glue.core');
-                const { identity, publicKey, signature } = await signOwnershipProof(
-                    publicationIdentity, displayName, 'passkey-list:{identity}',
-                );
-                const res = await fetch(`${API_BASE}/api/registration/passkey/list`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name: identity, publicKey, signature }),
-                });
-                if (res.ok) {
-                    const result = await res.json();
-                    if (result.success && result.data?.passkeys) {
-                        setPasskeyCount(result.data.passkeys.length);
-                    }
-                }
-            } catch { /* passkey count is informational */ }
+            await refreshPasskeyCount(publicationIdentity, displayName);
         })();
-    }, [certState, syncEnabled, displayName, publicationIdentity]);
+    }, [certState, syncEnabled, displayName, publicationIdentity, refreshPasskeyCount]);
 
     // Check recovery key status
     useEffect(() => {
@@ -318,8 +339,11 @@ export function FotosSettings({
                 setFedCMLoginStatus('logged-in');
                 clearPendingAuthenticationContinuation();
                 setShowAuthenticationHint(false);
-                // Offer passkey save if this was the first authentication.
-                if (passkeyCount === 0) {
+                const nextPasskeyCount = await refreshPasskeyCount(
+                    nextPublicationIdentity,
+                    trimmedDisplayName,
+                );
+                if (nextPasskeyCount === 0) {
                     const dismissed = localStorage.getItem('fotos_passkey_prompt_dismissed');
                     if (!dismissed) setShowPasskeyPrompt(true);
                 }
@@ -357,9 +381,9 @@ export function FotosSettings({
         requestedDisplayName,
         requestedIdentity,
         displayName,
-        passkeyCount,
         publicationIdentity,
         prepareAuthenticationIdentity,
+        refreshPasskeyCount,
     ]);
 
     const handleRecoverWithFotosProof = useCallback(async () => {
@@ -410,7 +434,11 @@ export function FotosSettings({
             setFedCMLoginStatus('logged-in');
             clearPendingAuthenticationContinuation();
             setShowAuthenticationHint(false);
-            if (passkeyCount === 0) {
+            const nextPasskeyCount = await refreshPasskeyCount(
+                result.personId,
+                trimmedDisplayName,
+            );
+            if (nextPasskeyCount === 0) {
                 const dismissed = localStorage.getItem('fotos_passkey_prompt_dismissed');
                 if (!dismissed) setShowPasskeyPrompt(true);
             }
@@ -428,8 +456,8 @@ export function FotosSettings({
         requestedDisplayName,
         displayName,
         getFotosRecoveryTarget,
-        passkeyCount,
         prepareAuthenticationIdentity,
+        refreshPasskeyCount,
         signFotosClaimWithGlueKey,
     ]);
 
@@ -441,7 +469,7 @@ export function FotosSettings({
             const { registerPasskeyViaPopup } = await import('@glueone/auth.core');
             const result = await registerPasskeyViaPopup(publicationIdentity, displayName);
             if (result.success) {
-                setPasskeyCount(prev => prev + 1);
+                setPasskeyCount(prev => prev === null ? 1 : prev + 1);
             }
         } catch { /* user cancelled or error — non-fatal */ }
         setRegisteringPasskey(false);
@@ -593,7 +621,9 @@ export function FotosSettings({
                         {/* Passkey status */}
                         <div className="flex items-center gap-1 px-2.5 text-[9px] text-white/20">
                             <Key className="w-2.5 h-2.5" />
-                            {passkeyCount > 0
+                            {passkeyCount === null
+                                ? 'Checking passkeys...'
+                                : passkeyCount > 0
                                 ? `${passkeyCount} passkey${passkeyCount !== 1 ? 's' : ''}`
                                 : 'No passkeys'}
                             {passkeyCount === 0 && (
