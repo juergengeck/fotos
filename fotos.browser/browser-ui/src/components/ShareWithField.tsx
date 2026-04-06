@@ -1,6 +1,4 @@
 import { nameToIdentity } from '@glueone/glue.core';
-import { CORE_RECIPES } from '@refinio/one.core/lib/recipes.js';
-import { addRecipeToRuntime, hasRecipe } from '@refinio/one.core/lib/object-recipes.js';
 import { calculateIdHashOfObj } from '@refinio/one.core/lib/util/object.js';
 import { useId, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
@@ -21,19 +19,6 @@ interface ShareWithFieldProps {
     placeholder?: string;
     emptyLabel?: string;
 }
-
-function ensurePersonRecipeRegistered(): void {
-    if (hasRecipe('Person')) {
-        return;
-    }
-
-    const personRecipe = CORE_RECIPES.find(recipe => recipe.name === 'Person');
-    if (personRecipe) {
-        addRecipeToRuntime(personRecipe);
-    }
-}
-
-ensurePersonRecipeRegistered();
 
 function normalizeToken(value: string): string | null {
     const trimmed = value.trim();

@@ -1,11 +1,20 @@
 import '@refinio/one.core/lib/system/load-nodejs.js';
 import { describe, expect, it } from 'vitest';
+import { CORE_RECIPES } from '@refinio/one.core/lib/recipes.js';
+import { addRecipeToRuntime, hasRecipe } from '@refinio/one.core/lib/object-recipes.js';
 
 import {
     resolveGlueIdentityForPeer,
     resolveTokenToPersonId,
     type SharePeerOption,
 } from '@/components/ShareWithField';
+
+if (!hasRecipe('Person')) {
+    const personRecipe = CORE_RECIPES.find(recipe => recipe.name === 'Person');
+    if (personRecipe) {
+        addRecipeToRuntime(personRecipe);
+    }
+}
 
 function createPeer(overrides: Partial<SharePeerOption> & Pick<SharePeerOption, 'personId'>): SharePeerOption {
     return {
