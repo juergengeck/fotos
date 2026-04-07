@@ -47,4 +47,32 @@ describe('resolveGlueCertificationState', () => {
             publicKeyHex: 'missing-key',
         });
     });
+
+    it('treats a cert for a different glue handle as anchored', async () => {
+        const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+            data: {
+                cert: {
+                    claims: {
+                        identity: 'oldname@glue.one',
+                    },
+                    validUntil: Date.UTC(2030, 0, 2),
+                },
+            },
+        }), { status: 200 }));
+
+        const result = await resolveGlueCertificationState({
+            publicationIdentity: 'person-1' as any,
+            displayName: 'New Name',
+            fetchImpl,
+            apiBase: 'https://api.glue.one',
+            now: Date.UTC(2030, 0, 1),
+            resolvePublicSignKeyHex: async () => 'abc123',
+        });
+
+        expect(result).toEqual({
+            certState: 'anchored',
+            certValidUntil: null,
+            publicKeyHex: 'abc123',
+        });
+    });
 });

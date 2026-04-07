@@ -49,6 +49,21 @@ function setFedCMLoginStatus(status: 'logged-in' | 'logged-out') {
     } catch {}
 }
 
+function toGlueIdentity(displayName: string | null | undefined): string | null {
+    const glueHandle = toGlueHandle(displayName?.trim() ?? '');
+    return glueHandle ? `${glueHandle}@glue.one` : null;
+}
+
+function isIdentityInputError(message: string): boolean {
+    return (
+        message.startsWith('Enter ')
+        || message.startsWith('Display name')
+        || message.startsWith('User ID')
+        || message.startsWith('Current identity')
+        || message.startsWith('Authentication is still preparing')
+    );
+}
+
 export function FotosSettings({
     model,
     acceptSharing,
@@ -71,9 +86,11 @@ export function FotosSettings({
     const [registeringPasskey, setRegisteringPasskey] = useState(false);
     const [recoveringWithFotos, setRecoveringWithFotos] = useState(false);
     const [showAuthenticationHint, setShowAuthenticationHint] = useState(() => hasPendingAuthenticationContinuation());
+    const [showIdentityEditor, setShowIdentityEditor] = useState(false);
     const requestedDisplayName = draftDisplayName.trim();
-    const requestedGlueHandle = requestedDisplayName ? toGlueHandle(requestedDisplayName) : '';
-    const requestedIdentity = requestedGlueHandle ? `${requestedGlueHandle}@glue.one` : null;
+    const requestedIdentity = toGlueIdentity(requestedDisplayName);
+    const currentDisplayName = displayName?.trim() ?? '';
+    const currentIdentity = toGlueIdentity(currentDisplayName);
     const identityReadyForAuthentication = Boolean(publicationIdentity && requestedDisplayName);
 
     // Load identity state from settings
@@ -176,6 +193,66 @@ export function FotosSettings({
         setPasskeyCount(null);
         return null;
     }, []);
+
+    const applyCertifiedIdentityState = useCallback(async (
+        nextPublicationIdentity: SHA256IdHash<Person>,
+        nextDisplayName: string,
+        cert?: { validUntil?: unknown } | null,
+        options?: { closeIdentityEditor?: boolean },
+    ): Promise<void> => {
+        setCertState('certified');
+        setPublicationIdentity(nextPublicationIdentity);
+        setDisplayName(nextDisplayName);
+        setDraftDisplayName(nextDisplayName);
+        setAuthError(null);
+        setAuthWarning(null);
+        if (typeof cert?.validUntil === 'string' || typeof cert?.validUntil === 'number') {
+            setCertValidUntil(new Date(cert.validUntil).toLocaleDateString());
+        } else {
+            setCertValidUntil(null);
+        }
+        setFedCMLoginStatus('logged-in');
+        clearPendingAuthenticationContinuation();
+        setShowAuthenticationHint(false);
+        if (options?.closeIdentityEditor) {
+            setShowIdentityEditor(false);
+        }
+        const nextPasskeyCount = await refreshPasskeyCount(
+            nextPublicationIdentity,
+            nextDisplayName,
+        );
+        if (nextPasskeyCount === 0) {
+            const dismissed = localStorage.getItem('fotos_passkey_prompt_dismissed');
+            if (!dismissed) setShowPasskeyPrompt(true);
+            return;
+        }
+        if (nextPasskeyCount !== null) {
+            setShowPasskeyPrompt(false);
+        }
+    }, [refreshPasskeyCount]);
+
+    const persistDisplayNameChange = useCallback(async (
+        nextDisplayName: string,
+    ): Promise<string | null> => {
+        if (!model?.settingsPlan) {
+            return 'Authentication is unavailable right now.';
+        }
+
+        try {
+            await ensureConfiguredGlueIdentity(
+                model.settingsPlan,
+                model.leuteModel,
+                nextDisplayName,
+                model.ownerId,
+            );
+            return null;
+        } catch (error) {
+            console.warn('[fotos.one] Failed to persist updated glue display name:', error);
+            return error instanceof Error
+                ? error.message
+                : 'Failed to save the new user ID locally';
+        }
+    }, [model]);
 
     // Load passkey count
     useEffect(() => {
@@ -305,8 +382,8 @@ export function FotosSettings({
             if (!trimmedDisplayName) {
                 throw new Error('Enter the name you want to use before authenticating.');
             }
-            const trimmedGlueHandle = toGlueHandle(trimmedDisplayName);
-            if (!trimmedGlueHandle) {
+            const nextRequestedIdentity = toGlueIdentity(trimmedDisplayName);
+            if (!nextRequestedIdentity) {
                 throw new Error('Display name must contain at least one letter or number.');
             }
 
@@ -330,27 +407,15 @@ export function FotosSettings({
             const { certifyViaPopup } = await import('@glueone/auth.core');
             const result = await certifyViaPopup(nextPublicationIdentity, trimmedDisplayName);
             if (result.success) {
-                setCertState('certified');
-                setPublicationIdentity(nextPublicationIdentity);
-                setDisplayName(trimmedDisplayName);
-                if (result.data?.cert?.validUntil) {
-                    setCertValidUntil(new Date(result.data.cert.validUntil).toLocaleDateString());
-                }
-                setFedCMLoginStatus('logged-in');
-                clearPendingAuthenticationContinuation();
-                setShowAuthenticationHint(false);
-                const nextPasskeyCount = await refreshPasskeyCount(
+                await applyCertifiedIdentityState(
                     nextPublicationIdentity,
                     trimmedDisplayName,
+                    result.data?.cert,
                 );
-                if (nextPasskeyCount === 0) {
-                    const dismissed = localStorage.getItem('fotos_passkey_prompt_dismissed');
-                    if (!dismissed) setShowPasskeyPrompt(true);
-                }
             } else {
                 const warning = classifyGlueFailure(
                     result.error || 'Authentication failed',
-                    `${trimmedGlueHandle}@glue.one`,
+                    toGlueIdentity(trimmedDisplayName) ?? 'yourname@glue.one',
                 );
                 setAuthWarning(warning);
             }
@@ -360,10 +425,7 @@ export function FotosSettings({
                 setShowAuthenticationHint(false);
             }
             const message = err instanceof Error ? err.message : 'Authentication failed';
-            if (
-                message.startsWith('Enter the name')
-                || message.startsWith('Authentication is still preparing')
-            ) {
+            if (isIdentityInputError(message)) {
                 setAuthError(message);
             } else {
                 const warning = classifyGlueFailure(
@@ -383,7 +445,7 @@ export function FotosSettings({
         displayName,
         publicationIdentity,
         prepareAuthenticationIdentity,
-        refreshPasskeyCount,
+        applyCertifiedIdentityState,
     ]);
 
     const handleRecoverWithFotosProof = useCallback(async () => {
@@ -397,15 +459,25 @@ export function FotosSettings({
             if (!trimmedDisplayName) {
                 throw new Error('Enter the name you want to recover first.');
             }
-            const trimmedGlueHandle = toGlueHandle(trimmedDisplayName);
-            if (!trimmedGlueHandle) {
+            const nextRequestedIdentity = toGlueIdentity(trimmedDisplayName);
+            if (!nextRequestedIdentity) {
                 throw new Error('Display name must contain at least one letter or number.');
             }
 
-            const {
-                publicationIdentity: nextPublicationIdentity,
-                requiresReload: shouldReload,
-            } = await prepareAuthenticationIdentity(trimmedDisplayName);
+            const isAuthenticatedRename =
+                syncEnabled
+                && Boolean(publicationIdentity)
+                && currentDisplayName.length > 0
+                && trimmedDisplayName !== currentDisplayName;
+            let nextPublicationIdentity: SHA256IdHash<Person>;
+            let shouldReload = false;
+            if (isAuthenticatedRename && publicationIdentity) {
+                nextPublicationIdentity = publicationIdentity;
+            } else {
+                const prepared = await prepareAuthenticationIdentity(trimmedDisplayName);
+                nextPublicationIdentity = prepared.publicationIdentity;
+                shouldReload = prepared.requiresReload;
+            }
 
             if (shouldReload) {
                 queueAuthenticationContinuation();
@@ -420,27 +492,25 @@ export function FotosSettings({
 
             const result = await runFotosRecoveryFlow({
                 requestedDisplayName: trimmedDisplayName,
-                requestedIdentity: `${trimmedGlueHandle}@glue.one`,
+                requestedIdentity: nextRequestedIdentity,
                 getFotosRecoveryTarget: async () => await getFotosRecoveryTarget(nextPublicationIdentity),
                 signClaimWithGlueKey: signFotosClaimWithGlueKey,
             });
 
-            setCertState('certified');
-            setPublicationIdentity(result.personId);
-            setDisplayName(trimmedDisplayName);
-            if (result.cert?.validUntil) {
-                setCertValidUntil(new Date(result.cert.validUntil).toLocaleDateString());
+            let persistenceError: string | null = null;
+            if (isAuthenticatedRename) {
+                persistenceError = await persistDisplayNameChange(trimmedDisplayName);
             }
-            setFedCMLoginStatus('logged-in');
-            clearPendingAuthenticationContinuation();
-            setShowAuthenticationHint(false);
-            const nextPasskeyCount = await refreshPasskeyCount(
+
+            await applyCertifiedIdentityState(
                 result.personId,
                 trimmedDisplayName,
+                result.cert,
+                { closeIdentityEditor: isAuthenticatedRename && persistenceError === null },
             );
-            if (nextPasskeyCount === 0) {
-                const dismissed = localStorage.getItem('fotos_passkey_prompt_dismissed');
-                if (!dismissed) setShowPasskeyPrompt(true);
+
+            if (persistenceError) {
+                setAuthError(`User ID recovered, but saving it locally failed: ${persistenceError}`);
             }
         } catch (err) {
             if (queuedContinuation) {
@@ -455,10 +525,79 @@ export function FotosSettings({
         model,
         requestedDisplayName,
         displayName,
+        currentDisplayName,
+        publicationIdentity,
+        syncEnabled,
         getFotosRecoveryTarget,
         prepareAuthenticationIdentity,
-        refreshPasskeyCount,
         signFotosClaimWithGlueKey,
+        persistDisplayNameChange,
+        applyCertifiedIdentityState,
+    ]);
+
+    const handleChangeUserId = useCallback(async () => {
+        if (!model?.settingsPlan || !publicationIdentity) return;
+        setAuthenticating(true);
+        setAuthError(null);
+        setAuthWarning(null);
+
+        try {
+            const trimmedDisplayName = requestedDisplayName;
+            if (!trimmedDisplayName) {
+                throw new Error('Enter the new name you want to use.');
+            }
+            if (!toGlueIdentity(trimmedDisplayName)) {
+                throw new Error('User ID must contain at least one letter or number.');
+            }
+            if (!currentDisplayName) {
+                throw new Error('Current identity is not ready yet.');
+            }
+            if (trimmedDisplayName === currentDisplayName) {
+                throw new Error('Enter a different name to change your user ID.');
+            }
+
+            const { certifyViaPopup } = await import('@glueone/auth.core');
+            const result = await certifyViaPopup(publicationIdentity, trimmedDisplayName);
+            if (!result.success) {
+                setAuthWarning(classifyGlueFailure(
+                    result.error || 'Changing user ID failed',
+                    toGlueIdentity(trimmedDisplayName) ?? 'yourname@glue.one',
+                ));
+                return;
+            }
+
+            const persistenceError = await persistDisplayNameChange(trimmedDisplayName);
+            await applyCertifiedIdentityState(
+                publicationIdentity,
+                trimmedDisplayName,
+                result.data?.cert,
+                { closeIdentityEditor: persistenceError === null },
+            );
+
+            if (persistenceError) {
+                setAuthError(`User ID changed, but saving it locally failed: ${persistenceError}`);
+            }
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Changing user ID failed';
+            if (isIdentityInputError(message)) {
+                setAuthError(message);
+            } else {
+                setAuthWarning(classifyGlueFailure(
+                    err,
+                    requestedIdentity ?? 'yourname@glue.one',
+                ));
+            }
+        } finally {
+            setAuthenticating(false);
+        }
+    }, [
+        model,
+        publicationIdentity,
+        requestedDisplayName,
+        currentDisplayName,
+        requestedIdentity,
+        persistDisplayNameChange,
+        applyCertifiedIdentityState,
     ]);
 
     // Register a passkey after successful authentication.
@@ -493,6 +632,20 @@ export function FotosSettings({
         }
     }, [model?.settingsPlan]);
 
+    const openIdentityEditor = useCallback(() => {
+        setDraftDisplayName(displayName ?? '');
+        setAuthError(null);
+        setAuthWarning(null);
+        setShowIdentityEditor(true);
+    }, [displayName]);
+
+    const cancelIdentityEditor = useCallback(() => {
+        setDraftDisplayName(displayName ?? '');
+        setAuthError(null);
+        setAuthWarning(null);
+        setShowIdentityEditor(false);
+    }, [displayName]);
+
     const authenticated = certState === 'certified' && syncEnabled;
     const needsPreparation = !syncEnabled || !identityReadyForAuthentication;
     const missingDisplayName = requestedDisplayName.length === 0 || requestedIdentity === null;
@@ -505,17 +658,36 @@ export function FotosSettings({
         : recoveringWithFotos
             ? 'Opening fotos recovery...'
         : missingDisplayName
-            ? 'Enter display name'
+            ? 'Enter user ID'
             : needsPreparation
                 ? 'Prepare authentication'
                 : 'Authenticate';
     const authenticationDescription = missingDisplayName
-        ? 'Choose the name you want to use for your fotos id and glue.one identity.'
+        ? 'Choose the user ID you want to use for your fotos id and glue.one identity.'
         : needsPreparation
             ? 'Authentication happens in two steps. fotos will prepare your local identity, enable sync on this device, reload, and bring you back here for glue.one certification.'
         : showAuthenticationHint
             ? 'Sync is ready on this device. Authenticate below to finish linking your fotos id.'
             : 'Authenticate to sync your photos across devices and use your identity on other ONE apps.';
+    const renameMissingDisplayName = requestedDisplayName.length === 0 || requestedIdentity === null;
+    const renameMatchesCurrent = requestedDisplayName === currentDisplayName;
+    const renameButtonDisabled = authenticating
+        || recoveringWithFotos
+        || !model?.settingsPlan
+        || renameMissingDisplayName
+        || renameMatchesCurrent;
+    const renameButtonLabel = authenticating
+        ? 'Changing user ID...'
+        : renameMissingDisplayName
+            ? 'Enter new user ID'
+            : renameMatchesCurrent
+                ? 'Enter a different user ID'
+                : 'Change user ID';
+    const renameDescription = renameMissingDisplayName
+        ? 'Enter the new name you want to use for this identity.'
+        : renameMatchesCurrent
+            ? 'Type a different name to certify a new @glue.one handle for this identity.'
+            : 'Changing your user ID keeps this local identity and certifies a new @glue.one handle across ONE apps.';
     const sharingToggleDisabled = !syncEnabled || !publicationIdentity;
 
     return (
@@ -526,7 +698,7 @@ export function FotosSettings({
                     <>
                         <div className="space-y-1">
                             <label className="block px-2.5 text-[10px] text-white/25 uppercase tracking-wider">
-                                Display name
+                                User ID
                             </label>
                             <input
                                 type="text"
@@ -568,36 +740,6 @@ export function FotosSettings({
                             </div>
                         )}
 
-                        {authWarning && (
-                            <div className="px-2.5 py-2 bg-amber-500/10 border border-amber-400/20 rounded-md text-[10px] text-amber-100/85 leading-relaxed">
-                                <div className="font-medium text-amber-100">{authWarning.title}</div>
-                                <div className="mt-1 text-amber-100/75">{authWarning.message}</div>
-                                {authWarning.code === 'glue_name_taken' && (
-                                    <div className="mt-2 space-y-2">
-                                        <div className="text-amber-100/75">
-                                            If this is your identity and you already bound fotos id, finish with the same private recovery factors instead of retrying the passkey popup.
-                                        </div>
-                                        <button
-                                            onClick={() => void handleRecoverWithFotosProof()}
-                                            disabled={recoveringWithFotos || !model?.settingsPlan || missingDisplayName}
-                                            className={`w-full flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-md text-[10px] font-medium transition-colors ${
-                                                recoveringWithFotos || !model?.settingsPlan || missingDisplayName
-                                                    ? 'bg-white/5 text-white/25 cursor-wait'
-                                                    : 'bg-amber-500/15 text-amber-100 hover:bg-amber-500/25'
-                                            }`}
-                                        >
-                                            {recoveringWithFotos && <Loader2 className="w-3 h-3 animate-spin" />}
-                                            <KeyRound className="w-3 h-3" />
-                                            {recoveringWithFotos ? 'Opening fotos recovery...' : 'Recover with fotos proof'}
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {authError && (
-                            <div className="px-2.5 text-[10px] text-red-400/70">{authError}</div>
-                        )}
                     </>
                 )}
 
@@ -607,7 +749,14 @@ export function FotosSettings({
                         {/* Identity card */}
                         <div className="flex items-center gap-2 px-2.5 py-2 bg-white/5 rounded-md text-[11px] text-white/60">
                             <Shield className="w-3.5 h-3.5 text-green-400/70 shrink-0" />
-                            <span className="truncate flex-1 font-medium">{displayName}</span>
+                            <div className="min-w-0 flex-1">
+                                <div className="truncate font-medium">{displayName}</div>
+                                {currentIdentity && (
+                                    <div className="truncate text-[9px] text-white/25">
+                                        {currentIdentity}
+                                    </div>
+                                )}
+                            </div>
                             <Check className="w-3 h-3 text-green-400/70 shrink-0" />
                         </div>
 
@@ -664,6 +813,63 @@ export function FotosSettings({
                             </div>
                         )}
 
+                        {!showIdentityEditor ? (
+                            <button
+                                onClick={openIdentityEditor}
+                                className="w-full px-2.5 py-2 rounded-md text-[11px] font-medium bg-white/5 text-white/45 hover:text-white/65 hover:bg-white/10 transition-colors"
+                            >
+                                Change user ID
+                            </button>
+                        ) : (
+                            <div className="space-y-2 px-2.5 py-2 bg-white/5 rounded-md">
+                                <div className="space-y-1">
+                                    <label className="block text-[10px] text-white/25 uppercase tracking-wider">
+                                        New user ID
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={draftDisplayName}
+                                        onChange={event => setDraftDisplayName(event.target.value)}
+                                        placeholder="Choose a new name on glue.one"
+                                        disabled={authenticating || recoveringWithFotos}
+                                        className="w-full px-2.5 py-2 bg-white/5 border border-white/10 rounded-md text-[11px] text-white/70 placeholder:text-white/20 focus:outline-none focus:border-white/20"
+                                    />
+                                    {requestedIdentity && (
+                                        <div className="text-[10px] text-white/25">
+                                            {requestedIdentity}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="text-[10px] leading-relaxed text-white/35">
+                                    {renameDescription}
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => void handleChangeUserId()}
+                                        disabled={renameButtonDisabled}
+                                        className={`flex-1 flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-md text-[10px] font-medium transition-colors ${
+                                            renameButtonDisabled
+                                                ? 'bg-white/5 text-white/20 cursor-wait'
+                                                : 'bg-[#e94560]/80 text-white hover:bg-[#e94560]'
+                                        }`}
+                                    >
+                                        {authenticating && <Loader2 className="w-3 h-3 animate-spin" />}
+                                        <Shield className="w-3 h-3" />
+                                        {renameButtonLabel}
+                                    </button>
+                                    <button
+                                        onClick={cancelIdentityEditor}
+                                        disabled={authenticating || recoveringWithFotos}
+                                        className="px-3 py-2 rounded-md text-[10px] font-medium bg-white/5 text-white/35 hover:text-white/55 hover:bg-white/10 transition-colors disabled:opacity-40"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                         {/* Recovery key status */}
                         <div className="px-2.5 text-[9px] text-white/20">
                             Recovery key: {hasRecoveryKey ? 'configured' : 'not set'}
@@ -711,6 +917,37 @@ export function FotosSettings({
                             </button>
                         </div>
                     </>
+                )}
+
+                {authWarning && (
+                    <div className="px-2.5 py-2 bg-amber-500/10 border border-amber-400/20 rounded-md text-[10px] text-amber-100/85 leading-relaxed">
+                        <div className="font-medium text-amber-100">{authWarning.title}</div>
+                        <div className="mt-1 text-amber-100/75">{authWarning.message}</div>
+                        {authWarning.code === 'glue_name_taken' && (
+                            <div className="mt-2 space-y-2">
+                                <div className="text-amber-100/75">
+                                    If this is your identity and you already bound fotos id, finish with the same private recovery factors instead of retrying the passkey popup.
+                                </div>
+                                <button
+                                    onClick={() => void handleRecoverWithFotosProof()}
+                                    disabled={recoveringWithFotos || !model?.settingsPlan || missingDisplayName}
+                                    className={`w-full flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-md text-[10px] font-medium transition-colors ${
+                                        recoveringWithFotos || !model?.settingsPlan || missingDisplayName
+                                            ? 'bg-white/5 text-white/25 cursor-wait'
+                                            : 'bg-amber-500/15 text-amber-100 hover:bg-amber-500/25'
+                                    }`}
+                                >
+                                    {recoveringWithFotos && <Loader2 className="w-3 h-3 animate-spin" />}
+                                    <KeyRound className="w-3 h-3" />
+                                    {recoveringWithFotos ? 'Opening fotos recovery...' : 'Recover with fotos proof'}
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {authError && (
+                    <div className="px-2.5 text-[10px] text-red-400/70">{authError}</div>
                 )}
 
                 <label className={`flex items-start gap-2 rounded-md border px-2.5 py-2 ${
