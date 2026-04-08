@@ -85,6 +85,7 @@ export function FotosSettings({
     const [showPasskeyPrompt, setShowPasskeyPrompt] = useState(false);
     const [registeringPasskey, setRegisteringPasskey] = useState(false);
     const [recoveringWithFotos, setRecoveringWithFotos] = useState(false);
+    const [recoveringWithPrivateKey, setRecoveringWithPrivateKey] = useState(false);
     const [showAuthenticationHint, setShowAuthenticationHint] = useState(() => hasPendingAuthenticationContinuation());
     const [showIdentityEditor, setShowIdentityEditor] = useState(false);
     const requestedDisplayName = draftDisplayName.trim();
@@ -535,6 +536,94 @@ export function FotosSettings({
         applyCertifiedIdentityState,
     ]);
 
+    const handleRecoverWithPrivateKey = useCallback(async () => {
+        if (!model?.settingsPlan) return;
+        setRecoveringWithPrivateKey(true);
+        setAuthError(null);
+        setAuthWarning(null);
+        let queuedContinuation = false;
+
+        try {
+            const trimmedDisplayName = requestedDisplayName || displayName?.trim() || '';
+            if (!trimmedDisplayName) {
+                throw new Error('Enter the name you want to recover first.');
+            }
+            const nextRequestedIdentity = toGlueIdentity(trimmedDisplayName);
+            if (!nextRequestedIdentity) {
+                throw new Error('Display name must contain at least one letter or number.');
+            }
+
+            const isAuthenticatedRename =
+                syncEnabled
+                && Boolean(publicationIdentity)
+                && currentDisplayName.length > 0
+                && trimmedDisplayName !== currentDisplayName;
+            let nextPublicationIdentity: SHA256IdHash<Person>;
+            let shouldReload = false;
+            if (isAuthenticatedRename && publicationIdentity) {
+                nextPublicationIdentity = publicationIdentity;
+            } else {
+                const prepared = await prepareAuthenticationIdentity(trimmedDisplayName);
+                nextPublicationIdentity = prepared.publicationIdentity;
+                shouldReload = prepared.requiresReload;
+            }
+
+            if (shouldReload) {
+                queueAuthenticationContinuation();
+                queuedContinuation = true;
+                await model.settingsPlan.updateSection({
+                    moduleId: 'glue',
+                    values: { syncEnabled: true },
+                });
+                window.location.reload();
+                return;
+            }
+
+            const { recoverWithPrivateKeyViaPopup } = await import('@glueone/auth.core');
+            const result = await recoverWithPrivateKeyViaPopup(
+                nextPublicationIdentity,
+                trimmedDisplayName,
+            );
+            if (!result.success) {
+                throw new Error(result.error || 'Private-key recovery failed');
+            }
+
+            let persistenceError: string | null = null;
+            if (isAuthenticatedRename) {
+                persistenceError = await persistDisplayNameChange(trimmedDisplayName);
+            }
+
+            await applyCertifiedIdentityState(
+                nextPublicationIdentity,
+                trimmedDisplayName,
+                result.data?.cert,
+                { closeIdentityEditor: isAuthenticatedRename && persistenceError === null },
+            );
+
+            if (persistenceError) {
+                setAuthError(`User ID recovered, but saving it locally failed: ${persistenceError}`);
+            }
+        } catch (err) {
+            if (queuedContinuation) {
+                clearPendingAuthenticationContinuation();
+                setShowAuthenticationHint(false);
+            }
+            setAuthError(err instanceof Error ? err.message : 'Private-key recovery failed');
+        } finally {
+            setRecoveringWithPrivateKey(false);
+        }
+    }, [
+        model,
+        requestedDisplayName,
+        displayName,
+        currentDisplayName,
+        publicationIdentity,
+        syncEnabled,
+        prepareAuthenticationIdentity,
+        persistDisplayNameChange,
+        applyCertifiedIdentityState,
+    ]);
+
     const handleChangeUserId = useCallback(async () => {
         if (!model?.settingsPlan || !publicationIdentity) return;
         setAuthenticating(true);
@@ -651,12 +740,15 @@ export function FotosSettings({
     const missingDisplayName = requestedDisplayName.length === 0 || requestedIdentity === null;
     const authenticationButtonDisabled = authenticating
         || recoveringWithFotos
+        || recoveringWithPrivateKey
         || !model?.settingsPlan
         || missingDisplayName;
     const authenticationButtonLabel = authenticating
         ? (needsPreparation ? 'Preparing authentication...' : 'Authenticating...')
         : recoveringWithFotos
             ? 'Opening fotos recovery...'
+        : recoveringWithPrivateKey
+            ? 'Opening key recovery...'
         : missingDisplayName
             ? 'Enter user ID'
             : needsPreparation
@@ -673,14 +765,17 @@ export function FotosSettings({
     const renameMatchesCurrent = requestedDisplayName === currentDisplayName;
     const renameButtonDisabled = authenticating
         || recoveringWithFotos
+        || recoveringWithPrivateKey
         || !model?.settingsPlan
         || renameMissingDisplayName
         || renameMatchesCurrent;
     const renameButtonLabel = authenticating
         ? 'Changing user ID...'
+        : recoveringWithPrivateKey
+            ? 'Opening key recovery...'
         : renameMissingDisplayName
             ? 'Enter new user ID'
-            : renameMatchesCurrent
+        : renameMatchesCurrent
                 ? 'Enter a different user ID'
                 : 'Change user ID';
     const renameDescription = renameMissingDisplayName
@@ -705,7 +800,7 @@ export function FotosSettings({
                                 value={draftDisplayName}
                                 onChange={event => setDraftDisplayName(event.target.value)}
                                 placeholder="Your name on glue.one"
-                                disabled={authenticating || recoveringWithFotos}
+                                disabled={authenticating || recoveringWithFotos || recoveringWithPrivateKey}
                                 className="w-full px-2.5 py-2 bg-white/5 border border-white/10 rounded-md text-[11px] text-white/70 placeholder:text-white/20 focus:outline-none focus:border-white/20"
                             />
                             {requestedIdentity && (
@@ -831,7 +926,7 @@ export function FotosSettings({
                                         value={draftDisplayName}
                                         onChange={event => setDraftDisplayName(event.target.value)}
                                         placeholder="Choose a new name on glue.one"
-                                        disabled={authenticating || recoveringWithFotos}
+                                        disabled={authenticating || recoveringWithFotos || recoveringWithPrivateKey}
                                         className="w-full px-2.5 py-2 bg-white/5 border border-white/10 rounded-md text-[11px] text-white/70 placeholder:text-white/20 focus:outline-none focus:border-white/20"
                                     />
                                     {requestedIdentity && (
@@ -861,7 +956,7 @@ export function FotosSettings({
                                     </button>
                                     <button
                                         onClick={cancelIdentityEditor}
-                                        disabled={authenticating || recoveringWithFotos}
+                                        disabled={authenticating || recoveringWithFotos || recoveringWithPrivateKey}
                                         className="px-3 py-2 rounded-md text-[10px] font-medium bg-white/5 text-white/35 hover:text-white/55 hover:bg-white/10 transition-colors disabled:opacity-40"
                                     >
                                         Cancel
@@ -930,9 +1025,9 @@ export function FotosSettings({
                                 </div>
                                 <button
                                     onClick={() => void handleRecoverWithFotosProof()}
-                                    disabled={recoveringWithFotos || !model?.settingsPlan || missingDisplayName}
+                                    disabled={recoveringWithFotos || recoveringWithPrivateKey || !model?.settingsPlan || missingDisplayName}
                                     className={`w-full flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-md text-[10px] font-medium transition-colors ${
-                                        recoveringWithFotos || !model?.settingsPlan || missingDisplayName
+                                        recoveringWithFotos || recoveringWithPrivateKey || !model?.settingsPlan || missingDisplayName
                                             ? 'bg-white/5 text-white/25 cursor-wait'
                                             : 'bg-amber-500/15 text-amber-100 hover:bg-amber-500/25'
                                     }`}
@@ -940,6 +1035,19 @@ export function FotosSettings({
                                     {recoveringWithFotos && <Loader2 className="w-3 h-3 animate-spin" />}
                                     <KeyRound className="w-3 h-3" />
                                     {recoveringWithFotos ? 'Opening fotos recovery...' : 'Recover with fotos proof'}
+                                </button>
+                                <button
+                                    onClick={() => void handleRecoverWithPrivateKey()}
+                                    disabled={recoveringWithFotos || recoveringWithPrivateKey || !model?.settingsPlan || missingDisplayName}
+                                    className={`w-full flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-md text-[10px] font-medium transition-colors ${
+                                        recoveringWithFotos || recoveringWithPrivateKey || !model?.settingsPlan || missingDisplayName
+                                            ? 'bg-white/5 text-white/25 cursor-wait'
+                                            : 'bg-white/10 text-amber-100 hover:bg-white/15'
+                                    }`}
+                                >
+                                    {recoveringWithPrivateKey && <Loader2 className="w-3 h-3 animate-spin" />}
+                                    <Key className="w-3 h-3" />
+                                    {recoveringWithPrivateKey ? 'Opening key recovery...' : 'Recover with private key'}
                                 </button>
                             </div>
                         )}
