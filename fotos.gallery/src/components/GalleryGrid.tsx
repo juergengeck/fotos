@@ -163,36 +163,44 @@ export function GalleryGrid<T extends GalleryEntry>({
             <div
               style={{
                 position: 'sticky',
-                top: stickyHeaderOffset,
+                top: stickyHeaderOffset + 10,
                 zIndex: 3,
-                padding: '10px 16px 8px',
-                backdropFilter: 'blur(12px)',
-                background: 'color-mix(in srgb, var(--bg, #111) 86%, transparent)',
-                borderBottom: '1px solid var(--border, #333)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
+                padding: '10px 12px 0',
+                pointerEvents: 'none',
               }}
             >
-              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted, #888)', textTransform: 'lowercase', letterSpacing: '0.04em' }}>
-                {formatDayLabel(group.date)}
-              </span>
-              <span
+              <div
                 style={{
-                  marginLeft: 'auto',
-                  minWidth: 22,
-                  padding: '2px 7px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '6px 10px',
                   borderRadius: 999,
                   border: '1px solid var(--border, #333)',
-                  background: 'color-mix(in srgb, var(--bg-secondary, #1a1a1a) 72%, transparent)',
-                  fontSize: 10,
-                  lineHeight: 1.3,
-                  textAlign: 'center',
-                  color: 'var(--muted, #888)',
+                  backdropFilter: 'blur(12px)',
+                  background: 'color-mix(in srgb, var(--bg, #111) 74%, transparent)',
+                  boxShadow: '0 6px 20px rgba(0,0,0,0.16)',
                 }}
               >
-                {group.items.length}
-              </span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted, #888)', textTransform: 'lowercase', letterSpacing: '0.04em' }}>
+                  {formatDayLabel(group.date)}
+                </span>
+                <span
+                  style={{
+                    minWidth: 22,
+                    padding: '2px 7px',
+                    borderRadius: 999,
+                    border: '1px solid var(--border, #333)',
+                    background: 'color-mix(in srgb, var(--bg-secondary, #1a1a1a) 72%, transparent)',
+                    fontSize: 10,
+                    lineHeight: 1.3,
+                    textAlign: 'center',
+                    color: 'var(--muted, #888)',
+                  }}
+                >
+                  {group.items.length}
+                </span>
+              </div>
             </div>
             <div
               style={{
