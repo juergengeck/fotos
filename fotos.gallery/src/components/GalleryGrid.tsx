@@ -14,6 +14,8 @@ export interface GalleryGridProps<T extends GalleryEntry = GalleryEntry> {
   minColumnWidth?: number
   /** Offset sticky day labels when an app header overlays the scroll surface. */
   stickyHeaderOffset?: number
+  /** Render sticky day headers inside the grid (default true). */
+  showDayHeaders?: boolean
   emptyLabel?: ReactNode
 }
 
@@ -140,6 +142,7 @@ export function GalleryGrid<T extends GalleryEntry>({
   onPhotoClick,
   minColumnWidth = 148,
   stickyHeaderOffset = 0,
+  showDayHeaders = true,
   emptyLabel = 'no images yet',
 }: GalleryGridProps<T>) {
   if (totalCount === 0) {
@@ -159,49 +162,51 @@ export function GalleryGrid<T extends GalleryEntry>({
         flatIndex += group.items.length
 
         return (
-          <section key={group.date}>
-            <div
-              style={{
-                position: 'sticky',
-                top: stickyHeaderOffset + 10,
-                zIndex: 3,
-                padding: '10px 12px 0',
-                pointerEvents: 'none',
-              }}
-            >
+          <section key={group.date} data-gallery-day={group.date}>
+            {showDayHeaders && (
               <div
                 style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '6px 10px',
-                  borderRadius: 999,
-                  border: '1px solid var(--border, #333)',
-                  backdropFilter: 'blur(12px)',
-                  background: 'color-mix(in srgb, var(--bg, #111) 74%, transparent)',
-                  boxShadow: '0 6px 20px rgba(0,0,0,0.16)',
+                  position: 'sticky',
+                  top: stickyHeaderOffset + 10,
+                  zIndex: 3,
+                  padding: '10px 12px 0',
+                  pointerEvents: 'none',
                 }}
               >
-                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted, #888)', textTransform: 'lowercase', letterSpacing: '0.04em' }}>
-                  {formatDayLabel(group.date)}
-                </span>
-                <span
+                <div
                   style={{
-                    minWidth: 22,
-                    padding: '2px 7px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '6px 10px',
                     borderRadius: 999,
                     border: '1px solid var(--border, #333)',
-                    background: 'color-mix(in srgb, var(--bg-secondary, #1a1a1a) 72%, transparent)',
-                    fontSize: 10,
-                    lineHeight: 1.3,
-                    textAlign: 'center',
-                    color: 'var(--muted, #888)',
+                    backdropFilter: 'blur(12px)',
+                    background: 'color-mix(in srgb, var(--bg, #111) 74%, transparent)',
+                    boxShadow: '0 6px 20px rgba(0,0,0,0.16)',
                   }}
                 >
-                  {group.items.length}
-                </span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted, #888)', textTransform: 'lowercase', letterSpacing: '0.04em' }}>
+                    {formatDayLabel(group.date)}
+                  </span>
+                  <span
+                    style={{
+                      minWidth: 22,
+                      padding: '2px 7px',
+                      borderRadius: 999,
+                      border: '1px solid var(--border, #333)',
+                      background: 'color-mix(in srgb, var(--bg-secondary, #1a1a1a) 72%, transparent)',
+                      fontSize: 10,
+                      lineHeight: 1.3,
+                      textAlign: 'center',
+                      color: 'var(--muted, #888)',
+                    }}
+                  >
+                    {group.items.length}
+                  </span>
+                </div>
               </div>
-            </div>
+            )}
             <div
               style={{
                 display: 'grid',
