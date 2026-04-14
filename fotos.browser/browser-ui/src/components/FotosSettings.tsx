@@ -585,7 +585,7 @@ export function FotosSettings({
                 trimmedDisplayName,
             );
             if (!result.success) {
-                throw new Error(result.error || 'Private-key recovery failed');
+                throw new Error(result.error || 'Recovery-key recovery failed');
             }
 
             let persistenceError: string | null = null;
@@ -608,7 +608,7 @@ export function FotosSettings({
                 clearPendingAuthenticationContinuation();
                 setShowAuthenticationHint(false);
             }
-            setAuthError(err instanceof Error ? err.message : 'Private-key recovery failed');
+            setAuthError(err instanceof Error ? err.message : 'Recovery-key recovery failed');
         } finally {
             setRecoveringWithPrivateKey(false);
         }
@@ -748,7 +748,7 @@ export function FotosSettings({
         : recoveringWithFotos
             ? 'Opening fotos recovery...'
         : recoveringWithPrivateKey
-            ? 'Opening key recovery...'
+            ? 'Opening recovery-key flow...'
         : missingDisplayName
             ? 'Enter user ID'
             : needsPreparation
@@ -772,7 +772,7 @@ export function FotosSettings({
     const renameButtonLabel = authenticating
         ? 'Changing user ID...'
         : recoveringWithPrivateKey
-            ? 'Opening key recovery...'
+            ? 'Opening recovery-key flow...'
         : renameMissingDisplayName
             ? 'Enter new user ID'
         : renameMatchesCurrent
@@ -1047,7 +1047,7 @@ export function FotosSettings({
                                 >
                                     {recoveringWithPrivateKey && <Loader2 className="w-3 h-3 animate-spin" />}
                                     <Key className="w-3 h-3" />
-                                    {recoveringWithPrivateKey ? 'Opening key recovery...' : 'Recover with private key'}
+                                    {recoveringWithPrivateKey ? 'Opening recovery-key flow...' : 'Recover with recovery key'}
                                 </button>
                             </div>
                         )}
