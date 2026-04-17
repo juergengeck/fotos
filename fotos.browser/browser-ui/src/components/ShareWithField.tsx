@@ -1,7 +1,7 @@
 import { nameToIdentity } from '@glueone/glue.core';
 import { calculateIdHashOfObj } from '@refinio/one.core/lib/util/object.js';
 import { useId, useMemo, useState } from 'react';
-import { X } from 'lucide-react';
+import { ChevronDown, X } from 'lucide-react';
 
 export interface SharePeerOption {
     personId: string;
@@ -234,13 +234,19 @@ export function ShareWithField({
     emptyLabel = 'Nobody selected yet',
 }: ShareWithFieldProps) {
     const datalistId = useId();
+    const contactTagsId = useId();
     const [draft, setDraft] = useState('');
     const [saving, setSaving] = useState(false);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [manualLabels, setManualLabels] = useState<Record<string, string>>({});
+    const [contactTagsOpen, setContactTagsOpen] = useState(false);
     const unselectedPeers = useMemo(
         () => peers.filter(peer => !value.includes(peer.personId)),
         [peers, value],
+    );
+    const suggestedPeers = useMemo(
+        () => unselectedPeers.slice(0, 8),
+        [unselectedPeers],
     );
 
     const resolveSelectedPeerLabel = (personId: string): string => {
@@ -301,6 +307,10 @@ export function ShareWithField({
         setDraft('');
         await applyChange([...value, personId]);
     };
+
+    const contactTagsToggleLabel = suggestedPeers.length === unselectedPeers.length
+        ? `Show ${suggestedPeers.length} contact tag${suggestedPeers.length === 1 ? '' : 's'}`
+        : `Show ${suggestedPeers.length} of ${unselectedPeers.length} contact tags`;
 
     return (
         <div className="space-y-2">
@@ -383,24 +393,39 @@ export function ShareWithField({
             )}
 
             {unselectedPeers.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                    {unselectedPeers.slice(0, 8).map(peer => (
-                        <button
-                            key={peer.personId}
-                            type="button"
-                            disabled={saving}
-                            onClick={() => {
-                                void applyChange([...value, peer.personId]);
-                            }}
-                            className={`rounded-full border px-2 py-0.5 text-[10px] transition-colors ${
-                                peer.online
-                                    ? 'border-white/10 bg-white/5 text-white/40 hover:bg-white/10 hover:text-white/68'
-                                    : 'border-white/8 bg-black/20 text-white/25 hover:text-white/45'
-                            }`}
-                        >
-                            {peer.displayName ?? `${peer.personId.slice(0, 12)}…`}
-                        </button>
-                    ))}
+                <div className="space-y-1.5">
+                    <button
+                        type="button"
+                        onClick={() => setContactTagsOpen(open => !open)}
+                        aria-expanded={contactTagsOpen}
+                        aria-controls={contactTagsId}
+                        className="flex items-center gap-1 text-[10px] text-white/28 transition-colors hover:text-white/48"
+                    >
+                        <ChevronDown className={`h-3 w-3 transition-transform ${contactTagsOpen ? '' : '-rotate-90'}`} />
+                        <span>{contactTagsOpen ? 'Hide contact tags' : contactTagsToggleLabel}</span>
+                    </button>
+
+                    {contactTagsOpen && (
+                        <div id={contactTagsId} className="flex flex-wrap gap-1">
+                            {suggestedPeers.map(peer => (
+                                <button
+                                    key={peer.personId}
+                                    type="button"
+                                    disabled={saving}
+                                    onClick={() => {
+                                        void applyChange([...value, peer.personId]);
+                                    }}
+                                    className={`rounded-full border px-2 py-0.5 text-[10px] transition-colors ${
+                                        peer.online
+                                            ? 'border-white/10 bg-white/5 text-white/40 hover:bg-white/10 hover:text-white/68'
+                                            : 'border-white/8 bg-black/20 text-white/25 hover:text-white/45'
+                                    }`}
+                                >
+                                    {peer.displayName ?? `${peer.personId.slice(0, 12)}…`}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </div>
             )}
         </div>
