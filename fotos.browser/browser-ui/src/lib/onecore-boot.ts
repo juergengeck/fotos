@@ -60,20 +60,12 @@ import { registerFotosSettings } from './fotosSettings.js';
 import { grantFotosAccess } from './fotos-manifest.js';
 import { fotosContentRules } from './fotosSyncRules.js';
 import { API_BASE, COMM_SERVER_URL } from '../config.js';
+import { resolveFotosBootCreds } from './fotosBootCreds.js';
 import { resolveGluePublicationIdentity } from './glueIdentityState.js';
 
 // ---------------------------------------------------------------------------
 // Credentials (auto-generated, stored in localStorage/sessionStorage)
 // ---------------------------------------------------------------------------
-
-const PERSISTENT_KEY = 'fotos_creds';
-const SESSION_KEY = 'fotos_creds_session';
-
-interface FotosCreds {
-  email: string;
-  secret: string;
-  instanceName: string;
-}
 
 // ---------------------------------------------------------------------------
 // FotosModel — returned after boot
@@ -402,7 +394,7 @@ async function initModules(
 
 /**
  * Boot ONE.core for fotos.browser.
- * Auto-generates ephemeral credentials on first visit.
+ * Generates visitor credentials on first visit and persists them for future boots.
  * Returns a FotosModel with initialized modules and federation.
  */
 export async function bootFotosModel(
@@ -444,33 +436,17 @@ export async function bootFotosModel(
   });
   oneInstance = one;
 
-  // Credential lookup: localStorage -> sessionStorage -> generate new
-  let email: string;
-  let secret: string;
-  let instanceName = 'fotos-visitor';
-
-  const persisted = localStorage.getItem(PERSISTENT_KEY);
-  const session = sessionStorage.getItem(SESSION_KEY);
-
-  if (persisted) {
-    const creds: FotosCreds = JSON.parse(persisted);
-    email = creds.email;
-    secret = creds.secret;
-    instanceName = creds.instanceName || instanceName;
-  } else if (session) {
-    const creds: FotosCreds = JSON.parse(session);
-    email = creds.email;
-    secret = creds.secret;
-  } else {
-    const idBytes = new Uint8Array(5);
-    crypto.getRandomValues(idBytes);
-    const id = Array.from(idBytes, b => b.toString(16).padStart(2, '0')).join('');
-    email = `fotos-visitor-${id}@fotos.one`;
-    const secretBytes = new Uint8Array(32);
-    crypto.getRandomValues(secretBytes);
-    secret = Array.from(secretBytes, b => b.toString(16).padStart(2, '0')).join('');
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify({ email, secret }));
-  }
+  const {
+    creds: { email, secret, instanceName },
+    source: credentialSource,
+    persistent: credentialsPersisted,
+  } = resolveFotosBootCreds();
+  console.log('[fotos.one] Boot credentials:', {
+    source: credentialSource,
+    persistent: credentialsPersisted,
+    email,
+    instanceName,
+  });
 
   onStatus?.('opening storage');
   try {
