@@ -26,17 +26,49 @@ export function isMobile(): boolean {
 }
 
 /**
- * Share a file via the Web Share API (native share sheet).
+ * Returns whether the runtime can share the provided files via the native
+ * share sheet.
+ */
+export function canShareFiles(files: readonly File[]): boolean {
+    if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') {
+        return false;
+    }
+
+    if (files.length === 0) {
+        return false;
+    }
+
+    if (typeof navigator.canShare !== 'function') {
+        return files.length === 1;
+    }
+
+    try {
+        return navigator.canShare({ files: [...files] });
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Share files via the Web Share API (native share sheet).
  * Returns true if shared, false if API unavailable or user cancelled.
  */
-export async function shareFile(file: File): Promise<boolean> {
-    if (!navigator.canShare?.({ files: [file] })) return false;
+export async function shareFiles(files: readonly File[]): Promise<boolean> {
+    if (!canShareFiles(files)) return false;
     try {
-        await navigator.share({ files: [file] });
+        await navigator.share({ files: [...files] });
         return true;
     } catch (err) {
         // User cancelled — not an error
         if (err instanceof DOMException && err.name === 'AbortError') return false;
         throw err;
     }
+}
+
+/**
+ * Share a single file via the Web Share API (native share sheet).
+ * Returns true if shared, false if API unavailable or user cancelled.
+ */
+export async function shareFile(file: File): Promise<boolean> {
+    return shareFiles([file]);
 }

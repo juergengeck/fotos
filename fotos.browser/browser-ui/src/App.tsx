@@ -11,7 +11,7 @@ import { useHeadlessSource } from '@/hooks/useHeadlessSource';
 import { useBreadcrumbHistory } from '@/hooks/useBreadcrumbHistory';
 import { useFotosCollections } from '@/hooks/useFotosCollections';
 import { useSettings } from '@/hooks/useSettings';
-import { shareFile } from '@/lib/platform';
+import { shareFile, shareFiles } from '@/lib/platform';
 import { UpdatePrompt } from '@/components/UpdatePrompt';
 import {
     DEFAULT_GLUE_CONNECTION_BINDING_ID,
@@ -192,6 +192,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
     const [selectedClusterIds, setSelectedClusterIds] = useState<string[]>([]);
     const [sharePeerOptions, setSharePeerOptions] = useState<SharePeerOption[]>([]);
     const [contactPersonIds, setContactPersonIds] = useState<string[]>([]);
+    const [exportingPhotos, setExportingPhotos] = useState(false);
 
     // Wire up model updater so async state changes (e.g. headlessConnected) trigger re-renders
     useEffect(() => {
@@ -695,6 +696,31 @@ export function App({ fotosModel: initialModel }: AppProps) {
         gallery.setActiveClusterId(null);
         gallery.setSearchFace(embedding);
     }, [closePhotoRoute, gallery]);
+
+    const exportPhotosToNativeShare = useCallback(async (photos: readonly PhotoEntry[]) => {
+        const exportablePhotos = photos.filter((photo): photo is PhotoEntry & { sourcePath: string } => Boolean(photo.sourcePath));
+        if (exportablePhotos.length === 0) {
+            return false;
+        }
+
+        setExportingPhotos(true);
+        try {
+            const files = await Promise.all(
+                exportablePhotos.map(photo => gallery.folder.readFile(photo.sourcePath)),
+            );
+            return await shareFiles(files);
+        } finally {
+            setExportingPhotos(false);
+        }
+    }, [gallery.folder]);
+
+    const handleExportSelectedPhotos = useCallback(async () => {
+        await exportPhotosToNativeShare(selectedPhotosForCollections);
+    }, [exportPhotosToNativeShare, selectedPhotosForCollections]);
+
+    const handleExportPhoto = useCallback(async (photo: PhotoEntry) => {
+        await exportPhotosToNativeShare([photo]);
+    }, [exportPhotosToNativeShare]);
 
     // On mobile, tap a photo → share via native share sheet (opens in photo app)
     const handlePhotoClick = useCallback(async (index: number) => {
@@ -1515,6 +1541,8 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         onPhotoSelectionModeChange={setPhotoSelectionEnabled}
                         selectedPhotoCount={selectedPhotoHashes.length}
                         onSelectAllVisiblePhotos={selectAllVisiblePhotos}
+                        onExportSelectedPhotos={mobile ? handleExportSelectedPhotos : undefined}
+                        exportSelectedPhotosDisabled={exportingPhotos}
                         clusterSelectionEnabled={clusterSelectionEnabled}
                         onClusterSelectionModeChange={setClusterSelectionEnabled}
                         selectedClusterIds={selectedClusterIds}
@@ -1558,6 +1586,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         onIndexChange={(index) => openPhotoRouteIndex(index, { replace: true })}
                         onClose={() => closePhotoRoute({ replace: true })}
                         onDelete={handleDelete}
+                        onExport={mobile ? handleExportPhoto : undefined}
                         onFaceSearch={handleFaceSearch}
                         onRenameFace={handleRenameFace}
                         onDeleteFace={handleDeleteFace}

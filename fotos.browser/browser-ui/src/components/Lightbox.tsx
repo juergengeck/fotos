@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, RotateCcw, FlipHorizontal, FlipVertical, Trash2, Maximize, Minimize, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, RotateCcw, FlipHorizontal, FlipVertical, Trash2, Maximize, Minimize, X, Download } from 'lucide-react';
 import type { PhotoEntry } from '@/types/fotos';
 import { EMBEDDING_DIM } from '@refinio/fotos.core';
 import { InlineRenameField } from './InlineRenameField';
@@ -14,6 +14,7 @@ interface LightboxProps {
     onIndexChange: (index: number) => void;
     onClose: () => void;
     onDelete?: (hash: string) => void;
+    onExport?: (photo: PhotoEntry) => Promise<void> | void;
     onFaceSearch?: (embedding: Float32Array) => void;
     onRenameFace?: (clusterId: string, name: string) => Promise<void> | void;
     onDeleteFace?: (clusterId: string) => void;
@@ -49,7 +50,7 @@ function clampPan(
     };
 }
 
-export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onFaceSearch, onRenameFace, onDeleteFace, getFileUrl }: LightboxProps) {
+export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onExport, onFaceSearch, onRenameFace, onDeleteFace, getFileUrl }: LightboxProps) {
     const photo = photos[index];
     const [fullscreen, setFullscreen] = useState(false);
     const [chevronVisible, setChevronVisible] = useState(false);
@@ -478,15 +479,28 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onFa
                     </Section>
 
                     {/* Delete */}
-                    {onDelete && (
+                    {(onExport || onDelete) && (
                         <Section label="Actions">
-                            <button
-                                onClick={() => onDelete(photo.hash)}
-                                className="flex items-center gap-2 text-[11px] text-red-400/60 hover:text-red-400 transition-colors"
-                            >
-                                <Trash2 className="w-3.5 h-3.5" />
-                                Delete photo
-                            </button>
+                            <div className="space-y-2">
+                                {onExport && (
+                                    <button
+                                        onClick={() => { void onExport(photo); }}
+                                        className="flex items-center gap-2 text-[11px] text-emerald-300/70 hover:text-emerald-200 transition-colors"
+                                    >
+                                        <Download className="w-3.5 h-3.5" />
+                                        Export to Photos
+                                    </button>
+                                )}
+                                {onDelete && (
+                                    <button
+                                        onClick={() => onDelete(photo.hash)}
+                                        className="flex items-center gap-2 text-[11px] text-red-400/60 hover:text-red-400 transition-colors"
+                                    >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                        Delete photo
+                                    </button>
+                                )}
+                            </div>
                         </Section>
                     )}
                 </div>

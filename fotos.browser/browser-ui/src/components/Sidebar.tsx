@@ -66,6 +66,8 @@ interface SidebarProps {
     onPhotoSelectionModeChange: (enabled: boolean) => void;
     selectedPhotoCount: number;
     onSelectAllVisiblePhotos: () => void;
+    onExportSelectedPhotos?: () => Promise<void> | void;
+    exportSelectedPhotosDisabled?: boolean;
     clusterSelectionEnabled: boolean;
     onClusterSelectionModeChange: (enabled: boolean) => void;
     selectedClusterIds: string[];
@@ -124,6 +126,8 @@ export function Sidebar({
     onPhotoSelectionModeChange,
     selectedPhotoCount,
     onSelectAllVisiblePhotos,
+    onExportSelectedPhotos,
+    exportSelectedPhotosDisabled,
     clusterSelectionEnabled,
     onClusterSelectionModeChange,
     selectedClusterIds,
@@ -212,6 +216,8 @@ export function Sidebar({
                             onPhotoSelectionModeChange={onPhotoSelectionModeChange}
                             selectedPhotoCount={selectedPhotoCount}
                             onSelectAllVisiblePhotos={onSelectAllVisiblePhotos}
+                            onExportSelectedPhotos={onExportSelectedPhotos}
+                            exportSelectedPhotosDisabled={exportSelectedPhotosDisabled}
                             clusterSelectionEnabled={clusterSelectionEnabled}
                             onClusterSelectionModeChange={onClusterSelectionModeChange}
                             selectedClusterIds={selectedClusterIds}
@@ -364,6 +370,8 @@ export function Sidebar({
                         onPhotoSelectionModeChange={onPhotoSelectionModeChange}
                         selectedPhotoCount={selectedPhotoCount}
                         onSelectAllVisiblePhotos={onSelectAllVisiblePhotos}
+                        onExportSelectedPhotos={onExportSelectedPhotos}
+                        exportSelectedPhotosDisabled={exportSelectedPhotosDisabled}
                         clusterSelectionEnabled={clusterSelectionEnabled}
                         onClusterSelectionModeChange={onClusterSelectionModeChange}
                         selectedClusterIds={selectedClusterIds}
@@ -606,6 +614,7 @@ function BrowseTab({
     galleryMode, onGalleryModeChange,
     collections, activeCollectionId, onCollectionSelect,
     photoSelectionEnabled, onPhotoSelectionModeChange, selectedPhotoCount, onSelectAllVisiblePhotos,
+    onExportSelectedPhotos, exportSelectedPhotosDisabled,
     clusterSelectionEnabled, onClusterSelectionModeChange, selectedClusterIds, selectedClusterCount,
     onToggleSelectedCluster, onClearCollectionSelection, onCreateCollection, onRenameCollection, onDeleteCollection,
     clusters, people, groups,
@@ -642,6 +651,8 @@ function BrowseTab({
     onPhotoSelectionModeChange: (enabled: boolean) => void;
     selectedPhotoCount: number;
     onSelectAllVisiblePhotos: () => void;
+    onExportSelectedPhotos?: () => Promise<void> | void;
+    exportSelectedPhotosDisabled?: boolean;
     clusterSelectionEnabled: boolean;
     onClusterSelectionModeChange: (enabled: boolean) => void;
     selectedClusterIds: string[];
@@ -777,6 +788,23 @@ function BrowseTab({
                         >
                             Select Visible
                         </button>
+                        {onExportSelectedPhotos && (
+                            <button
+                                type="button"
+                                onClick={() => { void onExportSelectedPhotos(); }}
+                                disabled={selectedPhotoCount === 0 || exportSelectedPhotosDisabled}
+                                className={`rounded-md border px-2 py-1 text-[10px] uppercase tracking-[0.16em] transition-colors ${
+                                    selectedPhotoCount === 0 || exportSelectedPhotosDisabled
+                                        ? 'border-white/10 bg-white/5 text-white/20 cursor-not-allowed'
+                                        : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/16'
+                                }`}
+                            >
+                                <span className="inline-flex items-center gap-1">
+                                    <Download className="h-3 w-3" />
+                                    Export to Photos
+                                </span>
+                            </button>
+                        )}
                         {(selectedPhotoCount > 0 || selectedClusterCount > 0) && (
                             <button
                                 type="button"
