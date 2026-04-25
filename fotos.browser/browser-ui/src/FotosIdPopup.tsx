@@ -263,6 +263,20 @@ const styles = {
     color: 'rgba(255,255,255,0.3)',
     marginBottom: 4,
   } as React.CSSProperties,
+  toggleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: '11px',
+    userSelect: 'none',
+  } as React.CSSProperties,
+  checkbox: {
+    width: 12,
+    height: 12,
+    accentColor: '#e94560',
+  } as React.CSSProperties,
   hint: {
     fontSize: '10px',
     lineHeight: '1.5',
@@ -318,6 +332,7 @@ function FotosIdSetupForm(props: {
   // Photo state
   const [images, setImages] = useState<SelectedImage[]>([]);
   const [passphrase, setPassphrase] = useState('');
+  const [showPassphrase, setShowPassphrase] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragIndexRef = useRef<number | null>(null);
 
@@ -746,13 +761,22 @@ function FotosIdSetupForm(props: {
             <div style={styles.section}>
               <label style={styles.label}>Passphrase</label>
               <input
-                type="password"
+                type={showPassphrase ? 'text' : 'password'}
                 autoComplete="new-password"
                 placeholder="Enter your passphrase"
                 value={passphrase}
                 onChange={e => setPassphrase(e.target.value)}
                 style={styles.input}
               />
+              <label style={styles.toggleRow}>
+                <input
+                  type="checkbox"
+                  checked={showPassphrase}
+                  onChange={e => setShowPassphrase(e.target.checked)}
+                  style={styles.checkbox}
+                />
+                <span>Show passphrase</span>
+              </label>
             </div>
           )}
 
