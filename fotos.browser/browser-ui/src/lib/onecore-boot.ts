@@ -46,6 +46,7 @@ import {
   SettingsRecipes,
   InstanceSettingsStorage,
   SettingsPlan,
+  registerDeviceSettings,
   registerSubscriptionSettings,
   registerGlueSettings,
 } from '@refinio/settings.core';
@@ -243,6 +244,7 @@ async function initModules(
   commServerUrl: string,
 ): Promise<FotosModel> {
   registerSubscriptionSettings();
+  registerDeviceSettings();
   registerGlueSettings();
   registerFotosSettings();
   registerFotosHistorySettings();
