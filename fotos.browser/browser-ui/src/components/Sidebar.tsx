@@ -5,6 +5,7 @@ import type { FotosModel } from '@/lib/onecore-boot';
 import type { FaceClusterSummary, SimilarFaceMatch } from '@/lib/cluster-gallery';
 import type { FotosCollectionSummary } from '@/lib/fotosCollections';
 import type { FotosHistoryBranchNode } from '@/lib/fotosHistorySettings';
+import { useDeviceSettings, type FotosDeviceSettings } from '@/hooks/useDeviceSettings';
 import { readStoredSidebarTab, writeStoredSidebarTab } from '@/lib/authFlowState';
 import { FotosSettings as FotosSettingsPanel } from './FotosSettings';
 import { ClusterCard } from './ClusterGallery';
@@ -1846,6 +1847,8 @@ function SettingsTab({
     currentFolderName?: string | null;
     fotosModel: FotosModel | null;
 }) {
+    const { deviceSettings, updateDeviceSettings } = useDeviceSettings(fotosModel);
+
     return (
         <>
             <FotosSettingsPanel
@@ -1988,17 +1991,149 @@ function SettingsTab({
                 )}
             </CollapsibleSection>
 
-            <CollapsibleSection label="Device">
-                <SmallField label="Device name">
-                    <input
-                        type="text"
-                        value={settings.device.name}
-                        onChange={e => onUpdateDeviceName(e.target.value)}
-                        className="sidebar-input"
-                    />
-                </SmallField>
-            </CollapsibleSection>
+            <DevicesSettingsSection
+                name={settings.device.name}
+                settings={deviceSettings}
+                onUpdateName={onUpdateDeviceName}
+                onUpdateSettings={updateDeviceSettings}
+            />
         </>
+    );
+}
+
+function DevicesSettingsSection({
+    name,
+    settings,
+    onUpdateName,
+    onUpdateSettings,
+}: {
+    name: string;
+    settings: FotosDeviceSettings;
+    onUpdateName: (name: string) => void;
+    onUpdateSettings: (updates: Partial<FotosDeviceSettings>) => void;
+}) {
+    const discoveryDisplayName = settings.discoveryIdentity?.displayName ?? '';
+
+    const updateDiscoveryDisplayName = (displayName: string) => {
+        const nextDiscoveryIdentity = { ...(settings.discoveryIdentity ?? {}) };
+        if (displayName.trim().length > 0) {
+            nextDiscoveryIdentity.displayName = displayName;
+        } else {
+            delete nextDiscoveryIdentity.displayName;
+        }
+
+        onUpdateSettings({
+            discoveryIdentity: nextDiscoveryIdentity,
+        });
+    };
+
+    return (
+        <CollapsibleSection label="Devices">
+            <SmallField label="Device name">
+                <input
+                    type="text"
+                    value={name}
+                    onChange={e => onUpdateName(e.target.value)}
+                    className="sidebar-input"
+                />
+            </SmallField>
+
+            <SettingsCheckbox
+                checked={settings.discoveryEnabled}
+                label="Local discovery"
+                detail="mDNS peer discovery on the local network."
+                onChange={checked => onUpdateSettings({ discoveryEnabled: checked })}
+            />
+
+            <SettingsCheckbox
+                checked={settings.autoConnect}
+                label="Auto-connect"
+                detail="Connect to trusted devices when discovery finds them."
+                onChange={checked => onUpdateSettings({ autoConnect: checked })}
+            />
+
+            <SettingsCheckbox
+                checked={settings.addOnlyConnectedDevices}
+                label="Add only connected devices"
+                detail="Keep device lists limited to peers that have connected."
+                onChange={checked => onUpdateSettings({ addOnlyConnectedDevices: checked })}
+            />
+
+            <SettingsCheckbox
+                checked={settings.showOfflineDevices}
+                label="Show offline devices"
+                detail="Keep known devices visible after they go offline."
+                onChange={checked => onUpdateSettings({ showOfflineDevices: checked })}
+            />
+
+            <SettingsCheckbox
+                checked={settings.autoTrustKnownPersonDevices}
+                label="Auto-trust known devices"
+                detail="Trust new devices from known people during discovery."
+                onChange={checked => onUpdateSettings({ autoTrustKnownPersonDevices: checked })}
+            />
+
+            <SmallField label="Discovery timeout (ms)">
+                <input
+                    type="number"
+                    value={settings.discoveryTimeout}
+                    onChange={e => onUpdateSettings({ discoveryTimeout: Math.max(1000, parseInt(e.target.value, 10) || 1000) })}
+                    className="sidebar-input w-28"
+                    min={1000}
+                    step={1000}
+                />
+            </SmallField>
+
+            <SmallField label="Profile visibility">
+                <select
+                    value={settings.profileVisibility}
+                    onChange={e => onUpdateSettings({
+                        profileVisibility: e.target.value as FotosDeviceSettings['profileVisibility'],
+                    })}
+                    className="sidebar-input"
+                >
+                    <option value="minimal">Name only</option>
+                    <option value="full">Full profile</option>
+                </select>
+            </SmallField>
+
+            <SmallField label="Discovery display name">
+                <input
+                    type="text"
+                    value={discoveryDisplayName}
+                    onChange={e => updateDiscoveryDisplayName(e.target.value)}
+                    className="sidebar-input"
+                    placeholder={name}
+                />
+            </SmallField>
+        </CollapsibleSection>
+    );
+}
+
+function SettingsCheckbox({
+    checked,
+    label,
+    detail,
+    onChange,
+}: {
+    checked: boolean;
+    label: string;
+    detail: string;
+    onChange: (checked: boolean) => void;
+}) {
+    return (
+        <label className="flex items-start gap-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-2">
+            <input
+                type="checkbox"
+                checked={checked}
+                onChange={event => onChange(event.target.checked)}
+                className="mt-0.5 h-3.5 w-3.5 accent-[#e94560]"
+            />
+            <div className="space-y-1">
+                <div className="text-[11px] text-white/72">{label}</div>
+                <p className="text-[10px] leading-relaxed text-white/30">{detail}</p>
+            </div>
+        </label>
     );
 }
 
