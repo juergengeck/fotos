@@ -259,6 +259,9 @@ export function Sidebar({
                             onGalleryShareChange={onGalleryShareChange}
                             onCollectionShareChange={onCollectionShareChange}
                             onClusterShareChange={onClusterShareChange}
+                            getFileUrl={getFileUrl}
+                            onClusterSelect={id => onClusterSelect(id)}
+                            onRenameFace={onRenameFace}
                         />
                     )}
                     {tab === 'settings' && (
@@ -279,10 +282,6 @@ export function Sidebar({
                             onHistoryDelete={onHistoryDelete}
                             currentFolderName={currentFolderName}
                             fotosModel={fotosModel ?? null}
-                            clusters={clusters}
-                            getFileUrl={getFileUrl}
-                            onClusterSelect={id => onClusterSelect(id)}
-                            onRenameFace={onRenameFace}
                         />
                     )}
                 </div>
@@ -412,6 +411,9 @@ export function Sidebar({
                         onGalleryShareChange={onGalleryShareChange}
                         onCollectionShareChange={onCollectionShareChange}
                         onClusterShareChange={onClusterShareChange}
+                        getFileUrl={getFileUrl}
+                        onClusterSelect={id => onClusterSelect(id)}
+                        onRenameFace={onRenameFace}
                     />
                 )}
                 {tab === 'settings' && (
@@ -433,10 +435,6 @@ export function Sidebar({
                         onHistoryDelete={onHistoryDelete}
                         currentFolderName={currentFolderName}
                         fotosModel={fotosModel ?? null}
-                        clusters={clusters}
-                        getFileUrl={getFileUrl}
-                        onClusterSelect={id => onClusterSelect(id)}
-                        onRenameFace={onRenameFace}
                     />
                 )}
             </div>
@@ -1509,6 +1507,9 @@ function ManageTab({
     onGalleryShareChange,
     onCollectionShareChange,
     onClusterShareChange,
+    getFileUrl,
+    onClusterSelect,
+    onRenameFace,
 }: {
     settings: FotosSettings;
     onUpdateStorage: (updates: Partial<FotosSettings['storage']>) => void;
@@ -1529,6 +1530,9 @@ function ManageTab({
     onGalleryShareChange: (personIds: string[]) => Promise<void> | void;
     onCollectionShareChange: (collectionId: string, personIds: string[]) => Promise<void> | void;
     onClusterShareChange: (clusterId: string, personIds: string[]) => Promise<void> | void;
+    getFileUrl: (relativePath: string) => Promise<string>;
+    onClusterSelect: (clusterId: string) => void;
+    onRenameFace: (clusterId: string, name: string) => Promise<void> | void;
 }) {
     return (
         <>
@@ -1664,6 +1668,21 @@ function ManageTab({
                     </div>
                 )}
             </CollapsibleSection>
+
+            {clusters.length > 0 && (
+                <CollapsibleSection label="Detected Faces">
+                    {clusters.map(cluster => (
+                        <ClusterCard
+                            key={cluster.clusterId}
+                            cluster={cluster}
+                            active={false}
+                            onClick={() => onClusterSelect(cluster.clusterId)}
+                            getFileUrl={getFileUrl}
+                            onRename={onRenameFace}
+                        />
+                    ))}
+                </CollapsibleSection>
+            )}
 
             <SectionLabel>AI Audit</SectionLabel>
             <LLMComparisonPanel
@@ -1808,10 +1827,6 @@ function SettingsTab({
     onHistoryDelete,
     currentFolderName,
     fotosModel,
-    clusters,
-    getFileUrl,
-    onClusterSelect,
-    onRenameFace,
 }: {
     settings: FotosSettings;
     onUpdateStorage: (updates: Partial<FotosSettings['storage']>) => void;
@@ -1830,10 +1845,6 @@ function SettingsTab({
     onHistoryDelete: (eventId: string) => void;
     currentFolderName?: string | null;
     fotosModel: FotosModel | null;
-    clusters: FaceClusterSummary[];
-    getFileUrl: (relativePath: string) => Promise<string>;
-    onClusterSelect: (clusterId: string) => void;
-    onRenameFace: (clusterId: string, name: string) => Promise<void> | void;
 }) {
     return (
         <>
@@ -1976,21 +1987,6 @@ function SettingsTab({
                     </div>
                 )}
             </CollapsibleSection>
-
-            {clusters.length > 0 && (
-                <CollapsibleSection label="Detected Faces">
-                    {clusters.map(cluster => (
-                        <ClusterCard
-                            key={cluster.clusterId}
-                            cluster={cluster}
-                            active={false}
-                            onClick={() => onClusterSelect(cluster.clusterId)}
-                            getFileUrl={getFileUrl}
-                            onRename={onRenameFace}
-                        />
-                    ))}
-                </CollapsibleSection>
-            )}
 
             <CollapsibleSection label="Device">
                 <SmallField label="Device name">
