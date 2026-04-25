@@ -3,6 +3,9 @@ import { calculateIdHashOfObj } from '@refinio/one.core/lib/util/object.js';
 import { useId, useMemo, useState } from 'react';
 import { ChevronDown, X } from 'lucide-react';
 
+const MIN_PERSON_ID_PREFIX_LENGTH = 8;
+const MIN_DIRECT_PERSON_ID_LENGTH = 16;
+
 export interface SharePeerOption {
     personId: string;
     displayName: string | null;
@@ -96,6 +99,17 @@ export async function resolveTokenToPersonId(
     );
     if (exactPersonIdMatch) {
         return exactPersonIdMatch;
+    }
+
+    const isHexIdInput = /^[0-9a-f]+$/i.test(normalized);
+    if (isHexIdInput && normalized.length >= MIN_PERSON_ID_PREFIX_LENGTH) {
+        const prefixIdMatch = resolveUniquePeerMatch(
+            peers,
+            peer => peer.personId.toLowerCase().startsWith(normalized),
+        );
+        if (prefixIdMatch) {
+            return prefixIdMatch;
+        }
     }
 
     if (!explicitHandle) {
@@ -196,16 +210,12 @@ export async function resolveTokenToPersonId(
         }
     }
 
-    if (/^[0-9a-f]{16,}$/i.test(token.trim())) {
-        const prefixIdMatch = resolveUniquePeerMatch(
-            peers,
-            peer => peer.personId.toLowerCase().startsWith(normalized),
-        );
-        if (prefixIdMatch) {
-            return prefixIdMatch;
-        }
-
+    if (isHexIdInput && normalized.length >= MIN_DIRECT_PERSON_ID_LENGTH) {
         return token.trim();
+    }
+
+    if (isHexIdInput && normalized.length >= MIN_PERSON_ID_PREFIX_LENGTH) {
+        return null;
     }
 
     if (explicitHandle && normalizedHandleIdentity) {

@@ -90,4 +90,34 @@ describe('resolveTokenToPersonId', () => {
             '0123456789abcdef0123456789abcdef',
         );
     });
+
+    it('resolves short person id prefixes against known contacts', async () => {
+        const peers: SharePeerOption[] = [
+            createPeer({
+                personId: '531a3e1b89abcdef0123456789abcdef',
+                displayName: 'Contact 531a3e1b',
+                persistent: true,
+            }),
+        ];
+
+        await expect(resolveTokenToPersonId('531a3e1b', peers)).resolves.toBe(
+            '531a3e1b89abcdef0123456789abcdef',
+        );
+    });
+
+    it('does not derive glue identities from unresolved short hex prefixes', async () => {
+        await expect(resolveTokenToPersonId('531a3e1b', [])).resolves.toBeNull();
+    });
+
+    it('still resolves contacts whose display names look like hex', async () => {
+        const peers: SharePeerOption[] = [
+            createPeer({
+                personId: 'person-contact',
+                displayName: '531a3e1b',
+                persistent: true,
+            }),
+        ];
+
+        await expect(resolveTokenToPersonId('531a3e1b', peers)).resolves.toBe('person-contact');
+    });
 });
