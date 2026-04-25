@@ -117,7 +117,7 @@ export function getGallerySurfaceProfile(surface: GallerySurface): GallerySurfac
             defaultSource: 'filesystem',
             writesSidecars: true,
             runsFaceEnrichment: true,
-            supportsShareTarget: false,
+            supportsShareTarget: true,
             summary: 'Open a photo folder and materialize metadata in place.',
             primaryActionLabel: 'Open photo folder',
         };
@@ -215,6 +215,18 @@ export function planGalleryIntake(
                 faceEnrichment: 'local',
                 actionLabel: profile.primaryActionLabel,
                 summary: 'Open a photo folder and materialize gallery metadata in place.',
+            };
+        }
+        if (source === 'shared-files') {
+            return {
+                surface,
+                source,
+                supported: true,
+                mode: 'attach-library',
+                writesSidecars: true,
+                faceEnrichment: 'local',
+                actionLabel: 'store shared photos',
+                summary: 'Receive shared photos and save them into a chosen desktop folder.',
             };
         }
         if (source === 'bundle') {

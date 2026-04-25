@@ -68,6 +68,10 @@ function extOf(name: string): string {
     return i >= 0 ? name.slice(i).toLowerCase() : '';
 }
 
+export function isImportableImageFile(file: File): boolean {
+    return file.type.startsWith('image/') || IMAGE_EXTS.has(extOf(file.name));
+}
+
 function mimeFromName(name: string): string {
     const ext = extOf(name);
     const map: Record<string, string> = {
@@ -435,6 +439,85 @@ async function writeFile(
     await writable.close();
 }
 
+async function fileExists(
+    dirHandle: FileSystemDirectoryHandle,
+    name: string,
+): Promise<boolean> {
+    try {
+        await dirHandle.getFileHandle(name);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function uniqueFileName(
+    dirHandle: FileSystemDirectoryHandle,
+    fileName: string,
+): Promise<string> {
+    if (!(await fileExists(dirHandle, fileName))) {
+        return fileName;
+    }
+
+    const dotIndex = fileName.lastIndexOf('.');
+    const stem = dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
+    const ext = dotIndex > 0 ? fileName.slice(dotIndex) : '';
+
+    let index = 1;
+    while (true) {
+        const candidate = `${stem} (${index})${ext}`;
+        if (!(await fileExists(dirHandle, candidate))) {
+            return candidate;
+        }
+        index += 1;
+    }
+}
+
+function getImportPathParts(file: File): { folders: string[]; fileName: string } {
+    const rawRelativePath = typeof (file as { webkitRelativePath?: unknown }).webkitRelativePath === 'string'
+        ? String((file as { webkitRelativePath?: string }).webkitRelativePath)
+        : '';
+    const parts = rawRelativePath.split('/').filter(Boolean);
+    if (parts.length <= 1) {
+        return {
+            folders: [],
+            fileName: file.name,
+        };
+    }
+
+    return {
+        // Drop the user-selected root folder name so imports land directly in the destination.
+        folders: parts.slice(1, -1),
+        fileName: parts[parts.length - 1] || file.name,
+    };
+}
+
+export async function copyFilesToDirectory(
+    rootHandle: FileSystemDirectoryHandle,
+    fileList: FileList | readonly File[],
+): Promise<number> {
+    let copied = 0;
+    const selectedFiles = Array.from(fileList);
+    for (let index = 0; index < selectedFiles.length; index++) {
+        const file = selectedFiles[index];
+        if (!isImportableImageFile(file)) {
+            continue;
+        }
+
+        const { folders, fileName } = getImportPathParts(file);
+        let dirHandle = rootHandle;
+        for (let folderIndex = 0; folderIndex < folders.length; folderIndex++) {
+            dirHandle = await getOrCreateDir(dirHandle, folders[folderIndex]);
+        }
+
+        const outputFileName = await uniqueFileName(dirHandle, fileName);
+        await writeFile(dirHandle, outputFileName, file);
+        copied += 1;
+    }
+
+    return copied;
+}
+
 async function loadPreservedIndexAttrs(
     oneDir: FileSystemDirectoryHandle,
 ): Promise<PreservedAttrsByHash> {
@@ -661,7 +744,7 @@ export async function ingestFiles(
     const selectedFiles = Array.from(fileList);
     for (let i = 0; i < selectedFiles.length; i++) {
         const f = selectedFiles[i];
-        if (f.type.startsWith('image/') || IMAGE_EXTS.has(extOf(f.name))) {
+        if (isImportableImageFile(f)) {
             files.push(f);
         }
     }

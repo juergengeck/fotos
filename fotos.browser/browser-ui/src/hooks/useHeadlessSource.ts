@@ -209,6 +209,7 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
         entries,
         loading,
         ingestProgress: null,
+        pendingImportCount: 0,
         mobile: false,
         openFolder,
         openLocalFiles,

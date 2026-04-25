@@ -17,7 +17,7 @@ import type {
     GallerySurface,
     GallerySurfaceProfile,
 } from '@refinio/fotos.core';
-import { ingestDirectory, ingestFiles, type IngestProgress, type FaceWorkerHandle } from '@/lib/browserIngest';
+import { copyFilesToDirectory, ingestDirectory, type IngestProgress, type FaceWorkerHandle } from '@/lib/browserIngest';
 import { createFaceWorker } from '@/lib/faceWorkerClient';
 import { createSemanticWorker } from '@/lib/semanticWorkerClient';
 import { isMobile } from '@/lib/platform';
@@ -1091,6 +1091,8 @@ export interface FolderAccess {
     loading: boolean;
     /** Ingestion progress (null when not ingesting) */
     ingestProgress: IngestProgress | null;
+    /** Shared files waiting for a destination choice */
+    pendingImportCount: number;
     /** Whether running in mobile/PWA lightweight mode */
     mobile: boolean;
     /** Trigger the primary intake action for this surface. */
@@ -1126,7 +1128,29 @@ export interface FolderAccess {
 // ── Persist last-opened folder handle via IndexedDB ──────────────────
 const IDB_NAME = 'fotos-prefs';
 const IDB_STORE = 'handles';
-const IDB_KEY = 'lastFolder';
+const IDB_LAST_FOLDER_KEY = 'lastFolder';
+const IDB_IMPORT_DESTINATION_KEY = 'importDestination';
+const DEFAULT_SHARED_FOLDER_NAME = 'shared';
+const DEFAULT_LOCAL_FOLDER_NAME = 'photos';
+
+type PersistedFolderPreference =
+    | {
+        kind: 'handle';
+        handle: FileSystemDirectoryHandle;
+        label?: string | null;
+    }
+    | {
+        kind: 'opfs';
+        path: string[];
+        label?: string | null;
+    };
+
+type PendingImport = {
+    files: File[];
+    source: 'share-target';
+};
+
+type ImportSource = PendingImport['source'] | 'local-picker';
 
 function openPrefsDB(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
@@ -1139,35 +1163,179 @@ function openPrefsDB(): Promise<IDBDatabase> {
     });
 }
 
-async function saveLastFolder(handle: FileSystemDirectoryHandle): Promise<void> {
+function sanitizeFolderSegment(value: string | null | undefined, fallback: string): string {
+    const normalized = (value ?? '')
+        .replace(/[\\/:*?"<>|]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return normalized || fallback;
+}
+
+async function savePreference(key: string, value: unknown): Promise<void> {
     const db = await openPrefsDB();
     const tx = db.transaction(IDB_STORE, 'readwrite');
-    tx.objectStore(IDB_STORE).put(handle, IDB_KEY);
+    tx.objectStore(IDB_STORE).put(value, key);
     db.close();
 }
 
-async function loadLastFolder(): Promise<FileSystemDirectoryHandle | null> {
+async function loadPreference<T>(key: string): Promise<T | null> {
     const db = await openPrefsDB();
     return new Promise((resolve) => {
         const tx = db.transaction(IDB_STORE, 'readonly');
-        const req = tx.objectStore(IDB_STORE).get(IDB_KEY);
-        req.onsuccess = () => resolve(req.result ?? null);
+        const req = tx.objectStore(IDB_STORE).get(key);
+        req.onsuccess = () => resolve((req.result ?? null) as T | null);
         req.onerror = () => resolve(null);
         db.close();
     });
 }
 
+function isDirectoryHandleLike(value: unknown): value is FileSystemDirectoryHandle {
+    if (!value || typeof value !== 'object') {
+        return false;
+    }
+
+    const candidate = value as {
+        kind?: unknown;
+        name?: unknown;
+    };
+    return candidate.kind === 'directory' && typeof candidate.name === 'string';
+}
+
+function normalizeFolderPreference(value: unknown): PersistedFolderPreference | null {
+    if (isDirectoryHandleLike(value)) {
+        return {
+            kind: 'handle',
+            handle: value,
+            label: value.name,
+        };
+    }
+
+    if (!value || typeof value !== 'object') {
+        return null;
+    }
+
+    const candidate = value as Partial<PersistedFolderPreference>;
+    if (candidate.kind === 'handle' && isDirectoryHandleLike(candidate.handle)) {
+        return {
+            kind: 'handle',
+            handle: candidate.handle,
+            label: candidate.label ?? candidate.handle.name,
+        };
+    }
+
+    if (candidate.kind === 'opfs' && Array.isArray(candidate.path)) {
+        const normalizedPath = candidate.path
+            .filter((segment): segment is string => typeof segment === 'string')
+            .map(segment => sanitizeFolderSegment(segment, DEFAULT_LOCAL_FOLDER_NAME));
+        if (normalizedPath.length === 0) {
+            return null;
+        }
+
+        return {
+            kind: 'opfs',
+            path: normalizedPath,
+            label: candidate.label ?? normalizedPath[normalizedPath.length - 1],
+        };
+    }
+
+    return null;
+}
+
+async function saveLastFolderPreference(preference: PersistedFolderPreference): Promise<void> {
+    await savePreference(IDB_LAST_FOLDER_KEY, preference);
+}
+
+async function saveImportDestinationPreference(preference: PersistedFolderPreference): Promise<void> {
+    await savePreference(IDB_IMPORT_DESTINATION_KEY, preference);
+}
+
+async function loadLastFolderPreference(): Promise<PersistedFolderPreference | null> {
+    return normalizeFolderPreference(await loadPreference<unknown>(IDB_LAST_FOLDER_KEY));
+}
+
+async function loadImportDestinationPreference(): Promise<PersistedFolderPreference | null> {
+    return normalizeFolderPreference(await loadPreference<unknown>(IDB_IMPORT_DESTINATION_KEY));
+}
+
+async function ensureDirectoryPermission(
+    handle: FileSystemDirectoryHandle,
+    requestPermission: boolean,
+): Promise<boolean> {
+    const fsHandle = handle as FileSystemDirectoryHandle & {
+        queryPermission?: (descriptor: { mode: 'readwrite' }) => Promise<PermissionState>;
+        requestPermission?: (descriptor: { mode: 'readwrite' }) => Promise<PermissionState>;
+    };
+    const descriptor = { mode: 'readwrite' as const };
+
+    if (typeof fsHandle.queryPermission !== 'function') {
+        return true;
+    }
+
+    try {
+        const current = await fsHandle.queryPermission(descriptor);
+        if (current === 'granted') {
+            return true;
+        }
+        if (current === 'prompt' && requestPermission && typeof fsHandle.requestPermission === 'function') {
+            return (await fsHandle.requestPermission(descriptor)) === 'granted';
+        }
+        return false;
+    } catch {
+        return true;
+    }
+}
+
+async function resolveOpfsDirectory(
+    path: readonly string[],
+): Promise<FileSystemDirectoryHandle | null> {
+    if (typeof navigator === 'undefined' || !('storage' in navigator)) {
+        return null;
+    }
+
+    const storageWithDirectory = navigator.storage as StorageManager & {
+        getDirectory?: () => Promise<FileSystemDirectoryHandle>;
+    };
+    if (typeof storageWithDirectory.getDirectory !== 'function') {
+        return null;
+    }
+
+    const normalizedPath = path.map((segment, index) => sanitizeFolderSegment(
+        segment,
+        index === path.length - 1 ? DEFAULT_LOCAL_FOLDER_NAME : 'library',
+    ));
+
+    let dirHandle = await storageWithDirectory.getDirectory();
+    for (let index = 0; index < normalizedPath.length; index++) {
+        dirHandle = await dirHandle.getDirectoryHandle(normalizedPath[index], { create: true });
+    }
+    return dirHandle;
+}
+
+async function resolveFolderPreference(
+    preference: PersistedFolderPreference,
+    requestPermission: boolean,
+): Promise<FileSystemDirectoryHandle | null> {
+    if (preference.kind === 'handle') {
+        return (await ensureDirectoryPermission(preference.handle, requestPermission))
+            ? preference.handle
+            : null;
+    }
+
+    return resolveOpfsDirectory(preference.path);
+}
+
 /**
  * Retrieve files stashed by the service worker from a Web Share Target POST.
- * Returns null if no shared files are pending.
+ * Returns null if no shared files are pending. The cache is left intact until
+ * the import is committed so desktop can recover after a reload.
  */
-async function consumeSharedFiles(): Promise<File[] | null> {
+async function loadSharedFiles(): Promise<File[] | null> {
     if (!('caches' in window)) return null;
-    // Only check if we arrived via share
-    const params = new URLSearchParams(window.location.search);
-    if (!params.has('share')) return null;
-    // Clean up the URL
-    window.history.replaceState({}, '', '/');
+    const currentUrl = new URL(window.location.href);
+    if (currentUrl.searchParams.has('share')) {
+        currentUrl.searchParams.delete('share');
+        window.history.replaceState({}, '', `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
+    }
 
     try {
         const cache = await caches.open('fotos-share');
@@ -1184,11 +1352,21 @@ async function consumeSharedFiles(): Promise<File[] | null> {
             const name = resp.headers.get('X-Filename') || `shared-${i}.jpg`;
             files.push(new File([blob], name, { type: blob.type }));
         }
-        // Clear the share cache
-        await caches.delete('fotos-share');
         return files.length > 0 ? files : null;
     } catch {
         return null;
+    }
+}
+
+async function clearSharedFiles(): Promise<void> {
+    if (!('caches' in window)) {
+        return;
+    }
+
+    try {
+        await caches.delete('fotos-share');
+    } catch {
+        // Ignore cache cleanup failures so imports still complete.
     }
 }
 
@@ -1245,6 +1423,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     const [entries, setEntries] = useState<PhotoEntry[]>([]);
     const [loading, setLoading] = useState(false);
     const [ingestProgress, setIngestProgress] = useState<IngestProgress | null>(null);
+    const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
     const rootHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
     const mobile = isMobile();
     const surface: GallerySurface = mobile ? 'fotos-browser-mobile' : 'fotos-browser-desktop';
@@ -1286,6 +1465,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             folderName,
             entryCount: entries.length,
             loading,
+            pendingImportCount: pendingImport?.files.length ?? 0,
             pendingFaces,
             ingestProgress: ingestProgress
                 ? {
@@ -1301,6 +1481,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         folderName,
         entries.length,
         loading,
+        pendingImport?.files.length,
         ingestProgress?.phase,
         ingestProgress?.current,
         ingestProgress?.total,
@@ -1942,21 +2123,109 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         }
     }, []);
 
+    const resolveImportDestination = useCallback(async (
+        source: ImportSource,
+        options: {
+            requestPermission: boolean;
+            allowPicker: boolean;
+        },
+    ): Promise<{
+        handle: FileSystemDirectoryHandle;
+        preference: PersistedFolderPreference;
+    } | null> => {
+        const currentHandle = rootHandleRef.current;
+        if (currentHandle && await ensureDirectoryPermission(currentHandle, options.requestPermission)) {
+            return {
+                handle: currentHandle,
+                preference: {
+                    kind: 'handle',
+                    handle: currentHandle,
+                    label: currentHandle.name,
+                },
+            };
+        }
+
+        const savedPreference = await loadImportDestinationPreference();
+        if (savedPreference) {
+            const savedHandle = await resolveFolderPreference(savedPreference, options.requestPermission);
+            if (savedHandle) {
+                return {
+                    handle: savedHandle,
+                    preference: {
+                        ...savedPreference,
+                        label: savedPreference.label ?? savedHandle.name,
+                    },
+                };
+            }
+        }
+
+        const canUseAppLocalFolder = mobile || !('showDirectoryPicker' in window);
+        if (canUseAppLocalFolder) {
+            const preference: PersistedFolderPreference = {
+                kind: 'opfs',
+                path: [source === 'share-target' ? DEFAULT_SHARED_FOLDER_NAME : DEFAULT_LOCAL_FOLDER_NAME],
+                label: source === 'share-target' ? DEFAULT_SHARED_FOLDER_NAME : DEFAULT_LOCAL_FOLDER_NAME,
+            };
+            const handle = await resolveFolderPreference(preference, false);
+            if (handle) {
+                return {
+                    handle,
+                    preference: {
+                        ...preference,
+                        label: preference.label ?? handle.name,
+                    },
+                };
+            }
+        }
+
+        if (options.allowPicker && 'showDirectoryPicker' in window) {
+            try {
+                const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
+                return {
+                    handle,
+                    preference: {
+                        kind: 'handle',
+                        handle,
+                        label: handle.name,
+                    },
+                };
+            } catch {
+                return null;
+            }
+        }
+
+        return null;
+    }, [mobile]);
+
     /** Open a directory handle: scan, ingest if needed, background face pass, sync */
-    const openFromHandle = useCallback(async (handle: FileSystemDirectoryHandle) => {
-        traceHang('open-folder-start', { folderName: handle.name });
+    const openFromHandle = useCallback(async (
+        handle: FileSystemDirectoryHandle,
+        options: {
+            forceIngest?: boolean;
+            label?: string | null;
+        } = {},
+    ) => {
+        const forceIngest = options.forceIngest ?? false;
+        const nextFolderName = options.label ?? handle.name;
+        traceHang('open-folder-start', {
+            folderName: nextFolderName,
+            forceIngest,
+        });
         rootHandleRef.current = handle;
         clusterDimRef.current = null;
         clusterThresholdRef.current = null;
         semanticPassPromiseRef.current = null;
-        setFolderName(handle.name);
+        setFolderName(nextFolderName);
         setIsOpen(true);
         clearUrlCache();
 
-        const found = await scan(handle);
+        const found = forceIngest ? [] : await scan(handle);
 
-        if (found.length === 0) {
-            traceHang('open-folder-ingest', { folderName: handle.name });
+        if (forceIngest || found.length === 0) {
+            traceHang('open-folder-ingest', {
+                folderName: nextFolderName,
+                forceIngest,
+            });
             setIngestProgress({ phase: 'scanning', current: 0, total: 0 });
             let faceHandle: FaceWorkerHandle | undefined;
             if (allowsLocalFaceEnrichment) {
@@ -1979,7 +2248,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                 console.warn('[fotos-sync]', err));
         } else {
             traceHang('open-folder-existing-gallery', {
-                folderName: handle.name,
+                folderName: nextFolderName,
                 entryCount: found.length,
             });
             let currentEntries = found;
@@ -2002,21 +2271,58 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         scan,
     ]);
 
-    // Restore last-opened folder on mount (desktop only, runs once)
+    const importFilesIntoLibrary = useCallback(async (
+        files: readonly File[],
+        source: ImportSource,
+        options: {
+            requestPermission: boolean;
+            allowPicker: boolean;
+        },
+    ): Promise<boolean> => {
+        const destination = await resolveImportDestination(source, options);
+        if (!destination) {
+            return false;
+        }
+
+        const copied = await copyFilesToDirectory(destination.handle, files);
+        await Promise.all([
+            saveImportDestinationPreference(destination.preference),
+            saveLastFolderPreference(destination.preference),
+        ]);
+
+        if (copied === 0) {
+            if (source === 'share-target') {
+                await clearSharedFiles();
+            }
+            setPendingImport(null);
+            return true;
+        }
+
+        await openFromHandle(destination.handle, {
+            forceIngest: true,
+            label: destination.preference.label ?? destination.handle.name,
+        });
+
+        if (source === 'share-target') {
+            await clearSharedFiles();
+        }
+
+        setPendingImport(null);
+        return true;
+    }, [openFromHandle, resolveImportDestination]);
+
+    // Restore the last persistent folder on mount (runs once).
     const restoredRef = useRef(false);
     useEffect(() => {
         if (restoredRef.current) return;
-        if (!usesWritableLibraryAttach) return;
-        if (!('showDirectoryPicker' in window)) return;
         restoredRef.current = true;
-        loadLastFolder().then(async (handle) => {
+        loadLastFolderPreference().then(async (preference) => {
+            if (!preference) return;
+            const handle = await resolveFolderPreference(preference, false);
             if (!handle) return;
-            const perm = await (handle as any).queryPermission({ mode: 'readwrite' });
-            if (perm === 'granted') {
-                await openFromHandle(handle);
-            }
+            await openFromHandle(handle, { label: preference.label ?? handle.name });
         }).catch(() => {});
-    }, [openFromHandle, usesWritableLibraryAttach]);
+    }, [openFromHandle]);
 
     // Handle incoming Web Share Target files (runs once on mount)
     const shareHandledRef = useRef(false);
@@ -2024,43 +2330,31 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         if (shareHandledRef.current) return;
         shareHandledRef.current = true;
         if (!shareIntakePlan.supported) return;
-        consumeSharedFiles().then(async (files) => {
+        loadSharedFiles().then(async (files) => {
             if (!files) return;
+            const imported = await importFilesIntoLibrary(files, 'share-target', {
+                requestPermission: false,
+                allowPicker: false,
+            });
+            if (imported) {
+                console.log(`[share-target] Stored ${files.length} shared photos`);
+                return;
+            }
+
             rootHandleRef.current = null;
             clusterDimRef.current = null;
             clusterThresholdRef.current = null;
             semanticPassPromiseRef.current = null;
             clearUrlCache();
-            setFolderName('shared');
-            setIsOpen(true);
-            setIngestProgress({ phase: 'scanning', current: 0, total: files.length });
-            const mobileEntries = await ingestFiles(files, setIngestProgress);
-            setIngestProgress(null);
-            const photoEntries: PhotoEntry[] = mobileEntries.map(m => {
-                if (m.objectUrl) urlCacheRef.current.set(m.sourcePath, m.objectUrl);
-                if (m.thumb) urlCacheRef.current.set(m.thumb, m.thumb);
-                return {
-                    hash: m.hash,
-                    name: m.name,
-                    managed: m.managed,
-                    sourcePath: m.sourcePath,
-                    folderPath: m.folderPath,
-                    mimeType: m.mimeType,
-                    thumb: m.thumb,
-                    tags: m.tags,
-                    capturedAt: m.capturedAt,
-                    updatedAt: m.updatedAt,
-                    exif: m.exif,
-                    addedAt: m.addedAt,
-                    size: m.size,
-                };
+            setPendingImport({
+                files,
+                source: 'share-target',
             });
-            setEntries(prev => mergeWithRemoteEntries(photoEntries, prev));
-            syncPhotosToOneCore(photoEntries, null).catch(err =>
-                console.warn('[fotos-sync]', err));
-            console.log(`[share-target] Imported ${files.length} shared photos`);
+            setFolderName(null);
+            setIsOpen(false);
+            console.log(`[share-target] Waiting for folder selection for ${files.length} shared photos`);
         }).catch(err => console.warn('[share-target]', err));
-    }, [clearUrlCache, shareIntakePlan.supported]);
+    }, [clearUrlCache, importFilesIntoLibrary, shareIntakePlan.supported]);
 
     // Process files selected via the mobile file input.
     const handleMobileFiles = useCallback(async (input: HTMLInputElement) => {
@@ -2073,50 +2367,18 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             return;
         }
 
-        rootHandleRef.current = null;
-        clusterDimRef.current = null;
-        clusterThresholdRef.current = null;
-        semanticPassPromiseRef.current = null;
-        clearUrlCache();
-
-        setFolderName('photos');
-        setIsOpen(true);
-
         try {
-            // Ingest files directly (no one/ write on mobile — read-only)
-            setIngestProgress({ phase: 'scanning', current: 0, total: files.length });
-            const mobileEntries = await ingestFiles(files, setIngestProgress);
-
-            // Convert to PhotoEntry and cache object URLs
-            const photoEntries: PhotoEntry[] = mobileEntries.map(m => {
-                if (m.objectUrl) urlCacheRef.current.set(m.sourcePath, m.objectUrl);
-                if (m.thumb) urlCacheRef.current.set(m.thumb, m.thumb);
-                return {
-                    hash: m.hash,
-                    name: m.name,
-                    managed: m.managed,
-                    sourcePath: m.sourcePath,
-                    folderPath: m.folderPath,
-                    mimeType: m.mimeType,
-                    thumb: m.thumb,
-                    tags: m.tags,
-                    capturedAt: m.capturedAt,
-                    updatedAt: m.updatedAt,
-                    exif: m.exif,
-                    addedAt: m.addedAt,
-                    size: m.size,
-                };
+            const imported = await importFilesIntoLibrary(files, 'local-picker', {
+                requestPermission: false,
+                allowPicker: false,
             });
-            setEntries(prev => mergeWithRemoteEntries(photoEntries, prev));
-            // Fire-and-forget ONE.core sync (no rootHandle on mobile — no thumbnails)
-            syncPhotosToOneCore(photoEntries, null).catch(err =>
-                console.warn('[fotos-sync]', err));
+            if (!imported) {
+                console.warn('[openFolder] No writable local destination was available for imported photos.');
+            }
         } catch (err) {
             console.warn('[openFolder] Failed to import mobile photos:', err);
-        } finally {
-            setIngestProgress(null);
         }
-    }, [clearUrlCache]);
+    }, [importFilesIntoLibrary]);
 
     // NOT async — iOS Safari PWA drops user-activation for programmatic
     // input.click() when the handler is async, causing the photo picker to
@@ -2152,11 +2414,25 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     }, [handleMobileFiles]);
 
     const openFolder = useCallback(() => {
+        if (pendingImport?.files.length) {
+            void importFilesIntoLibrary(pendingImport.files, pendingImport.source, {
+                requestPermission: true,
+                allowPicker: true,
+            });
+            return;
+        }
+
         if (usesWritableLibraryAttach && 'showDirectoryPicker' in window) {
             void (async () => {
                 try {
                     const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
-                    saveLastFolder(handle).catch(() => {});
+                    const preference: PersistedFolderPreference = {
+                        kind: 'handle',
+                        handle,
+                        label: handle.name,
+                    };
+                    void saveLastFolderPreference(preference).catch(() => {});
+                    void saveImportDestinationPreference(preference).catch(() => {});
                     await openFromHandle(handle);
                 } catch {
                     // User cancelled the directory picker.
@@ -2166,7 +2442,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         }
 
         openLocalFiles();
-    }, [openFromHandle, openLocalFiles, usesWritableLibraryAttach]);
+    }, [importFilesIntoLibrary, openFromHandle, openLocalFiles, pendingImport, usesWritableLibraryAttach]);
 
     const rescan = useCallback(async () => {
         if (!rootHandleRef.current) return;
@@ -2905,6 +3181,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         entries,
         loading,
         ingestProgress,
+        pendingImportCount: pendingImport?.files.length ?? 0,
         mobile,
         openFolder,
         openLocalFiles,

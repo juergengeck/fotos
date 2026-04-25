@@ -578,6 +578,13 @@ export function App({ fotosModel: initialModel }: AppProps) {
 
     const mobile = gallery.folder.mobile;
     const intakePlan = gallery.folder.defaultIntakePlan;
+    const pendingImportCount = gallery.folder.pendingImportCount;
+    const primaryIntakeActionLabel = pendingImportCount > 0
+        ? `Choose folder for ${pendingImportCount} shared photo${pendingImportCount === 1 ? '' : 's'}`
+        : intakePlan.actionLabel;
+    const primaryIntakeSummary = pendingImportCount > 0
+        ? 'Shared photos are waiting for a destination folder. Choose where to store them and fotos will ingest them into the local library.'
+        : intakePlan.summary;
     const canRunFaceAnalytics = settings.analysis.faceAnalyticsEnabled
         && intakePlan.faceEnrichment === 'local';
     const canReanalyze = canRunFaceAnalytics || settings.analysis.semanticSearchEnabled;
@@ -1350,11 +1357,16 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                 </div>
                             </label>
                         </div>
+                        {pendingImportCount > 0 && (
+                            <div className="w-full max-w-lg rounded-2xl border border-[#e94560]/30 bg-[#2b0f16]/80 px-4 py-3 text-sm text-white/80 shadow-[0_16px_40px_rgba(0,0,0,0.25)]">
+                                {pendingImportCount} shared photo{pendingImportCount === 1 ? ' is' : 's are'} ready to be stored locally.
+                            </div>
+                        )}
                         <button
                             onClick={gallery.folder.openFolder}
                             className="px-5 py-2.5 rounded-lg bg-[#e94560] text-white text-sm font-medium hover:bg-[#d13354] transition-colors"
                         >
-                            {intakePlan.actionLabel}
+                            {primaryIntakeActionLabel}
                         </button>
 
                         <div className="flex items-center gap-3 w-full max-w-lg">
@@ -1400,7 +1412,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         )}
 
                         <p className="max-w-md text-center text-xs text-white/45">
-                            {intakePlan.summary}
+                            {primaryIntakeSummary}
                         </p>
                     </div>
                     <Impressum />

@@ -21,9 +21,20 @@ describe('gallery intake policy', () => {
         const plan = planGalleryIntake(profile.surface, profile.defaultSource);
 
         expect(profile.role).toBe('attach');
+        expect(profile.supportsShareTarget).toBe(true);
         expect(plan.supported).toBe(true);
         expect(plan.mode).toBe('attach-library');
         expect(plan.actionLabel).toBe('Open photo folder');
+    });
+
+    it('treats desktop shared files as a writable attach flow', () => {
+        const plan = planGalleryIntake('fotos-browser-desktop', 'shared-files');
+
+        expect(plan.supported).toBe(true);
+        expect(plan.mode).toBe('attach-library');
+        expect(plan.writesSidecars).toBe(true);
+        expect(plan.faceEnrichment).toBe('local');
+        expect(plan.actionLabel).toBe('store shared photos');
     });
 
     it('treats mobile browser intake as lightweight selection capture', () => {
