@@ -34,9 +34,9 @@
   "dependencies": {
     "@refinio/meaning.core": "workspace:*",
     "@refinio/one.core": "workspace:*",
+    "@refinio/trust.core": "workspace:*",
     "@refinio/trie.core": "workspace:*",
-    "exifreader": "^4.37.0",
-    "sharp": "^0.34.5"
+    "exifreader": "^4.37.0"
   },
   "devDependencies": {
     "typescript": "^5.4.0",

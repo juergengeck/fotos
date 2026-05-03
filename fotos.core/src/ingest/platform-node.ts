@@ -1,8 +1,23 @@
 // platform-node.ts — Node.js platform functions for photo ingestion
 import fs from 'node:fs';
 import path from 'node:path';
-import sharp from 'sharp';
 import { IMAGE_EXTS } from './types.js';
+
+export interface ThumbnailGeneratorOptions {
+    maxSize: number;
+    quality: number;
+}
+
+export type ThumbnailGenerator = (
+    filePath: string,
+    options: ThumbnailGeneratorOptions,
+) => Promise<Uint8Array>;
+
+let thumbnailGenerator: ThumbnailGenerator | null = null;
+
+export function setThumbnailGenerator(generator: ThumbnailGenerator | null): void {
+    thumbnailGenerator = generator;
+}
 
 function extOf(name: string): string {
     const i = name.lastIndexOf('.');
@@ -107,20 +122,22 @@ export function readImageBytes(filePath: string): Uint8Array {
 }
 
 /**
- * Generate thumbnail using sharp. Returns JPEG bytes.
- * Auto-orients from EXIF and resizes to fit within maxSize.
+ * Generate thumbnail using the configured platform thumbnail generator.
+ * The core package stays free of Node.js-only image libraries by requiring
+ * callers to inject a platform-specific implementation.
  */
 export async function generateThumbnail(
     filePath: string,
     maxSize: number = 400,
     quality: number = 80,
 ): Promise<Uint8Array> {
-    const buffer = await sharp(filePath)
-        .rotate() // Auto-orient from EXIF
-        .resize(maxSize, maxSize, { fit: 'inside', withoutEnlargement: true })
-        .jpeg({ quality })
-        .toBuffer();
-    return new Uint8Array(buffer);
+    if (!thumbnailGenerator) {
+        throw new Error(
+            'No thumbnail generator configured. Inject a platform-specific implementation with setThumbnailGenerator() before using Node ingest helpers.',
+        );
+    }
+
+    return thumbnailGenerator(filePath, { maxSize, quality });
 }
 
 /**

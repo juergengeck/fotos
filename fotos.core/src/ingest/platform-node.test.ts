@@ -1,6 +1,13 @@
 // platform-node.test.ts
-import { describe, it, expect } from 'vitest';
-import { discoverFolders, listImages, readImageBytes, writeBytes, generateThumbnail } from './platform-node.js';
+import { afterEach, describe, expect, it } from 'vitest';
+import {
+    discoverFolders,
+    listImages,
+    readImageBytes,
+    writeBytes,
+    generateThumbnail,
+    setThumbnailGenerator,
+} from './platform-node.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -8,6 +15,12 @@ import os from 'node:os';
 function makeTmpDir(): string {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'fotos-test-'));
 }
+
+const TEST_THUMBNAIL_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
+
+afterEach(() => {
+    setThumbnailGenerator(null);
+});
 
 describe('discoverFolders', () => {
     it('lists subdirectories containing images, skipping hidden and one', () => {
@@ -184,47 +197,33 @@ describe('writeBytes', () => {
 });
 
 describe('generateThumbnail', () => {
-    // Create a minimal valid JPEG using sharp itself
-    it('generates a JPEG thumbnail from an image file', async () => {
-        const sharp = (await import('sharp')).default;
+    it('uses the configured thumbnail generator', async () => {
         const tmp = makeTmpDir();
-
-        // Create a 100x100 red image using sharp
         const inputPath = path.join(tmp, 'input.jpg');
-        await sharp({
-            create: { width: 100, height: 100, channels: 3, background: { r: 255, g: 0, b: 0 } },
-        }).jpeg().toFile(inputPath);
+        fs.writeFileSync(inputPath, 'fake');
+
+        const calls: Array<{ filePath: string; maxSize: number; quality: number }> = [];
+        setThumbnailGenerator(async (filePath, { maxSize, quality }) => {
+            calls.push({ filePath, maxSize, quality });
+            return TEST_THUMBNAIL_BYTES;
+        });
 
         const thumbBytes = await generateThumbnail(inputPath, 50, 70);
         expect(thumbBytes).toBeInstanceOf(Uint8Array);
-        expect(thumbBytes.length).toBeGreaterThan(0);
-        // Verify it's a JPEG (starts with FFD8)
-        expect(thumbBytes[0]).toBe(0xff);
-        expect(thumbBytes[1]).toBe(0xd8);
-
-        // Verify dimensions are within maxSize
-        const metadata = await sharp(Buffer.from(thumbBytes)).metadata();
-        expect(metadata.width).toBeLessThanOrEqual(50);
-        expect(metadata.height).toBeLessThanOrEqual(50);
+        expect(Array.from(thumbBytes)).toEqual(Array.from(TEST_THUMBNAIL_BYTES));
+        expect(calls).toEqual([{ filePath: inputPath, maxSize: 50, quality: 70 }]);
 
         fs.rmSync(tmp, { recursive: true });
     });
 
-    it('does not enlarge small images', async () => {
-        const sharp = (await import('sharp')).default;
+    it('throws when no thumbnail generator is configured', async () => {
         const tmp = makeTmpDir();
-
-        // Create a 20x20 image
         const inputPath = path.join(tmp, 'small.jpg');
-        await sharp({
-            create: { width: 20, height: 20, channels: 3, background: { r: 0, g: 255, b: 0 } },
-        }).jpeg().toFile(inputPath);
+        fs.writeFileSync(inputPath, 'fake');
 
-        const thumbBytes = await generateThumbnail(inputPath, 400, 80);
-        const metadata = await sharp(Buffer.from(thumbBytes)).metadata();
-        // Should stay at 20x20, not be enlarged to 400
-        expect(metadata.width).toBe(20);
-        expect(metadata.height).toBe(20);
+        await expect(generateThumbnail(inputPath, 400, 80)).rejects.toThrow(
+            'No thumbnail generator configured',
+        );
 
         fs.rmSync(tmp, { recursive: true });
     });

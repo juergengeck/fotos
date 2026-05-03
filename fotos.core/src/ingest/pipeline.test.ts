@@ -1,22 +1,32 @@
 // pipeline.test.ts
-import { describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ingestFolder, updateParentIndex } from './pipeline.js';
 import { parseFolderMeta, parseFolderIndex } from './index-html.js';
+import { setThumbnailGenerator } from './platform-node.js';
 import type { IngestProgress, FolderMetadata } from './types.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import sharp from 'sharp';
+
+const TEST_IMAGE_BYTES = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/a2kAAAAASUVORK5CYII=',
+    'base64',
+);
+const TEST_THUMBNAIL_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
+
+beforeEach(() => {
+    setThumbnailGenerator(async () => TEST_THUMBNAIL_BYTES);
+});
+
+afterEach(() => {
+    setThumbnailGenerator(null);
+});
 
 describe('ingestFolder', () => {
     it('processes images and writes one/index.html', async () => {
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fotos-pipeline-'));
 
-        // Create a minimal valid JPEG using sharp
-        const jpegBuffer = await sharp({
-            create: { width: 2, height: 2, channels: 3, background: { r: 255, g: 0, b: 0 } },
-        }).jpeg().toBuffer();
-        fs.writeFileSync(path.join(tmp, 'test.jpg'), jpegBuffer);
+        fs.writeFileSync(path.join(tmp, 'test.jpg'), TEST_IMAGE_BYTES);
 
         const progress: IngestProgress[] = [];
         const result = await ingestFolder(tmp, '', (p) => progress.push({ ...p }));
@@ -52,11 +62,7 @@ describe('ingestFolder', () => {
     it('preserves face data from existing one/index.html', async () => {
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fotos-pipeline-preserve-'));
 
-        // Create a minimal valid JPEG
-        const jpegBuffer = await sharp({
-            create: { width: 2, height: 2, channels: 3, background: { r: 0, g: 255, b: 0 } },
-        }).jpeg().toBuffer();
-        fs.writeFileSync(path.join(tmp, 'photo.jpg'), jpegBuffer);
+        fs.writeFileSync(path.join(tmp, 'photo.jpg'), TEST_IMAGE_BYTES);
 
         // First ingest to get the content hash
         const firstResult = await ingestFolder(tmp, '');
@@ -87,12 +93,8 @@ describe('ingestFolder', () => {
     it('supports abort via signal', async () => {
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fotos-pipeline-abort-'));
 
-        // Create two images
-        const jpegBuffer = await sharp({
-            create: { width: 2, height: 2, channels: 3, background: { r: 0, g: 0, b: 255 } },
-        }).jpeg().toBuffer();
-        fs.writeFileSync(path.join(tmp, 'a.jpg'), jpegBuffer);
-        fs.writeFileSync(path.join(tmp, 'b.jpg'), jpegBuffer);
+        fs.writeFileSync(path.join(tmp, 'a.jpg'), TEST_IMAGE_BYTES);
+        fs.writeFileSync(path.join(tmp, 'b.jpg'), TEST_IMAGE_BYTES);
 
         // Abort immediately
         const signal = { aborted: true };
@@ -118,10 +120,7 @@ describe('ingestFolder', () => {
     it('uses relPath for sourcePath and tags', async () => {
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fotos-pipeline-rel-'));
 
-        const jpegBuffer = await sharp({
-            create: { width: 2, height: 2, channels: 3, background: { r: 128, g: 128, b: 128 } },
-        }).jpeg().toBuffer();
-        fs.writeFileSync(path.join(tmp, 'sunset.jpg'), jpegBuffer);
+        fs.writeFileSync(path.join(tmp, 'sunset.jpg'), TEST_IMAGE_BYTES);
 
         const result = await ingestFolder(tmp, '2024/vacation');
 
@@ -135,11 +134,8 @@ describe('ingestFolder', () => {
     it('returns FolderMetadata with correct counts', async () => {
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fotos-pipeline-meta-'));
 
-        const jpegBuffer = await sharp({
-            create: { width: 2, height: 2, channels: 3, background: { r: 100, g: 100, b: 100 } },
-        }).jpeg().toBuffer();
-        fs.writeFileSync(path.join(tmp, 'a.jpg'), jpegBuffer);
-        fs.writeFileSync(path.join(tmp, 'b.jpg'), jpegBuffer);
+        fs.writeFileSync(path.join(tmp, 'a.jpg'), TEST_IMAGE_BYTES);
+        fs.writeFileSync(path.join(tmp, 'b.jpg'), TEST_IMAGE_BYTES);
 
         const result = await ingestFolder(tmp, 'photos/2024');
 
@@ -171,19 +167,15 @@ describe('ingestFolder', () => {
     it('discovers child folder metadata from existing child index', async () => {
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fotos-pipeline-childmeta-'));
 
-        const jpegBuffer = await sharp({
-            create: { width: 2, height: 2, channels: 3, background: { r: 50, g: 50, b: 50 } },
-        }).jpeg().toBuffer();
-
         // Create child folder with images and ingest it first
         const childDir = path.join(tmp, 'vacation');
         fs.mkdirSync(childDir);
-        fs.writeFileSync(path.join(childDir, 'beach.jpg'), jpegBuffer);
-        fs.writeFileSync(path.join(childDir, 'sunset.jpg'), jpegBuffer);
+        fs.writeFileSync(path.join(childDir, 'beach.jpg'), TEST_IMAGE_BYTES);
+        fs.writeFileSync(path.join(childDir, 'sunset.jpg'), TEST_IMAGE_BYTES);
         await ingestFolder(childDir, 'vacation');
 
         // Now create parent folder with images and ingest
-        fs.writeFileSync(path.join(tmp, 'cover.jpg'), jpegBuffer);
+        fs.writeFileSync(path.join(tmp, 'cover.jpg'), TEST_IMAGE_BYTES);
         const result = await ingestFolder(tmp, '');
 
         // Parent should include child metadata
@@ -240,12 +232,8 @@ describe('updateParentIndex', () => {
     it('updates existing parent with new child metadata', async () => {
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fotos-pipeline-update2-'));
 
-        const jpegBuffer = await sharp({
-            create: { width: 2, height: 2, channels: 3, background: { r: 200, g: 200, b: 200 } },
-        }).jpeg().toBuffer();
-
         // Create parent with photos
-        fs.writeFileSync(path.join(tmp, 'family.jpg'), jpegBuffer);
+        fs.writeFileSync(path.join(tmp, 'family.jpg'), TEST_IMAGE_BYTES);
         await ingestFolder(tmp, 'photos');
 
         // Now add a child folder reference
@@ -319,19 +307,15 @@ describe('updateParentIndex', () => {
     it('nested: ingest child -> update parent -> verify parent metadata', async () => {
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fotos-pipeline-nested-'));
 
-        const jpegBuffer = await sharp({
-            create: { width: 2, height: 2, channels: 3, background: { r: 30, g: 60, b: 90 } },
-        }).jpeg().toBuffer();
-
         // Create nested structure: root/2024/july/
         const yearDir = path.join(tmp, '2024');
         const monthDir = path.join(yearDir, 'july');
         fs.mkdirSync(monthDir, { recursive: true });
 
         // Add images to the leaf folder
-        fs.writeFileSync(path.join(monthDir, 'photo1.jpg'), jpegBuffer);
-        fs.writeFileSync(path.join(monthDir, 'photo2.jpg'), jpegBuffer);
-        fs.writeFileSync(path.join(monthDir, 'photo3.jpg'), jpegBuffer);
+        fs.writeFileSync(path.join(monthDir, 'photo1.jpg'), TEST_IMAGE_BYTES);
+        fs.writeFileSync(path.join(monthDir, 'photo2.jpg'), TEST_IMAGE_BYTES);
+        fs.writeFileSync(path.join(monthDir, 'photo3.jpg'), TEST_IMAGE_BYTES);
 
         // Ingest the leaf folder
         const leafResult = await ingestFolder(monthDir, '2024/july');
