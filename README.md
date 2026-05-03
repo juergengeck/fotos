@@ -2,6 +2,11 @@
 
 Photo apps and shared packages for the fotos stack.
 
+Product docs:
+
+- [Market requirements](docs/product/MRD.md)
+- [Product requirements](docs/product/PRD.md)
+
 Packages:
 
 - `fotos.browser` - browser/PWA client for fotos.one
