@@ -43,6 +43,9 @@ interface SidebarProps {
     onOpenFolder?: () => void;
     onRescan?: () => void;
     onReanalyze?: () => void;
+    canClaimAuthorshipOnIngest: boolean;
+    claimAuthorshipOnIngest: boolean;
+    onClaimAuthorshipOnIngestChange: (enabled: boolean) => void;
     llmComparisonPhoto?: PhotoEntry | null;
     llmComparisonPhotoLabel?: string;
     faceSearchActive?: boolean;
@@ -112,6 +115,7 @@ export function Sidebar({
     historyVisibleEntryCount, historyBranchCount,
     onHistoryEnabledChange, onHistoryNavigate, onHistoryDelete, currentFolderName,
     folderName, onOpenFolder, onRescan, onReanalyze,
+    canClaimAuthorshipOnIngest, claimAuthorshipOnIngest, onClaimAuthorshipOnIngestChange,
     llmComparisonPhoto, llmComparisonPhotoLabel,
     faceSearchActive, onClearFaceSearch,
     fotosModel,
@@ -253,6 +257,9 @@ export function Sidebar({
                             onOpenFolder={onOpenFolder}
                             onRescan={onRescan}
                             onReanalyze={onReanalyze}
+                            canClaimAuthorshipOnIngest={canClaimAuthorshipOnIngest}
+                            claimAuthorshipOnIngest={claimAuthorshipOnIngest}
+                            onClaimAuthorshipOnIngestChange={onClaimAuthorshipOnIngestChange}
                             llmComparisonPhoto={llmComparisonPhoto ?? null}
                             llmComparisonPhotoLabel={llmComparisonPhotoLabel ?? 'photo'}
                             collections={collections}
@@ -407,6 +414,9 @@ export function Sidebar({
                         onOpenFolder={onOpenFolder}
                         onRescan={onRescan}
                         onReanalyze={onReanalyze}
+                        canClaimAuthorshipOnIngest={canClaimAuthorshipOnIngest}
+                        claimAuthorshipOnIngest={claimAuthorshipOnIngest}
+                        onClaimAuthorshipOnIngestChange={onClaimAuthorshipOnIngestChange}
                         llmComparisonPhoto={llmComparisonPhoto ?? null}
                         llmComparisonPhotoLabel={llmComparisonPhotoLabel ?? 'photo'}
                         collections={collections}
@@ -1523,6 +1533,9 @@ function ManageTab({
     onOpenFolder,
     onRescan,
     onReanalyze,
+    canClaimAuthorshipOnIngest,
+    claimAuthorshipOnIngest,
+    onClaimAuthorshipOnIngestChange,
     llmComparisonPhoto,
     llmComparisonPhotoLabel,
     collections,
@@ -1546,6 +1559,9 @@ function ManageTab({
     onOpenFolder?: () => void;
     onRescan?: () => void;
     onReanalyze?: () => void;
+    canClaimAuthorshipOnIngest: boolean;
+    claimAuthorshipOnIngest: boolean;
+    onClaimAuthorshipOnIngestChange: (enabled: boolean) => void;
     llmComparisonPhoto?: PhotoEntry | null;
     llmComparisonPhotoLabel?: string;
     collections: FotosCollectionSummary[];
@@ -1610,6 +1626,23 @@ function ManageTab({
             )}
 
             <SectionLabel>Ingestion</SectionLabel>
+
+            {canClaimAuthorshipOnIngest && (
+                <label className="flex items-start gap-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-2">
+                    <input
+                        type="checkbox"
+                        checked={claimAuthorshipOnIngest}
+                        onChange={event => onClaimAuthorshipOnIngestChange(event.target.checked)}
+                        className="mt-0.5 h-3.5 w-3.5 accent-[#e94560]"
+                    />
+                    <div className="space-y-1">
+                        <div className="text-[11px] text-white/72">Claim authorship on ingest</div>
+                        <p className="text-[10px] leading-relaxed text-white/30">
+                            Sign each imported image hash with this fotos identity so authenticity proof ships with shared photos.
+                        </p>
+                    </div>
+                </label>
+            )}
 
             <div>
                 <label className="text-[11px] text-white/40 mb-1 block">Default mode</label>

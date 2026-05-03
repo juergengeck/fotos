@@ -17,10 +17,33 @@ import {
 } from '@refinio/one.core/lib/storage-versioned-objects.js';
 import {storeArrayBufferAsBlob, readBlobAsArrayBuffer} from '@refinio/one.core/lib/storage-blob.js';
 import {getInstanceOwnerIdHash} from '@refinio/one.core/lib/instance.js';
-import {addEntryToManifest} from './fotos-manifest.js';
+import {
+    addAuthenticityAttestationToManifest,
+    addEntryToManifest,
+} from './fotos-manifest.js';
 import {EMBEDDING_DIM, facesToDataAttrs} from '@refinio/fotos.core';
-import type {FaceResult, FaceAnalysisResult, FotosEntry} from '@refinio/fotos.core';
+import type {
+    FaceResult,
+    FaceAnalysisResult,
+    FotosEntry,
+} from '@refinio/fotos.core';
 import type {PhotoEntry} from '@/types/fotos';
+import {
+    createFotosAuthenticityAttestation,
+    resolveFotosAuthenticityContext,
+    type FotosAuthenticityContext,
+} from './fotos-authenticity.js';
+import type { FotosAuthenticityAttestation } from '../../../../fotos.core/src/recipes/FotosRecipes.js';
+
+export interface SyncPhotosToOneCoreOptions {
+    claimAuthorship?: boolean;
+}
+
+export function shouldClaimFotosAuthorship(
+    options: SyncPhotosToOneCoreOptions = {},
+): boolean {
+    return options.claimAuthorship !== false;
+}
 
 /**
  * Infer MIME type from file extension.
@@ -248,7 +271,8 @@ export async function writeFaceCropsToFilesystem(
  */
 export async function syncPhotoToOneCore(
     photo: PhotoEntry,
-    rootHandle: FileSystemDirectoryHandle | null
+    rootHandle: FileSystemDirectoryHandle | null,
+    authenticityContext: FotosAuthenticityContext | null = null,
 ): Promise<void> {
     // Build the FotosEntry
     const entry: Record<string, unknown> = {
@@ -304,6 +328,22 @@ export async function syncPhotoToOneCore(
 
     // Add to manifest
     await addEntryToManifest(result.hash as SHA256Hash<FotosEntry>);
+
+    if (!authenticityContext) {
+        return;
+    }
+
+    try {
+        const attestation = createFotosAuthenticityAttestation(photo.hash, authenticityContext);
+        const attestationResult = await storeVersionedObject(
+            attestation as unknown as FotosAuthenticityAttestation,
+        );
+        await addAuthenticityAttestationToManifest(
+            attestationResult.hash as SHA256Hash<FotosAuthenticityAttestation>,
+        );
+    } catch (err) {
+        console.warn(`[fotos-sync] Failed to create authenticity attestation for ${photo.name}:`, err);
+    }
 }
 
 /**
@@ -317,7 +357,8 @@ export async function syncPhotoToOneCore(
  */
 export async function syncPhotosToOneCore(
     photos: PhotoEntry[],
-    rootHandle: FileSystemDirectoryHandle | null
+    rootHandle: FileSystemDirectoryHandle | null,
+    options: SyncPhotosToOneCoreOptions = {},
 ): Promise<void> {
     // Guard: only run if ONE.core is booted
     if (!getInstanceOwnerIdHash()) {
@@ -331,10 +372,16 @@ export async function syncPhotosToOneCore(
 
     let synced = 0;
     let errors = 0;
+    const authenticityContext = shouldClaimFotosAuthorship(options)
+        ? await resolveFotosAuthenticityContext().catch(err => {
+            console.warn('[fotos-sync] Authenticity signing unavailable:', err);
+            return null;
+        })
+        : null;
 
     for (const photo of photos) {
         try {
-            await syncPhotoToOneCore(photo, rootHandle);
+            await syncPhotoToOneCore(photo, rootHandle, authenticityContext);
             synced++;
         } catch (err) {
             errors++;

@@ -19,7 +19,9 @@
     "paths": {
       "@/*": ["./src/*"],
       "@refinio/fotos.ui": ["../../fotos.ui/src/index.ts"],
-      "@refinio/recovery.core": ["../../../vger/packages/recovery.core/dist/index.d.ts"]
+      "@refinio/recovery.core": ["../../../vger/packages/recovery.core/dist/index.d.ts"],
+      "@refinio/trust.core/*": ["../../../vger/packages/vger.expo/node_modules/@refinio/trust.core/dist/*"],
+      "@refinio/trust.core/recipes": ["../../../vger/packages/vger.expo/node_modules/@refinio/trust.core/dist/recipes/index.d.ts"]
     }
   },
   "include": [

@@ -10,7 +10,11 @@
 
 import type { SHA256Hash, SHA256IdHash } from '@refinio/one.core/lib/util/type-checks.js';
 import type { Person } from '@refinio/one.core/lib/recipes.js';
-import type { FotosEntry, FotosManifest } from '@refinio/fotos.core';
+import type {
+    FotosAuthenticityAttestation,
+    FotosEntry,
+    FotosManifest,
+} from '../../../../fotos.core/src/recipes/FotosRecipes.js';
 import { ensureVersionedIdObject } from '@refinio/connection.core/helpers/ensure-versioned-id-object.js';
 import { createAccess } from '@refinio/one.core/lib/access.js';
 import { SET_ACCESS_MODE } from '@refinio/one.core/lib/storage-base-common.js';
@@ -32,7 +36,10 @@ export interface FotosManifestSnapshot {
     entryCount: number;
     entryHashes: string[];
     contentHashes: string[];
+    attestationCount: number;
+    attestationHashes: string[];
     resolvedEntries: FotosManifestResolvedEntry[];
+    resolvedAttestations: FotosManifestResolvedAuthenticityAttestation[];
 }
 
 export interface FotosManifestResolvedEntry {
@@ -47,6 +54,16 @@ export interface FotosManifestResolvedEntry {
     hasThumb: boolean;
 }
 
+export interface FotosManifestResolvedAuthenticityAttestation {
+    attestationHash: string;
+    contentHash: string;
+    signerPersonId: string;
+    signerPublicKey: string;
+    signatureScheme: string;
+    signature: string;
+    subscriptionCertificateHash: string | null;
+}
+
 /**
  * Get the deterministic idHash for the FotosManifest singleton.
  * Cached after first calculation since it never changes.
@@ -59,7 +76,8 @@ async function getManifestIdHash(): Promise<SHA256IdHash<FotosManifest>> {
     cachedManifestIdHash = await calculateIdHashOfObj({
         $type$: 'FotosManifest',
         id: 'fotos',
-        entries: new Set()
+        entries: new Set(),
+        authenticityAttestations: new Set(),
     } as any) as SHA256IdHash<FotosManifest>;
 
     return cachedManifestIdHash;
@@ -136,6 +154,49 @@ async function resolveManifestEntries(
         .sort((left, right) => left.name.localeCompare(right.name) || left.contentHash.localeCompare(right.contentHash));
 }
 
+async function resolveManifestAuthenticityAttestations(
+    attestationHashes: readonly string[],
+): Promise<FotosManifestResolvedAuthenticityAttestation[]> {
+    const attestations = await Promise.all(attestationHashes.map(async (
+        attestationHash,
+    ): Promise<FotosManifestResolvedAuthenticityAttestation | null> => {
+        try {
+            const attestation = await getObject(attestationHash as SHA256Hash<FotosAuthenticityAttestation>);
+            const signerPersonId = typeof attestation.signer === 'string' ? String(attestation.signer) : '';
+            const signerPublicKey = typeof attestation.signerPublicKey === 'string' ? attestation.signerPublicKey : '';
+            const signatureScheme = typeof attestation.signatureScheme === 'string' ? attestation.signatureScheme : '';
+            const signature = typeof attestation.signature === 'string' ? attestation.signature : '';
+            const contentHash = typeof attestation.contentHash === 'string' ? attestation.contentHash : '';
+
+            if (!signerPersonId || !signerPublicKey || !signatureScheme || !signature || !contentHash) {
+                return null;
+            }
+
+            return {
+                attestationHash,
+                contentHash,
+                signerPersonId,
+                signerPublicKey,
+                signatureScheme,
+                signature,
+                subscriptionCertificateHash: typeof attestation.subscriptionCertificate === 'string'
+                    ? attestation.subscriptionCertificate
+                    : null,
+            } satisfies FotosManifestResolvedAuthenticityAttestation;
+        } catch {
+            return null;
+        }
+    }));
+
+    return attestations
+        .filter((value): value is FotosManifestResolvedAuthenticityAttestation => value !== null)
+        .sort((left, right) =>
+            left.contentHash.localeCompare(right.contentHash)
+            || left.signerPersonId.localeCompare(right.signerPersonId)
+            || left.attestationHash.localeCompare(right.attestationHash),
+        );
+}
+
 async function toManifestSnapshot(
     manifestIdHash: SHA256IdHash<FotosManifest>,
     manifest: FotosManifest | null,
@@ -144,12 +205,16 @@ async function toManifestSnapshot(
     const entryHashes = manifest
         ? Array.from(manifest.entries, entryHash => String(entryHash)).sort()
         : [];
-    const [contentHashes, resolvedEntries] = manifest
+    const attestationHashes = manifest?.authenticityAttestations
+        ? Array.from(manifest.authenticityAttestations, attestationHash => String(attestationHash)).sort()
+        : [];
+    const [contentHashes, resolvedEntries, resolvedAttestations] = manifest
         ? await Promise.all([
             resolveManifestContentHashes(entryHashes),
             resolveManifestEntries(entryHashes),
+            resolveManifestAuthenticityAttestations(attestationHashes),
         ])
-        : [[], []];
+        : [[], [], []];
 
     return {
         exists: Boolean(manifest),
@@ -158,7 +223,10 @@ async function toManifestSnapshot(
         entryCount: entryHashes.length,
         entryHashes,
         contentHashes,
+        attestationCount: attestationHashes.length,
+        attestationHashes,
         resolvedEntries,
+        resolvedAttestations,
     };
 }
 
@@ -217,7 +285,8 @@ export async function ensureFotosManifest(): Promise<SHA256IdHash<FotosManifest>
         await storeVersionedObject({
             $type$: 'FotosManifest',
             id: 'fotos',
-            entries: new Set()
+            entries: new Set(),
+            authenticityAttestations: new Set(),
         } as any);
     }
 
@@ -238,6 +307,7 @@ export async function addEntryToManifest(entryHash: SHA256Hash<FotosEntry>): Pro
     const existing = await getObjectByIdHash(manifestIdHash);
     const manifest = existing.obj as unknown as FotosManifest;
     const entries = new Set(manifest.entries);
+    const authenticityAttestations = new Set(manifest.authenticityAttestations ?? []);
 
     if (entries.has(entryHash)) {
         return;
@@ -248,10 +318,39 @@ export async function addEntryToManifest(entryHash: SHA256Hash<FotosEntry>): Pro
     await storeVersionedObject({
         $type$: 'FotosManifest',
         id: 'fotos',
-        entries
+        entries,
+        authenticityAttestations,
     } as any);
 
     console.log(`[fotos-manifest] Added entry ${(entryHash as string).substring(0, 12)}, total: ${entries.size}`);
+}
+
+export async function addAuthenticityAttestationToManifest(
+    attestationHash: SHA256Hash<FotosAuthenticityAttestation>,
+): Promise<void> {
+    const manifestIdHash = await ensureFotosManifest();
+
+    const existing = await getObjectByIdHash(manifestIdHash);
+    const manifest = existing.obj as unknown as FotosManifest;
+    const entries = new Set(manifest.entries);
+    const authenticityAttestations = new Set(manifest.authenticityAttestations ?? []);
+
+    if (authenticityAttestations.has(attestationHash)) {
+        return;
+    }
+
+    authenticityAttestations.add(attestationHash);
+
+    await storeVersionedObject({
+        $type$: 'FotosManifest',
+        id: 'fotos',
+        entries,
+        authenticityAttestations,
+    } as any);
+
+    console.log(
+        `[fotos-manifest] Added authenticity ${(attestationHash as string).substring(0, 12)}, total: ${authenticityAttestations.size}`,
+    );
 }
 
 /**

@@ -101,6 +101,8 @@ describe('buildFotosShareSnapshot', () => {
                 entryCount: 1,
                 entryHashes: ['fotos-entry-hash'],
                 contentHashes: ['local-shared'],
+                attestationCount: 1,
+                attestationHashes: ['auth-hash'],
                 resolvedEntries: [{
                     entryHash: 'fotos-entry-hash',
                     contentHash: 'local-shared',
@@ -111,6 +113,15 @@ describe('buildFotosShareSnapshot', () => {
                     updatedAt: '2024-01-01T00:00:00.000Z',
                     faceCount: 0,
                     hasThumb: true,
+                }],
+                resolvedAttestations: [{
+                    attestationHash: 'auth-hash',
+                    contentHash: 'local-shared',
+                    signerPersonId: 'person-1',
+                    signerPublicKey: 'abcd1234',
+                    signatureScheme: 'fotos-authenticity-v1',
+                    signature: 'deadbeef',
+                    subscriptionCertificateHash: 'cert-hash',
                 }],
             },
             ['peer-b', 'peer-a'],
@@ -135,6 +146,15 @@ describe('buildFotosShareSnapshot', () => {
         expect(snapshot.folderName).toBe('shared');
         expect(snapshot.isOpen).toBe(true);
         expect(snapshot.manifestEntries.map(item => item.contentHash)).toEqual(['local-shared']);
+        expect(snapshot.manifestAttestations).toEqual([{
+            attestationHash: 'auth-hash',
+            contentHash: 'local-shared',
+            signerPersonId: 'person-1',
+            signerPublicKey: 'abcd1234',
+            signatureScheme: 'fotos-authenticity-v1',
+            signature: 'deadbeef',
+            subscriptionCertificateHash: 'cert-hash',
+        }]);
         expect(snapshot.importedEntries).toEqual([{
             versionHash: 'remote-version-hash',
             contentHash: 'remote-hash',

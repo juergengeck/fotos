@@ -84,8 +84,18 @@ export {FOTOS_BUNDLE_MANIFEST, createFotosBundleManifest} from './fotos-bundle.j
 export {FaceClusterDimension} from './FaceClusterDimension.js';
 export type {FaceCluster, ClusterMember, ClusterMatch} from './FaceClusterDimension.js';
 
-export {FotosRecipes, FotosEntryRecipe, FotosManifestRecipe} from './recipes/FotosRecipes.js';
-export type {FotosEntry, FotosManifest} from './recipes/FotosRecipes.js';
+export {
+    FOTOS_AUTHENTICITY_SCHEME,
+    FotosRecipes,
+    FotosEntryRecipe,
+    FotosManifestRecipe,
+    FotosAuthenticityAttestationRecipe,
+} from './recipes/FotosRecipes.js';
+export type {
+    FotosEntry,
+    FotosManifest,
+    FotosAuthenticityAttestation,
+} from './recipes/FotosRecipes.js';
 export {
     GalleryTrieRecipes,
     GalleryCaptureTrieNodeRecipe,

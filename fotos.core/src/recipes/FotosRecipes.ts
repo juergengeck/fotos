@@ -9,9 +9,13 @@
  * Fixed id 'fotos' ensures deterministic idHash across all instances.
  * IdAccess grants on this manifest gate who can sync photo metadata.
  */
-import type {BLOB, Recipe, VersionNode} from '@refinio/one.core/lib/recipes.js';
-import type {SHA256Hash} from '@refinio/one.core/lib/util/type-checks.js';
+import type {BLOB, Person, Recipe, VersionNode} from '@refinio/one.core/lib/recipes.js';
+import type {SHA256Hash, SHA256IdHash} from '@refinio/one.core/lib/util/type-checks.js';
 import {GalleryTrieRecipes} from './GalleryTrieRecipes.js';
+
+interface SubscriptionCertificateRef {
+    $type$: 'SubscriptionCertificate';
+}
 
 // ---------------------------------------------------------------------------
 // TypeScript interfaces
@@ -45,11 +49,26 @@ export interface FotosEntry {
     faceCrops?: SHA256Hash<BLOB>;
 }
 
+export const FOTOS_AUTHENTICITY_SCHEME = 'fotos-authenticity-v1';
+
+export interface FotosAuthenticityAttestation {
+    $type$: 'FotosAuthenticityAttestation';
+    $versionHash$?: SHA256Hash<VersionNode>;
+    id: string;
+    contentHash: string;
+    signer: SHA256IdHash<Person>;
+    signerPublicKey: string;
+    signatureScheme: typeof FOTOS_AUTHENTICITY_SCHEME;
+    signature: string;
+    subscriptionCertificate?: SHA256Hash<SubscriptionCertificateRef>;
+}
+
 export interface FotosManifest {
     $type$: 'FotosManifest';
     $versionHash$?: SHA256Hash<VersionNode>;
     id: string;
     entries: Set<SHA256Hash<FotosEntry>>;
+    authenticityAttestations?: Set<SHA256Hash<FotosAuthenticityAttestation>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -101,12 +120,39 @@ export const FotosManifestRecipe: Recipe = {
                 type: 'set',
                 item: {type: 'referenceToObj', allowedTypes: new Set(['FotosEntry'])}
             }
+        },
+        {
+            itemprop: 'authenticityAttestations',
+            optional: true,
+            itemtype: {
+                type: 'set',
+                item: {type: 'referenceToObj', allowedTypes: new Set(['FotosAuthenticityAttestation'])}
+            }
         }
     ]
+};
+
+export const FotosAuthenticityAttestationRecipe: Recipe = {
+    $type$: 'Recipe',
+    name: 'FotosAuthenticityAttestation',
+    rule: [
+        {itemprop: 'id', isId: true, itemtype: {type: 'string'}},
+        {itemprop: 'contentHash', itemtype: {type: 'string'}},
+        {itemprop: 'signer', itemtype: {type: 'referenceToId', allowedTypes: new Set(['Person'])}},
+        {itemprop: 'signerPublicKey', itemtype: {type: 'string'}},
+        {itemprop: 'signatureScheme', itemtype: {type: 'string'}},
+        {itemprop: 'signature', itemtype: {type: 'string'}},
+        {
+            itemprop: 'subscriptionCertificate',
+            optional: true,
+            itemtype: {type: 'referenceToObj', allowedTypes: new Set(['SubscriptionCertificate'])},
+        },
+    ],
 };
 
 export const FotosRecipes: Recipe[] = [
     FotosEntryRecipe,
     FotosManifestRecipe,
+    FotosAuthenticityAttestationRecipe,
     ...GalleryTrieRecipes,
 ];

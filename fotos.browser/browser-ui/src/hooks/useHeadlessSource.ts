@@ -26,6 +26,7 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
     const [folderName, setFolderName] = useState<string | null>(null);
     const [entries, setEntries] = useState<PhotoEntry[]>([]);
     const [loading, setLoading] = useState(false);
+    const [claimAuthorshipOnIngest, setClaimAuthorshipOnIngest] = useState(true);
     const urlCacheRef = useRef<Map<string, string>>(new Map());
     const headlessUrlRef = useRef(headlessUrl);
     headlessUrlRef.current = headlessUrl;
@@ -211,6 +212,9 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
         ingestProgress: null,
         pendingImportCount: 0,
         mobile: false,
+        canClaimAuthorshipOnIngest: false,
+        claimAuthorshipOnIngest,
+        setClaimAuthorshipOnIngest,
         openFolder,
         openLocalFiles,
         rescan,

@@ -4,6 +4,7 @@ import { EMBEDDING_DIM } from '@refinio/fotos.core';
 
 import {
     listenForFotosManifestUpdates,
+    type FotosManifestResolvedAuthenticityAttestation,
     readFotosManifestSnapshot,
     type FotosManifestResolvedEntry,
     type FotosManifestSnapshot,
@@ -30,6 +31,7 @@ export interface FotosShareSnapshot {
     folderName: string | null;
     manifest: FotosManifestSnapshot | null;
     manifestEntries: FotosManifestResolvedEntry[];
+    manifestAttestations: FotosManifestResolvedAuthenticityAttestation[];
     importedEntries: FotosImportedEntry[];
     localItems: FotosShareItem[];
     remoteItems: FotosShareItem[];
@@ -209,6 +211,7 @@ export function buildFotosShareSnapshot(
         folderName: state.folderName,
         manifest,
         manifestEntries: manifest?.resolvedEntries ?? [],
+        manifestAttestations: manifest?.resolvedAttestations ?? [],
         importedEntries: trackedImports,
         localItems,
         remoteItems,

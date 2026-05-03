@@ -1,4 +1,4 @@
-import { contentRules } from '@vger/vger.core/modules';
+import { contentRules } from '../../../../../vger/packages/sync.core/dist/rules/default-rules.js';
 import { TRUST_LEVEL_ORDER } from '@refinio/trust.core/types/trust-types.js';
 import type { TrustLevel } from '@refinio/trust.core/types/trust-types.js';
 
@@ -6,11 +6,15 @@ type SyncRule = typeof contentRules extends Map<string, infer Value> ? Value : n
 
 const MAX_REFERENCE_LENGTH = 256;
 const MAX_FOTOS_MANIFEST_ENTRIES = 250_000;
+const MAX_FOTOS_ATTESTATIONS = 250_000;
 const MAX_MIME_TYPE_LENGTH = 255;
 const MAX_PATH_LENGTH = 4_096;
 const MAX_EXIF_STRING_LENGTH = 1_024;
 const MAX_TIMESTAMP_LENGTH = 128;
 const MAX_FACE_COUNT = 10_000;
+const MAX_SIGNATURE_SCHEME_LENGTH = 128;
+const MAX_PUBLIC_KEY_LENGTH = 256;
+const MAX_SIGNATURE_LENGTH = 1_024;
 
 interface SyncContextLike {
     peerTrustLevel: TrustLevel;
@@ -68,6 +72,14 @@ export function canImportFotosManifest(context: SyncContextLike, obj?: object): 
             manifest.entries,
             MAX_FOTOS_MANIFEST_ENTRIES,
             MAX_REFERENCE_LENGTH,
+        )
+        && (
+            manifest.authenticityAttestations === undefined
+            || isStringSetWithinBounds(
+                manifest.authenticityAttestations,
+                MAX_FOTOS_ATTESTATIONS,
+                MAX_REFERENCE_LENGTH,
+            )
         );
 }
 
@@ -108,6 +120,22 @@ export function canImportFotosEntry(context: SyncContextLike, obj?: object): boo
         && isOptionalReference(entry.faceCrops);
 }
 
+export function canImportFotosAuthenticityAttestation(context: SyncContextLike, obj?: object): boolean {
+    if (!meetsContentTrustFloor(context) || !obj) {
+        return false;
+    }
+
+    const attestation = obj as ImportedObject;
+
+    return isStringWithinBounds(attestation.id, MAX_PATH_LENGTH)
+        && isStringWithinBounds(attestation.contentHash, MAX_REFERENCE_LENGTH)
+        && isStringWithinBounds(attestation.signer, MAX_REFERENCE_LENGTH)
+        && isStringWithinBounds(attestation.signerPublicKey, MAX_PUBLIC_KEY_LENGTH)
+        && isStringWithinBounds(attestation.signatureScheme, MAX_SIGNATURE_SCHEME_LENGTH)
+        && isStringWithinBounds(attestation.signature, MAX_SIGNATURE_LENGTH)
+        && isOptionalReference(attestation.subscriptionCertificate);
+}
+
 const fotosManifestRule: SyncRule = {
     canImport: canImportFotosManifest,
 };
@@ -116,6 +144,11 @@ const fotosEntryRule: SyncRule = {
     canImport: canImportFotosEntry,
 };
 
+const fotosAuthenticityAttestationRule: SyncRule = {
+    canImport: canImportFotosAuthenticityAttestation,
+};
+
 export const fotosContentRules = new Map(contentRules);
 fotosContentRules.set('FotosManifest', fotosManifestRule);
 fotosContentRules.set('FotosEntry', fotosEntryRule);
+fotosContentRules.set('FotosAuthenticityAttestation', fotosAuthenticityAttestationRule);

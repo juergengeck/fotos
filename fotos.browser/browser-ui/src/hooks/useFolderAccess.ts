@@ -1095,6 +1095,12 @@ export interface FolderAccess {
     pendingImportCount: number;
     /** Whether running in mobile/PWA lightweight mode */
     mobile: boolean;
+    /** Whether this source can locally claim authorship when ingesting. */
+    canClaimAuthorshipOnIngest: boolean;
+    /** Whether new local intake should claim foto authorship. */
+    claimAuthorshipOnIngest: boolean;
+    /** Update whether new local intake should claim foto authorship. */
+    setClaimAuthorshipOnIngest: (enabled: boolean) => void;
     /** Trigger the primary intake action for this surface. */
     openFolder: () => void;
     /** Debug/test helper that always opens the file-input intake path. */
@@ -1424,6 +1430,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     const [loading, setLoading] = useState(false);
     const [ingestProgress, setIngestProgress] = useState<IngestProgress | null>(null);
     const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
+    const [claimAuthorshipOnIngest, setClaimAuthorshipOnIngest] = useState(true);
     const rootHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
     const mobile = isMobile();
     const surface: GallerySurface = mobile ? 'fotos-browser-mobile' : 'fotos-browser-desktop';
@@ -1466,6 +1473,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             entryCount: entries.length,
             loading,
             pendingImportCount: pendingImport?.files.length ?? 0,
+            claimAuthorshipOnIngest,
             pendingFaces,
             ingestProgress: ingestProgress
                 ? {
@@ -1482,6 +1490,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         entries.length,
         loading,
         pendingImport?.files.length,
+        claimAuthorshipOnIngest,
         ingestProgress?.phase,
         ingestProgress?.current,
         ingestProgress?.total,
@@ -2244,7 +2253,9 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                 void runBackgroundFacePass(handle, ingested);
             }
             setEntries(prev => mergeWithRemoteEntries(ingested, prev));
-            syncPhotosToOneCore(ingested, handle).catch(err =>
+            syncPhotosToOneCore(ingested, handle, {
+                claimAuthorship: claimAuthorshipOnIngest,
+            }).catch(err =>
                 console.warn('[fotos-sync]', err));
         } else {
             traceHang('open-folder-existing-gallery', {
@@ -2258,11 +2269,14 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                 void runBackgroundFacePass(handle, currentEntries);
             }
             setEntries(prev => mergeWithRemoteEntries(currentEntries, prev));
-            syncPhotosToOneCore(currentEntries, handle).catch(err =>
+            syncPhotosToOneCore(currentEntries, handle, {
+                claimAuthorship: claimAuthorshipOnIngest,
+            }).catch(err =>
                 console.warn('[fotos-sync]', err));
         }
     }, [
         allowsLocalFaceEnrichment,
+        claimAuthorshipOnIngest,
         clearUrlCache,
         clusterThreshold,
         ensureClusterDimension,
@@ -2458,13 +2472,16 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                 void runBackgroundFacePass(handle, found);
             }
             setEntries(prev => mergeWithRemoteEntries(found, prev));
-            syncPhotosToOneCore(found, handle).catch(err =>
+            syncPhotosToOneCore(found, handle, {
+                claimAuthorship: claimAuthorshipOnIngest,
+            }).catch(err =>
                 console.warn('[fotos-sync]', err));
         } finally {
             setIngestProgress(null);
         }
     }, [
         allowsLocalFaceEnrichment,
+        claimAuthorshipOnIngest,
         clearUrlCache,
         clusterThreshold,
         ensureClusterDimension,
@@ -3183,6 +3200,9 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         ingestProgress,
         pendingImportCount: pendingImport?.files.length ?? 0,
         mobile,
+        canClaimAuthorshipOnIngest: true,
+        claimAuthorshipOnIngest,
+        setClaimAuthorshipOnIngest,
         openFolder,
         openLocalFiles,
         rescan,

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { TrustLevel } from '@refinio/trust.core/types/trust-types.js';
 
 import {
+    canImportFotosAuthenticityAttestation,
     canImportFotosEntry,
     canImportFotosManifest,
     fotosContentRules,
@@ -17,6 +18,7 @@ describe('fotosSyncRules', () => {
             $type$: 'FotosManifest',
             id: 'fotos',
             entries: new Set(['entry-a', 'entry-b']),
+            authenticityAttestations: new Set(['attestation-a']),
         })).toBe(true);
     });
 
@@ -57,6 +59,19 @@ describe('fotosSyncRules', () => {
         })).toBe(true);
     });
 
+    it('admits fotos authenticity attestations that carry a detached signature and optional cert reference', () => {
+        expect(canImportFotosAuthenticityAttestation(LOW_TRUST_CONTEXT, {
+            $type$: 'FotosAuthenticityAttestation',
+            id: 'fotos-authenticity-v1:person-1:photo-hash',
+            contentHash: 'photo-hash',
+            signer: 'person-1',
+            signerPublicKey: 'abcd1234',
+            signatureScheme: 'fotos-authenticity-v1',
+            signature: 'deadbeef',
+            subscriptionCertificate: 'cert-hash',
+        })).toBe(true);
+    });
+
     it('rejects fotos entries from peers below the content trust floor', () => {
         expect(canImportFotosEntry({
             peerTrustLevel: 'unknown' as TrustLevel,
@@ -73,5 +88,6 @@ describe('fotosSyncRules', () => {
         expect(fotosContentRules.has('GlueShareManifest')).toBe(true);
         expect(fotosContentRules.has('FotosManifest')).toBe(true);
         expect(fotosContentRules.has('FotosEntry')).toBe(true);
+        expect(fotosContentRules.has('FotosAuthenticityAttestation')).toBe(true);
     });
 });

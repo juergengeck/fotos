@@ -19,13 +19,15 @@ declare module 'react/jsx-dev-runtime.js' {
 
 declare module '@OneObjectInterfaces' {
     export interface OneVersionedObjectInterfaces {
-        FotosEntry: import('@refinio/fotos.core').FotosEntry;
-        FotosManifest: import('@refinio/fotos.core').FotosManifest;
+        FotosEntry: import('../../../../fotos.core/src/recipes/FotosRecipes.js').FotosEntry;
+        FotosManifest: import('../../../../fotos.core/src/recipes/FotosRecipes.js').FotosManifest;
+        FotosAuthenticityAttestation: import('../../../../fotos.core/src/recipes/FotosRecipes.js').FotosAuthenticityAttestation;
     }
 
     export interface OneIdObjectInterfaces {
-        FotosEntry: Pick<import('@refinio/fotos.core').FotosEntry, '$type$' | 'contentHash'>;
-        FotosManifest: Pick<import('@refinio/fotos.core').FotosManifest, '$type$' | 'id'>;
+        FotosEntry: Pick<import('../../../../fotos.core/src/recipes/FotosRecipes.js').FotosEntry, '$type$' | 'contentHash'>;
+        FotosManifest: Pick<import('../../../../fotos.core/src/recipes/FotosRecipes.js').FotosManifest, '$type$' | 'id'>;
+        FotosAuthenticityAttestation: Pick<import('../../../../fotos.core/src/recipes/FotosRecipes.js').FotosAuthenticityAttestation, '$type$' | 'id'>;
     }
 }
 

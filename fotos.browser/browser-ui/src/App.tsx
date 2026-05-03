@@ -580,6 +580,8 @@ export function App({ fotosModel: initialModel }: AppProps) {
     const mobile = gallery.folder.mobile;
     const intakePlan = gallery.folder.defaultIntakePlan;
     const pendingImportCount = gallery.folder.pendingImportCount;
+    const canClaimAuthorshipOnIngest = gallery.folder.canClaimAuthorshipOnIngest;
+    const claimAuthorshipOnIngest = gallery.folder.claimAuthorshipOnIngest;
     const primaryIntakeActionLabel = pendingImportCount > 0
         ? `Choose folder for ${pendingImportCount} shared photo${pendingImportCount === 1 ? '' : 's'}`
         : intakePlan.actionLabel;
@@ -1388,6 +1390,22 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                 {pendingImportCount} shared photo{pendingImportCount === 1 ? ' is' : 's are'} ready to be stored locally.
                             </div>
                         )}
+                        {canClaimAuthorshipOnIngest && (
+                            <label className="flex w-full max-w-lg items-start gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-left">
+                                <input
+                                    type="checkbox"
+                                    checked={claimAuthorshipOnIngest}
+                                    onChange={event => gallery.folder.setClaimAuthorshipOnIngest(event.target.checked)}
+                                    className="mt-0.5 h-4 w-4 accent-[#e94560]"
+                                />
+                                <div className="space-y-1">
+                                    <div className="text-sm font-medium text-white/80">Claim authorship on ingest</div>
+                                    <p className="text-xs leading-relaxed text-white/38">
+                                        Sign each imported image hash with this fotos identity so authenticity proof can travel with shared photos.
+                                    </p>
+                                </div>
+                            </label>
+                        )}
                         <button
                             onClick={gallery.folder.openFolder}
                             className="px-5 py-2.5 rounded-lg bg-[#e94560] text-white text-sm font-medium hover:bg-[#d13354] transition-colors"
@@ -1524,6 +1542,9 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         onOpenFolder={gallery.folder.openFolder}
                         onRescan={gallery.folder.rescan}
                         onReanalyze={canReanalyze ? gallery.folder.reanalyzeFaces : undefined}
+                        canClaimAuthorshipOnIngest={gallery.folder.canClaimAuthorshipOnIngest}
+                        claimAuthorshipOnIngest={gallery.folder.claimAuthorshipOnIngest}
+                        onClaimAuthorshipOnIngestChange={gallery.folder.setClaimAuthorshipOnIngest}
                         llmComparisonPhoto={comparisonPhoto}
                         llmComparisonPhotoLabel={comparisonPhotoLabel}
                         faceSearchActive={gallery.searchFace !== null}

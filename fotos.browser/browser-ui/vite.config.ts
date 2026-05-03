@@ -319,6 +319,8 @@ export default defineConfig({
             {find: '@vger/vger.core', replacement: path.resolve(__dirname, '../../../vger/packages/vger.core/dist')},
             {find: '@vger/vger.glue', replacement: path.resolve(__dirname, '../../../vger/packages/vger.glue/dist')},
             {find: '@refinio/recovery.core', replacement: path.resolve(__dirname, '../../../vger/packages/recovery.core/dist')},
+            {find: '@refinio/trust.core/recipes', replacement: path.resolve(__dirname, '../../../vger/packages/vger.expo/node_modules/@refinio/trust.core/dist/recipes/index.js')},
+            {find: '@refinio/trust.core', replacement: path.resolve(__dirname, '../../../vger/packages/vger.expo/node_modules/@refinio/trust.core/dist')},
             // Stub out Node-only modules that ONE.core dependency tree pulls in
             {find: '@anthropic-ai/sdk', replacement: path.resolve(__dirname, './src/stubs/empty.ts')},
             {find: '@whiskeysockets/baileys', replacement: path.resolve(__dirname, './src/stubs/empty.ts')},
