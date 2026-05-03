@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GalleryTrieManager } from '@refinio/fotos.core';
 import { groupPhotosByDay, useFotosGalleryState } from '@refinio/fotos.ui';
 import type { PhotoEntry } from '@/types/fotos';
@@ -21,24 +21,6 @@ export interface UseGalleryOptions {
     folder?: FolderAccess;
 }
 
-async function resolveCaptureDayGroups(photos: PhotoEntry[]) {
-    const manager = new GalleryTrieManager<PhotoEntry>('fotos-browser-ui');
-    await manager.replaceEntries(
-        photos.map(photo => ({
-            ...photo,
-            capturedAt: photo.capturedAt ?? photo.exif?.date ?? photo.addedAt,
-            updatedAt: photo.updatedAt ?? photo.addedAt,
-            folderPath: photo.folderPath ?? photo.sourcePath?.split('/').slice(0, -1).join('/') ?? undefined,
-        }))
-    );
-
-    const groups = await manager.getCaptureDayGroups();
-    return groups.map(group => ({
-        date: group.date,
-        photos: group.entries,
-    }));
-}
-
 export function useGallery(options: UseGalleryOptions = {}) {
     const localFolder = useFolderAccess({
         clusterSensitivity: options.clusterSensitivity,
@@ -55,6 +37,29 @@ export function useGallery(options: UseGalleryOptions = {}) {
     const [activeCollectionId, setActiveCollectionId] = useState<string | null>(null);
     const semanticWorkerRef = useRef<ReturnType<typeof createSemanticWorker> | null>(null);
     const semanticRequestIdRef = useRef(0);
+    const galleryTrieRef = useRef<GalleryTrieManager<PhotoEntry> | null>(null);
+
+    const resolveCaptureDayGroups = useCallback(async (photos: PhotoEntry[]) => {
+        if (!galleryTrieRef.current) {
+            galleryTrieRef.current = new GalleryTrieManager<PhotoEntry>('fotos-browser-ui');
+        }
+
+        const manager = galleryTrieRef.current;
+        await manager.replaceEntries(
+            photos.map(photo => ({
+                ...photo,
+                capturedAt: photo.capturedAt ?? photo.exif?.date ?? photo.addedAt,
+                updatedAt: photo.updatedAt ?? photo.addedAt,
+                folderPath: photo.folderPath ?? photo.sourcePath?.split('/').slice(0, -1).join('/') ?? undefined,
+            }))
+        );
+
+        const groups = await manager.getCaptureDayGroups();
+        return groups.map(group => ({
+            date: group.date,
+            photos: group.entries,
+        }));
+    }, []);
 
     const allClusters = useMemo(() => buildFaceClusterSummaries(folder.entries), [folder.entries]);
     const activeCluster = useMemo(
