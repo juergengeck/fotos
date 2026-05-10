@@ -6,10 +6,13 @@ const {
     addAuthenticityAttestationToManifestMock,
     resolveFotosAuthenticityContextMock,
     createFotosAuthenticityAttestationMock,
+    calculateIdHashOfObjMock,
+    getInstanceIdHashMock,
     getInstanceOwnerIdHashMock,
 } = vi.hoisted(() => ({
     storeVersionedObjectMock: vi.fn(async (obj: Record<string, unknown>) => ({
         hash: `${String(obj.$type$)}-hash`,
+        idHash: `${String(obj.$type$)}-id-hash`,
         status: 'stored',
     })),
     addEntryToManifestMock: vi.fn(async () => undefined),
@@ -24,6 +27,8 @@ const {
         signatureScheme: 'fotos-authenticity-v1',
         signature: 'signature',
     })),
+    calculateIdHashOfObjMock: vi.fn(async () => 'FotosEntry-id-hash'),
+    getInstanceIdHashMock: vi.fn(() => 'instance-id-hash'),
     getInstanceOwnerIdHashMock: vi.fn(() => 'owner-hash'),
 }));
 
@@ -40,7 +45,12 @@ vi.mock('@refinio/one.core/lib/storage-blob.js', () => ({
 }));
 
 vi.mock('@refinio/one.core/lib/instance.js', () => ({
+    getInstanceIdHash: getInstanceIdHashMock,
     getInstanceOwnerIdHash: getInstanceOwnerIdHashMock,
+}));
+
+vi.mock('@refinio/one.core/lib/util/object.js', () => ({
+    calculateIdHashOfObj: calculateIdHashOfObjMock,
 }));
 
 vi.mock('./fotos-manifest.js', () => ({
@@ -72,6 +82,8 @@ describe('fotos sync authorship toggle', () => {
             subscriptionCertificateHash: null,
         });
         createFotosAuthenticityAttestationMock.mockClear();
+        calculateIdHashOfObjMock.mockClear().mockResolvedValue('FotosEntry-id-hash');
+        getInstanceIdHashMock.mockReset().mockReturnValue('instance-id-hash');
         getInstanceOwnerIdHashMock.mockReset().mockReturnValue('owner-hash');
     });
 
@@ -96,7 +108,7 @@ describe('fotos sync authorship toggle', () => {
         expect(resolveFotosAuthenticityContextMock).not.toHaveBeenCalled();
         expect(createFotosAuthenticityAttestationMock).not.toHaveBeenCalled();
         expect(addAuthenticityAttestationToManifestMock).not.toHaveBeenCalled();
-        expect(storeVersionedObjectMock).toHaveBeenCalledTimes(1);
+        expect(storeVersionedObjectMock).toHaveBeenCalledTimes(2);
     });
 
     it('still resolves authenticity context when claiming authorship', async () => {
@@ -116,6 +128,6 @@ describe('fotos sync authorship toggle', () => {
         expect(resolveFotosAuthenticityContextMock).toHaveBeenCalledTimes(1);
         expect(createFotosAuthenticityAttestationMock).toHaveBeenCalledWith('photo-hash', expect.any(Object));
         expect(addAuthenticityAttestationToManifestMock).toHaveBeenCalledTimes(1);
-        expect(storeVersionedObjectMock).toHaveBeenCalledTimes(2);
+        expect(storeVersionedObjectMock).toHaveBeenCalledTimes(3);
     });
 });

@@ -42,6 +42,31 @@ export type {
 } from './fotos-catalog.js';
 export type {FotosCatalogTrieSnapshot} from './fotos-catalog-trie.js';
 export type {FotosBundleManifest} from './fotos-bundle.js';
+export type {
+    FotosServiceMethod,
+    FotosServiceChannel,
+    FotosManagedMode,
+    FotosServiceManagedMode,
+    FotosIngestState,
+    FotosBinaryResourceKind,
+    FotosServiceFaceData,
+    FotosFolderMetadata,
+    FotosServiceEntry,
+    FotosDecodedFaceData,
+    FotosIngestStatus,
+    FotosServiceStatusData,
+    FotosServiceBrowseParams,
+    FotosServiceBrowseData,
+    FotosServiceFoldersParams,
+    FotosServiceFoldersData,
+    FotosServiceSuccess,
+    FotosServiceFailure,
+    FotosServiceResult,
+    FotosServiceParamsByMethod,
+    FotosServiceDataByMethod,
+    FotosServiceResultByMethod,
+    FotosServiceTransport,
+} from './service-contract.js';
 
 export {
     DET_INPUT_SIZE,
@@ -70,6 +95,17 @@ export {
     getGallerySourceCapabilities,
     planGalleryIntake,
 } from './gallery-intake.js';
+export {
+    FOTOS_SERVICE_METHODS,
+    isFotosServiceMethod,
+    isFotosServiceChannel,
+    toFotosServiceChannel,
+    parseFotosServiceChannel,
+    normalizeFotosServiceManagedMode,
+    decodeFotosServiceFaceData,
+    buildFotosBinaryUrl,
+    invokeFotosService,
+} from './service-contract.js';
 export {GalleryTrieManager} from './gallery-trie.js';
 export {
     DEFAULT_FOTOS_CONFIG,
@@ -80,6 +116,16 @@ export {
 } from './fotos-catalog.js';
 export {FotosCatalogTrie} from './fotos-catalog-trie.js';
 export {FOTOS_BUNDLE_MANIFEST, createFotosBundleManifest} from './fotos-bundle.js';
+export {
+    buildFotosMediaLocatorId,
+    createFotosMediaLocator,
+    createFotosMediaVariant,
+} from './media-model.js';
+export type {
+    BuildFotosMediaLocatorIdParams,
+    CreateFotosMediaLocatorParams,
+    CreateFotosMediaVariantParams,
+} from './media-model.js';
 
 export {FaceClusterDimension} from './FaceClusterDimension.js';
 export type {FaceCluster, ClusterMember, ClusterMatch} from './FaceClusterDimension.js';
@@ -96,6 +142,27 @@ export type {
     FotosManifest,
     FotosAuthenticityAttestation,
 } from './recipes/FotosRecipes.js';
+export {
+    FOTOS_MEDIA_VARIANT_ROLES,
+    FOTOS_MEDIA_LOCATOR_PLATFORMS,
+    FOTOS_MEDIA_LOCATOR_KINDS,
+    FOTOS_MEDIA_LOCATOR_SCOPES,
+    isFotosMediaVariantRole,
+    isFotosMediaLocatorPlatform,
+    isFotosMediaLocatorKind,
+    isFotosMediaLocatorScope,
+    FotosMediaRecipes,
+    FotosMediaVariantRecipe,
+    FotosMediaLocatorRecipe,
+} from './recipes/FotosMediaRecipes.js';
+export type {
+    FotosMediaVariantRole,
+    FotosMediaLocatorPlatform,
+    FotosMediaLocatorKind,
+    FotosMediaLocatorScope,
+    FotosMediaVariant,
+    FotosMediaLocator,
+} from './recipes/FotosMediaRecipes.js';
 export {
     GalleryTrieRecipes,
     GalleryCaptureTrieNodeRecipe,

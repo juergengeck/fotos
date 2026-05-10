@@ -37,6 +37,40 @@ The current scaffold keeps the same basic init structure as `vger.expo`:
 
 ## What the requested backbone means here
 
+### Shared service contract
+
+`fotos.expo` should align with the shared fotos service contract described in
+`../../docs/fotos-service-contract.md`.
+
+Its persistence shape should also align with the media model described in
+`../../docs/fotos-media-model.md`.
+
+That means the native app should eventually present the same fotos runtime
+surface that `vger.headless` already serves:
+
+- `fotos:status`
+- `fotos:ingest`
+- `fotos:pause`
+- `fotos:resume`
+- `fotos:browse`
+- `fotos:folders`
+
+The media backend can stay native and iOS-specific. The contract we want to
+share is the fotos behavior layer above it.
+
+### Persistent media model
+
+For Expo this means:
+
+- `contentHash` stays the canonical media identity
+- Photos / `PHAsset` ids are locators, not identities
+- thumbnails, previews, face crops, and edits should be tracked as separate
+  known variants when their bytes differ
+- local reachability should be stored separately from shared fotos metadata
+
+That lets on-device analysis stay reusable when the same image appears later on
+another device, in a browser library, or through headless sync.
+
 ### mDNS
 
 Reachability and local-network discovery. This is how nearby peers first appear.
@@ -73,5 +107,5 @@ Runs should sit on top of the initialized runtime, not alongside it. The first o
 
 1. Keep typecheck green while the scaffold is still thin.
 2. Add fotos-specific CHUM object filters and import policy.
-3. Turn planned runs into explicit run descriptors and execution hooks.
-4. Connect gallery ingest to real mobile sources on top of the existing identity and trust model.
+3. Turn planned runs into explicit run descriptors and execution hooks that match the shared fotos service contract.
+4. Connect gallery ingest to real mobile sources on top of the existing identity, variant, and locator model.

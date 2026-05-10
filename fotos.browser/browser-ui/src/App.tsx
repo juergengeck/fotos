@@ -17,6 +17,7 @@ import {
     DEFAULT_GLUE_CONNECTION_BINDING_ID,
 } from '@glueone/glue.core';
 import { getFaceCount } from '@refinio/fotos.ui';
+import type { PhotoEntry } from '@refinio/fotos.ui';
 import type { FotosModel } from './lib/onecore-boot';
 import { setModelUpdater } from './lib/onecore-boot';
 import { traceHang } from './lib/hangTrace';

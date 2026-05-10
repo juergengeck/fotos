@@ -1,8 +1,9 @@
 /**
  * FotosRecipes -- ONE.core recipe definitions for fotos.one federation.
  *
- * FotosEntry: versioned object representing a photo's metadata.
- * Created by any instance during ingestion. Updated by desktop to add face data.
+ * FotosEntry: versioned object representing the canonical/original media anchor.
+ * Created by any instance during ingestion. Updated by any runtime to add
+ * cross-platform metadata and references to derived artifacts.
  * Keyed by contentHash (isId) -- all instances converge on the same object.
  *
  * FotosManifest: singleton versioned object listing all FotosEntry refs.
@@ -12,9 +13,8 @@
 import type {BLOB, Person, Recipe, VersionNode} from '@refinio/one.core/lib/recipes.js';
 import type {SHA256Hash, SHA256IdHash} from '@refinio/one.core/lib/util/type-checks.js';
 import {GalleryTrieRecipes} from './GalleryTrieRecipes.js';
-
-type SubscriptionCertificateRef =
-    import('@OneObjectInterfaces').OneVersionedObjectInterfaces['SubscriptionCertificate'];
+import {FotosMediaRecipes} from './FotosMediaRecipes.js';
+import type {FotosMediaVariant} from './FotosMediaRecipes.js';
 
 // ---------------------------------------------------------------------------
 // TypeScript interfaces
@@ -43,6 +43,7 @@ export interface FotosEntry {
     exifWidth?: number;
     exifHeight?: number;
     thumb?: SHA256Hash<BLOB>;
+    variants?: Set<SHA256Hash<FotosMediaVariant>>;
     faceCount?: number;
     faceEmbeddings?: SHA256Hash<BLOB>;
     faceCrops?: SHA256Hash<BLOB>;
@@ -59,7 +60,7 @@ export interface FotosAuthenticityAttestation {
     signerPublicKey: string;
     signatureScheme: typeof FOTOS_AUTHENTICITY_SCHEME;
     signature: string;
-    subscriptionCertificate?: SHA256Hash<SubscriptionCertificateRef>;
+    subscriptionCertificate?: SHA256Hash<any>;
 }
 
 export interface FotosManifest {
@@ -112,6 +113,14 @@ export const FotosEntryRecipe: Recipe = {
         {itemprop: 'exifWidth', optional: true, itemtype: {type: 'integer'}},
         {itemprop: 'exifHeight', optional: true, itemtype: {type: 'integer'}},
         {itemprop: 'thumb', optional: true, itemtype: {type: 'referenceToBlob'}},
+        {
+            itemprop: 'variants',
+            optional: true,
+            itemtype: {
+                type: 'set',
+                item: {type: 'referenceToObj', allowedTypes: new Set(['FotosMediaVariant'])}
+            }
+        },
         {itemprop: 'faceCount', optional: true, itemtype: {type: 'integer'}},
         {itemprop: 'faceEmbeddings', optional: true, itemtype: {type: 'referenceToBlob'}},
         {itemprop: 'faceCrops', optional: true, itemtype: {type: 'referenceToBlob'}}
@@ -158,7 +167,10 @@ export const FotosAuthenticityAttestationRecipe: Recipe = {
         {
             itemprop: 'subscriptionCertificate',
             optional: true,
-            itemtype: {type: 'referenceToObj', allowedTypes: new Set(['SubscriptionCertificate'])},
+            itemtype: {
+                type: 'referenceToObj',
+                allowedTypes: new Set(['SubscriptionCertificate']) as unknown as Set<'*'>,
+            },
         },
     ],
 };
@@ -167,5 +179,6 @@ export const FotosRecipes: Recipe[] = [
     FotosEntryRecipe,
     FotosManifestRecipe,
     FotosAuthenticityAttestationRecipe,
+    ...FotosMediaRecipes,
     ...GalleryTrieRecipes,
 ];

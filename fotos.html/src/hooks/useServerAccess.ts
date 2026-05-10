@@ -11,31 +11,21 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { PhotoEntry } from '@/types/fotos';
-import { dataAttrsToFaces, EMBEDDING_DIM } from '@refinio/fotos.core/faces';
+import {
+    buildFotosBinaryUrl,
+    decodeFotosServiceFaceData,
+    invokeFotosService,
+    normalizeFotosServiceManagedMode,
+} from '../../../fotos.core/src/service-contract.js';
+import type {
+    FotosFolderMetadata,
+    FotosIngestStatus,
+    FotosServiceEntry,
+} from '../../../fotos.core/src/service-contract.js';
 import { invoke } from '@/api/client';
 
-export interface FolderMetadata {
-    path: string;
-    name: string;
-    photoCount: number;
-    localCount: number;
-    dateRangeStart?: string;
-    dateRangeEnd?: string;
-    childCount: number;
-}
-
-export interface IngestStatus {
-    state: 'idle' | 'running' | 'paused';
-    currentFolder?: string;
-    folderIndex: number;
-    totalFolders: number;
-    photoIndex: number;
-    photosInFolder: number;
-    totalProcessed: number;
-    totalFound: number;
-    totalPhotos?: number;
-    dir?: string;
-}
+export type FolderMetadata = FotosFolderMetadata;
+export type IngestStatus = FotosIngestStatus;
 
 export interface FolderAccess {
     isOpen: boolean;
@@ -60,12 +50,16 @@ export interface FolderAccess {
 /**
  * Convert server entry (with raw faceData) to PhotoEntry with decoded FaceInfo.
  */
-function serverEntryToPhotoEntry(raw: any): PhotoEntry {
+function serverEntryToPhotoEntry(raw: FotosServiceEntry): PhotoEntry {
+    const decodedFaces = decodeFotosServiceFaceData(raw.faceData);
+
     const entry: PhotoEntry = {
         hash: raw.hash ?? '',
         name: raw.name ?? '',
-        managed: raw.managed ?? 'metadata',
+        managed: normalizeFotosServiceManagedMode(raw.managed),
         sourcePath: raw.sourcePath,
+        folderPath: raw.folderPath,
+        mimeType: raw.mime,
         thumb: raw.thumb,
         tags: raw.tags ?? [],
         exif: raw.exif,
@@ -73,22 +67,14 @@ function serverEntryToPhotoEntry(raw: any): PhotoEntry {
         size: raw.size ?? 0,
     };
 
-    // Decode face data from raw data-* attribute map
-    if (raw.faceData) {
-        const result = dataAttrsToFaces(raw.faceData);
-        const count = result.faces.length;
-        if (count > 0) {
-            const flat = new Float32Array(count * EMBEDDING_DIM);
-            for (let i = 0; i < count; i++) flat.set(result.faces[i].embedding, i * EMBEDDING_DIM);
-
-            entry.faces = {
-                count,
-                bboxes: result.faces.map(f => f.detection.bbox),
-                scores: result.faces.map(f => f.detection.score),
-                embeddings: flat,
-                crops: result.faces.map(f => f.cropPath ?? ''),
-            };
-        }
+    if (decodedFaces) {
+        entry.faces = {
+            count: decodedFaces.count,
+            bboxes: decodedFaces.bboxes,
+            scores: decodedFaces.scores,
+            embeddings: decodedFaces.embeddings,
+            crops: decodedFaces.crops,
+        };
     }
 
     return entry;
@@ -107,11 +93,9 @@ export function useServerAccess(): FolderAccess {
     // Fetch gallery entries from a specific folder via fotos:browse
     const loadGallery = useCallback(async (folder?: string) => {
         const targetFolder = folder ?? currentFolder;
-        const result = await invoke('fotos:browse', { folder: targetFolder, limit: 200 });
-        if (result?.success && result.data) {
-            const parsed = result.data.entries
-                ? result.data.entries.map(serverEntryToPhotoEntry)
-                : [];
+        const result = await invokeFotosService(invoke, 'browse', { folder: targetFolder, limit: 200 });
+        if (result.success) {
+            const parsed = result.data.entries.map(serverEntryToPhotoEntry);
             const children: FolderMetadata[] = result.data.children ?? [];
 
             setEntries(parsed);
@@ -123,8 +107,8 @@ export function useServerAccess(): FolderAccess {
 
     // Check server status + load gallery
     const checkStatus = useCallback(async () => {
-        const result = await invoke('fotos:status');
-        if (result?.success) {
+        const result = await invokeFotosService(invoke, 'status', {});
+        if (result.success) {
             setIngestStatus(result.data);
             if (result.data.dir) {
                 const parts = result.data.dir.split('/');
@@ -154,20 +138,20 @@ export function useServerAccess(): FolderAccess {
 
     // Start ingestion
     const startIngest = useCallback(async () => {
-        const result = await invoke('fotos:ingest');
-        if (result?.success) setIngestStatus(result.data);
+        const result = await invokeFotosService(invoke, 'ingest', {});
+        if (result.success) setIngestStatus(result.data);
     }, []);
 
     // Pause ingestion
     const pauseIngest = useCallback(async () => {
-        const result = await invoke('fotos:pause');
-        if (result?.success) setIngestStatus(result.data);
+        const result = await invokeFotosService(invoke, 'pause', {});
+        if (result.success) setIngestStatus(result.data);
     }, []);
 
     // Resume ingestion
     const resumeIngest = useCallback(async () => {
-        const result = await invoke('fotos:resume');
-        if (result?.success) setIngestStatus(result.data);
+        const result = await invokeFotosService(invoke, 'resume', {});
+        if (result.success) setIngestStatus(result.data);
     }, []);
 
     // On mount: check status + load root gallery
@@ -210,13 +194,13 @@ export function useServerAccess(): FolderAccess {
     }, [checkStatus]);
 
     const getFileUrl = useCallback(async (relativePath: string): Promise<string> => {
-        return `/fotos/file/${encodeURIComponent(relativePath)}`;
+        return buildFotosBinaryUrl('', 'file', relativePath);
     }, []);
 
     const getThumbUrl = useCallback(async (entry: PhotoEntry): Promise<string | null> => {
-        if (entry.thumb) return `/fotos/thumb/${encodeURIComponent(entry.thumb)}`;
+        if (entry.thumb) return buildFotosBinaryUrl('', 'thumb', entry.thumb);
         // No thumbnail — fall back to original file
-        if (entry.sourcePath) return `/fotos/file/${encodeURIComponent(entry.sourcePath)}`;
+        if (entry.sourcePath) return buildFotosBinaryUrl('', 'file', entry.sourcePath);
         return null;
     }, []);
 

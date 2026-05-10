@@ -153,66 +153,64 @@ function useAppInit() {
   const [authenticated, setAuthenticated] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const loginInFlight = useRef(false);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
-    let mounted = true;
-
     const existingModel = getModel();
     if (existingModel) {
       setModel(existingModel);
       setAuthenticated(existingModel.initialized);
       setInitializing(false);
       return () => {
-        mounted = false;
+        mountedRef.current = false;
       };
     }
-
-    try {
-      const nextModel = new Model(COMM_SERVER_URL);
-      nextModel.onOneModelsReady(() => {
-        if (mounted) {
-          setAuthenticated(true);
-        }
-      });
-      nextModel.one.onLogout(() => {
-        if (mounted) {
-          setAuthenticated(false);
-        }
-      });
-
-      if (mounted) {
-        setGlobalModel(nextModel);
-        setModel(nextModel);
-        setInitializing(false);
-      }
-    } catch (initError) {
-      if (mounted) {
-        setError(initError instanceof Error ? initError.message : String(initError));
-        setInitializing(false);
-      }
-    }
+    setInitializing(false);
 
     return () => {
-      mounted = false;
+      mountedRef.current = false;
     };
   }, []);
 
-  const login = useCallback(async (username: string, password: string) => {
-    if (!model) {
-      throw new Error('Model not ready');
+  const ensureModel = useCallback(() => {
+    if (model) {
+      return model;
     }
+
+    const nextModel = new Model(COMM_SERVER_URL);
+    nextModel.onOneModelsReady(() => {
+      if (mountedRef.current) {
+        setAuthenticated(true);
+      }
+    });
+    nextModel.one.onLogout(() => {
+      if (mountedRef.current) {
+        setAuthenticated(false);
+      }
+    });
+
+    if (mountedRef.current) {
+      setGlobalModel(nextModel);
+      setModel(nextModel);
+    }
+
+    return nextModel;
+  }, [model]);
+
+  const login = useCallback(async (username: string, password: string) => {
     if (loginInFlight.current) {
       return;
     }
 
     loginInFlight.current = true;
     try {
+      const activeModel = ensureModel();
       const email = username.includes('@') ? username : `${username}@fotos.one`;
-      await model.one.loginOrRegister(email, password, email);
+      await activeModel.one.loginOrRegister(email, password, email);
     } finally {
       loginInFlight.current = false;
     }
-  }, [model]);
+  }, [ensureModel]);
 
   return {
     model,
@@ -248,7 +246,7 @@ export default function RootLayout() {
     );
   }
 
-  if (initializing || !model) {
+  if (initializing) {
     return (
       <View
         style={{
@@ -267,7 +265,7 @@ export default function RootLayout() {
     );
   }
 
-  if (!authenticated) {
+  if (!authenticated || !model) {
     return (
       <>
         <StatusBar style="dark" />

@@ -5,6 +5,7 @@ import {
     canImportFotosAuthenticityAttestation,
     canImportFotosEntry,
     canImportFotosManifest,
+    canImportFotosMediaVariant,
     fotosContentRules,
 } from './fotosSyncRules.js';
 
@@ -53,9 +54,27 @@ describe('fotosSyncRules', () => {
             exifWidth: 3024,
             exifHeight: 4032,
             thumb: 'thumb-hash',
+            variants: new Set(['variant-a', 'variant-b']),
             faceCount: 2,
             faceEmbeddings: 'embedding-hash',
             faceCrops: 'crops-hash',
+        })).toBe(true);
+    });
+
+    it('admits fotos media variants with bounded metadata and derivative references', () => {
+        expect(canImportFotosMediaVariant(LOW_TRUST_CONTEXT, {
+            $type$: 'FotosMediaVariant',
+            contentHash: 'variant-hash',
+            family: 'entry-id-hash',
+            role: 'thumbnail',
+            mime: 'image/jpeg',
+            byteSize: 12_345,
+            width: 640,
+            height: 480,
+            blob: 'thumb-blob-hash',
+            derivedFrom: 'original-variant-id-hash',
+            createdAt: '2024-10-30T09:10:11.000Z',
+            label: 'thumb',
         })).toBe(true);
     });
 
@@ -88,6 +107,7 @@ describe('fotosSyncRules', () => {
         expect(fotosContentRules.has('GlueShareManifest')).toBe(true);
         expect(fotosContentRules.has('FotosManifest')).toBe(true);
         expect(fotosContentRules.has('FotosEntry')).toBe(true);
+        expect(fotosContentRules.has('FotosMediaVariant')).toBe(true);
         expect(fotosContentRules.has('FotosAuthenticityAttestation')).toBe(true);
     });
 });

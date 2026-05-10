@@ -18,6 +18,10 @@
     "./ingest": {
       "import": "./dist/ingest/index.js",
       "types": "./dist/ingest/index.d.ts"
+    },
+    "./service-contract": {
+      "import": "./dist/service-contract.js",
+      "types": "./dist/service-contract.d.ts"
     }
   },
   "files": [

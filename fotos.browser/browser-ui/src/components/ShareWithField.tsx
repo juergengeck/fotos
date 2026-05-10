@@ -54,15 +54,6 @@ function normalizeExplicitGlueIdentity(token: string): string | null {
         : `${normalizedHandleInput}@glue.one`;
 }
 
-function normalizeBareGlueIdentity(token: string): string | null {
-    const normalized = token.trim().toLowerCase();
-    if (!normalized || normalized.includes(' ') || /^[0-9a-f]{16,}$/i.test(normalized)) {
-        return null;
-    }
-
-    return normalizeExplicitGlueIdentity(normalized);
-}
-
 export function resolveGlueIdentityForPeer(peer: SharePeerOption): string | null {
     const explicitIdentity = peer.glueIdentity?.trim().toLowerCase();
     if (explicitIdentity) {

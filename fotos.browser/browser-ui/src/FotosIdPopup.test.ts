@@ -289,7 +289,7 @@ describe('FotosIdPopup', () => {
       secretKey: new Uint8Array(64),
       seed: new Uint8Array(32),
     });
-    vi.mocked(uint8arrayToHexString).mockReturnValue('fotos-public-key-1');
+    vi.mocked(uint8arrayToHexString).mockReturnValue('fotos-public-key-1' as any);
     vi.mocked(signRecoveryPayload).mockReturnValue('claim-signature-1');
 
     const tree = renderNodes(FotosIdPopup());

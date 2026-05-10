@@ -9,14 +9,15 @@
  * Idempotent: re-storing an identical FotosEntry (same contentHash isId) is a no-op.
  */
 
-import type {SHA256Hash} from '@refinio/one.core/lib/util/type-checks.js';
+import type {SHA256Hash, SHA256IdHash} from '@refinio/one.core/lib/util/type-checks.js';
 import type {BLOB} from '@refinio/one.core/lib/recipes.js';
 import {
     storeVersionedObject,
     onVersionedObj,
 } from '@refinio/one.core/lib/storage-versioned-objects.js';
 import {storeArrayBufferAsBlob, readBlobAsArrayBuffer} from '@refinio/one.core/lib/storage-blob.js';
-import {getInstanceOwnerIdHash} from '@refinio/one.core/lib/instance.js';
+import {getInstanceIdHash, getInstanceOwnerIdHash} from '@refinio/one.core/lib/instance.js';
+import {calculateIdHashOfObj} from '@refinio/one.core/lib/util/object.js';
 import {
     addAuthenticityAttestationToManifest,
     addEntryToManifest,
@@ -34,6 +35,11 @@ import {
     type FotosAuthenticityContext,
 } from './fotos-authenticity.js';
 import type { FotosAuthenticityAttestation } from '../../../../fotos.core/src/recipes/FotosRecipes.js';
+import type {FotosMediaVariant} from '../../../../fotos.core/src/recipes/FotosMediaRecipes.js';
+import {
+    createFotosMediaLocator,
+    createFotosMediaVariant,
+} from '../../../../fotos.core/src/media-model.js';
 
 export interface SyncPhotosToOneCoreOptions {
     claimAuthorship?: boolean;
@@ -125,6 +131,112 @@ async function storeEphemeralThumbnailBlob(
         console.warn(`[fotos-sync] Failed to store ephemeral thumbnail ${thumbUrl}:`, err);
         return undefined;
     }
+}
+
+function isPersistentBrowserLocator(locator: string | undefined): locator is string {
+    if (!locator) {
+        return false;
+    }
+
+    const trimmed = locator.trim();
+    return trimmed.length > 0 && !trimmed.startsWith('blob:') && !trimmed.startsWith('data:');
+}
+
+function collectOriginalVariantLocators(photo: PhotoEntry): string[] {
+    const values = new Set<string>();
+
+    if (isPersistentBrowserLocator(photo.sourcePath)) {
+        values.add(photo.sourcePath);
+    }
+
+    for (const copyPath of photo.copies ?? []) {
+        if (isPersistentBrowserLocator(copyPath)) {
+            values.add(copyPath);
+        }
+    }
+
+    return [...values];
+}
+
+async function storeBrowserLocator(params: {
+    variant: SHA256IdHash<FotosMediaVariant>;
+    locator: string;
+    kind: 'relative-path' | 'filesystem-path';
+    lastVerifiedAt?: string;
+}): Promise<void> {
+    const instanceId = getInstanceIdHash();
+    const locator = createFotosMediaLocator({
+        variant: params.variant,
+        platform: 'browser',
+        kind: params.kind,
+        scope: 'device-local',
+        locator: params.locator,
+        ...(instanceId ? {deviceId: String(instanceId)} : {}),
+        ...(params.lastVerifiedAt ? {lastVerifiedAt: params.lastVerifiedAt} : {}),
+    });
+
+    await storeVersionedObject(locator as any);
+}
+
+async function storeFotosMediaState(
+    photo: PhotoEntry,
+    entryIdHash: SHA256IdHash<FotosEntry>,
+    mime: string,
+    thumbBlobHash?: SHA256Hash<BLOB>,
+): Promise<Set<SHA256Hash<FotosMediaVariant>>> {
+    const variants = new Set<SHA256Hash<FotosMediaVariant>>();
+
+    const originalVariant = createFotosMediaVariant({
+        contentHash: photo.hash,
+        family: entryIdHash,
+        role: 'original',
+        mime,
+        byteSize: photo.size,
+        width: photo.exif?.width,
+        height: photo.exif?.height,
+        createdAt: photo.capturedAt ?? photo.addedAt ?? photo.updatedAt,
+        label: photo.name,
+    });
+    const originalVariantResult = await storeVersionedObject(originalVariant as any);
+    variants.add(originalVariantResult.hash as SHA256Hash<FotosMediaVariant>);
+
+    const locatorTimestamp = photo.updatedAt ?? photo.addedAt ?? photo.capturedAt;
+    for (const relativePath of collectOriginalVariantLocators(photo)) {
+        await storeBrowserLocator({
+            variant: originalVariantResult.idHash as SHA256IdHash<FotosMediaVariant>,
+            locator: relativePath,
+            kind: 'relative-path',
+            ...(locatorTimestamp ? {lastVerifiedAt: locatorTimestamp} : {}),
+        });
+    }
+
+    if (!thumbBlobHash) {
+        return variants;
+    }
+
+    const thumbVariant = createFotosMediaVariant({
+        contentHash: String(thumbBlobHash),
+        family: entryIdHash,
+        role: 'thumbnail',
+        mime: 'image/jpeg',
+        blob: thumbBlobHash,
+        derivedFrom: originalVariantResult.idHash as SHA256IdHash<FotosMediaVariant>,
+        createdAt: photo.updatedAt ?? photo.addedAt ?? photo.capturedAt,
+        label: 'thumb',
+    });
+    const thumbVariantResult = await storeVersionedObject(thumbVariant as any);
+    variants.add(thumbVariantResult.hash as SHA256Hash<FotosMediaVariant>);
+
+    if (isPersistentBrowserLocator(photo.thumb)) {
+        await storeBrowserLocator({
+            variant: thumbVariantResult.idHash as SHA256IdHash<FotosMediaVariant>,
+            locator: photo.thumb,
+            kind: 'relative-path',
+            ...(locatorTimestamp ? {lastVerifiedAt: locatorTimestamp} : {}),
+        });
+    }
+
+    return variants;
 }
 
 // ---------------------------------------------------------------------------
@@ -275,11 +387,12 @@ export async function syncPhotoToOneCore(
     authenticityContext: FotosAuthenticityContext | null = null,
 ): Promise<void> {
     // Build the FotosEntry
-    const entry: Record<string, unknown> = {
+    const mime = mimeFromName(photo.name);
+    const entry: FotosEntry = {
         $type$: 'FotosEntry',
         contentHash: photo.hash,
         streamId: photo.hash,
-        mime: mimeFromName(photo.name),
+        mime,
         size: photo.size,
     };
 
@@ -307,8 +420,9 @@ export async function syncPhotoToOneCore(
     }
 
     // Store thumbnail as BLOB if available
+    let thumbHash: SHA256Hash<BLOB> | undefined;
     if (photo.thumb) {
-        const thumbHash = rootHandle
+        thumbHash = rootHandle
             ? await storeThumbnailBlob(rootHandle, photo.thumb)
             : (photo.thumb.startsWith('blob:') || photo.thumb.startsWith('data:'))
                 ? await storeEphemeralThumbnailBlob(photo.thumb)
@@ -321,6 +435,12 @@ export async function syncPhotoToOneCore(
     // Map face data
     if (photo.faces && photo.faces.count > 0) {
         entry.faceCount = photo.faces.count;
+    }
+
+    const entryIdHash = await calculateIdHashOfObj(entry as any) as SHA256IdHash<FotosEntry>;
+    const variants = await storeFotosMediaState(photo, entryIdHash, mime, thumbHash);
+    if (variants.size > 0) {
+        entry.variants = variants;
     }
 
     // Store the versioned object (idempotent — same contentHash isId = same object)

@@ -1,18 +1,57 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { getGallerySurfaceProfile, planGalleryIntake } from '@refinio/fotos.core';
 import type { GallerySurface } from '@refinio/fotos.core';
+import {
+    buildFotosBinaryUrl,
+    decodeFotosServiceFaceData,
+    invokeFotosService,
+    normalizeFotosServiceManagedMode,
+} from '../../../../fotos.core/src/service-contract.js';
+import type {
+    FotosServiceChannel,
+    FotosServiceEntry,
+} from '../../../../fotos.core/src/service-contract.js';
 import type { PhotoEntry } from '@/types/fotos';
 import type { FolderAccess } from './useFolderAccess';
 
 // ── Headless API helper ──────────────────────────────────────────────
 
-async function invoke(headlessUrl: string, channel: string, params: Record<string, unknown> = {}) {
+async function invoke(
+    headlessUrl: string,
+    channel: FotosServiceChannel,
+    params: Record<string, unknown> = {},
+) {
     const res = await fetch(`${headlessUrl}/api/invoke`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ channel, params }),
     });
     return res.json();
+}
+
+function serviceEntryToPhotoEntry(raw: FotosServiceEntry): PhotoEntry {
+    const decodedFaces = decodeFotosServiceFaceData(raw.faceData);
+
+    return {
+        hash: raw.hash ?? raw.streamId ?? raw.contentHash ?? '',
+        name: raw.name ?? '',
+        managed: normalizeFotosServiceManagedMode(raw.managed),
+        sourcePath: raw.sourcePath,
+        folderPath: raw.folderPath,
+        mimeType: raw.mime,
+        thumb: raw.thumb,
+        tags: raw.tags ?? [],
+        exif: raw.exif,
+        addedAt: raw.addedAt ?? new Date().toISOString(),
+        size: raw.size ?? 0,
+        faces: decodedFaces ? {
+            count: decodedFaces.count,
+            bboxes: decodedFaces.bboxes,
+            scores: decodedFaces.scores,
+            embeddings: decodedFaces.embeddings,
+            crops: decodedFaces.crops,
+        } : undefined,
+    };
 }
 
 // ── Hook ─────────────────────────────────────────────────────────────
@@ -60,20 +99,32 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
             setLoading(true);
             try {
                 const [browseResult, statusResult] = await Promise.all([
-                    invoke(headlessUrl, 'fotos:browse', { limit: 500 }),
-                    invoke(headlessUrl, 'fotos:status'),
+                    invokeFotosService(
+                        (channel, params) => invoke(headlessUrl, channel, params),
+                        'browse',
+                        { limit: 500 },
+                    ),
+                    invokeFotosService(
+                        (channel, params) => invoke(headlessUrl, channel, params),
+                        'status',
+                        {},
+                    ),
                 ]);
 
                 if (cancelled) return;
 
-                const photos: PhotoEntry[] = browseResult?.data?.entries ?? browseResult?.entries ?? [];
-                const name: string = statusResult?.data?.folderName
-                    ?? statusResult?.folderName
-                    ?? new URL(headlessUrl).hostname;
+                const photos = browseResult.success
+                    ? browseResult.data.entries.map(serviceEntryToPhotoEntry)
+                    : [];
+                const name: string = statusResult.success
+                    ? statusResult.data.folderName
+                        ?? statusResult.data.dir?.split('/').filter(Boolean).pop()
+                        ?? new URL(headlessUrl).hostname
+                    : new URL(headlessUrl).hostname;
 
                 setEntries(photos);
                 setFolderName(name);
-                setIsOpen(true);
+                setIsOpen(browseResult.success || statusResult.success);
             } catch (err) {
                 console.error('[useHeadlessSource] Failed to fetch entries:', err);
                 if (!cancelled) {
@@ -97,9 +148,14 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
 
         setLoading(true);
         try {
-            const result = await invoke(url, 'fotos:browse', { limit: 500 });
-            const photos: PhotoEntry[] = result?.data?.entries ?? result?.entries ?? [];
-            setEntries(photos);
+            const result = await invokeFotosService(
+                (channel, params) => invoke(url, channel, params),
+                'browse',
+                { limit: 500 },
+            );
+            if (result.success) {
+                setEntries(result.data.entries.map(serviceEntryToPhotoEntry));
+            }
         } catch (err) {
             console.error('[useHeadlessSource] Rescan failed:', err);
         } finally {
@@ -116,9 +172,9 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
         if (cached) return cached;
 
         const endpoint = entry.thumb
-            ? `${url}/fotos/thumb/${entry.thumb}`
+            ? buildFotosBinaryUrl(url, 'thumb', entry.thumb)
             : entry.sourcePath
-                ? `${url}/fotos/file/${entry.sourcePath}`
+                ? buildFotosBinaryUrl(url, 'file', entry.sourcePath)
                 : null;
         if (!endpoint) return null;
 
@@ -142,7 +198,7 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
         const cached = urlCacheRef.current.get(cacheKey);
         if (cached) return cached;
 
-        const res = await fetch(`${url}/fotos/file/${relativePath}`);
+        const res = await fetch(buildFotosBinaryUrl(url, 'file', relativePath));
         if (!res.ok) throw new Error(`Failed to fetch file: ${res.status}`);
         const blob = await res.blob();
         const objectUrl = URL.createObjectURL(blob);
@@ -154,7 +210,7 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
         const url = headlessUrlRef.current;
         if (!url) throw new Error('Not connected to headless server');
 
-        const res = await fetch(`${url}/fotos/file/${relativePath}`);
+        const res = await fetch(buildFotosBinaryUrl(url, 'file', relativePath));
         if (!res.ok) throw new Error(`Failed to fetch file: ${res.status}`);
         const blob = await res.blob();
         const fileName = relativePath.split('/').pop() ?? 'unknown';

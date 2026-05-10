@@ -1,6 +1,6 @@
 import { contentRules } from '../../../../../vger/packages/sync.core/dist/rules/default-rules.js';
-import { TRUST_LEVEL_ORDER } from '@refinio/trust.core/types/trust-types.js';
-import type { TrustLevel } from '@refinio/trust.core/types/trust-types.js';
+import { TRUST_LEVEL_ORDER } from '../../../../../one/packages/trust.core/src/types/trust-types.js';
+import type { TrustLevel } from '../../../../../one/packages/trust.core/src/types/trust-types.js';
 
 type SyncRule = typeof contentRules extends Map<string, infer Value> ? Value : never;
 
@@ -12,9 +12,12 @@ const MAX_PATH_LENGTH = 4_096;
 const MAX_EXIF_STRING_LENGTH = 1_024;
 const MAX_TIMESTAMP_LENGTH = 128;
 const MAX_FACE_COUNT = 10_000;
+const MAX_VARIANT_REFS = 1_024;
 const MAX_SIGNATURE_SCHEME_LENGTH = 128;
 const MAX_PUBLIC_KEY_LENGTH = 256;
 const MAX_SIGNATURE_LENGTH = 1_024;
+const MAX_MEDIA_ROLE_LENGTH = 64;
+const MAX_MEDIA_LABEL_LENGTH = 255;
 
 interface SyncContextLike {
     peerTrustLevel: TrustLevel;
@@ -40,6 +43,11 @@ function isOptionalFiniteNumber(value: unknown): boolean {
 
 function isOptionalNonNegativeNumber(value: unknown): boolean {
     return value === undefined || (typeof value === 'number' && Number.isFinite(value) && value >= 0);
+}
+
+function isOptionalNonNegativeInteger(value: unknown): boolean {
+    return value === undefined
+        || (typeof value === 'number' && Number.isInteger(value) && value >= 0);
 }
 
 function isOptionalReference(value: unknown): boolean {
@@ -111,6 +119,10 @@ export function canImportFotosEntry(context: SyncContextLike, obj?: object): boo
         && isOptionalFiniteNumber(entry.exifWidth)
         && isOptionalFiniteNumber(entry.exifHeight)
         && isOptionalReference(entry.thumb)
+        && (
+            entry.variants === undefined
+            || isStringSetWithinBounds(entry.variants, MAX_VARIANT_REFS, MAX_REFERENCE_LENGTH)
+        )
         && (faceCount === undefined
             || (typeof faceCount === 'number'
                 && Number.isInteger(faceCount)
@@ -118,6 +130,26 @@ export function canImportFotosEntry(context: SyncContextLike, obj?: object): boo
                 && faceCount <= MAX_FACE_COUNT))
         && isOptionalReference(entry.faceEmbeddings)
         && isOptionalReference(entry.faceCrops);
+}
+
+export function canImportFotosMediaVariant(context: SyncContextLike, obj?: object): boolean {
+    if (!meetsContentTrustFloor(context) || !obj) {
+        return false;
+    }
+
+    const variant = obj as ImportedObject;
+
+    return isStringWithinBounds(variant.contentHash, MAX_REFERENCE_LENGTH)
+        && isStringWithinBounds(variant.family, MAX_REFERENCE_LENGTH)
+        && isStringWithinBounds(variant.role, MAX_MEDIA_ROLE_LENGTH)
+        && isStringWithinBounds(variant.mime, MAX_MIME_TYPE_LENGTH)
+        && isOptionalNonNegativeInteger(variant.byteSize)
+        && isOptionalNonNegativeInteger(variant.width)
+        && isOptionalNonNegativeInteger(variant.height)
+        && isOptionalReference(variant.blob)
+        && isOptionalReference(variant.derivedFrom)
+        && isOptionalStringWithinBounds(variant.createdAt, MAX_TIMESTAMP_LENGTH)
+        && isOptionalStringWithinBounds(variant.label, MAX_MEDIA_LABEL_LENGTH);
 }
 
 export function canImportFotosAuthenticityAttestation(context: SyncContextLike, obj?: object): boolean {
@@ -144,6 +176,10 @@ const fotosEntryRule: SyncRule = {
     canImport: canImportFotosEntry,
 };
 
+const fotosMediaVariantRule: SyncRule = {
+    canImport: canImportFotosMediaVariant,
+};
+
 const fotosAuthenticityAttestationRule: SyncRule = {
     canImport: canImportFotosAuthenticityAttestation,
 };
@@ -151,4 +187,5 @@ const fotosAuthenticityAttestationRule: SyncRule = {
 export const fotosContentRules = new Map(contentRules);
 fotosContentRules.set('FotosManifest', fotosManifestRule);
 fotosContentRules.set('FotosEntry', fotosEntryRule);
+fotosContentRules.set('FotosMediaVariant', fotosMediaVariantRule);
 fotosContentRules.set('FotosAuthenticityAttestation', fotosAuthenticityAttestationRule);

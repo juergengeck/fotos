@@ -95,7 +95,7 @@ function renderNodes(node: any): RenderNode[] {
 }
 
 function textContent(node: RenderNode): string {
-  if (node.type === '#text') return node.text;
+  if ('text' in node) return node.text;
   return node.children.map(textContent).join('');
 }
 
