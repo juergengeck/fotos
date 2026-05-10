@@ -1,0 +1,45 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "strict": true,
+    "module": "esnext",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "moduleResolution": "bundler",
+    "paths": {
+      "@/*": [
+        "./*"
+      ],
+      "@refinio/fotos.core": [
+        "../fotos.core/src/index.ts"
+      ],
+      "@refinio/fotos.core/*": [
+        "../fotos.core/src/*"
+      ],
+      "@refinio/fotos.ui": [
+        "../fotos.ui/src/index.ts"
+      ],
+      "@refinio/fotos.ui/*": [
+        "../fotos.ui/src/*"
+      ],
+      "@refinio/fotos.gallery": [
+        "../fotos.gallery/src/index.ts"
+      ],
+      "@refinio/fotos.gallery/*": [
+        "../fotos.gallery/src/*"
+      ]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "nativewind-env.d.ts",
+    "lamejs.d.ts",
+    "expo-modules.d.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

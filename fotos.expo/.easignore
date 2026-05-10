@@ -1,0 +1,23 @@
+# Native build artifacts - EAS rebuilds these
+ios/
+android/
+
+# Build caches
+.expo/
+dist/
+*.log
+.turbo/
+
+# Old vendor tarballs (using refinio-* naming now)
+vendor/assembly-core-*.tgz
+vendor/chat-core-*.tgz
+vendor/connection-core-*.tgz
+vendor/cube-core-*.tgz
+vendor/cube-space.core-*.tgz
+vendor/cube-time.core-*.tgz
+vendor/lama-core-*.tgz
+vendor/lama-ui-*.tgz
+vendor/memory-core-*.tgz
+vendor/settings-core-*.tgz
+vendor/trust-core-*.tgz
+vendor/ui-core-*.tgz
