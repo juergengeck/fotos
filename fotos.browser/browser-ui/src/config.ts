@@ -9,6 +9,9 @@ export const API_BASE =
 
 export const COMM_SERVER_URL = import.meta.env.VITE_COMM_SERVER_URL || 'wss://api.glue.one/comm';
 
+export const DEBUG_REGISTRATION_TOKEN = import.meta.env.VITE_GLUE_DEBUG_REGISTRATION_TOKEN || '';
+export const DEBUG_REGISTRATION_TTL_MS = Number(import.meta.env.VITE_GLUE_DEBUG_REGISTRATION_TTL_MS || 0) || undefined;
+
 export const TRUSTED_SYSTEM_PUBLIC_KEYS: string[] =
   (import.meta.env.VITE_TRUSTED_SYSTEM_KEYS || PRODUCTION_SYSTEM_KEY)
     .split(',')

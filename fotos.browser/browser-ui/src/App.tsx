@@ -30,14 +30,19 @@ import {
     shouldAdvertiseSharingIdentity,
 } from '@/lib/fotosSharingPolicy';
 import { isSnapshotEqual, type FotosBreadcrumbSnapshot } from '@/lib/fotosHistorySettings';
-import { grantFotosAccess } from '@/lib/fotos-manifest';
-import { ensureConfiguredGlueIdentity } from '@/lib/glueIdentity';
+import { grantFotosAccess, retainFotosManifestConvergence } from '@/lib/fotos-manifest';
+import { resolveShareGrantPersonIds } from '@/lib/shareGrantTargets';
+import {
+    ensureConfiguredGlueIdentity,
+    publishLocalGlueProfileCredential,
+} from '@/lib/glueIdentity';
 import {
     buildPersistentPhotoPath,
     parsePersistentPhotoRouteTarget,
 } from '@/lib/photoRoute';
 import { resolveGlueIdentityState } from '@/lib/glueIdentityState';
-import type { SharePeerOption } from '@/components/ShareWithField';
+import { resolveTokenToPersonId, type SharePeerOption } from '@/components/ShareWithField';
+import { DEBUG_REGISTRATION_TOKEN, DEBUG_REGISTRATION_TTL_MS } from './config';
 
 interface AppProps {
     fotosModel?: FotosModel;
@@ -104,12 +109,48 @@ interface FotosDebugApi {
         syncEnabled: boolean;
         reloadRequired: boolean;
     }>;
+    registerPreparedIdentity: (displayName?: string) => Promise<{
+        personId: string;
+        identity: string;
+        cert: Record<string, unknown> | null;
+    }>;
     getPresenceSnapshot: () => Promise<unknown | null>;
     getOnlinePeers: () => Array<{
         personId: string;
         displayName: string | null;
         hasVerifiedIdentity: boolean;
         transportCapabilities: string[];
+    }>;
+    getSharePeerOptions: () => Array<{
+        personId: string;
+        displayName: string | null;
+        glueIdentity: string | null;
+        online: boolean;
+        hasVerifiedIdentity: boolean;
+        persistent: boolean;
+    }>;
+    resolveShareToken: (token: string) => Promise<{
+        personId: string | null;
+        persistent: boolean;
+        displayName: string | null;
+        glueIdentity: string | null;
+    }>;
+    getWantedPeerIds: () => string[];
+    getConnectablePeerIds: () => string[];
+    getPeerConnectionCoordinatorDebug: () => Array<{
+        personId: string;
+        state: string;
+        routeKey?: string;
+        retryAt?: number;
+        directInFlight: boolean;
+        forceRetry: boolean;
+        manualRequested: boolean;
+        hasRelayLane: boolean;
+        hasDirectLane: boolean;
+        advertisedKey?: string;
+        isDemandedPeer: boolean;
+        isAutoConnectPeer: boolean;
+        transportCapabilities?: string[];
     }>;
     getPeerConnectionInfo: (personId: string) => {
         online: boolean;
@@ -122,6 +163,10 @@ interface FotosDebugApi {
         certifiedCredentialIssuedAt: number | null;
         transportCapabilities: string[];
         hasVerifiedIdentity: boolean;
+    };
+    requestPeerConnection: (personId: string) => {
+        requested: boolean;
+        state: string | null;
     };
     forceRouteKeyConnect: (personId: string, keySource?: 'advertised' | 'certified') => Promise<{
         started: true;
@@ -193,6 +238,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
     const [sharePeerOptions, setSharePeerOptions] = useState<SharePeerOption[]>([]);
     const [contactPersonIds, setContactPersonIds] = useState<string[]>([]);
     const [exportingPhotos, setExportingPhotos] = useState(false);
+    const [shareManifestHash, setShareManifestHash] = useState<string | null>(null);
 
     // Wire up model updater so async state changes (e.g. headlessConnected) trigger re-renders
     useEffect(() => {
@@ -260,7 +306,6 @@ export function App({ fotosModel: initialModel }: AppProps) {
         }),
         [acceptSharing, fotosCollections.sharing],
     );
-
     const visiblePhotos = gallery.galleryMode === 'clusters' && gallery.activeClusterId
         ? gallery.clusterPhotos
         : gallery.galleryMode === 'images' && gallery.activeCollectionId
@@ -454,6 +499,40 @@ export function App({ fotosModel: initialModel }: AppProps) {
     ]);
 
     useEffect(() => {
+        if (sharedPersonIds.length === 0 || sharePeerOptions.length === 0) {
+            return;
+        }
+
+        let cancelled = false;
+        void (async () => {
+            const knownGrantedPeerIds = new Set(fotosShareController.getSnapshot().grantedPeerIds);
+            for (const sharedPersonId of sharedPersonIds) {
+                const grantPersonIds = resolveShareGrantPersonIds(sharedPersonId, sharePeerOptions);
+                for (const grantPersonId of grantPersonIds) {
+                    if (knownGrantedPeerIds.has(grantPersonId)) {
+                        continue;
+                    }
+
+                    await grantFotosAccess(grantPersonId as any);
+                    if (cancelled) {
+                        return;
+                    }
+                    fotosShareController.recordGrant(grantPersonId);
+                    knownGrantedPeerIds.add(grantPersonId);
+                }
+            }
+        })().catch(error => {
+            if (!cancelled) {
+                console.warn('[fotos.share] Failed to backfill equivalent share grants:', error);
+            }
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [sharePeerOptions, sharedPersonIds]);
+
+    useEffect(() => {
         const availableHashes = new Set(gallery.folder.entries.map(photo => photo.hash));
         setSelectedPhotoHashes(currentHashes => (
             currentHashes.filter(hash => availableHashes.has(hash))
@@ -543,9 +622,12 @@ export function App({ fotosModel: initialModel }: AppProps) {
     ]);
 
     const grantPhotosAccessToPeer = useCallback(async (personId: string) => {
-        await grantFotosAccess(personId as any);
-        fotosShareController.recordGrant(personId);
-    }, []);
+        const grantPersonIds = resolveShareGrantPersonIds(personId, sharePeerOptions);
+        for (const grantPersonId of grantPersonIds) {
+            await grantFotosAccess(grantPersonId as any);
+            fotosShareController.recordGrant(grantPersonId);
+        }
+    }, [sharePeerOptions]);
 
     const grantNewPeers = useCallback(async (previousIds: readonly string[], nextIds: readonly string[]) => {
         const previousSet = new Set(previousIds);
@@ -1085,12 +1167,14 @@ export function App({ fotosModel: initialModel }: AppProps) {
         folder: gallery.folder,
         visiblePhotos,
         entries: gallery.folder.entries,
+        sharePeerOptions,
     });
     debugRuntimeRef.current = {
         model: fotosModel,
         folder: gallery.folder,
         visiblePhotos,
         entries: gallery.folder.entries,
+        sharePeerOptions,
     };
 
     useEffect(() => {
@@ -1107,6 +1191,28 @@ export function App({ fotosModel: initialModel }: AppProps) {
     }, [fotosModel?.initialized]);
 
     useEffect(() => {
+        if (!fotosModel?.initialized) {
+            return;
+        }
+
+        return retainFotosManifestConvergence();
+    }, [fotosModel?.initialized]);
+
+    useEffect(() => {
+        if (!fotosModel?.initialized) {
+            setShareManifestHash(null);
+            return;
+        }
+
+        const syncManifestHash = () => {
+            setShareManifestHash(fotosShareController.getSnapshot().manifest?.hash ?? null);
+        };
+
+        syncManifestHash();
+        return fotosShareController.subscribe(syncManifestHash);
+    }, [fotosModel?.initialized]);
+
+    useEffect(() => {
         fotosShareController.updateState({
             isOpen: gallery.folder.isOpen,
             folderName: gallery.folder.folderName,
@@ -1118,6 +1224,40 @@ export function App({ fotosModel: initialModel }: AppProps) {
         gallery.folder.folderName,
         gallery.folder.isOpen,
         visiblePhotos,
+    ]);
+
+    useEffect(() => {
+        if (!fotosModel?.initialized || !shareManifestHash || sharedPersonIds.length === 0) {
+            return;
+        }
+
+        let cancelled = false;
+
+        void (async () => {
+            for (const personId of sharedPersonIds) {
+                if (cancelled) {
+                    return;
+                }
+
+                try {
+                    // CHUM accessible roots are derived from the current
+                    // manifest version, so re-grant whenever that version
+                    // changes to keep newly added photos exportable.
+                    await grantPhotosAccessToPeer(personId);
+                } catch (error) {
+                    console.warn('[fotos.share] Failed to refresh access for peer:', personId, error);
+                }
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        fotosModel?.initialized,
+        grantPhotosAccessToPeer,
+        shareManifestHash,
+        sharedPersonIds,
     ]);
 
     useEffect(() => {
@@ -1170,6 +1310,74 @@ export function App({ fotosModel: initialModel }: AppProps) {
                     reloadRequired,
                 };
             },
+            registerPreparedIdentity: async (displayName?: string) => {
+                const activeModel = debugRuntimeRef.current.model;
+                if (!activeModel?.settingsPlan) {
+                    throw new Error('fotos.one model is not initialized');
+                }
+
+                const snapshot = await getLocalIdentitySnapshot(activeModel);
+                const trimmedDisplayName = displayName?.trim() ?? snapshot.glueDisplayName?.trim() ?? '';
+                if (!trimmedDisplayName) {
+                    throw new Error('Prepare the identity with a display name before registering it.');
+                }
+
+                if (!snapshot.syncEnabled) {
+                    throw new Error('Prepare the identity and reload with sync enabled before registering it.');
+                }
+
+                if (!snapshot.publicationIdentity) {
+                    throw new Error('No prepared publication identity is available for registration.');
+                }
+
+                const {
+                    debugRegisterNameOnServer,
+                    nameToIdentity,
+                    registerNameOnServer,
+                } = await import('@glueone/glue.core');
+                const result = DEBUG_REGISTRATION_TOKEN
+                    ? await debugRegisterNameOnServer(
+                        snapshot.publicationIdentity as any,
+                        trimmedDisplayName,
+                        {
+                            token: DEBUG_REGISTRATION_TOKEN,
+                            ttlMs: DEBUG_REGISTRATION_TTL_MS,
+                        },
+                    )
+                    : await registerNameOnServer(
+                        snapshot.publicationIdentity as any,
+                        trimmedDisplayName,
+                        'user',
+                    );
+                if (!result.success) {
+                    throw new Error(result.error || `Failed to register ${nameToIdentity(trimmedDisplayName)}`);
+                }
+
+                await publishLocalGlueProfileCredential(activeModel.settingsPlan);
+
+                const connectionModule = activeModel.connectionModule as {
+                    connectToGlueServer?: (localPersonId?: string) => Promise<void>;
+                } | null | undefined;
+                if (typeof connectionModule?.connectToGlueServer === 'function') {
+                    try {
+                        await connectionModule.connectToGlueServer(snapshot.publicationIdentity);
+                    } catch (error) {
+                        const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+                        if (
+                            !message.includes('duplicate connection')
+                            && !message.includes('already connected')
+                        ) {
+                            throw error;
+                        }
+                    }
+                }
+
+                return {
+                    personId: snapshot.publicationIdentity,
+                    identity: nameToIdentity(trimmedDisplayName),
+                    cert: (result.data?.cert as Record<string, unknown> | undefined) ?? null,
+                };
+            },
             getPresenceSnapshot: async () => {
                 const activeModel = debugRuntimeRef.current.model;
                 if (!activeModel?.glueModule?.presenceTrieService) {
@@ -1192,6 +1400,61 @@ export function App({ fotosModel: initialModel }: AppProps) {
                     transportCapabilities: presenceService.getTransportCapabilities(personId) ?? [],
                 }));
             },
+            getSharePeerOptions: () => (
+                debugRuntimeRef.current.sharePeerOptions.map(peer => ({
+                    personId: peer.personId,
+                    displayName: peer.displayName,
+                    glueIdentity: peer.glueIdentity ?? null,
+                    online: peer.online,
+                    hasVerifiedIdentity: peer.hasVerifiedIdentity,
+                    persistent: peer.persistent === true,
+                }))
+            ),
+            resolveShareToken: async (token: string) => {
+                const personId = await resolveTokenToPersonId(token, debugRuntimeRef.current.sharePeerOptions);
+                const match = personId
+                    ? debugRuntimeRef.current.sharePeerOptions.find(peer => peer.personId === personId) ?? null
+                    : null;
+
+                return {
+                    personId,
+                    persistent: match?.persistent === true,
+                    displayName: match?.displayName ?? null,
+                    glueIdentity: match?.glueIdentity ?? null,
+                };
+            },
+            getWantedPeerIds: () => {
+                const activeGlueModule = debugRuntimeRef.current.model?.glueModule as {
+                    getWantedPeerIds?: () => string[];
+                } | null | undefined;
+                return activeGlueModule?.getWantedPeerIds?.() ?? [];
+            },
+            getConnectablePeerIds: () => {
+                const activeGlueModule = debugRuntimeRef.current.model?.glueModule as {
+                    getConnectablePeerIds?: () => string[];
+                } | null | undefined;
+                return activeGlueModule?.getConnectablePeerIds?.() ?? [];
+            },
+            getPeerConnectionCoordinatorDebug: () => {
+                const activeGlueModule = debugRuntimeRef.current.model?.glueModule as {
+                    getPeerConnectionCoordinatorDebug?: () => Array<{
+                        personId: string;
+                        state: string;
+                        routeKey?: string;
+                        retryAt?: number;
+                        directInFlight: boolean;
+                        forceRetry: boolean;
+                        manualRequested: boolean;
+                        hasRelayLane: boolean;
+                        hasDirectLane: boolean;
+                        advertisedKey?: string;
+                        isDemandedPeer: boolean;
+                        isAutoConnectPeer: boolean;
+                        transportCapabilities?: string[];
+                    }>;
+                } | null | undefined;
+                return activeGlueModule?.getPeerConnectionCoordinatorDebug?.() ?? [];
+            },
             getPeerConnectionInfo: (personId: string) => {
                 const activeModel = debugRuntimeRef.current.model;
                 const presenceService = activeModel?.glueModule?.presenceTrieService;
@@ -1213,6 +1476,26 @@ export function App({ fotosModel: initialModel }: AppProps) {
                     hasVerifiedIdentity: presenceService?.hasVerifiedIdentity(personId) ?? false,
                 };
             },
+            requestPeerConnection: (personId: string) => {
+                const activeModel = debugRuntimeRef.current.model;
+                if (!activeModel?.initialized) {
+                    throw new Error('fotos.one glue runtime is not initialized');
+                }
+
+                const glueModuleWithRequest = activeModel.glueModule as {
+                    requestPeerConnection?: (targetPersonId: string) => boolean;
+                    getPeerConnectionState?: (targetPersonId: string) => string | undefined;
+                } | undefined;
+
+                const requested =
+                    typeof glueModuleWithRequest?.requestPeerConnection === 'function'
+                    && glueModuleWithRequest.requestPeerConnection(personId);
+
+                return {
+                    requested,
+                    state: glueModuleWithRequest?.getPeerConnectionState?.(personId) ?? null,
+                };
+            },
             forceRouteKeyConnect: async (personId: string, keySource: 'advertised' | 'certified' = 'advertised') => {
                 const activeModel = debugRuntimeRef.current.model;
                 if (
@@ -1226,7 +1509,12 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 const presenceService = activeModel.glueModule.presenceTrieService;
                 const peerDebugInfo = presenceService.getPeerDebugInfo(personId);
                 const advertisedEncryptionKey = peerDebugInfo?.advertisedEncryptionKey ?? null;
-                const certifiedEncryptionKey = presenceService.getEncryptionKey(personId);
+                const certifiedEncryptionKey =
+                    presenceService.getEncryptionKey(personId)
+                    ?? peerDebugInfo?.certifiedEncryptionKeys?.find((key): key is string =>
+                        typeof key === 'string' && key.trim().length > 0,
+                    )
+                    ?? null;
                 const encryptionKey =
                     keySource === 'certified'
                         ? certifiedEncryptionKey

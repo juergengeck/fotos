@@ -1,7 +1,7 @@
 import { nameToIdentity } from '@glueone/glue.core';
-import { calculateIdHashOfObj } from '@refinio/one.core/lib/util/object.js';
 import { useId, useMemo, useState } from 'react';
 import { ChevronDown, X } from 'lucide-react';
+import { API_BASE } from '@/config';
 
 const MIN_PERSON_ID_PREFIX_LENGTH = 8;
 const MIN_DIRECT_PERSON_ID_LENGTH = 16;
@@ -23,6 +23,11 @@ interface ShareWithFieldProps {
     emptyLabel?: string;
 }
 
+interface ResolveTokenOptions {
+    fetchImpl?: typeof fetch;
+    apiBase?: string;
+}
+
 function normalizeToken(value: string): string | null {
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : null;
@@ -35,7 +40,7 @@ function normalizePeerDisplayName(peer: SharePeerOption): string | null {
 
 function normalizeExplicitGlueIdentity(token: string): string | null {
     const normalized = token.trim().toLowerCase();
-    if (!normalized) {
+    if (!normalized || /\s/.test(normalized)) {
         return null;
     }
 
@@ -68,17 +73,110 @@ export function resolveGlueIdentityForPeer(peer: SharePeerOption): string | null
     return displayName ? nameToIdentity(displayName).toLowerCase() : null;
 }
 
-function resolveUniquePeerMatch(
+function scorePeerResolutionPreference(peer: SharePeerOption): number {
+    return (
+        (peer.online ? 4 : 0)
+        + (peer.hasVerifiedIdentity ? 2 : 0)
+        + (!peer.persistent ? 1 : 0)
+    );
+}
+
+function resolvePreferredPeerMatch(
     peers: SharePeerOption[],
     matcher: (peer: SharePeerOption) => boolean,
 ): string | null {
     const matches = peers.filter(matcher);
-    return matches.length === 1 ? matches[0]!.personId : null;
+    if (matches.length === 0) {
+        return null;
+    }
+
+    if (matches.length === 1) {
+        return matches[0]!.personId;
+    }
+
+    let bestMatch: SharePeerOption | null = null;
+    let bestScore = -1;
+    let bestScoreCount = 0;
+
+    for (const peer of matches) {
+        const score = scorePeerResolutionPreference(peer);
+        if (score > bestScore) {
+            bestMatch = peer;
+            bestScore = score;
+            bestScoreCount = 1;
+            continue;
+        }
+
+        if (score === bestScore) {
+            bestScoreCount += 1;
+        }
+    }
+
+    return bestScoreCount === 1 ? bestMatch?.personId ?? null : null;
+}
+
+function readCert(payload: any): Record<string, unknown> | null {
+    if (payload?.data?.cert && typeof payload.data.cert === 'object') {
+        return payload.data.cert as Record<string, unknown>;
+    }
+
+    if (payload?.cert && typeof payload.cert === 'object') {
+        return payload.cert as Record<string, unknown>;
+    }
+
+    return null;
+}
+
+async function resolveRegisteredPersonId(
+    token: string,
+    {
+        fetchImpl = fetch,
+        apiBase = API_BASE,
+    }: ResolveTokenOptions = {},
+): Promise<string | null> {
+    const normalized = token.trim().toLowerCase();
+    if (!normalized || /^[0-9a-f]+$/i.test(normalized)) {
+        return null;
+    }
+
+    const explicitIdentity = normalizeExplicitGlueIdentity(token);
+    const lookupIdentity = explicitIdentity ?? nameToIdentity(token).toLowerCase();
+    if (!lookupIdentity) {
+        return null;
+    }
+
+    const normalizedApiBase = apiBase.replace(/\/+$/, '');
+    const registrationApiBase = normalizedApiBase.endsWith('/api')
+        ? normalizedApiBase
+        : `${normalizedApiBase}/api`;
+
+    let response: Response;
+    try {
+        response = await fetchImpl(
+            `${registrationApiBase}/registration/cert/${encodeURIComponent(lookupIdentity)}`,
+        );
+    } catch {
+        return null;
+    }
+
+    if (response.status === 404 || !response.ok) {
+        return null;
+    }
+
+    const payload = await response.json().catch(() => null);
+    if (payload?.success === false) {
+        return null;
+    }
+
+    const cert = readCert(payload);
+    const subject = typeof cert?.subject === 'string' ? cert.subject.trim() : '';
+    return subject || null;
 }
 
 export async function resolveTokenToPersonId(
     token: string,
     peers: SharePeerOption[],
+    options: ResolveTokenOptions = {},
 ): Promise<string | null> {
     const normalized = token.trim().toLowerCase();
     if (!normalized) {
@@ -92,8 +190,12 @@ export async function resolveTokenToPersonId(
     const normalizedHandleLocalPart = normalizedHandleIdentity.endsWith('@glue.one')
         ? normalizedHandleIdentity.slice(0, -'@glue.one'.length)
         : normalizedHandleInput;
+    const isHexIdInput = /^[0-9a-f]+$/i.test(normalized);
+    const derivedNameIdentity = !explicitHandle && !isHexIdInput
+        ? nameToIdentity(token).toLowerCase()
+        : null;
 
-    const exactPersonIdMatch = resolveUniquePeerMatch(
+    const exactPersonIdMatch = resolvePreferredPeerMatch(
         peers,
         peer => peer.personId.toLowerCase() === normalized,
     );
@@ -101,9 +203,8 @@ export async function resolveTokenToPersonId(
         return exactPersonIdMatch;
     }
 
-    const isHexIdInput = /^[0-9a-f]+$/i.test(normalized);
     if (isHexIdInput && normalized.length >= MIN_PERSON_ID_PREFIX_LENGTH) {
-        const prefixIdMatch = resolveUniquePeerMatch(
+        const prefixIdMatch = resolvePreferredPeerMatch(
             peers,
             peer => peer.personId.toLowerCase().startsWith(normalized),
         );
@@ -112,8 +213,26 @@ export async function resolveTokenToPersonId(
         }
     }
 
+    const exactNameMatch = resolvePreferredPeerMatch(
+        peers,
+        peer => normalizePeerDisplayName(peer)?.toLowerCase() === normalized,
+    );
+    if (exactNameMatch) {
+        return exactNameMatch;
+    }
+
+    if (derivedNameIdentity) {
+        const exactDerivedIdentityMatch = resolvePreferredPeerMatch(
+            peers,
+            peer => resolveGlueIdentityForPeer(peer) === derivedNameIdentity,
+        );
+        if (exactDerivedIdentityMatch) {
+            return exactDerivedIdentityMatch;
+        }
+    }
+
     if (!explicitHandle) {
-        const exactContactNameMatch = resolveUniquePeerMatch(
+        const exactContactNameMatch = resolvePreferredPeerMatch(
             contactPeers,
             peer => normalizePeerDisplayName(peer)?.toLowerCase() === normalized,
         );
@@ -121,7 +240,7 @@ export async function resolveTokenToPersonId(
             return exactContactNameMatch;
         }
 
-        const exactContactIdentityLocalPartMatch = resolveUniquePeerMatch(
+        const exactContactIdentityLocalPartMatch = resolvePreferredPeerMatch(
             contactPeers,
             peer => {
                 const identity = resolveGlueIdentityForPeer(peer);
@@ -132,7 +251,7 @@ export async function resolveTokenToPersonId(
             return exactContactIdentityLocalPartMatch;
         }
 
-        const prefixContactNameMatch = resolveUniquePeerMatch(
+        const prefixContactNameMatch = resolvePreferredPeerMatch(
             contactPeers,
             peer => normalizePeerDisplayName(peer)?.toLowerCase().startsWith(normalized) ?? false,
         );
@@ -140,7 +259,7 @@ export async function resolveTokenToPersonId(
             return prefixContactNameMatch;
         }
 
-        const prefixContactIdentityLocalPartMatch = resolveUniquePeerMatch(
+        const prefixContactIdentityLocalPartMatch = resolvePreferredPeerMatch(
             contactPeers,
             peer => {
                 const identity = resolveGlueIdentityForPeer(peer);
@@ -151,17 +270,19 @@ export async function resolveTokenToPersonId(
         if (prefixContactIdentityLocalPartMatch) {
             return prefixContactIdentityLocalPartMatch;
         }
+
+        if (derivedNameIdentity) {
+            const exactContactDerivedIdentityMatch = resolvePreferredPeerMatch(
+                contactPeers,
+                peer => resolveGlueIdentityForPeer(peer) === derivedNameIdentity,
+            );
+            if (exactContactDerivedIdentityMatch) {
+                return exactContactDerivedIdentityMatch;
+            }
+        }
     }
 
-    const exactNameMatch = resolveUniquePeerMatch(
-        peers,
-        peer => normalizePeerDisplayName(peer)?.toLowerCase() === normalized,
-    );
-    if (exactNameMatch) {
-        return exactNameMatch;
-    }
-
-    const prefixNameMatch = resolveUniquePeerMatch(
+    const prefixNameMatch = resolvePreferredPeerMatch(
         peers,
         peer => normalizePeerDisplayName(peer)?.toLowerCase().startsWith(normalized) ?? false,
     );
@@ -170,7 +291,7 @@ export async function resolveTokenToPersonId(
     }
 
     if (explicitHandle && normalizedHandleIdentity) {
-        const exactIdentityMatch = resolveUniquePeerMatch(
+        const exactIdentityMatch = resolvePreferredPeerMatch(
             peers,
             peer => resolveGlueIdentityForPeer(peer) === normalizedHandleIdentity,
         );
@@ -178,7 +299,7 @@ export async function resolveTokenToPersonId(
             return exactIdentityMatch;
         }
 
-        const exactIdentityLocalPartMatch = resolveUniquePeerMatch(
+        const exactIdentityLocalPartMatch = resolvePreferredPeerMatch(
             peers,
             peer => {
                 const identity = resolveGlueIdentityForPeer(peer);
@@ -189,7 +310,7 @@ export async function resolveTokenToPersonId(
             return exactIdentityLocalPartMatch;
         }
 
-        const prefixIdentityMatch = resolveUniquePeerMatch(
+        const prefixIdentityMatch = resolvePreferredPeerMatch(
             peers,
             peer => resolveGlueIdentityForPeer(peer)?.startsWith(normalizedHandleIdentity) ?? false,
         );
@@ -197,7 +318,7 @@ export async function resolveTokenToPersonId(
             return prefixIdentityMatch;
         }
 
-        const prefixIdentityLocalPartMatch = resolveUniquePeerMatch(
+        const prefixIdentityLocalPartMatch = resolvePreferredPeerMatch(
             peers,
             peer => {
                 const identity = resolveGlueIdentityForPeer(peer);
@@ -210,27 +331,22 @@ export async function resolveTokenToPersonId(
         }
     }
 
+    const registeredPersonId = await resolveRegisteredPersonId(
+        explicitHandle && normalizedHandleIdentity
+            ? normalizedHandleIdentity
+            : token,
+        options,
+    );
+    if (registeredPersonId) {
+        return registeredPersonId;
+    }
+
     if (isHexIdInput && normalized.length >= MIN_DIRECT_PERSON_ID_LENGTH) {
         return token.trim();
     }
 
     if (isHexIdInput && normalized.length >= MIN_PERSON_ID_PREFIX_LENGTH) {
         return null;
-    }
-
-    if (explicitHandle && normalizedHandleIdentity) {
-        return String(await calculateIdHashOfObj({
-            $type$: 'Person',
-            email: normalizedHandleIdentity,
-        } as const));
-    }
-
-    const normalizedBareIdentity = normalizeBareGlueIdentity(token);
-    if (normalizedBareIdentity) {
-        return String(await calculateIdHashOfObj({
-            $type$: 'Person',
-            email: normalizedBareIdentity,
-        } as const));
     }
 
     return null;
@@ -305,7 +421,7 @@ export function ShareWithField({
             return;
         }
 
-        const manualIdentityLabel = normalizeExplicitGlueIdentity(token);
+        const manualIdentityLabel = normalizeExplicitGlueIdentity(token) ?? token.trim();
         if (manualIdentityLabel && !peers.some(peer => peer.personId === personId)) {
             setManualLabels(current => ({
                 ...current,

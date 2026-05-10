@@ -151,7 +151,11 @@ export function FotosIdPopup() {
       openerOriginRef.current,
     );
     if (result.success) {
-      setTimeout(() => window.close(), 500);
+      setTimeout(() => {
+        if (typeof window !== 'undefined') {
+          window.close();
+        }
+      }, 500);
     }
   }, []);
 

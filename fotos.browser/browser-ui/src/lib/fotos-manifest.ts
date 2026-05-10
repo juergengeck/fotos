@@ -17,6 +17,10 @@ import type {
 } from '../../../../fotos.core/src/recipes/FotosRecipes.js';
 import { ensureVersionedIdObject } from '@refinio/connection.core/helpers/ensure-versioned-id-object.js';
 import { createAccess } from '@refinio/one.core/lib/access.js';
+import {
+    notifyAllActiveExportersAboutNewAccessibleRoots,
+    notifyRemotePeerAboutNewAccessibleRoots,
+} from '@refinio/one.core/lib/chum-sync.js';
 import { SET_ACCESS_MODE } from '@refinio/one.core/lib/storage-base-common.js';
 import {
     getObjectByIdHash,
@@ -25,9 +29,17 @@ import {
 } from '@refinio/one.core/lib/storage-versioned-objects.js';
 import { getObject } from '@refinio/one.core/lib/storage-unversioned-objects.js';
 import { calculateIdHashOfObj } from '@refinio/one.core/lib/util/object.js';
+import { mergeFotosManifestState } from './fotosManifestMerge.js';
 
 // Cached idHash for the singleton manifest (calculated once, deterministic)
 let cachedManifestIdHash: SHA256IdHash<FotosManifest> | null = null;
+let fotosManifestConvergenceRefs = 0;
+let stopFotosManifestConvergence: (() => void) | null = null;
+const grantedFotosPeerIds = new Set<string>();
+
+export function resetFotosManifestGrantStateForTests(): void {
+    grantedFotosPeerIds.clear();
+}
 
 export interface FotosManifestSnapshot {
     exists: boolean;
@@ -96,6 +108,21 @@ async function resolveManifestContentHashes(
     }));
 
     return [...new Set(contentHashes.filter((value): value is string => Boolean(value)))].sort();
+}
+
+function notifyGrantedFotosPeersAboutManifestUpdate(): void {
+    if (grantedFotosPeerIds.size === 0) {
+        return;
+    }
+
+    let notified = 0;
+    for (const remotePersonId of grantedFotosPeerIds) {
+        notified += notifyRemotePeerAboutNewAccessibleRoots(remotePersonId as SHA256IdHash<Person>);
+    }
+
+    if (notified === 0) {
+        notifyAllActiveExportersAboutNewAccessibleRoots();
+    }
 }
 
 function basenameFromPath(pathValue: string | null | undefined): string | null {
@@ -266,6 +293,73 @@ export function listenForFotosManifestUpdates(
     });
 }
 
+async function convergeImportedManifest(
+    manifest: FotosManifest,
+    incomingHash: string | null,
+): Promise<void> {
+    const manifestIdHash = await getManifestIdHash();
+    const existing = await getObjectByIdHash(manifestIdHash).catch(() => null);
+    if (incomingHash && existing?.hash && String(existing.hash) === incomingHash) {
+        return;
+    }
+
+    const merged = mergeFotosManifestState(
+        existing?.obj as FotosManifest | null,
+        manifest,
+    );
+
+    if (!merged.changed) {
+        return;
+    }
+
+    await storeVersionedObject({
+        $type$: 'FotosManifest',
+        id: 'fotos',
+        entries: merged.entries,
+        authenticityAttestations: merged.authenticityAttestations,
+    } as any);
+
+    console.log(
+        `[fotos-manifest] Merged imported manifest additions: +${merged.addedEntryCount} entries, +${merged.addedAuthenticityCount} attestations`,
+    );
+}
+
+export function retainFotosManifestConvergence(): () => void {
+    fotosManifestConvergenceRefs += 1;
+
+    if (!stopFotosManifestConvergence) {
+        stopFotosManifestConvergence = onVersionedObj.addListener(result => {
+            if (result.status === 'exists') {
+                return;
+            }
+
+            if ((result.obj as { $type$: string }).$type$ !== 'FotosManifest') {
+                return;
+            }
+
+            const manifest = result.obj as unknown as FotosManifest;
+            if (manifest.id !== 'fotos') {
+                return;
+            }
+
+            void convergeImportedManifest(
+                manifest,
+                typeof result.hash === 'string' ? result.hash : null,
+            ).catch(error => {
+                console.warn('[fotos-manifest] Failed to converge imported manifest:', error);
+            });
+        });
+    }
+
+    return () => {
+        fotosManifestConvergenceRefs = Math.max(0, fotosManifestConvergenceRefs - 1);
+        if (fotosManifestConvergenceRefs === 0 && stopFotosManifestConvergence) {
+            stopFotosManifestConvergence();
+            stopFotosManifestConvergence = null;
+        }
+    };
+}
+
 /**
  * Ensure the FotosManifest singleton exists.
  *
@@ -321,6 +415,7 @@ export async function addEntryToManifest(entryHash: SHA256Hash<FotosEntry>): Pro
         entries,
         authenticityAttestations,
     } as any);
+    notifyGrantedFotosPeersAboutManifestUpdate();
 
     console.log(`[fotos-manifest] Added entry ${(entryHash as string).substring(0, 12)}, total: ${entries.size}`);
 }
@@ -347,6 +442,7 @@ export async function addAuthenticityAttestationToManifest(
         entries,
         authenticityAttestations,
     } as any);
+    notifyGrantedFotosPeersAboutManifestUpdate();
 
     console.log(
         `[fotos-manifest] Added authenticity ${(attestationHash as string).substring(0, 12)}, total: ${authenticityAttestations.size}`,
@@ -382,6 +478,11 @@ export async function grantFotosAccess(remotePersonId: SHA256IdHash<Person>): Pr
         hashGroup: [],
         mode: SET_ACCESS_MODE.ADD
     }] as any);
+
+    grantedFotosPeerIds.add(String(remotePersonId));
+    if (notifyRemotePeerAboutNewAccessibleRoots(remotePersonId) === 0) {
+        notifyAllActiveExportersAboutNewAccessibleRoots();
+    }
 
     console.log('[fotos-manifest] IdAccess granted');
 }

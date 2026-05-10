@@ -26,7 +26,7 @@ import { ChatModule } from '@vger/vger.core/modules/ChatModule.js';
 import { IndexModule } from '@vger/vger.core/modules/IndexModule.js';
 import { TrustModule } from '@vger/vger.core/modules/TrustModule.js';
 import { ConnectionModule } from '@vger/vger.core/modules/ConnectionModule.js';
-import { GlueModule } from '@vger/vger.glue';
+import { GlueModule, ensureCommserverEndpointForPerson } from '@vger/vger.glue';
 import { ExportPlan } from '@vger/vger.core/plans/ExportPlan.js';
 
 // Recipes
@@ -47,6 +47,7 @@ import {
   InstanceSettingsStorage,
   SettingsPlan,
   registerDeviceSettings,
+  registerRefinioSettings,
   registerSubscriptionSettings,
   registerGlueSettings,
 } from '@refinio/settings.core';
@@ -54,7 +55,6 @@ import {
 // ONE.core instance helpers
 import { getInstanceIdHash, getInstanceOwnerIdHash } from '@refinio/one.core/lib/instance.js';
 import { getLocalInstanceOfPerson } from '@refinio/one.models/lib/misc/instance.js';
-import { getDefaultKeys } from '@refinio/one.core/lib/keychain/keychain.js';
 
 import { registerFotosHistorySettings } from './fotosHistorySettings.js';
 import { registerFotosSettings } from './fotosSettings.js';
@@ -137,6 +137,16 @@ type BrowserGlueModule = GlueModule & {
   shouldAcceptIncomingPeer?: (personId: string, remotePublicKey?: string) => Promise<boolean>;
 };
 
+async function getLocalInstanceIdForPerson(personId: string): Promise<string> {
+  const localInstanceId = await getLocalInstanceOfPerson(personId as any);
+  const normalized = typeof localInstanceId === 'string' ? localInstanceId.trim() : '';
+  if (!normalized) {
+    throw new Error(`No local instance found for glue person ${personId.substring(0, 12)}`);
+  }
+
+  return normalized;
+}
+
 // Mutable callback for external state updates (e.g., React)
 let modelUpdater: ((fn: (prev: FotosModel | null) => FotosModel | null) => void) | null = null;
 
@@ -153,49 +163,6 @@ export function setModelUpdater(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-async function ensureCommserverEndpointForPerson(
-  leuteModel: LeuteModel,
-  personId: SHA256IdHash<Person>,
-  commServerUrl: string,
-): Promise<void> {
-  try {
-    const instanceId = await getLocalInstanceOfPerson(personId);
-    const profile = await leuteModel.getMainProfile(personId);
-    const endpoints = profile.communicationEndpoints ?? [];
-    const nextEndpoint = {
-      $type$: 'OneInstanceEndpoint' as const,
-      personId,
-      instanceId,
-      personKeys: await getDefaultKeys(personId),
-      instanceKeys: await getDefaultKeys(instanceId as any),
-      url: commServerUrl,
-    } as any;
-
-    const existingIndex = endpoints.findIndex((ep: any) =>
-      ep.$type$ === 'OneInstanceEndpoint' &&
-      ep.personId === personId &&
-      ep.instanceId === instanceId,
-    );
-
-    if (existingIndex >= 0) {
-      const existingEndpoint = endpoints[existingIndex] as { url?: string };
-      if (existingEndpoint.url === commServerUrl) {
-        return;
-      }
-      endpoints[existingIndex] = nextEndpoint;
-      profile.communicationEndpoints = endpoints;
-      await profile.saveAndLoad();
-      return;
-    }
-
-    endpoints.push(nextEndpoint);
-    profile.communicationEndpoints = endpoints;
-    await profile.saveAndLoad();
-  } catch (err) {
-    console.warn('[fotos.one] Failed to ensure OneInstanceEndpoint:', err);
-  }
-}
 
 async function getConfiguredPublicationIdentity(
   settingsPlan: SettingsPlan,
@@ -246,6 +213,7 @@ async function initModules(
   registerSubscriptionSettings();
   registerDeviceSettings();
   registerGlueSettings();
+  registerRefinioSettings();
   registerFotosSettings();
   registerFotosHistorySettings();
 
@@ -322,9 +290,16 @@ async function initModules(
     }
     glueModule = new GlueModule(API_BASE, commServerUrl);
     glueModule.enableMailboxPairing = false;
+    // Browser peers must publish their own live route leases so other
+    // fotos.one instances can discover and dial them by publication identity.
+    glueModule.publishOwnPresence = true;
 
     // Inject browser platform hooks
     const browserGlueModule = glueModule as BrowserGlueModule;
+    const gluePublicationIdentity = String(publicationIdentity);
+    const gluePublicationInstanceId = await getLocalInstanceIdForPerson(gluePublicationIdentity);
+    browserGlueModule.localPersonId = gluePublicationIdentity;
+    browserGlueModule.localInstanceId = gluePublicationInstanceId;
 
     browserGlueModule.onVisibilityChange = (cb: (visible: boolean) => void) => {
       const handler = () => cb(!document.hidden);
@@ -336,8 +311,18 @@ async function initModules(
       return () => window.removeEventListener('beforeunload', cb);
     };
     browserGlueModule.getLocalTransportCapabilities = async () => ['webrtc', 'commserver-relay'];
-    browserGlueModule.connectToPeerByKey = (encKey: string, ownId: string, caps?: string[], remotePersonId?: string) =>
-      connectionModule!.connectToPeerByKey(encKey, ownId as any, caps, remotePersonId as any);
+    browserGlueModule.connectToPeerByKey = async (encKey: string, ownId: string, caps?: string[], remotePersonId?: string) => {
+      const localInstanceId = ownId === gluePublicationIdentity
+        ? gluePublicationInstanceId
+        : await getLocalInstanceIdForPerson(ownId);
+      await connectionModule!.connectToPeerByKey(
+        encKey,
+        ownId as any,
+        caps,
+        remotePersonId as any,
+        localInstanceId as any,
+      );
+    };
     browserGlueModule.connectToPeerDirectByKey = (encKey: string, ownId: string, caps?: string[]) =>
       connectionModule!.connectToPeerDirectByKey(encKey, ownId as any, caps);
     browserGlueModule.disconnectPeerRelayByKey = (encKey: string, ownId: string, _remotePersonId: string) =>

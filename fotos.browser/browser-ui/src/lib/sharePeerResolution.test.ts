@@ -1,20 +1,11 @@
 import '@refinio/one.core/lib/system/load-nodejs.js';
-import { describe, expect, it } from 'vitest';
-import { CORE_RECIPES } from '@refinio/one.core/lib/recipes.js';
-import { addRecipeToRuntime, hasRecipe } from '@refinio/one.core/lib/object-recipes.js';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
     resolveGlueIdentityForPeer,
     resolveTokenToPersonId,
     type SharePeerOption,
 } from '@/components/ShareWithField';
-
-if (!hasRecipe('Person')) {
-    const personRecipe = CORE_RECIPES.find(recipe => recipe.name === 'Person');
-    if (personRecipe) {
-        addRecipeToRuntime(personRecipe);
-    }
-}
 
 function createPeer(overrides: Partial<SharePeerOption> & Pick<SharePeerOption, 'personId'>): SharePeerOption {
     return {
@@ -67,14 +58,102 @@ describe('resolveTokenToPersonId', () => {
         await expect(resolveTokenToPersonId('alice@glue.one', peers)).resolves.toBe('person-contact');
     });
 
-    it('derives a person id from an explicit glue identity when no peer is known yet', async () => {
-        const fullIdentityPersonId = await resolveTokenToPersonId('fu@glue.one', []);
-        const shorthandPersonId = await resolveTokenToPersonId('@fu', []);
-        const bareNamePersonId = await resolveTokenToPersonId('fu', []);
+    it('resolves a human display name against a peer that only exposes a glue identity', async () => {
+        const peers: SharePeerOption[] = [
+            createPeer({
+                personId: 'person-contact',
+                displayName: null,
+                glueIdentity: 'fotosbobf46536b6@glue.one',
+                persistent: true,
+            }),
+        ];
 
-        expect(fullIdentityPersonId).toMatch(/^[0-9a-f]{64}$/i);
+        await expect(resolveTokenToPersonId('Fotos Bob f46536b6', peers)).resolves.toBe('person-contact');
+    });
+
+    it('prefers a live publication peer over a persistent owner contact for matching names', async () => {
+        const peers: SharePeerOption[] = [
+            createPeer({
+                personId: 'owner-contact-person',
+                displayName: 'Fotos Alice Example',
+                glueIdentity: 'fotosaliceexample@glue.one',
+                persistent: true,
+            }),
+            createPeer({
+                personId: 'publication-peer-person',
+                displayName: 'Fotos Alice Example',
+                online: true,
+                hasVerifiedIdentity: true,
+            }),
+        ];
+
+        await expect(resolveTokenToPersonId('Fotos Alice Example', peers)).resolves.toBe(
+            'publication-peer-person',
+        );
+        await expect(resolveTokenToPersonId('@fotosaliceexample', peers)).resolves.toBe(
+            'publication-peer-person',
+        );
+    });
+
+    it('resolves explicit glue identities via registration when no peer is known yet', async () => {
+        const fetchImpl = vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => ({
+                success: true,
+                data: {
+                    cert: {
+                        subject: 'registered-person-id',
+                    },
+                },
+            }),
+        });
+
+        const fullIdentityPersonId = await resolveTokenToPersonId('fu@glue.one', [], { fetchImpl });
+        const shorthandPersonId = await resolveTokenToPersonId('@fu', [], { fetchImpl });
+        const bareNamePersonId = await resolveTokenToPersonId('fu', [], { fetchImpl });
+
+        expect(fullIdentityPersonId).toBe('registered-person-id');
         expect(shorthandPersonId).toBe(fullIdentityPersonId);
         expect(bareNamePersonId).toBe(fullIdentityPersonId);
+        expect(fetchImpl).toHaveBeenNthCalledWith(
+            1,
+            expect.stringContaining('/api/registration/cert/fu%40glue.one'),
+        );
+    });
+
+    it('resolves a registered display name through the authoritative certificate lookup', async () => {
+        const fetchImpl = vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => ({
+                success: true,
+                data: {
+                    cert: {
+                        subject: 'registered-display-name-person',
+                    },
+                },
+            }),
+        });
+
+        await expect(resolveTokenToPersonId('Fotos Alice Example', [], { fetchImpl })).resolves.toBe(
+            'registered-display-name-person',
+        );
+        expect(fetchImpl).toHaveBeenCalledWith(
+            expect.stringContaining('/api/registration/cert/fotosaliceexample%40glue.one'),
+        );
+    });
+
+    it('returns null when an unknown registration name has no peer or certificate match', async () => {
+        const fetchImpl = vi.fn().mockResolvedValue({
+            ok: false,
+            status: 404,
+            json: async () => ({
+                success: false,
+            }),
+        });
+
+        await expect(resolveTokenToPersonId('unknown person', [], { fetchImpl })).resolves.toBeNull();
     });
 
     it('still accepts direct person id input', async () => {

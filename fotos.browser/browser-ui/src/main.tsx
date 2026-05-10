@@ -39,8 +39,9 @@ planRegistry.register('fotosAI', fotosLLMPlan, { category: 'analytics', descript
     return result.data;
 };
 
-// Keep glue.core aligned with fotos.browser runtime config.
-initGlueCore({ apiBase: API_BASE });
+initGlueCore({
+    apiBase: API_BASE,
+});
 
 const startupUrl = new URL(window.location.href);
 if (startupUrl.searchParams.has(SERVICE_WORKER_RELOAD_PARAM)) {

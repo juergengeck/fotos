@@ -13,9 +13,8 @@ import type {BLOB, Person, Recipe, VersionNode} from '@refinio/one.core/lib/reci
 import type {SHA256Hash, SHA256IdHash} from '@refinio/one.core/lib/util/type-checks.js';
 import {GalleryTrieRecipes} from './GalleryTrieRecipes.js';
 
-interface SubscriptionCertificateRef {
-    $type$: 'SubscriptionCertificate';
-}
+type SubscriptionCertificateRef =
+    import('@OneObjectInterfaces').OneVersionedObjectInterfaces['SubscriptionCertificate'];
 
 // ---------------------------------------------------------------------------
 // TypeScript interfaces
@@ -69,6 +68,20 @@ export interface FotosManifest {
     id: string;
     entries: Set<SHA256Hash<FotosEntry>>;
     authenticityAttestations?: Set<SHA256Hash<FotosAuthenticityAttestation>>;
+}
+
+declare module '@OneObjectInterfaces' {
+    export interface OneIdObjectInterfaces {
+        FotosEntry: Pick<FotosEntry, '$type$' | 'contentHash'>;
+        FotosManifest: Pick<FotosManifest, '$type$' | 'id'>;
+        FotosAuthenticityAttestation: Pick<FotosAuthenticityAttestation, '$type$' | 'id'>;
+    }
+
+    export interface OneVersionedObjectInterfaces {
+        FotosEntry: FotosEntry;
+        FotosManifest: FotosManifest;
+        FotosAuthenticityAttestation: FotosAuthenticityAttestation;
+    }
 }
 
 // ---------------------------------------------------------------------------

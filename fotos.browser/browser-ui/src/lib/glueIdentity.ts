@@ -15,11 +15,15 @@ import { getPublicKeys } from '@refinio/one.core/lib/keychain/key-storage-public
 import { calculateIdHashOfObj } from '@refinio/one.core/lib/util/object.js';
 import { uint8arrayToHexString } from '@refinio/one.core/lib/util/arraybuffer-to-and-from-hex-string.js';
 import { fromByteArray as toBase64, toByteArray as fromBase64 } from 'base64-js';
-import { storeVersionedObject } from '@refinio/one.core/lib/storage-versioned-objects.js';
+import {
+  getObjectByIdHash,
+  storeVersionedObject,
+} from '@refinio/one.core/lib/storage-versioned-objects.js';
 import type { SHA256IdHash } from '@refinio/one.core/lib/util/type-checks.js';
 import type { Person } from '@refinio/one.core/lib/recipes.js';
 import { getLocalInstanceOfPerson } from '@refinio/one.models/lib/misc/instance.js';
 import { GlueIdentityPlan, type GlueIdentityDeps } from '@vger/vger.glue/plans/GlueIdentityPlan.js';
+import { API_BASE } from '../config.js';
 
 async function getConfiguredGlueIdentity(
   settingsPlan: SettingsPlan,
@@ -177,6 +181,73 @@ export async function createGlueProfileCredential(
   } else {
     console.log('[glue.one] GlueProfileCredential created:', result.vcId);
   }
+}
+
+async function getLocalGlueProfileCredential(
+  settingsPlan: SettingsPlan,
+): Promise<{
+  personId: SHA256IdHash<Person>;
+  idHash: string;
+  credential: Record<string, unknown>;
+}> {
+  const personId = await getConfiguredGlueIdentity(settingsPlan);
+  const idHash = await calculateIdHashOfObj({
+    $type$: 'VerifiableCredential',
+    id: `glue:profile:${personId}`,
+  });
+  const result = await getObjectByIdHash(idHash as any);
+  const credential = result.obj as unknown as Record<string, unknown> | null | undefined;
+  const types = Array.isArray(credential?.type) ? credential.type : [];
+  if (
+    credential?.$type$ !== 'VerifiableCredential'
+    || !types.includes('GlueProfileCredential')
+  ) {
+    throw new Error(`No local GlueProfileCredential found for ${personId}`);
+  }
+
+  return {
+    personId,
+    idHash: idHash as string,
+    credential,
+  };
+}
+
+export async function publishLocalGlueProfileCredential(
+  settingsPlan: SettingsPlan,
+  options?: {
+    apiBase?: string;
+    fetchImpl?: typeof fetch;
+  },
+): Promise<{
+  personId: SHA256IdHash<Person>;
+  idHash: string;
+}> {
+  const { personId, idHash, credential } = await getLocalGlueProfileCredential(settingsPlan);
+  const apiBase = (options?.apiBase ?? API_BASE).replace(/\/+$/, '');
+  const response = await (options?.fetchImpl ?? fetch)(
+    `${apiBase}/api/glue/profileCredential`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ credential }),
+    },
+  );
+
+  const payload = await response.json().catch(() => null) as {
+    success?: boolean;
+    error?: string;
+  } | null;
+  if (!response.ok || payload?.success === false) {
+    throw new Error(
+      payload?.error
+      || `Failed to publish GlueProfileCredential ${idHash.substring(0, 12)}`,
+    );
+  }
+
+  console.log('[glue.one] Published GlueProfileCredential to headless:', idHash);
+  return { personId, idHash };
 }
 
 export async function ensureConfiguredGlueIdentity(

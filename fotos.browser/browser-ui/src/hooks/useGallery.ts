@@ -28,10 +28,6 @@ export function useGallery(options: UseGalleryOptions = {}) {
         semanticSearchEnabled: options.semanticSearchEnabled,
     });
     const folder = options.folder ?? localFolder;
-    const gallery = useFotosGalleryState<PhotoEntry>({
-        source: folder,
-        resolveDayGroups: resolveCaptureDayGroups,
-    });
     const [galleryMode, setGalleryMode] = useState<FotosGalleryMode>('images');
     const [activeClusterId, setActiveClusterId] = useState<string | null>(null);
     const [activeCollectionId, setActiveCollectionId] = useState<string | null>(null);
@@ -60,6 +56,10 @@ export function useGallery(options: UseGalleryOptions = {}) {
             photos: group.entries,
         }));
     }, []);
+    const gallery = useFotosGalleryState<PhotoEntry>({
+        source: folder,
+        resolveDayGroups: resolveCaptureDayGroups,
+    });
 
     const allClusters = useMemo(() => buildFaceClusterSummaries(folder.entries), [folder.entries]);
     const activeCluster = useMemo(
