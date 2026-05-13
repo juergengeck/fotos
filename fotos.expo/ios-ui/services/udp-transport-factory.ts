@@ -1,12 +1,5 @@
+import { Platform } from 'react-native';
 import type { Transport } from '@refinio/connection.core';
-import {
-  createUDPSocket,
-  isJSIAvailable,
-  type UDPCloseEvent,
-  type UDPErrorEvent,
-  type UDPMessageEvent,
-  type UDPSocketJSI,
-} from 'react-native-udp-ios';
 
 export interface UdpTransportOptions {
   connectTimeout?: number;
@@ -19,7 +12,23 @@ interface ParsedAddress {
   port: number;
 }
 
+interface IOSUdpSocket {
+  bind(port: number, address: string): Promise<void>;
+  send(data: Uint8Array, port: number, host: string): Promise<void>;
+  close(): Promise<void>;
+  on(event: 'message', listener: (event: { data: ArrayBufferLike }) => void): void;
+  on(event: 'error', listener: (event: { error: unknown }) => void): void;
+  on(event: 'close', listener: (event: { error?: unknown }) => void): void;
+}
+
+interface IOSUdpModule {
+  createUDPSocket(options: { type: 'udp4'; reuseAddr: boolean }): Promise<IOSUdpSocket>;
+  isJSIAvailable(): boolean;
+}
+
 const DEFAULT_HANDSHAKE_PORT = 8766;
+const UNSUPPORTED_MESSAGE =
+  'QUICVC UDP transport is not wired for this platform yet. The runtime shell is available, but peer pairing remains gated.';
 
 function parseAddress(address: string): ParsedAddress {
   const separatorIndex = address.lastIndexOf(':');
@@ -39,14 +48,67 @@ function parseAddress(address: string): ParsedAddress {
   return { host, port };
 }
 
+function createUnsupportedTransport(): Transport {
+  let state: TransportState = 'disconnected';
+  let stateCallback: ((state: TransportState) => void) | null = null;
+
+  const setState = (nextState: TransportState): void => {
+    if (state === nextState) {
+      return;
+    }
+
+    state = nextState;
+    stateCallback?.(state);
+  };
+
+  return {
+    type: 'quicvc',
+
+    connect: async (): Promise<void> => {
+      setState('connecting');
+      setState('disconnected');
+      throw new Error(UNSUPPORTED_MESSAGE);
+    },
+
+    send: async (): Promise<void> => {
+      throw new Error(UNSUPPORTED_MESSAGE);
+    },
+
+    onReceive: (): void => {},
+
+    onStateChange: (callback: (state: TransportState) => void): void => {
+      stateCallback = callback;
+    },
+
+    close: (): void => {
+      setState('disconnected');
+    },
+
+    getState: (): TransportState => state,
+  };
+}
+
+function getIOSUdpModule(): IOSUdpModule {
+  if (Platform.OS !== 'ios') {
+    throw new Error(UNSUPPORTED_MESSAGE);
+  }
+
+  return require('react-native-udp-ios') as IOSUdpModule;
+}
+
 export async function createUdpTransport(
   address: string,
   options: UdpTransportOptions = {}
 ): Promise<Transport> {
+  if (Platform.OS !== 'ios') {
+    return createUnsupportedTransport();
+  }
+
   const { connectTimeout = 5000 } = options;
+  const { createUDPSocket, isJSIAvailable } = getIOSUdpModule();
 
   let remoteAddress = parseAddress(address);
-  let socket: UDPSocketJSI | null = null;
+  let socket: IOSUdpSocket | null = null;
   let state: TransportState = 'disconnected';
   let stateCallback: ((state: TransportState) => void) | null = null;
   let receiveCallback: ((data: Uint8Array) => void) | null = null;
@@ -60,7 +122,7 @@ export async function createUdpTransport(
     stateCallback?.(state);
   };
 
-  const ensureSocket = async (): Promise<UDPSocketJSI> => {
+  const ensureSocket = async (): Promise<IOSUdpSocket> => {
     if (socket) {
       return socket;
     }
@@ -76,16 +138,16 @@ export async function createUdpTransport(
       reuseAddr: true,
     });
 
-    createdSocket.on('message', (event: UDPMessageEvent) => {
+    createdSocket.on('message', (event) => {
       receiveCallback?.(new Uint8Array(event.data));
     });
 
-    createdSocket.on('error', (event: UDPErrorEvent) => {
+    createdSocket.on('error', (event) => {
       console.error('[UdpTransport-iOS] Socket error:', event.error);
       setState('disconnected');
     });
 
-    createdSocket.on('close', (event: UDPCloseEvent) => {
+    createdSocket.on('close', (event) => {
       if (event.error) {
         console.warn('[UdpTransport-iOS] Socket closed with error:', event.error);
       }

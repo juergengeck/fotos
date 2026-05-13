@@ -7,11 +7,13 @@ import {
   type FotosSettingsSectionValues,
 } from '../../ios-ui/fotos-settings';
 import { readDiscoveryEnabledFromSettings } from '../../ios-ui/services/discovery-settings';
+import type { FotosPlatformCapabilities } from '../mobile-platform';
 
 export interface FotosRuntimeSnapshot {
   ownerId: string | null;
   instanceId: string | null;
   publicationIdentity: string | null;
+  platformCapabilities: FotosPlatformCapabilities;
   discoveryEnabled: boolean;
   discoveryRunning: boolean;
   discoveryCollectionActive: boolean;
@@ -34,9 +36,14 @@ export function useFotosRuntime() {
     ownerId: model.ownerId ?? null,
     instanceId: model.instanceId ?? null,
     publicationIdentity: null,
+    platformCapabilities: model.platformCapabilities,
     discoveryEnabled: false,
-    discoveryRunning: Boolean(model.discoveryService?.isRunning?.()),
-    discoveryCollectionActive: model.discoveryCollection?.isActive?.() ?? false,
+    discoveryRunning: model.platformCapabilities.supportsLocalNetworkDiscovery
+      ? Boolean(model.discoveryService?.isRunning?.())
+      : false,
+    discoveryCollectionActive: model.platformCapabilities.supportsVerifiedPeerCollection
+      ? model.discoveryCollection?.isActive?.() ?? false
+      : false,
     trustedDeviceCount: 0,
     fotosSettings: DEFAULT_FOTOS_SECTION_VALUES,
     glueSection: {},
@@ -50,6 +57,7 @@ export function useFotosRuntime() {
     }
 
     try {
+      const platformCapabilities = model.platformCapabilities;
       const [fotosSection, deviceSection, glueSection, trustedDevices] = await Promise.all([
         model.settingsPlan.getSection({ moduleId: FOTOS_SETTINGS_MODULE_ID }).catch(() => ({ values: {} })),
         model.settingsPlan.getSection({ moduleId: 'device' }).catch(() => ({ values: {} })),
@@ -69,9 +77,16 @@ export function useFotosRuntime() {
         ownerId: model.ownerId ?? null,
         instanceId: model.instanceId ?? null,
         publicationIdentity,
-        discoveryEnabled: readDiscoveryEnabledFromSettings({ device: asRecord(deviceSection.values) } as never),
-        discoveryRunning: Boolean(model.discoveryService?.isRunning?.()),
-        discoveryCollectionActive: model.discoveryCollection?.isActive?.() ?? false,
+        platformCapabilities,
+        discoveryEnabled: platformCapabilities.supportsLocalNetworkDiscovery
+          ? readDiscoveryEnabledFromSettings({ device: asRecord(deviceSection.values) } as never)
+          : false,
+        discoveryRunning: platformCapabilities.supportsLocalNetworkDiscovery
+          ? Boolean(model.discoveryService?.isRunning?.())
+          : false,
+        discoveryCollectionActive: platformCapabilities.supportsVerifiedPeerCollection
+          ? model.discoveryCollection?.isActive?.() ?? false
+          : false,
         trustedDeviceCount: Array.isArray(trustedDevices) ? trustedDevices.length : 0,
         fotosSettings: normalizeFotosSettingsSection(
           fotosSection.values as Partial<FotosSettingsSectionValues> | undefined,
@@ -88,6 +103,7 @@ export function useFotosRuntime() {
 
     const unsubscribe = model.settingsPlan?.subscribe((allSettings: Record<string, unknown>) => {
       const glueSection = asRecord(allSettings.glue);
+      const platformCapabilities = model.platformCapabilities;
       setSnapshot((current) => ({
         ...current,
         ownerId: model.ownerId ?? null,
@@ -98,9 +114,16 @@ export function useFotosRuntime() {
             : typeof glueSection.identity === 'string'
               ? glueSection.identity
               : current.publicationIdentity,
-        discoveryEnabled: readDiscoveryEnabledFromSettings(allSettings as never),
-        discoveryRunning: Boolean(model.discoveryService?.isRunning?.()),
-        discoveryCollectionActive: model.discoveryCollection?.isActive?.() ?? false,
+        platformCapabilities,
+        discoveryEnabled: platformCapabilities.supportsLocalNetworkDiscovery
+          ? readDiscoveryEnabledFromSettings(allSettings as never)
+          : false,
+        discoveryRunning: platformCapabilities.supportsLocalNetworkDiscovery
+          ? Boolean(model.discoveryService?.isRunning?.())
+          : false,
+        discoveryCollectionActive: platformCapabilities.supportsVerifiedPeerCollection
+          ? model.discoveryCollection?.isActive?.() ?? false
+          : false,
         fotosSettings: normalizeFotosSettingsSection(
           asRecord(allSettings[FOTOS_SETTINGS_MODULE_ID]) as Partial<FotosSettingsSectionValues>,
         ),

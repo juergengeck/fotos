@@ -16,6 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "fotos.ios",
+      "appleTeamId": "26W8AC52QS",
       "infoPlist": {
         "NSBonjourServices": [
           "_one-refinio._udp"
@@ -44,6 +45,7 @@
     "plugins": [
       "expo-router",
       "./plugins/withMLXSupport",
+      "./plugins/withFotosShareExtension",
       [
         "llama.rn",
         {
@@ -57,6 +59,13 @@
         "expo-audio",
         {
           "microphonePermission": "Allow $(PRODUCT_NAME) to access audio when local capture and sync flows require it."
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow $(PRODUCT_NAME) to access your photo library so fotos can reference originals by content hash and reuse trusted analysis across devices.",
+          "savePhotosPermission": false
         }
       ],
       [

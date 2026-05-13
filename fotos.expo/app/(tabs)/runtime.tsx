@@ -1,5 +1,4 @@
 import { ScrollView, Text, View, useColorScheme } from 'react-native';
-import { useDevices } from '../../ios-ui/hooks/useDevices';
 import { fotosFoundationPhases, fotosPlannedRuns } from '../../src/runtime-foundation';
 import { useFotosRuntime } from '../../src/hooks/use-fotos-runtime';
 import {
@@ -53,7 +52,6 @@ export default function RuntimeScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const { snapshot } = useFotosRuntime();
-  const { isScanning, isCollectionActive, discoveredDevices, collectedPeers } = useDevices();
 
   return (
     <ScrollView
@@ -75,6 +73,12 @@ export default function RuntimeScreen() {
         </Text>
         <View style={{ marginTop: 10 }}>
           <StatusRow
+            label="Platform"
+            value={snapshot.platformCapabilities.platformLabel}
+            tone="info"
+            isDark={isDark}
+          />
+          <StatusRow
             label="Instance"
             value={snapshot.instanceId ?? 'not available'}
             tone={snapshot.instanceId ? 'good' : undefined}
@@ -94,19 +98,47 @@ export default function RuntimeScreen() {
           />
           <StatusRow
             label="mDNS discovery"
-            value={snapshot.discoveryRunning || isScanning ? 'running' : 'idle'}
-            tone={snapshot.discoveryRunning || isScanning ? 'good' : 'warn'}
+            value={
+              snapshot.platformCapabilities.supportsLocalNetworkDiscovery
+                ? (snapshot.discoveryRunning ? 'running' : 'idle')
+                : 'gated'
+            }
+            tone={
+              snapshot.platformCapabilities.supportsLocalNetworkDiscovery
+                ? (snapshot.discoveryRunning ? 'good' : 'warn')
+                : 'warn'
+            }
             isDark={isDark}
           />
           <StatusRow
             label="Discovery collection"
-            value={snapshot.discoveryCollectionActive || isCollectionActive ? 'active' : 'idle'}
-            tone={snapshot.discoveryCollectionActive || isCollectionActive ? 'good' : 'warn'}
+            value={
+              snapshot.platformCapabilities.supportsVerifiedPeerCollection
+                ? (snapshot.discoveryCollectionActive ? 'active' : 'idle')
+                : 'gated'
+            }
+            tone={
+              snapshot.platformCapabilities.supportsVerifiedPeerCollection
+                ? (snapshot.discoveryCollectionActive ? 'good' : 'warn')
+                : 'warn'
+            }
+            isDark={isDark}
+          />
+          <StatusRow
+            label="Photo library ingest"
+            value={snapshot.platformCapabilities.supportsPhotoLibrarySync ? 'available' : 'gated'}
+            tone={snapshot.platformCapabilities.supportsPhotoLibrarySync ? 'good' : 'warn'}
+            isDark={isDark}
+          />
+          <StatusRow
+            label="Share inbox"
+            value={snapshot.platformCapabilities.supportsShareInbox ? 'available' : 'gated'}
+            tone={snapshot.platformCapabilities.supportsShareInbox ? 'good' : 'warn'}
             isDark={isDark}
           />
           <StatusRow
             label="Peer surface"
-            value={`${discoveredDevices.length} discovered / ${collectedPeers.length} verified`}
+            value="See Devices tab"
             tone="info"
             isDark={isDark}
           />

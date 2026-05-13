@@ -33,6 +33,10 @@ Today there is also one important limit to keep in view:
 So the new variant and locator layer is where richer media-family semantics can
 grow without losing the existing content-addressed convergence.
 
+The shared normalization rule now lives in
+[`content-hash.ts`](../fotos.core/src/content-hash.ts), so Expo can reuse the
+same JPEG metadata stripping behavior instead of inventing its own mobile hash.
+
 ## Layers
 
 ### 1. Canonical media anchor
@@ -159,3 +163,16 @@ Current browser status:
 - when a thumbnail blob is present it also stores a `thumbnail` variant
 - browser-relative source and thumbnail paths are stored as local
   `FotosMediaLocator` objects
+
+Current Expo status:
+
+- `fotos.expo` can sync recent iOS photo-library assets into the ONE runtime
+- `fotos.expo` can also ingest explicitly picked iOS library assets through the
+  native picker path
+- `fotos.expo` now also has a share-extension inbox path backed by an App Group;
+  the extension writes batches into `group.fotos.ios`, and the main app imports
+  them through the same sync service
+- each synced item stores the canonical `FotosEntry`
+- it also stores an `original` `FotosMediaVariant`
+- and it persists either the iOS `PHAsset` identifier or the shared-file cache
+  path as a device-local `FotosMediaLocator`

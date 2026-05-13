@@ -58,6 +58,21 @@ surface that `vger.headless` already serves:
 The media backend can stay native and iOS-specific. The contract we want to
 share is the fotos behavior layer above it.
 
+The first native path is now wired as a control-plane action instead of a
+custom gallery: syncing recent Photos assets stores `FotosEntry`,
+`FotosMediaVariant(role=original)`, and `FotosMediaLocator(kind=phasset)` while
+reusing the shared content-hash normalization from `fotos.core`.
+
+There is also now an explicit picker path on top of the same service. User
+selection and "recent 12" sync both feed the same object-writing flow, so the
+runtime does not fork into separate ingest semantics.
+
+The next native ingress path is now wired too: an iOS share extension deposits
+selected files into an App Group inbox under `group.fotos.ios`, and the main
+app imports that inbox through the same `FotosMediaLibrarySync` service. That
+keeps picker ingest, recent-library ingest, and shared-file ingest on one
+object-writing path instead of creating a second persistence lane.
+
 ### Persistent media model
 
 For Expo this means:

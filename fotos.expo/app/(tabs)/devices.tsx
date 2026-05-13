@@ -145,6 +145,10 @@ export default function DevicesScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const { snapshot } = useFotosRuntime();
+  const { platformCapabilities } = snapshot;
+  const supportsDiscovery = platformCapabilities.supportsLocalNetworkDiscovery;
+  const supportsCollection = platformCapabilities.supportsVerifiedPeerCollection;
+  const supportsPairing = platformCapabilities.supportsPeerPairing;
   const {
     discoveredDevices,
     collectedPeers,
@@ -241,12 +245,25 @@ export default function DevicesScreen() {
         </Text>
         <StatRow
           label="mDNS discovery"
-          value={snapshot.discoveryEnabled ? (isScanning ? 'running' : 'enabled') : 'disabled'}
+          value={
+            supportsDiscovery
+              ? (snapshot.discoveryEnabled ? (isScanning ? 'running' : 'enabled') : 'disabled')
+              : 'gated on this platform'
+          }
           isDark={isDark}
         />
         <StatRow
           label="QUICVC peers"
-          value={`${discoveredQuicvc} discovered / ${verifiedQuicvc} verified`}
+          value={
+            supportsPairing
+              ? `${discoveredQuicvc} discovered / ${verifiedQuicvc} verified`
+              : 'pairing transport not wired yet'
+          }
+          isDark={isDark}
+        />
+        <StatRow
+          label="Platform"
+          value={platformCapabilities.platformLabel}
           isDark={isDark}
         />
         <StatRow
@@ -260,6 +277,14 @@ export default function DevicesScreen() {
           isDark={isDark}
         />
       </SectionCard>
+
+      {!supportsDiscovery || !supportsPairing ? (
+        <EmptyState
+          title={`${platformCapabilities.platformLabel} parity slice`}
+          detail="This build boots the shared runtime and identity surface, but local peer discovery and QUICVC pairing stay gated until the Android networking path is finished."
+          isDark={isDark}
+        />
+      ) : null}
 
       <SectionCard isDark={isDark}>
         <Text style={{ color: textColor(isDark), fontSize: 17, fontWeight: '700' }}>
@@ -295,8 +320,9 @@ export default function DevicesScreen() {
             </Text>
           </View>
           <Switch
-            value={isCollectionActive}
+            value={supportsCollection ? isCollectionActive : false}
             onValueChange={setDiscoveryCollectionActive}
+            disabled={!supportsCollection}
             trackColor={{ false: '#cfd5cf', true: palette.accent }}
             thumbColor="#ffffff"
           />
@@ -304,6 +330,7 @@ export default function DevicesScreen() {
 
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <Pressable
+            disabled={!supportsDiscovery}
             onPress={() => void (isScanning ? stopDiscovery() : startDiscovery())}
             style={{
               flex: 1,
@@ -313,10 +340,11 @@ export default function DevicesScreen() {
               alignItems: 'center',
               justifyContent: 'center',
               paddingHorizontal: 14,
+              opacity: supportsDiscovery ? 1 : 0.55,
             }}
           >
             <Text style={{ color: '#ffffff', fontSize: 14, fontWeight: '700' }}>
-              {isScanning ? 'Stop discovery' : 'Start discovery'}
+              {supportsDiscovery ? (isScanning ? 'Stop discovery' : 'Start discovery') : 'Discovery pending'}
             </Text>
           </Pressable>
           <Pressable
@@ -347,7 +375,11 @@ export default function DevicesScreen() {
         {discoveredDevices.length === 0 ? (
           <EmptyState
             title="Nothing discovered yet"
-            detail="Once local discovery is enabled, peers announced over mDNS will appear here with their transport claims and pairing actions."
+            detail={
+              supportsDiscovery
+                ? 'Once local discovery is enabled, peers announced over mDNS will appear here with their transport claims and pairing actions.'
+                : 'Discovery remains gated on this platform in the current Android slice, so peers will not appear here yet.'
+            }
             isDark={isDark}
           />
         ) : (
@@ -380,6 +412,7 @@ export default function DevicesScreen() {
               />
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <Pressable
+                  disabled={!supportsPairing}
                   onPress={() => presentTrustSelection(device.deviceId, device.name)}
                   style={{
                     flex: 1,
@@ -389,10 +422,11 @@ export default function DevicesScreen() {
                     alignItems: 'center',
                     justifyContent: 'center',
                     paddingHorizontal: 12,
+                    opacity: supportsPairing ? 1 : 0.55,
                   }}
                 >
                   <Text style={{ color: palette.accentStrong, fontSize: 14, fontWeight: '700' }}>
-                    Pair
+                    {supportsPairing ? 'Pair' : 'Pairing pending'}
                   </Text>
                 </Pressable>
                 <Pressable
@@ -425,7 +459,11 @@ export default function DevicesScreen() {
         {collectedPeers.length === 0 ? (
           <EmptyState
             title="No verified peers yet"
-            detail="Paired devices will move here after the handshake yields a known or provisional person identity."
+            detail={
+              supportsCollection
+                ? 'Paired devices will move here after the handshake yields a known or provisional person identity.'
+                : 'Verified peer collection is still gated on this platform while the Android handshake transport is being wired.'
+            }
             isDark={isDark}
           />
         ) : (

@@ -11,6 +11,7 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: true,
+        lazy: true,
         headerTitleStyle: {
           fontSize: 17,
           fontWeight: '700',

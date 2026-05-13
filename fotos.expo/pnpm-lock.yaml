@@ -1,7 +1,7 @@
 lockfileVersion: '9.0'
 
 settings:
-  autoInstallPeers: false
+  autoInstallPeers: true
   excludeLinksFromLockfile: false
 
 overrides:
@@ -83,28 +83,28 @@ importers:
         version: 7.2.4(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0)
       '@refinio/agent.builder':
         specifier: file:vendor/refinio-agent.builder-0.1.0.tgz
-        version: file:vendor/refinio-agent.builder-0.1.0.tgz(@refinio/agent.core@file:vendor/refinio-agent.core-0.1.0.tgz(564e2f65c0c153d841df0980e19ac7ad))(@refinio/settings.core@file:vendor/refinio-settings.core-0.1.0.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0.tgz(@refinio/meaning.core@file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(react@19.1.0))
+        version: file:vendor/refinio-agent.builder-0.1.0.tgz(@refinio/agent.core@file:vendor/refinio-agent.core-0.1.0.tgz(5bc4c066eae8ece749d908ebac04875e))(@refinio/settings.core@file:vendor/refinio-settings.core-0.1.0.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0.tgz(@refinio/meaning.core@file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(react@19.1.0))
       '@refinio/agent.core':
         specifier: file:vendor/refinio-agent.core-0.1.0.tgz
-        version: file:vendor/refinio-agent.core-0.1.0.tgz(564e2f65c0c153d841df0980e19ac7ad)
+        version: file:vendor/refinio-agent.core-0.1.0.tgz(5bc4c066eae8ece749d908ebac04875e)
       '@refinio/api':
         specifier: file:vendor/refinio-api-0.1.0.tgz
-        version: file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))
+        version: file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3)
       '@refinio/assembly.core':
         specifier: file:vendor/refinio-assembly.core-1.0.0.tgz
         version: file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)
       '@refinio/chat.core':
         specifier: file:vendor/refinio-chat.core-1.0.0.tgz
-        version: file:vendor/refinio-chat.core-1.0.0.tgz(a90ddcdae0b2ce3b88e3fb288c02f0cd)
+        version: file:vendor/refinio-chat.core-1.0.0.tgz(74e834b0471ac11472172fffd95a471d)
       '@refinio/chat.media':
         specifier: file:vendor/refinio-chat.media-1.0.0.tgz
         version: file:vendor/refinio-chat.media-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)
       '@refinio/coding.core':
         specifier: file:vendor/refinio-coding.core-0.1.0.tgz
-        version: file:vendor/refinio-coding.core-0.1.0.tgz(@refinio/agent.core@file:vendor/refinio-agent.core-0.1.0.tgz(564e2f65c0c153d841df0980e19ac7ad))(@refinio/knowledge.core@file:vendor/refinio-knowledge.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/source.core@file:vendor/refinio-source.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))
+        version: file:vendor/refinio-coding.core-0.1.0.tgz(@refinio/agent.core@file:vendor/refinio-agent.core-0.1.0.tgz(5bc4c066eae8ece749d908ebac04875e))(@refinio/knowledge.core@file:vendor/refinio-knowledge.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/source.core@file:vendor/refinio-source.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))
       '@refinio/connection.core':
         specifier: file:vendor/refinio-connection.core-0.1.0.tgz
-        version: file:vendor/refinio-connection.core-0.1.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(ws@8.20.0)
+        version: file:vendor/refinio-connection.core-0.1.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(ws@8.20.0)
       '@refinio/contact.core':
         specifier: file:vendor/refinio-contact.core-0.1.0.tgz
         version: file:vendor/refinio-contact.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))
@@ -137,13 +137,13 @@ importers:
         version: file:vendor/refinio-local.core-0.1.0.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0.tgz(@refinio/meaning.core@file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(react@19.1.0)
       '@refinio/mcp.core':
         specifier: file:vendor/refinio-mcp.core-0.1.0.tgz
-        version: file:vendor/refinio-mcp.core-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/meaning.core@file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/source.core@file:vendor/refinio-source.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trie.core@file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))
+        version: file:vendor/refinio-mcp.core-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/meaning.core@file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/source.core@file:vendor/refinio-source.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trie.core@file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3)
       '@refinio/meaning.core':
         specifier: file:vendor/refinio-meaning.core-0.1.0.tgz
         version: file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)
       '@refinio/memory.core':
         specifier: file:vendor/refinio-memory.core-0.1.0.tgz
-        version: file:vendor/refinio-memory.core-0.1.0.tgz(d5d36451ce416e032cc4062b2a344d76)
+        version: file:vendor/refinio-memory.core-0.1.0.tgz(0ee5d69bdeb65284443b1cabeb913d6b)
       '@refinio/memory.refinement':
         specifier: file:vendor/refinio-memory.refinement-0.1.0.tgz
         version: file:vendor/refinio-memory.refinement-0.1.0.tgz
@@ -161,16 +161,16 @@ importers:
         version: file:vendor/refinio-one.models-14.1.0-beta-5.tgz
       '@refinio/orchestration.ai':
         specifier: file:vendor/refinio-orchestration.ai-1.0.0.tgz
-        version: file:vendor/refinio-orchestration.ai-1.0.0.tgz(63a0b257d8362ccde9cf3926562aba35)
+        version: file:vendor/refinio-orchestration.ai-1.0.0.tgz(8ddddcfb87e9ac8b3a926fe1c2649d4f)
       '@refinio/orchestration.core':
         specifier: file:vendor/refinio-orchestration.core-1.0.0.tgz
-        version: file:vendor/refinio-orchestration.core-1.0.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/trie.core@file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)
+        version: file:vendor/refinio-orchestration.core-1.0.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/trie.core@file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)
       '@refinio/orchestration.podman':
         specifier: file:vendor/refinio-orchestration.podman-0.1.0.tgz
-        version: file:vendor/refinio-orchestration.podman-0.1.0.tgz(3c9f8bb30cdac93170d227e3c3d60bf8)
+        version: file:vendor/refinio-orchestration.podman-0.1.0.tgz(1d979b0409f701db3248924225172647)
       '@refinio/orchestration.worker':
         specifier: file:vendor/refinio-orchestration.worker-0.1.0.tgz
-        version: file:vendor/refinio-orchestration.worker-0.1.0.tgz(8b32a2fadabc2e9993d09604689d0d45)
+        version: file:vendor/refinio-orchestration.worker-0.1.0.tgz(b4bb0e3d14435a5909644e984fffd346)
       '@refinio/package.fs':
         specifier: file:vendor/refinio-package.fs-0.1.0.tgz
         version: file:vendor/refinio-package.fs-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)
@@ -218,7 +218,7 @@ importers:
         version: file:vendor/refinio-transport.core-0.1.0.tgz
       '@refinio/transport.node':
         specifier: file:vendor/refinio-transport.node-0.1.0.tgz
-        version: file:vendor/refinio-transport.node-0.1.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(ws@8.20.0)
+        version: file:vendor/refinio-transport.node-0.1.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(ws@8.20.0)
       '@refinio/trie.core':
         specifier: file:vendor/refinio-trie.core-0.0.1.tgz
         version: file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)
@@ -236,10 +236,10 @@ importers:
         version: file:vendor/refinio-trust.pdf-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)
       '@refinio/ui.core':
         specifier: file:vendor/refinio-ui.core-1.0.0.tgz
-        version: file:vendor/refinio-ui.core-1.0.0.tgz(3f34832e3ae227e2c63c32151feefa67)
+        version: file:vendor/refinio-ui.core-1.0.0.tgz(396fe997c8e48b1d2326b379ec6d6187)
       '@refinio/vger.agent':
         specifier: file:vendor/refinio-vger.agent-0.1.0.tgz
-        version: file:vendor/refinio-vger.agent-0.1.0.tgz(4efc26210f96f1abed1e0a0b3af28ec1)
+        version: file:vendor/refinio-vger.agent-0.1.0.tgz(0114712a1a8c4d991ab1065b2f10e8b0)
       '@refinio/worker.core':
         specifier: file:vendor/refinio-worker.core-0.1.0.tgz
         version: file:vendor/refinio-worker.core-0.1.0.tgz
@@ -254,13 +254,13 @@ importers:
         version: 19.1.10(@types/react@19.1.10)
       '@vger/vger.core':
         specifier: file:vendor/vger-vger.core-1.0.0.tgz
-        version: file:vendor/vger-vger.core-1.0.0.tgz(625cd923cfd302d6464c154a08fb20ef)
+        version: file:vendor/vger-vger.core-1.0.0.tgz(7362991b0a6f7b87b2e59f547f1a7060)
       '@vger/vger.glue':
         specifier: file:vendor/vger-vger.glue-1.0.0.tgz
-        version: file:vendor/vger-vger.glue-1.0.0.tgz(57b8f4f6b18c67a7d14a47dc00bbd5c9)
+        version: file:vendor/vger-vger.glue-1.0.0.tgz(d81d5eea8554c7d5f75902e85a4783cd)
       '@vger/vger.ui':
         specifier: file:vendor/vger-vger.ui-1.0.0.tgz
-        version: file:vendor/vger-vger.ui-1.0.0.tgz(1ce2f1afb1517595a69e52c6b1541b38)
+        version: file:vendor/vger-vger.ui-1.0.0.tgz(801879e696174ec0bbc60d9484e55c52)
       assert:
         specifier: ^2.1.0
         version: 2.1.0
@@ -294,15 +294,21 @@ importers:
       expo-font:
         specifier: ^14.0.11
         version: 14.0.11(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0)
+      expo-image-picker:
+        specifier: ~17.0.11
+        version: 17.0.11(expo@54.0.34)
       expo-linear-gradient:
         specifier: ^15.0.8
         version: 15.0.8(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0)
       expo-linking:
         specifier: ~8.0.10
         version: 8.0.12(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0)
+      expo-media-library:
+        specifier: ~18.2.1
+        version: 18.2.1(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))
       expo-router:
         specifier: ^6.0.22
-        version: 6.0.23(@types/react-dom@19.1.10(@types/react@19.1.10))(@types/react@19.1.10)(expo-constants@18.0.13)(expo-linking@8.0.12)(expo@54.0.34)(react-dom@19.1.0(react@19.1.0))(react-native-reanimated@4.1.7(react-native-worklets@0.5.1(@babel/core@7.29.0)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0))(react-native-screens@4.16.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0))(react-native-web@0.21.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0)
+        version: 6.0.23(@expo/metro-runtime@6.1.2)(@types/react-dom@19.1.10(@types/react@19.1.10))(@types/react@19.1.10)(expo-constants@18.0.13)(expo-linking@8.0.12)(expo@54.0.34)(react-dom@19.1.0(react@19.1.0))(react-native-reanimated@4.1.7(react-native-worklets@0.5.1(@babel/core@7.29.0)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0))(react-native-screens@4.16.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0))(react-native-web@0.21.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0)
       expo-secure-store:
         specifier: ~15.0.8
         version: 15.0.8(expo@54.0.34)
@@ -1159,6 +1165,7 @@ packages:
     engines: {node: '>=18'}
     peerDependencies:
       '@cfworker/json-schema': ^4.1.1
+      zod: ^3.25 || ^4.0
     peerDependenciesMeta:
       '@cfworker/json-schema':
         optional: true
@@ -1794,10 +1801,14 @@ packages:
   '@react-native/babel-preset@0.81.5':
     resolution: {integrity: sha512-UoI/x/5tCmi+pZ3c1+Ypr1DaRMDLI3y+Q70pVLLVgrnC3DHsHRIbHcCHIeG/IJvoeFqFM2sTdhSOLJrf8lOPrA==}
     engines: {node: '>= 20.19.4'}
+    peerDependencies:
+      '@babel/core': '*'
 
   '@react-native/codegen@0.81.5':
     resolution: {integrity: sha512-a2TDA03Up8lpSa9sh5VRGCQDXgCTOyDOFH+aqyinxp1HChG8uk89/G+nkJ9FPd0rqgi25eCTR16TWdS3b+fA6g==}
     engines: {node: '>= 20.19.4'}
+    peerDependencies:
+      '@babel/core': '*'
 
   '@react-native/community-cli-plugin@0.81.5':
     resolution: {integrity: sha512-yWRlmEOtcyvSZ4+OvqPabt+NS36vg0K/WADTQLhrYrm9qdZSuXmq8PmdJWz/68wAqKQ+4KTILiq2kjRQwnyhQw==}
@@ -2412,6 +2423,8 @@ packages:
 
   '@urql/exchange-retry@1.3.2':
     resolution: {integrity: sha512-TQMCz2pFJMfpNxmSfX1VSfTjwUIFx/mL+p1bnfM1xjjdla7Z+KnGMW/EhFbpckp3LyWAH4PgOsMwOMnIN+MBFg==}
+    peerDependencies:
+      '@urql/core': ^5.0.0
 
   '@vger/vger.core@file:vendor/vger-vger.core-1.0.0.tgz':
     resolution: {integrity: sha512-4bVWPZ8A5GReaBxNjek1PR+sXv5A+DE0Asd1s0h2PCYE/8Dqtny4iFgaCGfJTs/C3zk3Sz8SMG8DtFr2BGyuaw==, tarball: file:vendor/vger-vger.core-1.0.0.tgz}
@@ -2520,6 +2533,11 @@ packages:
 
   ajv-formats@3.0.1:
     resolution: {integrity: sha512-8iUql50EUR+uUcdRQ3HDqa6EVyo3docL8g5WJ3FNcWmu62IbkGUue/pEyLBW8VGKKucTPgqeks4fIU1DA4yowQ==}
+    peerDependencies:
+      ajv: ^8.0.0
+    peerDependenciesMeta:
+      ajv:
+        optional: true
 
   ajv@6.15.0:
     resolution: {integrity: sha512-fgFx7Hfoq60ytK2c7DhnF8jIvzYgOMxfugjLOSMHjLIPgenqa7S7oaagATUq99mV6IYvN2tRmC0wnTYX6iPbMw==}
@@ -3334,6 +3352,16 @@ packages:
       react: '*'
       react-native: '*'
 
+  expo-image-loader@6.0.0:
+    resolution: {integrity: sha512-nKs/xnOGw6ACb4g26xceBD57FKLFkSwEUTDXEDF3Gtcu3MqF3ZIYd3YM+sSb1/z9AKV1dYT7rMSGVNgsveXLIQ==}
+    peerDependencies:
+      expo: '*'
+
+  expo-image-picker@17.0.11:
+    resolution: {integrity: sha512-/apkoyukDvsCHHb9fzP+F34A1uQqSzUtYH/2P/xJACNEwq+mwEXjXvVU8bzlJq6ih0Qo1+tpVivIa7B9kYSwOQ==}
+    peerDependencies:
+      expo: '*'
+
   expo-json-utils@0.15.0:
     resolution: {integrity: sha512-duRT6oGl80IDzH2LD2yEFWNwGIC2WkozsB6HF3cDYNoNNdUvFk6uN3YiwsTsqVM/D0z6LEAQ01/SlYvN+Fw0JQ==}
 
@@ -3361,6 +3389,12 @@ packages:
     peerDependencies:
       expo: '*'
 
+  expo-media-library@18.2.1:
+    resolution: {integrity: sha512-dV1acx6Aseu+I5hmF61wY8UkD4vdt8d7YXHDfgNp6ZSs06qxayUxgrBsiG2eigLe54VLm3ycbFBbWi31lhfsCA==}
+    peerDependencies:
+      expo: '*'
+      react-native: '*'
+
   expo-modules-autolinking@3.0.25:
     resolution: {integrity: sha512-YmHWctJlwvOuLZccg3cOXvSiXVJrPMKl7g2YR0YHWoGL9v2RvcmgaPJWPSLVW+voNEgEPsbo5UmUrAqbnYcBeg==}
     hasBin: true
@@ -3374,6 +3408,7 @@ packages:
   expo-router@6.0.23:
     resolution: {integrity: sha512-qCxVAiCrCyu0npky6azEZ6dJDMt77OmCzEbpF6RbUTlfkaCA417LvY14SBkk0xyGruSxy/7pvJOI6tuThaUVCA==}
     peerDependencies:
+      '@expo/metro-runtime': ^6.1.2
       '@react-navigation/drawer': ^7.5.0
       '@testing-library/react-native': '>= 12.0.0'
       expo: '*'
@@ -6682,7 +6717,7 @@ snapshots:
       '@expo/xcpretty': 4.4.4
       '@react-native/dev-middleware': 0.81.5
       '@urql/core': 5.2.0
-      '@urql/exchange-retry': 1.3.2
+      '@urql/exchange-retry': 1.3.2(@urql/core@5.2.0)
       accepts: 1.3.8
       arg: 5.0.2
       better-opn: 3.0.2
@@ -6727,7 +6762,7 @@ snapshots:
       wrap-ansi: 7.0.0
       ws: 8.20.0
     optionalDependencies:
-      expo-router: 6.0.23(@types/react-dom@19.1.10(@types/react@19.1.10))(@types/react@19.1.10)(expo-constants@18.0.13)(expo-linking@8.0.12)(expo@54.0.34)(react-dom@19.1.0(react@19.1.0))(react-native-reanimated@4.1.7(react-native-worklets@0.5.1(@babel/core@7.29.0)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0))(react-native-screens@4.16.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0))(react-native-web@0.21.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0)
+      expo-router: 6.0.23(@expo/metro-runtime@6.1.2)(@types/react-dom@19.1.10(@types/react@19.1.10))(@types/react@19.1.10)(expo-constants@18.0.13)(expo-linking@8.0.12)(expo@54.0.34)(react-dom@19.1.0(react@19.1.0))(react-native-reanimated@4.1.7(react-native-worklets@0.5.1(@babel/core@7.29.0)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0))(react-native-screens@4.16.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0))(react-native-web@0.21.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0)
       react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0)
     transitivePeerDependencies:
       - bufferutil
@@ -7103,11 +7138,11 @@ snapshots:
 
   '@minhducsun2002/leb128@1.0.0': {}
 
-  '@modelcontextprotocol/sdk@1.29.0':
+  '@modelcontextprotocol/sdk@1.29.0(zod@4.4.3)':
     dependencies:
       '@hono/node-server': 1.19.14(hono@4.12.18)
       ajv: 8.20.0
-      ajv-formats: 3.0.1
+      ajv-formats: 3.0.1(ajv@8.20.0)
       content-type: 1.0.5
       cors: 2.8.6
       cross-spawn: 7.0.6
@@ -7769,14 +7804,15 @@ snapshots:
 
   '@react-native/assets-registry@0.81.5': {}
 
-  '@react-native/babel-plugin-codegen@0.81.5':
+  '@react-native/babel-plugin-codegen@0.81.5(@babel/core@7.29.0)':
     dependencies:
       '@babel/traverse': 7.29.0
-      '@react-native/codegen': 0.81.5
+      '@react-native/codegen': 0.81.5(@babel/core@7.29.0)
     transitivePeerDependencies:
+      - '@babel/core'
       - supports-color
 
-  '@react-native/babel-preset@0.81.5':
+  '@react-native/babel-preset@0.81.5(@babel/core@7.29.0)':
     dependencies:
       '@babel/core': 7.29.0
       '@babel/plugin-proposal-export-default-from': 7.27.1(@babel/core@7.29.0)
@@ -7819,14 +7855,14 @@ snapshots:
       '@babel/plugin-transform-typescript': 7.28.6(@babel/core@7.29.0)
       '@babel/plugin-transform-unicode-regex': 7.27.1(@babel/core@7.29.0)
       '@babel/template': 7.28.6
-      '@react-native/babel-plugin-codegen': 0.81.5
+      '@react-native/babel-plugin-codegen': 0.81.5(@babel/core@7.29.0)
       babel-plugin-syntax-hermes-parser: 0.29.1
       babel-plugin-transform-flow-enums: 0.0.2(@babel/core@7.29.0)
       react-refresh: 0.14.2
     transitivePeerDependencies:
       - supports-color
 
-  '@react-native/codegen@0.81.5':
+  '@react-native/codegen@0.81.5(@babel/core@7.29.0)':
     dependencies:
       '@babel/core': 7.29.0
       '@babel/parser': 7.29.3
@@ -7835,8 +7871,6 @@ snapshots:
       invariant: 2.2.4
       nullthrows: 1.1.1
       yargs: 17.7.2
-    transitivePeerDependencies:
-      - supports-color
 
   '@react-native/community-cli-plugin@0.81.5':
     dependencies:
@@ -7952,22 +7986,22 @@ snapshots:
     dependencies:
       nanoid: 3.3.12
 
-  '@refinio/agent.builder@file:vendor/refinio-agent.builder-0.1.0.tgz(@refinio/agent.core@file:vendor/refinio-agent.core-0.1.0.tgz(564e2f65c0c153d841df0980e19ac7ad))(@refinio/settings.core@file:vendor/refinio-settings.core-0.1.0.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0.tgz(@refinio/meaning.core@file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(react@19.1.0))':
+  '@refinio/agent.builder@file:vendor/refinio-agent.builder-0.1.0.tgz(@refinio/agent.core@file:vendor/refinio-agent.core-0.1.0.tgz(5bc4c066eae8ece749d908ebac04875e))(@refinio/settings.core@file:vendor/refinio-settings.core-0.1.0.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0.tgz(@refinio/meaning.core@file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(react@19.1.0))':
     dependencies:
-      '@refinio/agent.core': file:vendor/refinio-agent.core-0.1.0.tgz(564e2f65c0c153d841df0980e19ac7ad)
+      '@refinio/agent.core': file:vendor/refinio-agent.core-0.1.0.tgz(5bc4c066eae8ece749d908ebac04875e)
       '@refinio/settings.core': file:vendor/refinio-settings.core-0.1.0.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0.tgz(@refinio/meaning.core@file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(react@19.1.0)
 
-  '@refinio/agent.core@file:vendor/refinio-agent.core-0.1.0.tgz(564e2f65c0c153d841df0980e19ac7ad)':
+  '@refinio/agent.core@file:vendor/refinio-agent.core-0.1.0.tgz(5bc4c066eae8ece749d908ebac04875e)':
     dependencies:
-      '@refinio/api': file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))
+      '@refinio/api': file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3)
       '@refinio/assembly.core': file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)
-      '@refinio/chat.core': file:vendor/refinio-chat.core-1.0.0.tgz(a90ddcdae0b2ce3b88e3fb288c02f0cd)
-      '@refinio/memory.core': file:vendor/refinio-memory.core-0.1.0.tgz(d5d36451ce416e032cc4062b2a344d76)
+      '@refinio/chat.core': file:vendor/refinio-chat.core-1.0.0.tgz(74e834b0471ac11472172fffd95a471d)
+      '@refinio/memory.core': file:vendor/refinio-memory.core-0.1.0.tgz(0ee5d69bdeb65284443b1cabeb913d6b)
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-3.tgz
       '@refinio/one.models': file:vendor/refinio-one.models-14.1.0-beta-5.tgz
-      '@refinio/orchestration.core': file:vendor/refinio-orchestration.core-1.0.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/trie.core@file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)
-      '@refinio/orchestration.podman': file:vendor/refinio-orchestration.podman-0.1.0.tgz(3c9f8bb30cdac93170d227e3c3d60bf8)
-      '@refinio/orchestration.worker': file:vendor/refinio-orchestration.worker-0.1.0.tgz(8b32a2fadabc2e9993d09604689d0d45)
+      '@refinio/orchestration.core': file:vendor/refinio-orchestration.core-1.0.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/trie.core@file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)
+      '@refinio/orchestration.podman': file:vendor/refinio-orchestration.podman-0.1.0.tgz(1d979b0409f701db3248924225172647)
+      '@refinio/orchestration.worker': file:vendor/refinio-orchestration.worker-0.1.0.tgz(b4bb0e3d14435a5909644e984fffd346)
       '@refinio/settings.agent': file:vendor/refinio-settings.agent-0.1.0.tgz(@refinio/settings.core@file:vendor/refinio-settings.core-0.1.0.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0.tgz(@refinio/meaning.core@file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(react@19.1.0))
       '@refinio/settings.core': file:vendor/refinio-settings.core-0.1.0.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0.tgz(@refinio/meaning.core@file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(react@19.1.0)
       '@refinio/source.agent': file:vendor/refinio-source.agent-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/source.core@file:vendor/refinio-source.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))
@@ -7975,11 +8009,11 @@ snapshots:
       '@refinio/tag.core': file:vendor/refinio-tag.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/trie.core@file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))
       '@refinio/trie.core': file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)
       '@refinio/trust.abac': file:vendor/refinio-trust.abac-0.1.0.tgz
-      '@refinio/vger.agent': file:vendor/refinio-vger.agent-0.1.0.tgz(4efc26210f96f1abed1e0a0b3af28ec1)
+      '@refinio/vger.agent': file:vendor/refinio-vger.agent-0.1.0.tgz(0114712a1a8c4d991ab1065b2f10e8b0)
 
-  '@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))':
+  '@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3)':
     dependencies:
-      '@modelcontextprotocol/sdk': 1.29.0
+      '@modelcontextprotocol/sdk': 1.29.0(zod@4.4.3)
       '@refinio/assembly.core': file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-3.tgz
       '@refinio/one.models': file:vendor/refinio-one.models-14.1.0-beta-5.tgz
@@ -7989,15 +8023,16 @@ snapshots:
     transitivePeerDependencies:
       - '@cfworker/json-schema'
       - supports-color
+      - zod
 
   '@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)':
     dependencies:
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-3.tgz
       '@refinio/one.models': file:vendor/refinio-one.models-14.1.0-beta-5.tgz
 
-  '@refinio/chat.core@file:vendor/refinio-chat.core-1.0.0.tgz(a90ddcdae0b2ce3b88e3fb288c02f0cd)':
+  '@refinio/chat.core@file:vendor/refinio-chat.core-1.0.0.tgz(74e834b0471ac11472172fffd95a471d)':
     dependencies:
-      '@refinio/api': file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))
+      '@refinio/api': file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3)
       '@refinio/assembly.core': file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)
       '@refinio/device.core': file:vendor/refinio-device.core-0.1.0.tgz
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-3.tgz
@@ -8008,14 +8043,14 @@ snapshots:
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-3.tgz
       '@refinio/one.models': file:vendor/refinio-one.models-14.1.0-beta-5.tgz
 
-  '@refinio/coding.core@file:vendor/refinio-coding.core-0.1.0.tgz(@refinio/agent.core@file:vendor/refinio-agent.core-0.1.0.tgz(564e2f65c0c153d841df0980e19ac7ad))(@refinio/knowledge.core@file:vendor/refinio-knowledge.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/source.core@file:vendor/refinio-source.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))':
+  '@refinio/coding.core@file:vendor/refinio-coding.core-0.1.0.tgz(@refinio/agent.core@file:vendor/refinio-agent.core-0.1.0.tgz(5bc4c066eae8ece749d908ebac04875e))(@refinio/knowledge.core@file:vendor/refinio-knowledge.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/source.core@file:vendor/refinio-source.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))':
     dependencies:
-      '@refinio/agent.core': file:vendor/refinio-agent.core-0.1.0.tgz(564e2f65c0c153d841df0980e19ac7ad)
+      '@refinio/agent.core': file:vendor/refinio-agent.core-0.1.0.tgz(5bc4c066eae8ece749d908ebac04875e)
       '@refinio/knowledge.core': file:vendor/refinio-knowledge.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-3.tgz
       '@refinio/source.core': file:vendor/refinio-source.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)
 
-  ? '@refinio/connection.core@file:vendor/refinio-connection.core-0.1.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(ws@8.20.0)'
+  ? '@refinio/connection.core@file:vendor/refinio-connection.core-0.1.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(ws@8.20.0)'
   : dependencies:
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-3.tgz
       '@refinio/one.models': file:vendor/refinio-one.models-14.1.0-beta-5.tgz
@@ -8023,7 +8058,7 @@ snapshots:
       bonjour-service: 1.3.0
       debug: 4.4.3
     optionalDependencies:
-      '@refinio/api': file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))
+      '@refinio/api': file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3)
       '@refinio/trust.core': file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)
       ws: 8.20.0
     transitivePeerDependencies:
@@ -8089,11 +8124,11 @@ snapshots:
       - '@refinio/one.models'
       - react
 
-  ? '@refinio/mcp.core@file:vendor/refinio-mcp.core-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/meaning.core@file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/source.core@file:vendor/refinio-source.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trie.core@file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))'
+  ? '@refinio/mcp.core@file:vendor/refinio-mcp.core-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/meaning.core@file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/source.core@file:vendor/refinio-source.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trie.core@file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3)'
   : dependencies:
-      '@modelcontextprotocol/sdk': 1.29.0
-      '@refinio/api': file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))
-      '@refinio/memory.core': file:vendor/refinio-memory.core-0.1.0.tgz(d5d36451ce416e032cc4062b2a344d76)
+      '@modelcontextprotocol/sdk': 1.29.0(zod@4.4.3)
+      '@refinio/api': file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3)
+      '@refinio/memory.core': file:vendor/refinio-memory.core-0.1.0.tgz(0ee5d69bdeb65284443b1cabeb913d6b)
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-3.tgz
     transitivePeerDependencies:
       - '@cfworker/json-schema'
@@ -8105,14 +8140,15 @@ snapshots:
       - '@refinio/trust.abac'
       - '@refinio/trust.core'
       - supports-color
+      - zod
 
   '@refinio/meaning.core@file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)':
     dependencies:
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-3.tgz
 
-  '@refinio/memory.core@file:vendor/refinio-memory.core-0.1.0.tgz(d5d36451ce416e032cc4062b2a344d76)':
+  '@refinio/memory.core@file:vendor/refinio-memory.core-0.1.0.tgz(0ee5d69bdeb65284443b1cabeb913d6b)':
     dependencies:
-      '@refinio/api': file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))
+      '@refinio/api': file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3)
       '@refinio/assembly.core': file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)
       '@refinio/meaning.core': file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-3.tgz
@@ -8163,29 +8199,29 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@refinio/orchestration.ai@file:vendor/refinio-orchestration.ai-1.0.0.tgz(63a0b257d8362ccde9cf3926562aba35)':
+  '@refinio/orchestration.ai@file:vendor/refinio-orchestration.ai-1.0.0.tgz(8ddddcfb87e9ac8b3a926fe1c2649d4f)':
     dependencies:
-      '@refinio/api': file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))
+      '@refinio/api': file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3)
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-3.tgz
-      '@refinio/orchestration.core': file:vendor/refinio-orchestration.core-1.0.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/trie.core@file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)
-      '@refinio/vger.agent': file:vendor/refinio-vger.agent-0.1.0.tgz(4efc26210f96f1abed1e0a0b3af28ec1)
+      '@refinio/orchestration.core': file:vendor/refinio-orchestration.core-1.0.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/trie.core@file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)
+      '@refinio/vger.agent': file:vendor/refinio-vger.agent-0.1.0.tgz(0114712a1a8c4d991ab1065b2f10e8b0)
 
-  '@refinio/orchestration.core@file:vendor/refinio-orchestration.core-1.0.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/trie.core@file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)':
+  '@refinio/orchestration.core@file:vendor/refinio-orchestration.core-1.0.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/trie.core@file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)':
     dependencies:
-      '@refinio/api': file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))
+      '@refinio/api': file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3)
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-3.tgz
       '@refinio/trie.core': file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)
       '@refinio/trust.abac': file:vendor/refinio-trust.abac-0.1.0.tgz
 
-  '@refinio/orchestration.podman@file:vendor/refinio-orchestration.podman-0.1.0.tgz(3c9f8bb30cdac93170d227e3c3d60bf8)':
+  '@refinio/orchestration.podman@file:vendor/refinio-orchestration.podman-0.1.0.tgz(1d979b0409f701db3248924225172647)':
     dependencies:
-      '@refinio/orchestration.core': file:vendor/refinio-orchestration.core-1.0.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/trie.core@file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)
-      '@refinio/vger.agent': file:vendor/refinio-vger.agent-0.1.0.tgz(4efc26210f96f1abed1e0a0b3af28ec1)
+      '@refinio/orchestration.core': file:vendor/refinio-orchestration.core-1.0.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/trie.core@file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)
+      '@refinio/vger.agent': file:vendor/refinio-vger.agent-0.1.0.tgz(0114712a1a8c4d991ab1065b2f10e8b0)
 
-  '@refinio/orchestration.worker@file:vendor/refinio-orchestration.worker-0.1.0.tgz(8b32a2fadabc2e9993d09604689d0d45)':
+  '@refinio/orchestration.worker@file:vendor/refinio-orchestration.worker-0.1.0.tgz(b4bb0e3d14435a5909644e984fffd346)':
     dependencies:
-      '@refinio/orchestration.core': file:vendor/refinio-orchestration.core-1.0.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/trie.core@file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)
-      '@refinio/vger.agent': file:vendor/refinio-vger.agent-0.1.0.tgz(4efc26210f96f1abed1e0a0b3af28ec1)
+      '@refinio/orchestration.core': file:vendor/refinio-orchestration.core-1.0.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/trie.core@file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)
+      '@refinio/vger.agent': file:vendor/refinio-vger.agent-0.1.0.tgz(0114712a1a8c4d991ab1065b2f10e8b0)
       '@refinio/worker.core': file:vendor/refinio-worker.core-0.1.0.tgz
 
   '@refinio/package.fs@file:vendor/refinio-package.fs-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)':
@@ -8267,9 +8303,9 @@ snapshots:
 
   '@refinio/transport.core@file:vendor/refinio-transport.core-0.1.0.tgz': {}
 
-  ? '@refinio/transport.node@file:vendor/refinio-transport.node-0.1.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(ws@8.20.0)'
+  ? '@refinio/transport.node@file:vendor/refinio-transport.node-0.1.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(ws@8.20.0)'
   : dependencies:
-      '@refinio/connection.core': file:vendor/refinio-connection.core-0.1.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(ws@8.20.0)
+      '@refinio/connection.core': file:vendor/refinio-connection.core-0.1.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(ws@8.20.0)
       '@refinio/transport.core': file:vendor/refinio-transport.core-0.1.0.tgz
       werift: 0.22.9
     transitivePeerDependencies:
@@ -8311,23 +8347,23 @@ snapshots:
     dependencies:
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-3.tgz
 
-  '@refinio/ui.core@file:vendor/refinio-ui.core-1.0.0.tgz(3f34832e3ae227e2c63c32151feefa67)':
+  '@refinio/ui.core@file:vendor/refinio-ui.core-1.0.0.tgz(396fe997c8e48b1d2326b379ec6d6187)':
     dependencies:
-      '@refinio/agent.core': file:vendor/refinio-agent.core-0.1.0.tgz(564e2f65c0c153d841df0980e19ac7ad)
-      '@refinio/api': file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))
-      '@refinio/chat.core': file:vendor/refinio-chat.core-1.0.0.tgz(a90ddcdae0b2ce3b88e3fb288c02f0cd)
-      '@refinio/connection.core': file:vendor/refinio-connection.core-0.1.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(ws@8.20.0)
+      '@refinio/agent.core': file:vendor/refinio-agent.core-0.1.0.tgz(5bc4c066eae8ece749d908ebac04875e)
+      '@refinio/api': file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3)
+      '@refinio/chat.core': file:vendor/refinio-chat.core-1.0.0.tgz(74e834b0471ac11472172fffd95a471d)
+      '@refinio/connection.core': file:vendor/refinio-connection.core-0.1.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(ws@8.20.0)
       '@refinio/contact.core': file:vendor/refinio-contact.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))
-      '@refinio/memory.core': file:vendor/refinio-memory.core-0.1.0.tgz(d5d36451ce416e032cc4062b2a344d76)
+      '@refinio/memory.core': file:vendor/refinio-memory.core-0.1.0.tgz(0ee5d69bdeb65284443b1cabeb913d6b)
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-3.tgz
       '@refinio/trust.core': file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)
-      '@vger/vger.core': file:vendor/vger-vger.core-1.0.0.tgz(625cd923cfd302d6464c154a08fb20ef)
+      '@vger/vger.core': file:vendor/vger-vger.core-1.0.0.tgz(7362991b0a6f7b87b2e59f547f1a7060)
       react: 19.1.0
 
-  '@refinio/vger.agent@file:vendor/refinio-vger.agent-0.1.0.tgz(4efc26210f96f1abed1e0a0b3af28ec1)':
+  '@refinio/vger.agent@file:vendor/refinio-vger.agent-0.1.0.tgz(0114712a1a8c4d991ab1065b2f10e8b0)':
     dependencies:
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-3.tgz
-      '@refinio/orchestration.core': file:vendor/refinio-orchestration.core-1.0.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/trie.core@file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)
+      '@refinio/orchestration.core': file:vendor/refinio-orchestration.core-1.0.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/trie.core@file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)
       '@refinio/source.agent': file:vendor/refinio-source.agent-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/source.core@file:vendor/refinio-source.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))
 
   '@refinio/worker.core@file:vendor/refinio-worker.core-0.1.0.tgz': {}
@@ -8449,34 +8485,32 @@ snapshots:
     transitivePeerDependencies:
       - graphql
 
-  '@urql/exchange-retry@1.3.2':
+  '@urql/exchange-retry@1.3.2(@urql/core@5.2.0)':
     dependencies:
       '@urql/core': 5.2.0
       wonka: 6.3.6
-    transitivePeerDependencies:
-      - graphql
 
-  '@vger/vger.core@file:vendor/vger-vger.core-1.0.0.tgz(625cd923cfd302d6464c154a08fb20ef)':
+  '@vger/vger.core@file:vendor/vger-vger.core-1.0.0.tgz(7362991b0a6f7b87b2e59f547f1a7060)':
     dependencies:
       '@anthropic-ai/sdk': 0.65.0(zod@4.4.3)
       '@glueone/glue.core': file:vendor/glueone-glue.core-1.0.0.tgz(@refinio/meaning.core@file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)
-      '@refinio/agent.builder': file:vendor/refinio-agent.builder-0.1.0.tgz(@refinio/agent.core@file:vendor/refinio-agent.core-0.1.0.tgz(564e2f65c0c153d841df0980e19ac7ad))(@refinio/settings.core@file:vendor/refinio-settings.core-0.1.0.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0.tgz(@refinio/meaning.core@file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(react@19.1.0))
-      '@refinio/agent.core': file:vendor/refinio-agent.core-0.1.0.tgz(564e2f65c0c153d841df0980e19ac7ad)
-      '@refinio/api': file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))
+      '@refinio/agent.builder': file:vendor/refinio-agent.builder-0.1.0.tgz(@refinio/agent.core@file:vendor/refinio-agent.core-0.1.0.tgz(5bc4c066eae8ece749d908ebac04875e))(@refinio/settings.core@file:vendor/refinio-settings.core-0.1.0.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0.tgz(@refinio/meaning.core@file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(react@19.1.0))
+      '@refinio/agent.core': file:vendor/refinio-agent.core-0.1.0.tgz(5bc4c066eae8ece749d908ebac04875e)
+      '@refinio/api': file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3)
       '@refinio/assembly.core': file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)
-      '@refinio/chat.core': file:vendor/refinio-chat.core-1.0.0.tgz(a90ddcdae0b2ce3b88e3fb288c02f0cd)
-      '@refinio/coding.core': file:vendor/refinio-coding.core-0.1.0.tgz(@refinio/agent.core@file:vendor/refinio-agent.core-0.1.0.tgz(564e2f65c0c153d841df0980e19ac7ad))(@refinio/knowledge.core@file:vendor/refinio-knowledge.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/source.core@file:vendor/refinio-source.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))
+      '@refinio/chat.core': file:vendor/refinio-chat.core-1.0.0.tgz(74e834b0471ac11472172fffd95a471d)
+      '@refinio/coding.core': file:vendor/refinio-coding.core-0.1.0.tgz(@refinio/agent.core@file:vendor/refinio-agent.core-0.1.0.tgz(5bc4c066eae8ece749d908ebac04875e))(@refinio/knowledge.core@file:vendor/refinio-knowledge.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/source.core@file:vendor/refinio-source.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))
       '@refinio/knowledge.core': file:vendor/refinio-knowledge.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)
       '@refinio/llm.deutsch': file:vendor/refinio-llm.deutsch-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/source.core@file:vendor/refinio-source.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/source.leipzig@file:vendor/refinio-source.leipzig-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/source.core@file:vendor/refinio-source.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)))
       '@refinio/llm.english': file:vendor/refinio-llm.english-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/source.core@file:vendor/refinio-source.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/source.leipzig@file:vendor/refinio-source.leipzig-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/source.core@file:vendor/refinio-source.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)))
       '@refinio/llm.one': file:vendor/refinio-llm.one-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/source.core@file:vendor/refinio-source.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))
-      '@refinio/mcp.core': file:vendor/refinio-mcp.core-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/meaning.core@file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/source.core@file:vendor/refinio-source.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trie.core@file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))
-      '@refinio/memory.core': file:vendor/refinio-memory.core-0.1.0.tgz(d5d36451ce416e032cc4062b2a344d76)
+      '@refinio/mcp.core': file:vendor/refinio-mcp.core-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/meaning.core@file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/source.core@file:vendor/refinio-source.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trie.core@file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3)
+      '@refinio/memory.core': file:vendor/refinio-memory.core-0.1.0.tgz(0ee5d69bdeb65284443b1cabeb913d6b)
       '@refinio/memory.refinement': file:vendor/refinio-memory.refinement-0.1.0.tgz
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-3.tgz
       '@refinio/one.models': file:vendor/refinio-one.models-14.1.0-beta-5.tgz
-      '@refinio/orchestration.ai': file:vendor/refinio-orchestration.ai-1.0.0.tgz(63a0b257d8362ccde9cf3926562aba35)
-      '@refinio/orchestration.core': file:vendor/refinio-orchestration.core-1.0.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/trie.core@file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)
+      '@refinio/orchestration.ai': file:vendor/refinio-orchestration.ai-1.0.0.tgz(8ddddcfb87e9ac8b3a926fe1c2649d4f)
+      '@refinio/orchestration.core': file:vendor/refinio-orchestration.core-1.0.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/trie.core@file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)
       '@refinio/package.fs': file:vendor/refinio-package.fs-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)
       '@refinio/rss.core': file:vendor/refinio-rss.core-0.1.0.tgz(@refinio/settings.core@file:vendor/refinio-settings.core-0.1.0.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0.tgz(@refinio/meaning.core@file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(react@19.1.0))
       '@refinio/settings.agent': file:vendor/refinio-settings.agent-0.1.0.tgz(@refinio/settings.core@file:vendor/refinio-settings.core-0.1.0.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0.tgz(@refinio/meaning.core@file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(react@19.1.0))
@@ -8491,24 +8525,24 @@ snapshots:
       '@refinio/trie.fs': file:vendor/refinio-trie.fs-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/trie.core@file:vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))
       '@refinio/trust.abac': file:vendor/refinio-trust.abac-0.1.0.tgz
       '@refinio/trust.pdf': file:vendor/refinio-trust.pdf-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)
-      '@refinio/vger.agent': file:vendor/refinio-vger.agent-0.1.0.tgz(4efc26210f96f1abed1e0a0b3af28ec1)
+      '@refinio/vger.agent': file:vendor/refinio-vger.agent-0.1.0.tgz(0114712a1a8c4d991ab1065b2f10e8b0)
       fast-xml-parser: 4.5.6
       node-fetch: 2.7.0
     optionalDependencies:
-      '@refinio/transport.node': file:vendor/refinio-transport.node-0.1.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(ws@8.20.0)
+      '@refinio/transport.node': file:vendor/refinio-transport.node-0.1.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(ws@8.20.0)
     transitivePeerDependencies:
       - encoding
       - zod
 
-  '@vger/vger.glue@file:vendor/vger-vger.glue-1.0.0.tgz(57b8f4f6b18c67a7d14a47dc00bbd5c9)':
+  '@vger/vger.glue@file:vendor/vger-vger.glue-1.0.0.tgz(d81d5eea8554c7d5f75902e85a4783cd)':
     dependencies:
       '@glueone/glue.core': file:vendor/glueone-glue.core-1.0.0.tgz(@refinio/meaning.core@file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)
-      '@refinio/api': file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))
+      '@refinio/api': file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3)
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-3.tgz
       '@refinio/one.models': file:vendor/refinio-one.models-14.1.0-beta-5.tgz
       base64-js: 1.5.1
 
-  '@vger/vger.ui@file:vendor/vger-vger.ui-1.0.0.tgz(1ce2f1afb1517595a69e52c6b1541b38)':
+  '@vger/vger.ui@file:vendor/vger-vger.ui-1.0.0.tgz(801879e696174ec0bbc60d9484e55c52)':
     dependencies:
       '@radix-ui/react-alert-dialog': 1.1.15(@types/react-dom@19.1.10(@types/react@19.1.10))(@types/react@19.1.10)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@radix-ui/react-avatar': 1.1.11(@types/react-dom@19.1.10(@types/react@19.1.10))(@types/react@19.1.10)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -8524,20 +8558,20 @@ snapshots:
       '@radix-ui/react-slot': 1.2.4(@types/react@19.1.10)(react@19.1.0)
       '@radix-ui/react-switch': 1.2.6(@types/react-dom@19.1.10(@types/react@19.1.10))(@types/react@19.1.10)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@radix-ui/react-tabs': 1.1.13(@types/react-dom@19.1.10(@types/react@19.1.10))(@types/react@19.1.10)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@refinio/agent.builder': file:vendor/refinio-agent.builder-0.1.0.tgz(@refinio/agent.core@file:vendor/refinio-agent.core-0.1.0.tgz(564e2f65c0c153d841df0980e19ac7ad))(@refinio/settings.core@file:vendor/refinio-settings.core-0.1.0.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0.tgz(@refinio/meaning.core@file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(react@19.1.0))
+      '@refinio/agent.builder': file:vendor/refinio-agent.builder-0.1.0.tgz(@refinio/agent.core@file:vendor/refinio-agent.core-0.1.0.tgz(5bc4c066eae8ece749d908ebac04875e))(@refinio/settings.core@file:vendor/refinio-settings.core-0.1.0.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0.tgz(@refinio/meaning.core@file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(react@19.1.0))
       '@refinio/assembly.core': file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)
-      '@refinio/chat.core': file:vendor/refinio-chat.core-1.0.0.tgz(a90ddcdae0b2ce3b88e3fb288c02f0cd)
+      '@refinio/chat.core': file:vendor/refinio-chat.core-1.0.0.tgz(74e834b0471ac11472172fffd95a471d)
       '@refinio/chat.media': file:vendor/refinio-chat.media-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)
-      '@refinio/connection.core': file:vendor/refinio-connection.core-0.1.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(ws@8.20.0)
+      '@refinio/connection.core': file:vendor/refinio-connection.core-0.1.0.tgz(@refinio/api@file:vendor/refinio-api-0.1.0.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(zod@4.4.3))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(ws@8.20.0)
       '@refinio/local.core': file:vendor/refinio-local.core-0.1.0.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0.tgz(@refinio/meaning.core@file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(react@19.1.0)
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-3.tgz
       '@refinio/one.discovery': file:vendor/refinio-one.discovery-1.0.0.tgz
       '@refinio/settings.core': file:vendor/refinio-settings.core-0.1.0.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0.tgz(@refinio/meaning.core@file:vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)(react@19.1.0)
       '@refinio/trust.core': file:vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-3.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-5.tgz)
-      '@refinio/ui.core': file:vendor/refinio-ui.core-1.0.0.tgz(3f34832e3ae227e2c63c32151feefa67)
+      '@refinio/ui.core': file:vendor/refinio-ui.core-1.0.0.tgz(396fe997c8e48b1d2326b379ec6d6187)
       '@refinio/workspace.core': file:vendor/refinio-workspace.core-0.1.0.tgz
-      '@vger/vger.core': file:vendor/vger-vger.core-1.0.0.tgz(625cd923cfd302d6464c154a08fb20ef)
-      '@vger/vger.glue': file:vendor/vger-vger.glue-1.0.0.tgz(57b8f4f6b18c67a7d14a47dc00bbd5c9)
+      '@vger/vger.core': file:vendor/vger-vger.core-1.0.0.tgz(7362991b0a6f7b87b2e59f547f1a7060)
+      '@vger/vger.glue': file:vendor/vger-vger.glue-1.0.0.tgz(d81d5eea8554c7d5f75902e85a4783cd)
       class-variance-authority: 0.7.1
       clsx: 2.1.1
       date-fns: 2.30.0
@@ -8627,8 +8661,8 @@ snapshots:
 
   agent-base@7.1.4: {}
 
-  ajv-formats@3.0.1:
-    dependencies:
+  ajv-formats@3.0.1(ajv@8.20.0):
+    optionalDependencies:
       ajv: 8.20.0
 
   ajv@6.15.0:
@@ -8830,7 +8864,7 @@ snapshots:
       '@babel/plugin-transform-runtime': 7.29.0(@babel/core@7.29.0)
       '@babel/preset-react': 7.28.5(@babel/core@7.29.0)
       '@babel/preset-typescript': 7.28.5(@babel/core@7.29.0)
-      '@react-native/babel-preset': 0.81.5
+      '@react-native/babel-preset': 0.81.5(@babel/core@7.29.0)
       babel-plugin-react-compiler: 1.0.0
       babel-plugin-react-native-web: 0.21.2
       babel-plugin-syntax-hermes-parser: 0.29.1
@@ -9491,6 +9525,15 @@ snapshots:
       react: 19.1.0
       react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0)
 
+  expo-image-loader@6.0.0(expo@54.0.34):
+    dependencies:
+      expo: 54.0.34(@babel/core@7.29.0)(@expo/metro-runtime@6.1.2)(expo-router@6.0.23)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0)(typescript@5.9.3)
+
+  expo-image-picker@17.0.11(expo@54.0.34):
+    dependencies:
+      expo: 54.0.34(@babel/core@7.29.0)(@expo/metro-runtime@6.1.2)(expo-router@6.0.23)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0)(typescript@5.9.3)
+      expo-image-loader: 6.0.0(expo@54.0.34)
+
   expo-json-utils@0.15.0: {}
 
   expo-keep-awake@15.0.8(expo@54.0.34)(react@19.1.0):
@@ -9522,6 +9565,11 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  expo-media-library@18.2.1(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0)):
+    dependencies:
+      expo: 54.0.34(@babel/core@7.29.0)(@expo/metro-runtime@6.1.2)(expo-router@6.0.23)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0)(typescript@5.9.3)
+      react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0)
+
   expo-modules-autolinking@3.0.25:
     dependencies:
       '@expo/spawn-async': 1.7.2
@@ -9536,7 +9584,7 @@ snapshots:
       react: 19.1.0
       react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0)
 
-  expo-router@6.0.23(@types/react-dom@19.1.10(@types/react@19.1.10))(@types/react@19.1.10)(expo-constants@18.0.13)(expo-linking@8.0.12)(expo@54.0.34)(react-dom@19.1.0(react@19.1.0))(react-native-reanimated@4.1.7(react-native-worklets@0.5.1(@babel/core@7.29.0)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0))(react-native-screens@4.16.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0))(react-native-web@0.21.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0):
+  expo-router@6.0.23(@expo/metro-runtime@6.1.2)(@types/react-dom@19.1.10(@types/react@19.1.10))(@types/react@19.1.10)(expo-constants@18.0.13)(expo-linking@8.0.12)(expo@54.0.34)(react-dom@19.1.0(react@19.1.0))(react-native-reanimated@4.1.7(react-native-worklets@0.5.1(@babel/core@7.29.0)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0))(react-native-screens@4.16.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0))(react-native-web@0.21.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0):
     dependencies:
       '@expo/metro-runtime': 6.1.2(expo@54.0.34)(react-dom@19.1.0(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0)
       '@expo/schema-utils': 0.1.8
@@ -11784,7 +11832,7 @@ snapshots:
     dependencies:
       '@jest/create-cache-key-function': 29.7.0
       '@react-native/assets-registry': 0.81.5
-      '@react-native/codegen': 0.81.5
+      '@react-native/codegen': 0.81.5(@babel/core@7.29.0)
       '@react-native/community-cli-plugin': 0.81.5
       '@react-native/gradle-plugin': 0.81.5
       '@react-native/js-polyfills': 0.81.5

@@ -88,8 +88,9 @@ export function useDevices() {
       return false;
     }
 
+    const currentCollectedPeers = model.discoveryCollection?.getCollectedPeers() || [];
     const peers = [
-      ...collectedPeers,
+      ...currentCollectedPeers,
       ...(model.discoveryService?.getDiscoveredPeers() || []),
     ];
 
@@ -119,7 +120,13 @@ export function useDevices() {
     }
 
     return result.success;
-  }, [collectedPeers, model?.connectionPlan, model?.contactsPlan, model?.discoveryService, model?.trustModel]);
+  }, [model?.connectionPlan, model?.contactsPlan, model?.discoveryCollection, model?.discoveryService, model?.trustModel]);
+
+  const applyDiscoveryTrustRef = useRef(applyDiscoveryTrust);
+
+  useEffect(() => {
+    applyDiscoveryTrustRef.current = applyDiscoveryTrust;
+  }, [applyDiscoveryTrust]);
 
   // Set up discovery service event listeners using OEvent pattern
   useEffect(() => {
@@ -197,7 +204,7 @@ export function useDevices() {
         pendingTrustLevels.current.delete(peer.id);
         console.log('[useDevices] Applying pending trust level for collected peer:', peer.id, level);
 
-        const applied = await applyDiscoveryTrust(peer.id, level);
+        const applied = await applyDiscoveryTrustRef.current(peer.id, level);
         if (applied) {
           console.log('[useDevices] Trust level applied for person:', level);
         } else {
@@ -233,7 +240,7 @@ export function useDevices() {
       unsubKnownPerson();
       unsubPeerLost();
     };
-  }, [applyDiscoveryTrust, model?.discoveryCollection]);
+  }, [model?.discoveryCollection]);
 
   useEffect(() => {
     if (!model?.discoveryService) return;
@@ -243,22 +250,30 @@ export function useDevices() {
   // mDNS runtime follows settings.core device.discoveryEnabled.
   // These callbacks provide manual start/stop for UI controls.
   const startDiscovery = useCallback(async () => {
+    if (!model?.platformCapabilities.supportsLocalNetworkDiscovery) {
+      console.warn('[useDevices] Local discovery is gated on this platform');
+      return;
+    }
     if (!model?.discoveryService || !model.settingsPlan) {
       throw new Error('[useDevices] DiscoveryService and SettingsPlan are required to start discovery');
     }
     console.log('[useDevices] Starting discovery...');
     await setPersistedDiscoveryEnabled({ settingsPlan: model.settingsPlan }, true);
     setIsScanning(true);
-  }, [model?.discoveryService, model?.settingsPlan]);
+  }, [model?.discoveryService, model?.platformCapabilities.supportsLocalNetworkDiscovery, model?.settingsPlan]);
 
   const stopDiscovery = useCallback(async () => {
+    if (!model?.platformCapabilities.supportsLocalNetworkDiscovery) {
+      console.warn('[useDevices] Local discovery is gated on this platform');
+      return;
+    }
     if (!model?.discoveryService || !model.settingsPlan) {
       throw new Error('[useDevices] DiscoveryService and SettingsPlan are required to stop discovery');
     }
     await setPersistedDiscoveryEnabled({ settingsPlan: model.settingsPlan }, false);
     setIsScanning(false);
     setDiscoveredDevices([]);
-  }, [model?.discoveryService, model?.settingsPlan]);
+  }, [model?.discoveryService, model?.platformCapabilities.supportsLocalNetworkDiscovery, model?.settingsPlan]);
 
   const setTrustLevel = useCallback(async (deviceId: string, level: TrustLevel) => {
     console.log('[useDevices] Setting trust level:', deviceId, level);
@@ -275,6 +290,10 @@ export function useDevices() {
   }, [applyDiscoveryTrust]);
 
   const pairWithDevice = useCallback(async (deviceId: string, trustLevel: TrustLevel) => {
+    if (!model?.platformCapabilities.supportsPeerPairing) {
+      console.warn('[useDevices] Peer pairing is gated on this platform');
+      return;
+    }
     console.log('[useDevices] Pairing with device:', deviceId, 'trust level:', trustLevel);
 
     // Get the discovered device info
@@ -302,7 +321,7 @@ export function useDevices() {
     }
 
     console.log('[useDevices] Waiting for handshake with', device.name, 'at', device.address);
-  }, [discoveredDevices, isCollectionActive, model?.discoveryCollection, setTrustLevel]);
+  }, [discoveredDevices, isCollectionActive, model?.discoveryCollection, model?.platformCapabilities.supportsPeerPairing, setTrustLevel]);
 
   const ignoreDevice = useCallback(async (deviceId: string) => {
     await setTrustLevel(deviceId, 'ignore');
@@ -313,21 +332,23 @@ export function useDevices() {
    * Perform a one-time scan and return results
    */
   const scanDevices = useCallback(async (timeout: number = 5000): Promise<DiscoveredDevice[]> => {
+    if (!model?.platformCapabilities.supportsLocalNetworkDiscovery) return [];
     if (!model?.discoveryService) return [];
 
     const peers = await model.discoveryService.scan({ timeout });
     return peers.filter(isValidPeerIdentity).map(peerIdentityToDevice);
-  }, [model?.discoveryService]);
+  }, [model?.discoveryService, model?.platformCapabilities.supportsLocalNetworkDiscovery]);
 
   /**
    * Get currently discovered peers without starting continuous discovery
    */
   const getDiscoveredPeers = useCallback((): DiscoveredDevice[] => {
+    if (!model?.platformCapabilities.supportsLocalNetworkDiscovery) return [];
     if (!model?.discoveryService) return [];
 
     const peers = model.discoveryService.getDiscoveredPeers();
     return peers.filter(isValidPeerIdentity).map(peerIdentityToDevice);
-  }, [model?.discoveryService]);
+  }, [model?.discoveryService, model?.platformCapabilities.supportsLocalNetworkDiscovery]);
 
   // ==================== Discovery Collection (Verified Peers) ====================
 
@@ -335,6 +356,10 @@ export function useDevices() {
    * Start or stop discovery collection (verified peer discovery)
    */
   const setDiscoveryCollectionActive = useCallback((active: boolean) => {
+    if (!model?.platformCapabilities.supportsVerifiedPeerCollection) {
+      console.warn('[useDevices] Discovery collection is gated on this platform');
+      return;
+    }
     if (!model?.discoveryCollection) {
       console.warn('[useDevices] DiscoveryCollection not available');
       return;
@@ -346,7 +371,7 @@ export function useDevices() {
     if (!active) {
       setCollectedPeers([]);
     }
-  }, [model?.discoveryCollection]);
+  }, [model?.discoveryCollection, model?.platformCapabilities.supportsVerifiedPeerCollection]);
 
   /**
    * Get currently collected peers (verified via handshake)

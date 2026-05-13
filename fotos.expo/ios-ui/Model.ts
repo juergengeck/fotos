@@ -64,6 +64,12 @@ import {
     type ModuleInitializationProfile,
     getLocalInstancePlanTypesForProfile,
 } from '@vger/vger.core/initialization/initializeMobileLibraryModules.js';
+import {
+    getFotosPlatformCapabilities,
+    getFotosPlatformDefaults,
+    type FotosInstancePlatform,
+    type FotosPlatformCapabilities,
+} from '../src/mobile-platform';
 
 import { VGER_CORE_RECIPES } from '@vger/vger.core/recipes';
 
@@ -116,6 +122,12 @@ import {
     getPersistedDiscoveryEnabled,
     readDiscoveryEnabledFromSettings,
 } from './services/discovery-settings';
+import {
+    FotosMediaLibrarySync,
+    type FotosSharedFileImportSummary,
+    type FotosPhotoLibrarySyncSummary,
+} from './services/FotosMediaLibrarySync';
+import type { FotosShareInboxStatus } from './services/FotosShareInbox';
 
 // IngestionPlan from memory.core (platform-agnostic)
 import { IngestionPlan } from '@refinio/memory.core';
@@ -127,7 +139,7 @@ interface ModelOptions {
     webUrl?: string;
     storageDirectory?: string;
     localDeviceType?: string;
-    localInstancePlatform?: 'ios' | 'cube' | 'browser' | 'headless' | 'html' | 'fire' | 'unknown';
+    localInstancePlatform?: FotosInstancePlatform;
     moduleProfile?: ModuleInitializationProfile;
     defaultDeviceDisplayName?: string;
     defaultInstanceName?: string;
@@ -141,16 +153,17 @@ interface InitializedModuleRegistry {
     getStoryFactory?: () => any;
 }
 
-const DEFAULT_MODEL_OPTIONS: ResolvedModelOptions = {
-    webUrl: 'https://fotos.one',
-    storageDirectory: 'fotos.ios.storage',
-    localDeviceType: 'ios',
-    localInstancePlatform: 'ios',
-    moduleProfile: 'mobile-library',
-    defaultDeviceDisplayName: 'fotos iOS',
-    defaultInstanceName: 'fotos-ios',
-    appLabel: 'fotos iOS',
-};
+function getDefaultModelOptions(): ResolvedModelOptions {
+    return {
+        webUrl: 'https://fotos.one',
+        moduleProfile: 'mobile-library',
+        ...getFotosPlatformDefaults(),
+    };
+}
+
+function normalizeSharedPlatform(platform: FotosInstancePlatform): 'ios' | 'cube' | 'browser' | 'headless' | 'html' | 'fire' | 'unknown' {
+    return platform === 'android' ? 'unknown' : platform;
+}
 
 // =============================================================================
 // MODEL CLASS
@@ -182,6 +195,7 @@ export default class Model {
     private runtimeCoreInitialized = false;
     private readonly webUrl: string;
     private readonly modelOptions: ResolvedModelOptions;
+    private readonly currentPlatformCapabilities: FotosPlatformCapabilities;
 
     // MultiUser instance (ONE.core authentication and storage)
     public one: MultiUser;
@@ -205,6 +219,7 @@ export default class Model {
     private _secretsPlan: SecretsPlan | null = null;
     private _devicesPlan: DevicesPlan | null = null;
     private _imapSourcePlan: ReturnType<typeof registerExpoImapSourceOperation> | null = null;
+    private _fotosMediaLibrarySync: FotosMediaLibrarySync | null = null;
     private settingsUnsubscribe: (() => void) | null = null;
     private lastDiscoveryEnabled: boolean | null = null;
 
@@ -216,14 +231,16 @@ export default class Model {
             ? { webUrl: webUrlOrOptions }
             : webUrlOrOptions;
 
+        this.currentPlatformCapabilities = getFotosPlatformCapabilities();
         this.modelOptions = {
-            ...DEFAULT_MODEL_OPTIONS,
+            ...getDefaultModelOptions(),
             ...options,
         };
         this.webUrl = this.modelOptions.webUrl;
         this.runtimeCore = this.createRuntimeCore();
 
         console.log(`[Model] Constructing ${this.modelOptions.appLabel} Model (Modular Architecture)...`);
+        console.log('[Model] Runtime platform:', this.currentPlatformCapabilities.platformLabel);
         console.log('[Model] CommServer URL:', commServerUrl);
         console.log('[Model] Web URL:', this.webUrl);
 
@@ -249,6 +266,7 @@ export default class Model {
             get ownerId() { return getInstanceOwnerIdHash(); },
             get instanceId() { return getInstanceIdHash(); },
             get instanceName() { return model.modelOptions.defaultInstanceName; },
+            get platformCapabilities() { return model.currentPlatformCapabilities; },
             get instanceModule() { return model.modules.get('instance'); },
             get settingsPlan() { return model._settingsPlan ?? undefined; },
             get secretsPlan() { return model._secretsPlan ?? undefined; },
@@ -401,14 +419,18 @@ export default class Model {
         console.log('[Model] Phase 3: Preparing shared platform adapters...');
 
         await this.supplySettingsPlan();
-        const mdnsConfig = await this.buildMDNSConfig();
-        const discoveryEnabled = await getPersistedDiscoveryEnabled({
-            settingsPlan: this._settingsPlan,
-        });
+        const discoveryEnabled = this.currentPlatformCapabilities.supportsLocalNetworkDiscovery
+            ? await getPersistedDiscoveryEnabled({
+                settingsPlan: this._settingsPlan,
+            })
+            : false;
+        const mdnsConfig = this.currentPlatformCapabilities.supportsLocalNetworkDiscovery
+            ? await this.buildMDNSConfig()
+            : null;
         this.lastDiscoveryEnabled = discoveryEnabled;
 
         const adapters: PlatformAdapters = {
-            platform: this.modelOptions.localInstancePlatform,
+            platform: normalizeSharedPlatform(this.modelOptions.localInstancePlatform),
             oneCore: this.runtimeCore,
             llmPlatform: this.iosLlmPlatform,
             llmConfigAdapter: { ollamaValidator: iosOllamaValidator, configManager: iosConfigManager },
@@ -431,6 +453,12 @@ export default class Model {
             ],
             beforeInit: async (_registry: any, connectionModule: any) => {
                 this.wireLocalModelPlan();
+                if (!this.currentPlatformCapabilities.supportsLocalNetworkDiscovery || !mdnsConfig) {
+                    console.log(
+                        `[Model] Local discovery stays gated on ${this.currentPlatformCapabilities.platformLabel} in this runtime slice`
+                    );
+                    return;
+                }
                 const mdnsAdapter = new iOSMDNSDiscoveryAdapter(mdnsConfig);
                 connectionModule.setLocalDiscoveryProvider(mdnsAdapter, discoveryEnabled);
                 console.log(`[Model] mDNS discovery provider set on ConnectionModule (autoStart=${discoveryEnabled})`);
@@ -543,8 +571,8 @@ export default class Model {
             ...(email ? { email } : {}),
             displayName,
             deviceType: this.modelOptions.localDeviceType,
-            quicvcPort: 49497,
-            capabilities: ['quicvc'],
+            ...(this.currentPlatformCapabilities.supportsUdpHandshake ? { quicvcPort: 49497 } : {}),
+            capabilities: this.currentPlatformCapabilities.supportsUdpHandshake ? ['quicvc'] : [],
         };
     }
 
@@ -815,6 +843,7 @@ export default class Model {
             this._settingsPlan = null;
             this._secretsPlan = null;
             this._devicesPlan = null;
+            this._fotosMediaLibrarySync = null;
             // Note: ownerId/instanceId are getters from ONE.core - cleared automatically on logout
             this.lastDiscoveryEnabled = null;
 
@@ -1004,6 +1033,10 @@ export default class Model {
     get cubeStorage() { return this.modules.get('ai')?.cubeStorage; }
     get cubePlan() { return this.modules.get('ai')?.cubePlan; }
 
+    get platformCapabilities(): FotosPlatformCapabilities {
+        return this.currentPlatformCapabilities;
+    }
+
     // --- Discovery Collection ---
     get discoveryCollection(): DiscoveryCollectionAdapter | null {
         return this.discoveryCollectionAdapter;
@@ -1025,6 +1058,59 @@ export default class Model {
 
     get devicesPlan(): DevicesPlan | undefined {
         return this._devicesPlan ?? undefined;
+    }
+
+    get fotosMediaLibrarySync(): FotosMediaLibrarySync | null {
+        if (!this.initialized) {
+            return null;
+        }
+
+        if (!this._fotosMediaLibrarySync) {
+            this._fotosMediaLibrarySync = new FotosMediaLibrarySync({
+                calculateIdHashOfObj: async (obj) => await calculateIdHashOfObj(obj as any) as string,
+                getObjectByIdHash: async (idHash) => await getObjectByIdHash(idHash as any),
+                storeVersionedObject: async (obj) => await storeVersionedObject(obj as any) as any,
+                getInstanceId: () => this.instanceId,
+            });
+        }
+
+        return this._fotosMediaLibrarySync;
+    }
+
+    async syncRecentPhotoLibraryAssets(limit?: number): Promise<FotosPhotoLibrarySyncSummary> {
+        const service = this.fotosMediaLibrarySync;
+        if (!service) {
+            throw new Error('[Model] Photo-library sync is unavailable before runtime initialization');
+        }
+
+        return service.syncRecentAssets(limit);
+    }
+
+    async syncPhotoLibraryAssetsById(assetIds: string[]): Promise<FotosPhotoLibrarySyncSummary> {
+        const service = this.fotosMediaLibrarySync;
+        if (!service) {
+            throw new Error('[Model] Photo-library sync is unavailable before runtime initialization');
+        }
+
+        return service.syncAssetIds(assetIds);
+    }
+
+    async getPendingSharedInboxStatus(): Promise<FotosShareInboxStatus> {
+        const service = this.fotosMediaLibrarySync;
+        if (!service) {
+            throw new Error('[Model] Share inbox is unavailable before runtime initialization');
+        }
+
+        return service.getShareInboxStatus();
+    }
+
+    async importPendingSharedInbox(): Promise<FotosSharedFileImportSummary> {
+        const service = this.fotosMediaLibrarySync;
+        if (!service) {
+            throw new Error('[Model] Share inbox is unavailable before runtime initialization');
+        }
+
+        return service.importPendingSharedInbox();
     }
 
     // --- Ingestion Plan (lazy) ---

@@ -11,9 +11,12 @@ import {
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Model, ModelProvider, getModel, setGlobalModel } from '../ios-ui';
+import { installCommServerGuard } from '../src/install-commserver-guard';
 import { palette } from '../src/theme';
 
 const COMM_SERVER_URL = 'wss://api.glue.one/comm';
+
+installCommServerGuard();
 
 interface LoginProps {
   busy: boolean;
@@ -156,6 +159,8 @@ function useAppInit() {
   const mountedRef = useRef(true);
 
   useEffect(() => {
+    installCommServerGuard();
+
     const existingModel = getModel();
     if (existingModel) {
       setModel(existingModel);

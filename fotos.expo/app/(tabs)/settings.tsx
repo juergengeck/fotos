@@ -19,6 +19,7 @@ export default function SettingsScreen() {
   const model = useModel();
   const { logout, isLoading: authLoading } = useAuth();
   const { snapshot } = useFotosRuntime();
+  const { platformCapabilities } = snapshot;
   const [displayName, setDisplayName] = useState('');
 
   useEffect(() => {
@@ -111,6 +112,9 @@ export default function SettingsScreen() {
         <Text style={{ color: textColor(isDark), fontSize: 17, fontWeight: '700' }}>
           Device
         </Text>
+        <Text style={{ color: mutedTextColor(isDark), fontSize: 14, lineHeight: 20 }}>
+          Runtime platform: {platformCapabilities.platformLabel}
+        </Text>
 
         <View style={{ gap: 8 }}>
           <Text style={{ color: mutedTextColor(isDark), fontSize: 13, fontWeight: '600' }}>
@@ -146,12 +150,15 @@ export default function SettingsScreen() {
               Local network discovery
             </Text>
             <Text style={{ color: mutedTextColor(isDark), fontSize: 13, marginTop: 4 }}>
-              Drives the mDNS/Bonjour side of peer discovery for QUICVC and CHUM handoff.
+              {platformCapabilities.supportsLocalNetworkDiscovery
+                ? 'Drives the mDNS/Bonjour side of peer discovery for QUICVC and CHUM handoff.'
+                : 'Discovery is still gated on this platform in the current Android runtime slice.'}
             </Text>
           </View>
           <Switch
-            value={snapshot.discoveryEnabled}
+            value={platformCapabilities.supportsLocalNetworkDiscovery ? snapshot.discoveryEnabled : false}
             onValueChange={(enabled) => void updateDiscovery(enabled)}
+            disabled={!platformCapabilities.supportsLocalNetworkDiscovery}
             trackColor={{ false: '#cfd5cf', true: palette.accent }}
             thumbColor="#ffffff"
           />

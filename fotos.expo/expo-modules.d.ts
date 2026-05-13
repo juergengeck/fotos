@@ -49,6 +49,17 @@ declare module 'expo-file-system/next' {
 }
 
 declare module 'expo-file-system/legacy' {
+  export enum EncodingType {
+    UTF8 = 'utf8',
+    Base64 = 'base64',
+  }
+
+  export interface ReadingOptions {
+    encoding?: EncodingType | 'utf8' | 'base64';
+    position?: number;
+    length?: number;
+  }
+
   export interface DownloadProgressData {
     totalBytesWritten: number;
     totalBytesExpectedToWrite: number;
@@ -69,4 +80,9 @@ declare module 'expo-file-system/legacy' {
     options?: Record<string, unknown>,
     callback?: (progress: DownloadProgressData) => void
   ): DownloadResumable;
+
+  export function readAsStringAsync(
+    fileUri: string,
+    options?: ReadingOptions
+  ): Promise<string>;
 }
