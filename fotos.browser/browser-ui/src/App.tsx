@@ -44,6 +44,7 @@ import {
 import { resolveGlueIdentityState } from '@/lib/glueIdentityState';
 import { resolveTokenToPersonId, type SharePeerOption } from '@/components/ShareWithField';
 import { DEBUG_REGISTRATION_TOKEN, DEBUG_REGISTRATION_TTL_MS } from './config';
+import { setFotosRuntimeSnapshot, setFotosRuntimeVisiblePhotos } from './lib/runtimeDiagnostics';
 
 interface AppProps {
     fotosModel?: FotosModel;
@@ -84,6 +85,21 @@ function areRouteLocationsEqual(
     return left.pathname === right.pathname
         && left.search === right.search
         && left.hash === right.hash;
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(reader.error ?? new Error(`Failed to read ${file.name} as data URL.`));
+        reader.onload = () => {
+            if (typeof reader.result !== 'string') {
+                reject(new Error(`Unexpected FileReader result for ${file.name}.`));
+                return;
+            }
+            resolve(reader.result);
+        };
+        reader.readAsDataURL(file);
+    });
 }
 
 interface FotosDebugApi {
@@ -1224,6 +1240,166 @@ export function App({ fotosModel: initialModel }: AppProps) {
         gallery.folder.entries,
         gallery.folder.folderName,
         gallery.folder.isOpen,
+        visiblePhotos,
+    ]);
+
+    useEffect(() => {
+        const totalFaceCount = gallery.folder.entries.reduce(
+            (count, photo) => count + getFaceCount(photo.faces),
+            0,
+        );
+        const visibleFaceCount = visiblePhotos.reduce(
+            (count, photo) => count + getFaceCount(photo.faces),
+            0,
+        );
+        const pendingFaces = gallery.folder.entries.reduce((count, photo) => {
+            return count + Math.max(
+                0,
+                getFaceCount(photo.faces) - (photo.faces?.names?.filter(Boolean).length ?? 0),
+            );
+        }, 0);
+        const selectedPhotoHash = gallery.selectedIndex !== null
+            ? visiblePhotos[gallery.selectedIndex]?.hash ?? null
+            : null;
+
+        setFotosRuntimeSnapshot({
+            isOpen: gallery.folder.isOpen,
+            folderName: gallery.folder.folderName,
+            entryCount: gallery.folder.entries.length,
+            photoCount: visiblePhotos.length,
+            visibleHashes: visiblePhotos.map(photo => photo.hash),
+            galleryMode: gallery.galleryMode,
+            activeClusterId: gallery.activeClusterId,
+            activeCollectionId: gallery.activeCollectionId,
+            clusterCount: gallery.allClusters.length,
+            visibleClusterCount: gallery.galleryMode === 'clusters'
+                ? (gallery.searchFace !== null ? gallery.searchClusters.length : gallery.clusters.length)
+                : 0,
+            collectionCount: collectionSummaries.length,
+            searchQuery: gallery.searchQuery,
+            totalFaceCount,
+            visibleFaceCount,
+            selectedPhotoHash,
+            topClusters: gallery.allClusters.slice(0, 12).map(cluster => ({
+                clusterId: cluster.clusterId,
+                label: cluster.label,
+                faceCount: cluster.faceCount,
+                photoCount: cluster.photoCount,
+                ...(cluster.personId ? { personId: cluster.personId } : {}),
+                ...(cluster.personName ? { personName: cluster.personName } : {}),
+            })),
+            collections: collectionSummaries.map(collection => ({
+                id: collection.id,
+                name: collection.name,
+                photoCount: collection.photoCount,
+                faceCount: collection.faceCount,
+                coverPhotoHash: collection.coverPhotoHash,
+            })),
+            pendingFaces,
+            loading: gallery.loading,
+            selectedIndex: gallery.selectedIndex,
+            searchFaceActive: gallery.searchFace !== null,
+            ingestProgress: gallery.folder.ingestProgress,
+        });
+    }, [
+        collectionSummaries,
+        gallery.activeClusterId,
+        gallery.activeCollectionId,
+        gallery.allClusters,
+        gallery.clusters,
+        gallery.folder.entries,
+        gallery.folder.folderName,
+        gallery.folder.ingestProgress,
+        gallery.folder.isOpen,
+        gallery.galleryMode,
+        gallery.loading,
+        gallery.searchClusters,
+        gallery.searchFace,
+        gallery.searchQuery,
+        gallery.selectedIndex,
+        visiblePhotos,
+    ]);
+
+    useEffect(() => {
+        const photosByHash = new Map(visiblePhotos.map((photo) => [photo.hash, photo]));
+
+        setFotosRuntimeVisiblePhotos(
+            visiblePhotos.map((photo) => ({
+                hash: photo.hash,
+                name: photo.name,
+                sourcePath: photo.sourcePath ?? null,
+                mimeType: photo.mimeType ?? null,
+                thumb: photo.thumb ?? null,
+                size: photo.size,
+                managed: photo.managed,
+                capturedAt: photo.capturedAt ?? null,
+            })),
+            async (hash) => {
+                const photo = photosByHash.get(hash);
+                if (!photo) {
+                    throw new Error(`Visible photo ${hash} was not found in the current gallery view.`);
+                }
+                if (!photo.sourcePath) {
+                    throw new Error(`Visible photo ${photo.name} has no readable source path.`);
+                }
+
+                const file = await gallery.folder.readFile(photo.sourcePath);
+                return {
+                    hash: photo.hash,
+                    name: file.name || photo.name,
+                    mimeType: file.type || photo.mimeType || 'application/octet-stream',
+                    size: file.size,
+                    dataUrl: await readFileAsDataUrl(file),
+                };
+            },
+        );
+    }, [gallery.folder.readFile, visiblePhotos]);
+
+    useEffect(() => {
+        const pendingFaces = gallery.folder.entries.reduce((count, photo) => {
+            return count + Math.max(
+                0,
+                getFaceCount(photo.faces) - (photo.faces?.names?.filter(Boolean).length ?? 0),
+            );
+        }, 0);
+
+        setFotosRuntimeSnapshot({
+            isOpen: gallery.folder.isOpen,
+            folderName: gallery.folder.folderName,
+            entryCount: gallery.folder.entries.length,
+            photoCount: visiblePhotos.length,
+            visibleHashes: visiblePhotos.map(photo => photo.hash),
+            galleryMode: gallery.galleryMode,
+            activeClusterId: gallery.activeClusterId,
+            activeCollectionId: gallery.activeCollectionId,
+            clusterCount: gallery.allClusters.length,
+            visibleClusterCount: gallery.galleryMode === 'clusters'
+                ? (gallery.searchFace !== null ? gallery.searchClusters.length : gallery.clusters.length)
+                : 0,
+            collectionCount: collectionSummaries.length,
+            searchQuery: gallery.searchQuery,
+            pendingFaces,
+            loading: gallery.loading,
+            selectedIndex: gallery.selectedIndex,
+            searchFaceActive: gallery.searchFace !== null,
+            ingestProgress: gallery.folder.ingestProgress,
+        });
+    }, [
+        collectionSummaries.length,
+        gallery.activeClusterId,
+        gallery.activeCollectionId,
+        gallery.allClusters.length,
+        gallery.folder.entries,
+        gallery.folder.folderName,
+        gallery.folder.ingestProgress,
+        gallery.folder.isOpen,
+        gallery.galleryMode,
+        gallery.loading,
+        gallery.searchFace,
+        gallery.searchQuery,
+        gallery.selectedIndex,
+        gallery.searchClusters.length,
+        gallery.clusters.length,
         visiblePhotos,
     ]);
 

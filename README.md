@@ -11,6 +11,7 @@ Packages:
 
 - `fotos.browser` - browser/PWA client for fotos.one
 - `fotos.core` - shared gallery, face, and recipe logic
+- `fotos.headless` - split headless deployment, Fotos skills, and semantic batch tooling for `spark` + `schweiz`
 - `fotos.html` - portable HTML fallback app and media-view plugin for `vger.html` / `glue.browser`, meant to live in `one/` folders when `fotos.browser` is unavailable
 - `fotos.ui` - shared React hooks and UI helpers
 

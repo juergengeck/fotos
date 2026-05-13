@@ -53,33 +53,67 @@ startServiceWorkerUpdates();
 
 // ── HMR bridge (dev only) — canonical GET /api + POST /api/:operation/:method ──
 if (import.meta.hot) {
-    import.meta.hot.on('fotos:api-request', async (msg: { id: string; operation?: string; handler?: string; method: string; params?: any }) => {
+    const browserApiClientId = typeof crypto?.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `fotos-browser-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const READY_HEARTBEAT_MS = 15_000;
+
+    const announceReady = () => {
+        import.meta.hot!.send('fotos:ready', {
+            clientId: browserApiClientId,
+            location: window.location.href,
+            operations: planRegistry.listOperations(),
+            payload: createPublicOperationCatalogPayload(planRegistry),
+        });
+    };
+
+    import.meta.hot.on('fotos:api-request', async (msg: {
+        id: string;
+        targetClientId?: string;
+        operation?: string;
+        handler?: string;
+        method: string;
+        params?: any;
+    }) => {
+        if (msg.targetClientId && msg.targetClientId !== browserApiClientId) {
+            return;
+        }
         try {
             const operation = msg.operation ?? msg.handler;
             if (!operation) {
                 throw new Error('Missing operation name');
             }
             const result = await planRegistry.call(operation, msg.method, msg.params);
-            import.meta.hot!.send('fotos:api-response', { id: msg.id, ...result });
+            import.meta.hot!.send('fotos:api-response', { id: msg.id, clientId: browserApiClientId, ...result });
         } catch (err) {
             import.meta.hot!.send('fotos:api-response', {
                 id: msg.id,
+                clientId: browserApiClientId,
                 success: false,
                 error: { code: 'BRIDGE_ERROR', message: String(err) },
             });
         }
     });
 
-    import.meta.hot.on('fotos:api-discovery-request', (msg: { id: string }) => {
+    import.meta.hot.on('fotos:api-discovery-request', (msg: { id: string; targetClientId?: string }) => {
+        if (msg.targetClientId && msg.targetClientId !== browserApiClientId) {
+            return;
+        }
         import.meta.hot!.send('fotos:api-discovery-response', {
             id: msg.id,
+            clientId: browserApiClientId,
             payload: createPublicOperationCatalogPayload(planRegistry),
         });
     });
 
-    import.meta.hot.send('fotos:ready', {
-        operations: planRegistry.listOperations(),
-        payload: createPublicOperationCatalogPayload(planRegistry),
+    announceReady();
+
+    const readyHeartbeat = window.setInterval(() => {
+        announceReady();
+    }, READY_HEARTBEAT_MS);
+
+    import.meta.hot.dispose(() => {
+        window.clearInterval(readyHeartbeat);
     });
 }
 

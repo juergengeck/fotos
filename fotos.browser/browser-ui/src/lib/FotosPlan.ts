@@ -11,7 +11,11 @@ import { dataAttrsToFaces, EMBEDDING_DIM } from '@refinio/fotos.core';
 import type { FaceWorkerHandle } from './browserIngest';
 import type { FaceInfo } from '@/types/fotos';
 import faceWorkerUrl from '@/workers/face.worker.ts?worker&url';
-import { getFotosRuntimeSnapshot } from './runtimeDiagnostics';
+import {
+    exportFotosRuntimeVisiblePhoto,
+    getFotosRuntimeSnapshot,
+    getFotosRuntimeVisiblePhotos,
+} from './runtimeDiagnostics';
 import { clearTraceEntries, getTraceEntries } from './traceStore';
 
 export class FotosPlan {
@@ -65,6 +69,14 @@ export class FotosPlan {
 
     async runtimeState() {
         return getFotosRuntimeSnapshot();
+    }
+
+    async listVisiblePhotos() {
+        return getFotosRuntimeVisiblePhotos();
+    }
+
+    async exportVisiblePhoto(params: { hash: string }) {
+        return exportFotosRuntimeVisiblePhoto(params.hash);
     }
 
     async trace(params?: { clear?: boolean }) {

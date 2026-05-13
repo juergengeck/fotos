@@ -1,5 +1,5 @@
 import { getTextGenerationModels, type ModelInfo } from '@refinio/local.core';
-import { LLMManager } from '@vger/vger.core/services/llm-manager.js';
+import { LLMManager } from '../../../../../vger/packages/agent.core/dist/services/llm-manager.js';
 import type { ChatMessage } from '@vger/vger.core/services/llm-platform.js';
 import { BrowserLLMPlatform } from '../../../../../vger/packages/vger.browser/adapters/browser-llm-platform.ts';
 import {
@@ -141,8 +141,8 @@ export class FotosLLMPlan {
 
     return Promise.all(
       models
-        .filter((model) => model.provider === 'transformers' || model.provider === 'local')
-        .map(async (model) => {
+        .filter((model: any) => model.provider === 'transformers' || model.provider === 'local')
+        .map(async (model: any) => {
           const modelId = String(model.modelId || model.name);
           const loaded = this.platform.isLocalModelLoaded?.(modelId) ?? this.loadedModelId === modelId;
           const capabilities = await capabilityService.getCapabilities(modelId);

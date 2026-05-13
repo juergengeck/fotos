@@ -14,6 +14,7 @@ import type { PhotoEntry } from '@/types/fotos';
 import {
     buildFotosBinaryUrl,
     decodeFotosServiceFaceData,
+    decodeFotosServiceSemanticData,
     invokeFotosService,
     normalizeFotosServiceManagedMode,
 } from '../../../fotos.core/src/service-contract.js';
@@ -52,6 +53,7 @@ export interface FolderAccess {
  */
 function serverEntryToPhotoEntry(raw: FotosServiceEntry): PhotoEntry {
     const decodedFaces = decodeFotosServiceFaceData(raw.faceData);
+    const decodedSemantic = decodeFotosServiceSemanticData(raw.semanticData);
 
     const entry: PhotoEntry = {
         hash: raw.hash ?? '',
@@ -75,6 +77,15 @@ function serverEntryToPhotoEntry(raw: FotosServiceEntry): PhotoEntry {
             embeddings: decodedFaces.embeddings,
             crops: decodedFaces.crops,
         };
+    }
+
+    if (decodedSemantic) {
+        entry.semantic = {
+            modelId: decodedSemantic.modelId,
+            embedding: decodedSemantic.embedding,
+        };
+    } else if (raw.mime && !raw.mime.startsWith('image/')) {
+        entry.semantic = null;
     }
 
     return entry;

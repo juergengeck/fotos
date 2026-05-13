@@ -1,0 +1,15 @@
+{
+  "name": "@refinio/fotos.headless",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Deployment wrappers, skills, and batch tooling for the split Fotos headless runtime",
+  "scripts": {
+    "deploy:spark": "bash scripts/deploy-spark.sh",
+    "deploy:schweiz": "bash scripts/deploy-schweiz.sh",
+    "test:batch": "node scripts/run-test-batch.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

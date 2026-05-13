@@ -19,6 +19,11 @@ export type FotosIngestState = 'idle' | 'running' | 'paused';
 export type FotosBinaryResourceKind = 'thumb' | 'file';
 export type FotosServiceFaceData = Record<string, string>;
 
+export interface FotosServiceSemanticData {
+    modelId: string;
+    embedding: string;
+}
+
 export interface FotosFolderMetadata {
     path: string;
     name: string;
@@ -44,6 +49,7 @@ export interface FotosServiceEntry {
     addedAt: string;
     exif?: FotosCatalogExif;
     faceData?: FotosServiceFaceData;
+    semanticData?: FotosServiceSemanticData | null;
 }
 
 export interface FotosDecodedFaceData {
@@ -52,6 +58,11 @@ export interface FotosDecodedFaceData {
     scores: number[];
     embeddings: Float32Array;
     crops: string[];
+}
+
+export interface FotosDecodedSemanticData {
+    modelId: string;
+    embedding: Float32Array;
 }
 
 export interface FotosIngestStatus {
@@ -191,6 +202,39 @@ export function decodeFotosServiceFaceData(
         scores: result.faces.map((face) => face.detection.score),
         embeddings,
         crops: result.faces.map((face) => face.cropPath ?? ''),
+    };
+}
+
+function base64ToUint8(b64: string): Uint8Array {
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+        bytes[index] = binary.charCodeAt(index);
+    }
+    return bytes;
+}
+
+function decodeFloat32Base64(value: string): Float32Array {
+    const bytes = base64ToUint8(value);
+    if (bytes.byteLength % Float32Array.BYTES_PER_ELEMENT !== 0) {
+        throw new Error('Invalid Float32 embedding payload');
+    }
+
+    return new Float32Array(
+        bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    );
+}
+
+export function decodeFotosServiceSemanticData(
+    semanticData?: FotosServiceSemanticData | null,
+): FotosDecodedSemanticData | null {
+    if (!semanticData?.modelId || !semanticData.embedding) {
+        return null;
+    }
+
+    return {
+        modelId: semanticData.modelId,
+        embedding: decodeFloat32Base64(semanticData.embedding),
     };
 }
 

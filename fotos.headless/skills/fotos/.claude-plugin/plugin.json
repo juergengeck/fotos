@@ -1,0 +1,5 @@
+{
+  "name": "fotos",
+  "version": "0.1.0",
+  "description": "Fotos-specific headless deployment, storage topology, and semantic batch workflows."
+}

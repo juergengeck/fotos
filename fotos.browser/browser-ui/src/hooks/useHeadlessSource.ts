@@ -4,6 +4,7 @@ import type { GallerySurface } from '@refinio/fotos.core';
 import {
     buildFotosBinaryUrl,
     decodeFotosServiceFaceData,
+    decodeFotosServiceSemanticData,
     invokeFotosService,
     normalizeFotosServiceManagedMode,
 } from '../../../../fotos.core/src/service-contract.js';
@@ -31,6 +32,7 @@ async function invoke(
 
 function serviceEntryToPhotoEntry(raw: FotosServiceEntry): PhotoEntry {
     const decodedFaces = decodeFotosServiceFaceData(raw.faceData);
+    const decodedSemantic = decodeFotosServiceSemanticData(raw.semanticData);
 
     return {
         hash: raw.hash ?? raw.streamId ?? raw.contentHash ?? '',
@@ -51,6 +53,14 @@ function serviceEntryToPhotoEntry(raw: FotosServiceEntry): PhotoEntry {
             embeddings: decodedFaces.embeddings,
             crops: decodedFaces.crops,
         } : undefined,
+        semantic: decodedSemantic
+            ? {
+                modelId: decodedSemantic.modelId,
+                embedding: decodedSemantic.embedding,
+            }
+            : raw.mime && !raw.mime.startsWith('image/')
+                ? null
+                : undefined,
     };
 }
 

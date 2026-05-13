@@ -270,7 +270,11 @@ export default defineConfig({
     clearScreen: false,
     plugins: [
         react(),
-        nodePolyfills(),
+        nodePolyfills({
+            globals: {
+                Buffer: false,
+            },
+        }),
         buildVersionPlugin(BUILD_ID),
         ortRuntimePlugin(),
         localPhotosPlugin(),
@@ -315,6 +319,9 @@ export default defineConfig({
             {find: '@', replacement: path.resolve(__dirname, './src')},
             {find: '@refinio/fotos.ui', replacement: path.resolve(__dirname, '../../fotos.ui/src/index.ts')},
             {find: '@refinio/local.core/BrowserMultimodalEmbeddingProvider.js', replacement: path.resolve(__dirname, '../../../vger/packages/local.core/dist/BrowserMultimodalEmbeddingProvider.js')},
+            {find: /^@refinio\/agent\.core\/(.*)\.js$/, replacement: path.resolve(__dirname, '../../../vger/packages/agent.core/src/$1.ts')},
+            {find: /^@refinio\/agent\.core\/(.*)$/, replacement: path.resolve(__dirname, '../../../vger/packages/agent.core/src/$1')},
+            {find: '@refinio/agent.core', replacement: path.resolve(__dirname, '../../../vger/packages/agent.core/src/index.ts')},
             {find: '@huggingface/transformers', replacement: path.resolve(__dirname, '../../../vger/node_modules/.pnpm/node_modules/@huggingface/transformers/dist/transformers.web.js')},
             {find: '@vger/vger.core', replacement: path.resolve(__dirname, '../../../vger/packages/vger.core/dist')},
             {find: '@vger/vger.glue', replacement: path.resolve(__dirname, '../../../vger/packages/vger.glue/dist')},
@@ -330,6 +337,7 @@ export default defineConfig({
             {find: 'tweetnacl', replacement: path.resolve(__dirname, 'node_modules/tweetnacl')},
             // nodePolyfills plugin injects shim imports that Rollup can't resolve for pre-built deps
             {find: 'vite-plugin-node-polyfills/shims/buffer', replacement: path.resolve(__dirname, 'node_modules/vite-plugin-node-polyfills/shims/buffer/dist/index.js')},
+            {find: 'vite-plugin-node-polyfills/shims/global', replacement: path.resolve(__dirname, 'node_modules/vite-plugin-node-polyfills/shims/global/dist/index.js')},
             {find: 'vite-plugin-node-polyfills/shims/process', replacement: path.resolve(__dirname, 'node_modules/vite-plugin-node-polyfills/shims/process/dist/index.js')},
         ],
         extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'],

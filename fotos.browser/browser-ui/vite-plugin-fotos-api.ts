@@ -13,11 +13,22 @@ import type { Plugin, ViteDevServer } from 'vite';
 interface PendingRequest {
     resolve: (value: any) => void;
     timer: ReturnType<typeof setTimeout>;
+    targetClientId: string | null;
+}
+
+interface BrowserClientInfo {
+    clientId: string;
+    location: string | null;
+    operations: string[];
+    lastReadyAt: string;
 }
 
 export function fotosApiPlugin(): Plugin {
+    const CLIENT_STALE_AFTER_MS = 45_000;
     const pending = new Map<string, PendingRequest>();
     let discoveryPayload: { handlers: Array<{ name: string }> } | null = null;
+    let activeClientId: string | null = null;
+    const clients = new Map<string, BrowserClientInfo>();
     let counter = 0;
 
     function nextId(): string {
@@ -35,17 +46,81 @@ export function fotosApiPlugin(): Plugin {
         entry.resolve(value);
     }
 
+    function isPreferredClientLocation(location: string | null | undefined): boolean {
+        return location === 'http://localhost:5173/'
+            || location === 'http://127.0.0.1:5173/';
+    }
+
+    function pruneStaleClients(): void {
+        const now = Date.now();
+        for (const [clientId, client] of clients.entries()) {
+            const lastReadyAt = Date.parse(client.lastReadyAt);
+            if (Number.isNaN(lastReadyAt) || (now - lastReadyAt) > CLIENT_STALE_AFTER_MS) {
+                clients.delete(clientId);
+                if (activeClientId === clientId) {
+                    activeClientId = null;
+                }
+            }
+        }
+    }
+
+    function listClients(): BrowserClientInfo[] {
+        pruneStaleClients();
+        return Array.from(clients.values()).sort((left, right) =>
+            right.lastReadyAt.localeCompare(left.lastReadyAt)
+            || left.clientId.localeCompare(right.clientId),
+        );
+    }
+
+    function resolveTargetClientId(explicitClientId?: string | null): string | null {
+        if (explicitClientId && clients.has(explicitClientId)) {
+            return explicitClientId;
+        }
+
+        if (activeClientId && clients.has(activeClientId)) {
+            return activeClientId;
+        }
+
+        const preferredClient = listClients().find((client) => isPreferredClientLocation(client.location));
+        if (preferredClient) {
+            activeClientId = preferredClient.clientId;
+            return preferredClient.clientId;
+        }
+
+        const [fallbackClient] = listClients();
+        if (fallbackClient) {
+            activeClientId = fallbackClient.clientId;
+            return fallbackClient.clientId;
+        }
+
+        return null;
+    }
+
     return {
         name: 'fotos-api',
         configureServer(server: ViteDevServer) {
             // Listen for responses from browser via HMR
             server.hot.on('fotos:api-response', (data: any) => {
-                const { id, ...result } = data;
+                const { id, clientId, ...result } = data;
+                const entry = pending.get(id);
+                if (!entry) {
+                    return;
+                }
+                if (entry.targetClientId && clientId && entry.targetClientId !== clientId) {
+                    return;
+                }
                 resolvePending(id, result);
             });
 
             server.hot.on('fotos:api-discovery-response', (data: any) => {
-                const { id, payload } = data;
+                const { id, clientId, payload } = data;
+                const entry = pending.get(id);
+                if (!entry) {
+                    return;
+                }
+                if (entry.targetClientId && clientId && entry.targetClientId !== clientId) {
+                    return;
+                }
                 if (payload) {
                     discoveryPayload = payload;
                 }
@@ -53,6 +128,26 @@ export function fotosApiPlugin(): Plugin {
             });
 
             server.hot.on('fotos:ready', (data: any) => {
+                const clientId = typeof data.clientId === 'string' ? data.clientId : null;
+                if (clientId) {
+                    clients.set(clientId, {
+                        clientId,
+                        location: typeof data.location === 'string' ? data.location : null,
+                        operations: Array.isArray(data.operations)
+                            ? data.operations.filter((operation): operation is string => typeof operation === 'string')
+                            : [],
+                        lastReadyAt: new Date().toISOString(),
+                    });
+
+                    if (
+                        activeClientId === null
+                        || isPreferredClientLocation(data.location)
+                        || activeClientId === clientId
+                    ) {
+                        activeClientId = clientId;
+                    }
+                }
+
                 if (data.payload) {
                     discoveryPayload = data.payload;
                 }
@@ -60,11 +155,17 @@ export function fotosApiPlugin(): Plugin {
                     data.operations ??
                     discoveryPayload?.handlers?.map((handler) => handler.name) ??
                     [];
-                console.log(`[fotos-api] Browser ready, operations: ${operationNames.join(', ')}`);
+                console.log(`[fotos-api] Browser ready (${activeClientId ?? 'unknown client'}): ${operationNames.join(', ')}`);
             });
 
-            async function requestBrowser(event: string, payload: Record<string, unknown>, timeoutMessage: string): Promise<any> {
+            async function requestBrowser(
+                event: string,
+                payload: Record<string, unknown>,
+                timeoutMessage: string,
+                explicitClientId?: string | null,
+            ): Promise<any> {
                 const id = nextId();
+                const targetClientId = resolveTargetClientId(explicitClientId);
                 return new Promise<any>((resolve) => {
                     const timer = setTimeout(() => {
                         pending.delete(id);
@@ -73,15 +174,17 @@ export function fotosApiPlugin(): Plugin {
                             error: { code: 'TIMEOUT', message: timeoutMessage },
                         });
                     }, 120_000);
-                    pending.set(id, { resolve, timer });
-                    server.hot.send(event, { id, ...payload });
+                    pending.set(id, { resolve, timer, targetClientId });
+                    server.hot.send(event, { id, targetClientId, ...payload });
                 });
             }
 
             // HTTP middleware: GET /api and POST /api/:operation/:method
             server.middlewares.use('/api', async (req, res, next) => {
                 const url = req.url ?? '';
-                const path = url.split('?')[0] ?? '';
+                const requestUrl = new URL(url, 'http://localhost');
+                const path = requestUrl.pathname ?? '';
+                const explicitClientId = requestUrl.searchParams.get('clientId');
 
                 res.setHeader('Access-Control-Allow-Origin', '*');
                 res.setHeader('Cache-Control', 'no-store');
@@ -94,6 +197,15 @@ export function fotosApiPlugin(): Plugin {
                     return;
                 }
 
+                if (req.method === 'GET' && path === '/clients') {
+                    res.setHeader('Content-Type', 'application/json');
+                    res.end(JSON.stringify({
+                        activeClientId: resolveTargetClientId(explicitClientId),
+                        clients: listClients(),
+                    }, null, 2));
+                    return;
+                }
+
                 if (req.method === 'GET' && (path === '' || path === '/')) {
                     const payload =
                         discoveryPayload ??
@@ -101,6 +213,7 @@ export function fotosApiPlugin(): Plugin {
                             'fotos:api-discovery-request',
                             {},
                             'GET /api timed out waiting for browser discovery payload (120s)',
+                            explicitClientId,
                         );
 
                     res.setHeader('Content-Type', 'application/json');
@@ -110,7 +223,11 @@ export function fotosApiPlugin(): Plugin {
                         return;
                     }
 
-                    res.end(JSON.stringify(payload ?? { handlers: [] }, null, 2));
+                    res.end(JSON.stringify({
+                        ...(payload ?? { handlers: [] }),
+                        activeClientId: resolveTargetClientId(explicitClientId),
+                        clients: listClients(),
+                    }, null, 2));
                     return;
                 }
 
@@ -137,6 +254,7 @@ export function fotosApiPlugin(): Plugin {
                     'fotos:api-request',
                     { operation, method, params },
                     `${operation}.${method} timed out (120s)`,
+                    explicitClientId,
                 );
 
                 res.setHeader('Content-Type', 'application/json');

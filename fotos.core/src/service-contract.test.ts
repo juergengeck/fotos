@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     buildFotosBinaryUrl,
+    decodeFotosServiceSemanticData,
     invokeFotosService,
     normalizeFotosServiceManagedMode,
     parseFotosServiceChannel,
@@ -27,6 +28,18 @@ describe('fotos service contract', () => {
             .toBe('https://fotos.one/fotos/thumb/one%2Fthumbs%2Fa%20b.jpg');
         expect(buildFotosBinaryUrl('', 'file', 'albums/day 1/photo.jpg'))
             .toBe('/fotos/file/albums%2Fday%201%2Fphoto.jpg');
+    });
+
+    it('decodes semantic embedding payloads', () => {
+        const floats = new Float32Array([0.5, -1.25, 3.75]);
+        const embedding = btoa(String.fromCharCode(...new Uint8Array(floats.buffer)));
+        const decoded = decodeFotosServiceSemanticData({
+            modelId: 'gemma4:e4b',
+            embedding,
+        });
+
+        expect(decoded?.modelId).toBe('gemma4:e4b');
+        expect(Array.from(decoded?.embedding ?? [])).toEqual(Array.from(floats));
     });
 
     it('invokes a typed fotos transport', async () => {
