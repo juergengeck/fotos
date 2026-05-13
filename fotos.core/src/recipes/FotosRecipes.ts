@@ -13,6 +13,7 @@
 import type {BLOB, Person, Recipe, VersionNode} from '@refinio/one.core/lib/recipes.js';
 import type {SHA256Hash, SHA256IdHash} from '@refinio/one.core/lib/util/type-checks.js';
 import {GalleryTrieRecipes} from './GalleryTrieRecipes.js';
+import {FotosDeviceBookRecipes} from './FotosDeviceBookRecipes.js';
 import {FotosMediaRecipes} from './FotosMediaRecipes.js';
 import type {FotosMediaVariant} from './FotosMediaRecipes.js';
 
@@ -180,5 +181,6 @@ export const FotosRecipes: Recipe[] = [
     FotosManifestRecipe,
     FotosAuthenticityAttestationRecipe,
     ...FotosMediaRecipes,
+    ...FotosDeviceBookRecipes,
     ...GalleryTrieRecipes,
 ];

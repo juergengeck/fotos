@@ -3,6 +3,7 @@ import type { TrustLevel } from '@refinio/trust.core/types/trust-types.js';
 
 import {
     canImportFotosAuthenticityAttestation,
+    canImportFotosDeviceBook,
     canImportFotosEntry,
     canImportFotosManifest,
     canImportFotosMediaVariant,
@@ -91,6 +92,24 @@ describe('fotosSyncRules', () => {
         })).toBe(true);
     });
 
+    it('admits device books that enumerate shareable Fotos objects for a device root', () => {
+        expect(canImportFotosDeviceBook(LOW_TRUST_CONTEXT, {
+            $type$: 'FotosDeviceBook',
+            id: 'fotos-device-book:spark',
+            deviceId: 'spark',
+            title: 'Fotos Device Book (spark)',
+            role: 'compute',
+            entries: new Set(['entry-a', 'entry-b']),
+            sourceIdHashes: new Set(['source-a']),
+            entryIdHashes: new Set(['source-entry-a']),
+            variants: new Set(['variant-a']),
+            locators: new Set(['locator-a']),
+            authenticityAttestations: new Set(['attestation-a']),
+            createdAt: 10,
+            updatedAt: 20,
+        })).toBe(true);
+    });
+
     it('rejects fotos entries from peers below the content trust floor', () => {
         expect(canImportFotosEntry({
             peerTrustLevel: 'unknown' as TrustLevel,
@@ -109,5 +128,6 @@ describe('fotosSyncRules', () => {
         expect(fotosContentRules.has('FotosEntry')).toBe(true);
         expect(fotosContentRules.has('FotosMediaVariant')).toBe(true);
         expect(fotosContentRules.has('FotosAuthenticityAttestation')).toBe(true);
+        expect(fotosContentRules.has('FotosDeviceBook')).toBe(true);
     });
 });

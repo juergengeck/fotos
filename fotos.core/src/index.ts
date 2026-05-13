@@ -108,6 +108,11 @@ export {
 } from './service-contract.js';
 export {GalleryTrieManager} from './gallery-trie.js';
 export {
+    isJpeg,
+    stripJpegMetadata,
+    normalizeImageBytesForContentHash,
+} from './content-hash.js';
+export {
     DEFAULT_FOTOS_CONFIG,
     filterFotosCatalogEntries,
     listFotosTags,
@@ -116,6 +121,23 @@ export {
 } from './fotos-catalog.js';
 export {FotosCatalogTrie} from './fotos-catalog-trie.js';
 export {FOTOS_BUNDLE_MANIFEST, createFotosBundleManifest} from './fotos-bundle.js';
+export {
+    makeFotosDeviceBookId,
+    buildFotosDeviceBookTitle,
+    createFotosDeviceBook,
+    updateFotosDeviceBookContent,
+    getFotosDeviceBookIdHash,
+    readFotosDeviceBook,
+    ensureFotosDeviceBook,
+    appendFotosDeviceBookContent,
+} from './fotos-device-book.js';
+export type {
+    CreateFotosDeviceBookParams,
+    UpdateFotosDeviceBookContentParams,
+    FotosDeviceBookPersistenceDeps,
+    EnsureFotosDeviceBookParams,
+    AppendFotosDeviceBookContentParams,
+} from './fotos-device-book.js';
 export {
     buildFotosMediaLocatorId,
     createFotosMediaLocator,
@@ -142,6 +164,16 @@ export type {
     FotosManifest,
     FotosAuthenticityAttestation,
 } from './recipes/FotosRecipes.js';
+export {
+    FOTOS_DEVICE_BOOK_ROLES,
+    isFotosDeviceBookRole,
+    FotosDeviceBookRecipes,
+    FotosDeviceBookRecipe,
+} from './recipes/FotosDeviceBookRecipes.js';
+export type {
+    FotosDeviceBookRole,
+    FotosDeviceBook,
+} from './recipes/FotosDeviceBookRecipes.js';
 export {
     FOTOS_MEDIA_VARIANT_ROLES,
     FOTOS_MEDIA_LOCATOR_PLATFORMS,

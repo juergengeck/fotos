@@ -12,6 +12,7 @@
 import type {SHA256Hash, SHA256IdHash} from '@refinio/one.core/lib/util/type-checks.js';
 import type {BLOB} from '@refinio/one.core/lib/recipes.js';
 import {
+    getObjectByIdHash,
     storeVersionedObject,
     onVersionedObj,
 } from '@refinio/one.core/lib/storage-versioned-objects.js';
@@ -35,11 +36,25 @@ import {
     type FotosAuthenticityContext,
 } from './fotos-authenticity.js';
 import type { FotosAuthenticityAttestation } from '../../../../fotos.core/src/recipes/FotosRecipes.js';
-import type {FotosMediaVariant} from '../../../../fotos.core/src/recipes/FotosMediaRecipes.js';
+import type {
+    FotosMediaLocator,
+    FotosMediaVariant,
+} from '../../../../fotos.core/src/recipes/FotosMediaRecipes.js';
+import {
+    appendFotosDeviceBookContent,
+} from '../../../../fotos.core/src/fotos-device-book.js';
 import {
     createFotosMediaLocator,
     createFotosMediaVariant,
 } from '../../../../fotos.core/src/media-model.js';
+import {
+    appendMediaBookContent,
+    createMediaSource,
+    createMediaSourceEntry,
+} from '../../../../vger/packages/source.media/src/services/MediaSourceService.js';
+import {
+    notifyGrantedFotosPeersAboutDeviceBookUpdate,
+} from './fotos-manifest.js';
 
 export interface SyncPhotosToOneCoreOptions {
     claimAuthorship?: boolean;
@@ -158,12 +173,58 @@ function collectOriginalVariantLocators(photo: PhotoEntry): string[] {
     return [...values];
 }
 
+function resolveBrowserFotosDeviceId(): string {
+    const instanceId = getInstanceIdHash();
+    return String(instanceId || 'browser');
+}
+
+async function storeBrowserSourceState(photo: PhotoEntry): Promise<{
+    sourceIdHash: string;
+    entryIdHash: string;
+    sourceRef: string;
+}> {
+    const deviceId = resolveBrowserFotosDeviceId();
+    const sourceLocator = photo.folderPath?.trim() || 'browser-gallery';
+    const source = createMediaSource({
+        family: photo.folderPath?.trim() ? 'filesystem-folder' : 'gallery',
+        locator: sourceLocator,
+        platform: 'browser',
+        deviceId,
+        title: photo.folderPath?.trim() ? `Browser Folder ${photo.folderPath}` : 'Browser Gallery',
+        metadata: {
+            folderPath: photo.folderPath ?? null,
+        },
+    });
+    const storedSource = await storeVersionedObject(source as any);
+
+    const entry = createMediaSourceEntry({
+        sourceId: source.id,
+        sourceIdHash: String(storedSource.idHash),
+        entryKind: 'file',
+        locator: photo.sourcePath?.trim() || photo.name,
+        title: photo.name,
+        summary: photo.folderPath?.trim() ? `Imported from ${photo.folderPath}` : 'Imported from browser gallery',
+        contentHash: photo.hash,
+        metadata: {
+            sourcePath: photo.sourcePath ?? null,
+            folderPath: photo.folderPath ?? null,
+        },
+    });
+    const storedEntry = await storeVersionedObject(entry as any);
+
+    return {
+        sourceIdHash: String(storedSource.idHash),
+        entryIdHash: String(storedEntry.idHash),
+        sourceRef: String(entry.sourceRef ?? ''),
+    };
+}
+
 async function storeBrowserLocator(params: {
     variant: SHA256IdHash<FotosMediaVariant>;
     locator: string;
     kind: 'relative-path' | 'filesystem-path';
     lastVerifiedAt?: string;
-}): Promise<void> {
+}): Promise<{ hash: SHA256Hash<FotosMediaLocator>; idHash: SHA256IdHash<FotosMediaLocator> }> {
     const instanceId = getInstanceIdHash();
     const locator = createFotosMediaLocator({
         variant: params.variant,
@@ -175,7 +236,11 @@ async function storeBrowserLocator(params: {
         ...(params.lastVerifiedAt ? {lastVerifiedAt: params.lastVerifiedAt} : {}),
     });
 
-    await storeVersionedObject(locator as any);
+    const stored = await storeVersionedObject(locator as any);
+    return {
+        hash: stored.hash as SHA256Hash<FotosMediaLocator>,
+        idHash: stored.idHash as SHA256IdHash<FotosMediaLocator>,
+    };
 }
 
 async function storeFotosMediaState(
@@ -183,8 +248,16 @@ async function storeFotosMediaState(
     entryIdHash: SHA256IdHash<FotosEntry>,
     mime: string,
     thumbBlobHash?: SHA256Hash<BLOB>,
-): Promise<Set<SHA256Hash<FotosMediaVariant>>> {
+): Promise<{
+    variants: Set<SHA256Hash<FotosMediaVariant>>;
+    locators: Set<SHA256Hash<FotosMediaLocator>>;
+    variantIdHashes: Set<SHA256IdHash<FotosMediaVariant>>;
+    locatorIdHashes: Set<SHA256IdHash<FotosMediaLocator>>;
+}> {
     const variants = new Set<SHA256Hash<FotosMediaVariant>>();
+    const locators = new Set<SHA256Hash<FotosMediaLocator>>();
+    const variantIdHashes = new Set<SHA256IdHash<FotosMediaVariant>>();
+    const locatorIdHashes = new Set<SHA256IdHash<FotosMediaLocator>>();
 
     const originalVariant = createFotosMediaVariant({
         contentHash: photo.hash,
@@ -199,19 +272,22 @@ async function storeFotosMediaState(
     });
     const originalVariantResult = await storeVersionedObject(originalVariant as any);
     variants.add(originalVariantResult.hash as SHA256Hash<FotosMediaVariant>);
+    variantIdHashes.add(originalVariantResult.idHash as SHA256IdHash<FotosMediaVariant>);
 
     const locatorTimestamp = photo.updatedAt ?? photo.addedAt ?? photo.capturedAt;
     for (const relativePath of collectOriginalVariantLocators(photo)) {
-        await storeBrowserLocator({
+        const storedLocator = await storeBrowserLocator({
             variant: originalVariantResult.idHash as SHA256IdHash<FotosMediaVariant>,
             locator: relativePath,
             kind: 'relative-path',
             ...(locatorTimestamp ? {lastVerifiedAt: locatorTimestamp} : {}),
         });
+        locators.add(storedLocator.hash);
+        locatorIdHashes.add(storedLocator.idHash);
     }
 
     if (!thumbBlobHash) {
-        return variants;
+        return { variants, locators, variantIdHashes, locatorIdHashes };
     }
 
     const thumbVariant = createFotosMediaVariant({
@@ -226,17 +302,20 @@ async function storeFotosMediaState(
     });
     const thumbVariantResult = await storeVersionedObject(thumbVariant as any);
     variants.add(thumbVariantResult.hash as SHA256Hash<FotosMediaVariant>);
+    variantIdHashes.add(thumbVariantResult.idHash as SHA256IdHash<FotosMediaVariant>);
 
     if (isPersistentBrowserLocator(photo.thumb)) {
-        await storeBrowserLocator({
+        const storedLocator = await storeBrowserLocator({
             variant: thumbVariantResult.idHash as SHA256IdHash<FotosMediaVariant>,
             locator: photo.thumb,
             kind: 'relative-path',
             ...(locatorTimestamp ? {lastVerifiedAt: locatorTimestamp} : {}),
         });
+        locators.add(storedLocator.hash);
+        locatorIdHashes.add(storedLocator.idHash);
     }
 
-    return variants;
+    return { variants, locators, variantIdHashes, locatorIdHashes };
 }
 
 // ---------------------------------------------------------------------------
@@ -438,32 +517,67 @@ export async function syncPhotoToOneCore(
     }
 
     const entryIdHash = await calculateIdHashOfObj(entry as any) as SHA256IdHash<FotosEntry>;
-    const variants = await storeFotosMediaState(photo, entryIdHash, mime, thumbHash);
-    if (variants.size > 0) {
-        entry.variants = variants;
+    const mediaState = await storeFotosMediaState(photo, entryIdHash, mime, thumbHash);
+    if (mediaState.variants.size > 0) {
+        entry.variants = mediaState.variants;
     }
 
     // Store the versioned object (idempotent — same contentHash isId = same object)
     const result = await storeVersionedObject(entry as unknown as FotosEntry);
+    const sourceState = await storeBrowserSourceState(photo);
 
     // Add to manifest
     await addEntryToManifest(result.hash as SHA256Hash<FotosEntry>);
 
-    if (!authenticityContext) {
-        return;
+    let authenticityHash: SHA256Hash<FotosAuthenticityAttestation> | undefined;
+    let authenticityIdHash: SHA256IdHash<FotosAuthenticityAttestation> | undefined;
+
+    if (authenticityContext) {
+        try {
+            const attestation = createFotosAuthenticityAttestation(photo.hash, authenticityContext);
+            const attestationResult = await storeVersionedObject(
+                attestation as unknown as FotosAuthenticityAttestation,
+            );
+            authenticityHash = attestationResult.hash as SHA256Hash<FotosAuthenticityAttestation>;
+            authenticityIdHash = attestationResult.idHash as SHA256IdHash<FotosAuthenticityAttestation>;
+            await addAuthenticityAttestationToManifest(authenticityHash);
+        } catch (err) {
+            console.warn(`[fotos-sync] Failed to create authenticity attestation for ${photo.name}:`, err);
+        }
     }
 
-    try {
-        const attestation = createFotosAuthenticityAttestation(photo.hash, authenticityContext);
-        const attestationResult = await storeVersionedObject(
-            attestation as unknown as FotosAuthenticityAttestation,
-        );
-        await addAuthenticityAttestationToManifest(
-            attestationResult.hash as SHA256Hash<FotosAuthenticityAttestation>,
-        );
-    } catch (err) {
-        console.warn(`[fotos-sync] Failed to create authenticity attestation for ${photo.name}:`, err);
-    }
+    const deviceId = resolveBrowserFotosDeviceId();
+    await appendFotosDeviceBookContent({
+        calculateIdHashOfObj,
+        getObjectByIdHash,
+        storeVersionedObject,
+    }, {
+        deviceId,
+        role: 'browser',
+        entries: [result.hash as SHA256Hash<FotosEntry>],
+        sourceIdHashes: [sourceState.sourceIdHash as any],
+        entryIdHashes: [sourceState.entryIdHash as any],
+        variants: mediaState.variants,
+        locators: mediaState.locators,
+        ...(authenticityHash ? { authenticityAttestations: [authenticityHash] } : {}),
+    });
+    await appendMediaBookContent({
+        calculateIdHashOfObj,
+        getObjectByIdHash,
+        storeVersionedObject,
+    }, {
+        deviceId,
+        sourceIdHashes: [sourceState.sourceIdHash],
+        entryIdHashes: [sourceState.entryIdHash],
+        sourceRefs: sourceState.sourceRef ? [sourceState.sourceRef] : undefined,
+        artifactIdHashes: [
+            String(result.idHash),
+            ...[...mediaState.variantIdHashes].map(String),
+            ...[...mediaState.locatorIdHashes].map(String),
+            ...(authenticityIdHash ? [String(authenticityIdHash)] : []),
+        ],
+    });
+    await notifyGrantedFotosPeersAboutDeviceBookUpdate(deviceId);
 }
 
 /**

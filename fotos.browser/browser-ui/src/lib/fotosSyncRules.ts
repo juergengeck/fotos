@@ -18,6 +18,8 @@ const MAX_PUBLIC_KEY_LENGTH = 256;
 const MAX_SIGNATURE_LENGTH = 1_024;
 const MAX_MEDIA_ROLE_LENGTH = 64;
 const MAX_MEDIA_LABEL_LENGTH = 255;
+const MAX_DEVICE_ID_LENGTH = 255;
+const MAX_DEVICE_TITLE_LENGTH = 255;
 
 interface SyncContextLike {
     peerTrustLevel: TrustLevel;
@@ -168,6 +170,46 @@ export function canImportFotosAuthenticityAttestation(context: SyncContextLike, 
         && isOptionalReference(attestation.subscriptionCertificate);
 }
 
+export function canImportFotosDeviceBook(context: SyncContextLike, obj?: object): boolean {
+    if (!meetsContentTrustFloor(context) || !obj) {
+        return false;
+    }
+
+    const book = obj as ImportedObject;
+
+    return isStringWithinBounds(book.id, MAX_PATH_LENGTH)
+        && isStringWithinBounds(book.deviceId, MAX_DEVICE_ID_LENGTH)
+        && isStringWithinBounds(book.title, MAX_DEVICE_TITLE_LENGTH)
+        && isStringWithinBounds(book.role, MAX_MEDIA_ROLE_LENGTH)
+        && isStringSetWithinBounds(book.entries, MAX_FOTOS_MANIFEST_ENTRIES, MAX_REFERENCE_LENGTH)
+        && (
+            book.sourceIdHashes === undefined
+            || isStringSetWithinBounds(book.sourceIdHashes, MAX_VARIANT_REFS, MAX_REFERENCE_LENGTH)
+        )
+        && (
+            book.entryIdHashes === undefined
+            || isStringSetWithinBounds(book.entryIdHashes, MAX_VARIANT_REFS, MAX_REFERENCE_LENGTH)
+        )
+        && (
+            book.variants === undefined
+            || isStringSetWithinBounds(book.variants, MAX_VARIANT_REFS, MAX_REFERENCE_LENGTH)
+        )
+        && (
+            book.locators === undefined
+            || isStringSetWithinBounds(book.locators, MAX_VARIANT_REFS, MAX_REFERENCE_LENGTH)
+        )
+        && (
+            book.authenticityAttestations === undefined
+            || isStringSetWithinBounds(
+                book.authenticityAttestations,
+                MAX_FOTOS_ATTESTATIONS,
+                MAX_REFERENCE_LENGTH,
+            )
+        )
+        && isOptionalNonNegativeNumber(book.createdAt)
+        && isOptionalNonNegativeNumber(book.updatedAt);
+}
+
 const fotosManifestRule: SyncRule = {
     canImport: canImportFotosManifest,
 };
@@ -184,8 +226,13 @@ const fotosAuthenticityAttestationRule: SyncRule = {
     canImport: canImportFotosAuthenticityAttestation,
 };
 
+const fotosDeviceBookRule: SyncRule = {
+    canImport: canImportFotosDeviceBook,
+};
+
 export const fotosContentRules = new Map(contentRules);
 fotosContentRules.set('FotosManifest', fotosManifestRule);
 fotosContentRules.set('FotosEntry', fotosEntryRule);
 fotosContentRules.set('FotosMediaVariant', fotosMediaVariantRule);
 fotosContentRules.set('FotosAuthenticityAttestation', fotosAuthenticityAttestationRule);
+fotosContentRules.set('FotosDeviceBook', fotosDeviceBookRule);
