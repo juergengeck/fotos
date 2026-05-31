@@ -39,8 +39,8 @@ import {
   DEFAULT_GLUE_CONNECTION_BINDING_ID,
 } from '@glueone/glue.core';
 import { AllRecipes as TrustCoreRecipes } from '@refinio/trust.core/recipes';
-import { CubeCoreRecipes } from '../../../../vger/packages/cube.core/dist/recipes/index.js';
-import { CHAT_CORE_RECIPES } from '../../../../vger/packages/chat.core/dist/recipes/index.js';
+import { CubeCoreRecipes } from '@refinio/cube.core/recipes/index.js';
+import { CHAT_CORE_RECIPES } from '@refinio/chat.core/recipes/index.js';
 import { FotosRecipes } from '@refinio/fotos.core';
 import {
   SettingsRecipes,

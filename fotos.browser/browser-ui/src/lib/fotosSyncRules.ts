@@ -1,6 +1,6 @@
-import { contentRules } from '../../../../../vger/packages/sync.core/dist/rules/default-rules.js';
-import { TRUST_LEVEL_ORDER } from '../../../../../one/packages/trust.core/src/types/trust-types.js';
-import type { TrustLevel } from '../../../../../one/packages/trust.core/src/types/trust-types.js';
+import { contentRules } from '@refinio/sync.core/rules/default-rules.js';
+import { TRUST_LEVEL_ORDER } from '@refinio/trust.core/types/trust-types.js';
+import type { TrustLevel } from '@refinio/trust.core/types/trust-types.js';
 
 type SyncRule = typeof contentRules extends Map<string, infer Value> ? Value : never;
 

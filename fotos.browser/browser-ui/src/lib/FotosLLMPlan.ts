@@ -1,5 +1,5 @@
 import { getTextGenerationModels, type ModelInfo } from '@refinio/local.core';
-import { LLMManager } from '../../../../../vger/packages/agent.core/dist/services/llm-manager.js';
+import { LLMManager } from '@refinio/agent.core/services/llm-manager.js';
 import type { ChatMessage } from '@vger/vger.core/services/llm-platform.js';
 import { BrowserLLMPlatform } from '../../../../../vger/packages/vger.browser/adapters/browser-llm-platform.ts';
 import {
