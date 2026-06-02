@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Search, FolderOpen, Download, SlidersHorizontal, ChevronLeft, ChevronRight, ChevronDown, Trash2, Check, Plus } from 'lucide-react';
+import { Search, FolderOpen, Download, SlidersHorizontal, ChevronLeft, ChevronRight, ChevronDown, Trash2, Check, Plus, Link } from 'lucide-react';
 import type { FotosSettings, StorageMode, DisplaySettings, PhotoEntry } from '@/types/fotos';
 import type { FotosModel } from '@/lib/onecore-boot';
 import type { FaceClusterSummary, SimilarFaceMatch } from '@/lib/cluster-gallery';
@@ -97,6 +97,15 @@ interface SidebarProps {
     onDeletePhoto: (hash: string) => void;
     onRenameFace: (clusterId: string, name: string) => Promise<void> | void;
     onDeleteFace: (clusterId: string) => void;
+    galleryShareInvite?: {
+        url: string;
+        pin: string;
+        payload: {
+            expiresAt: string;
+        };
+    } | null;
+    creatingGalleryShareInvite?: boolean;
+    onCreateGalleryShareInvite?: () => Promise<void> | void;
     sharePeerOptions: SharePeerOption[];
     gallerySharePersonIds: string[];
     collectionSharePersonIds: Record<string, string[]>;
@@ -154,6 +163,9 @@ export function Sidebar({
     onDeletePhoto,
     onRenameFace,
     onDeleteFace,
+    galleryShareInvite,
+    creatingGalleryShareInvite,
+    onCreateGalleryShareInvite,
     sharePeerOptions,
     gallerySharePersonIds,
     collectionSharePersonIds,
@@ -266,6 +278,9 @@ export function Sidebar({
                             onRenameCollection={onRenameCollection}
                             onDeleteCollection={onDeleteCollection}
                             clusters={allClusters}
+                            galleryShareInvite={galleryShareInvite}
+                            creatingGalleryShareInvite={creatingGalleryShareInvite}
+                            onCreateGalleryShareInvite={onCreateGalleryShareInvite}
                             sharePeerOptions={sharePeerOptions}
                             gallerySharePersonIds={gallerySharePersonIds}
                             collectionSharePersonIds={collectionSharePersonIds}
@@ -423,6 +438,9 @@ export function Sidebar({
                         onRenameCollection={onRenameCollection}
                         onDeleteCollection={onDeleteCollection}
                         clusters={allClusters}
+                        galleryShareInvite={galleryShareInvite}
+                        creatingGalleryShareInvite={creatingGalleryShareInvite}
+                        onCreateGalleryShareInvite={onCreateGalleryShareInvite}
                         sharePeerOptions={sharePeerOptions}
                         gallerySharePersonIds={gallerySharePersonIds}
                         collectionSharePersonIds={collectionSharePersonIds}
@@ -1542,6 +1560,9 @@ function ManageTab({
     onRenameCollection,
     onDeleteCollection,
     clusters,
+    galleryShareInvite,
+    creatingGalleryShareInvite,
+    onCreateGalleryShareInvite,
     sharePeerOptions,
     gallerySharePersonIds,
     collectionSharePersonIds,
@@ -1568,6 +1589,15 @@ function ManageTab({
     onRenameCollection: (collectionId: string, name: string) => void;
     onDeleteCollection: (collectionId: string) => void;
     clusters: FaceClusterSummary[];
+    galleryShareInvite?: {
+        url: string;
+        pin: string;
+        payload: {
+            expiresAt: string;
+        };
+    } | null;
+    creatingGalleryShareInvite?: boolean;
+    onCreateGalleryShareInvite?: () => Promise<void> | void;
     sharePeerOptions: SharePeerOption[];
     gallerySharePersonIds: string[];
     collectionSharePersonIds: Record<string, string[]>;
@@ -1581,6 +1611,56 @@ function ManageTab({
 }) {
     return (
         <>
+            <SectionLabel>Sharing</SectionLabel>
+            <CollapsibleSection label="Share gallery">
+                <div className="space-y-2">
+                    {onCreateGalleryShareInvite && (
+                        <button
+                            type="button"
+                            disabled={creatingGalleryShareInvite}
+                            onClick={() => {
+                                void onCreateGalleryShareInvite();
+                            }}
+                            className={`flex w-full items-center justify-center gap-2 rounded-md border px-2.5 py-1.5 text-[10px] uppercase tracking-[0.16em] transition-colors ${
+                                creatingGalleryShareInvite
+                                    ? 'border-white/10 bg-white/5 text-white/20 cursor-wait'
+                                    : 'border-[#e94560]/25 bg-[#e94560]/10 text-[#ff9db0] hover:bg-[#e94560]/16'
+                            }`}
+                        >
+                            <Link className="h-3 w-3" />
+                            {creatingGalleryShareInvite ? 'Creating link' : 'Create share link'}
+                        </button>
+                    )}
+                    {galleryShareInvite && (
+                        <div className="space-y-1.5 rounded-md border border-white/10 bg-black/20 p-2">
+                            <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[10px]">
+                                <span className="text-white/25">PIN</span>
+                                <span className="font-mono text-[#ffb5c3]">{galleryShareInvite.pin}</span>
+                                <span className="text-white/25">Expires</span>
+                                <span className="text-white/45">
+                                    {new Date(galleryShareInvite.payload.expiresAt).toLocaleString()}
+                                </span>
+                            </div>
+                            <input
+                                readOnly
+                                value={galleryShareInvite.url}
+                                onFocus={event => event.currentTarget.select()}
+                                className="w-full rounded-sm border border-white/10 bg-white/5 px-2 py-1 font-mono text-[9px] text-white/45"
+                            />
+                        </div>
+                    )}
+                    <div className="pt-1">
+                        <div className="mb-1 text-[10px] uppercase tracking-[0.16em] text-white/22">Existing people</div>
+                        <ShareWithField
+                            value={gallerySharePersonIds}
+                            peers={sharePeerOptions}
+                            onChange={onGalleryShareChange}
+                            emptyLabel="No gallery peers selected"
+                        />
+                    </div>
+                </div>
+            </CollapsibleSection>
+
             {(folderName || onOpenFolder || onRescan || onReanalyze) && (
                 <CollapsibleSection
                     label="Folder"
@@ -1674,20 +1754,6 @@ function ManageTab({
                 <Download className="w-3 h-3" />
                 Export as HTML
             </button>
-
-            <CollapsibleSection label="Gallery Sharing">
-                <div className="space-y-2">
-                    <div className="text-[10px] leading-relaxed text-white/30">
-                        Grant synced gallery access to selected glue.one identities.
-                    </div>
-                    <ShareWithField
-                        value={gallerySharePersonIds}
-                        peers={sharePeerOptions}
-                        onChange={onGalleryShareChange}
-                        emptyLabel="No gallery peers selected"
-                    />
-                </div>
-            </CollapsibleSection>
 
             <CollapsibleSection label="Collection Sharing" defaultOpen={collections.length > 0}>
                 {collections.length === 0 ? (

@@ -43,8 +43,17 @@ import {
 } from '@/lib/photoRoute';
 import { resolveGlueIdentityState } from '@/lib/glueIdentityState';
 import { resolveTokenToPersonId, type SharePeerOption } from '@/components/ShareWithField';
+import { writeStoredSidebarTab } from '@/lib/authFlowState';
+import {
+    createFotosShareInvite,
+    parseFotosShareInviteUrl,
+    verifyFotosShareInvitePin,
+    type CreatedFotosShareInvite,
+    type FotosShareInvitePayload,
+} from '@/lib/fotosShareInvite';
 import { DEBUG_REGISTRATION_TOKEN, DEBUG_REGISTRATION_TTL_MS } from './config';
 import { setFotosRuntimeSnapshot, setFotosRuntimeVisiblePhotos } from './lib/runtimeDiagnostics';
+import { determineAccessibleHashes } from '@refinio/one.core/lib/util/determine-accessible-hashes.js';
 
 interface AppProps {
     fotosModel?: FotosModel;
@@ -61,6 +70,8 @@ interface PersistedShareContact {
     displayName: string | null;
     glueIdentity: string | null;
 }
+
+type IncomingShareInviteStatus = 'idle' | 'verifying' | 'preparing' | 'connecting' | 'accepted' | 'error';
 
 function getCurrentRouteLocation(): RouteLocationSnapshot {
     if (typeof window === 'undefined') {
@@ -185,6 +196,15 @@ interface FotosDebugApi {
         requested: boolean;
         state: string | null;
     };
+    createGalleryShareInvite: () => Promise<{
+        url: string;
+        pin: string;
+        expiresAt: string;
+    }>;
+    acceptGalleryShareInvite: (pin: string) => Promise<{
+        accepted: true;
+        senderPersonId: string;
+    }>;
     forceRouteKeyConnect: (personId: string, keySource?: 'advertised' | 'certified') => Promise<{
         started: true;
         encryptionKey: string;
@@ -192,6 +212,15 @@ interface FotosDebugApi {
         keySource: 'advertised' | 'certified';
     }>;
     grantFotosAccess: (personId: string) => Promise<{ granted: true; personId: string }>;
+    getAccessibleRootSummary: (personId: string) => Promise<Array<{
+        type: string;
+        oneType: string | null;
+        hash: string | null;
+        idHash: string | null;
+        node: string | null;
+        dataType: string | null;
+        dataIdHash: string | null;
+    }>>;
     getFotosSyncState: () => Promise<FotosShareSnapshot>;
     getShareState: () => Promise<FotosShareSnapshot>;
     getGalleryState: () => {
@@ -256,6 +285,20 @@ export function App({ fotosModel: initialModel }: AppProps) {
     const [contactPersonIds, setContactPersonIds] = useState<string[]>([]);
     const [exportingPhotos, setExportingPhotos] = useState(false);
     const [shareManifestHash, setShareManifestHash] = useState<string | null>(null);
+    const [createdShareInvite, setCreatedShareInvite] = useState<CreatedFotosShareInvite | null>(null);
+    const [creatingShareInvite, setCreatingShareInvite] = useState(false);
+    const [incomingShareInvite, setIncomingShareInvite] = useState<FotosShareInvitePayload | null>(() =>
+        typeof window === 'undefined' ? null : parseFotosShareInviteUrl(window.location.href),
+    );
+    const [incomingSharePin, setIncomingSharePin] = useState(() => {
+        try {
+            return sessionStorage.getItem('fotos.pendingSharePin') ?? '';
+        } catch {
+            return '';
+        }
+    });
+    const [incomingShareStatus, setIncomingShareStatus] = useState<IncomingShareInviteStatus>('idle');
+    const [incomingShareError, setIncomingShareError] = useState<string | null>(null);
 
     // Wire up model updater so async state changes (e.g. headlessConnected) trigger re-renders
     useEffect(() => {
@@ -281,6 +324,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
         folder: headlessUrl ? headlessFolder : undefined,
     });
     const scrollRef = useRef<HTMLDivElement>(null);
+    const pendingGalleryInviteTokensRef = useRef(new Set<string>());
     const [routeLocation, setRouteLocation] = useState<RouteLocationSnapshot>(getCurrentRouteLocation);
     const selectedPhotoHashSet = useMemo(() => new Set(selectedPhotoHashes), [selectedPhotoHashes]);
     const selectedClusterIdSet = useMemo(() => new Set(selectedClusterIds), [selectedClusterIds]);
@@ -675,6 +719,197 @@ export function App({ fotosModel: initialModel }: AppProps) {
         fotosCollections.setClusterSharePersonIds(clusterId, nextPersonIds);
         await grantNewPeers(previousIds, nextPersonIds);
     }, [fotosCollections, grantNewPeers]);
+
+    useEffect(() => {
+        const pairing = fotosModel?.connectionsModel?.pairing;
+        if (!pairing) {
+            return;
+        }
+
+        const disconnect = pairing.onPairingSuccess(async (
+            initiatedLocally,
+            _localPersonId,
+            _localInstanceId,
+            remotePersonId,
+            _remoteInstanceId,
+            token,
+        ) => {
+            if (!token || !pendingGalleryInviteTokensRef.current.has(token)) {
+                return;
+            }
+
+            const normalizedRemotePersonId = String(remotePersonId);
+            pendingGalleryInviteTokensRef.current.delete(token);
+            const previousIds = fotosCollections.sharing.galleryPersonIds;
+            if (!previousIds.includes(normalizedRemotePersonId)) {
+                fotosCollections.setGallerySharePersonIds([...previousIds, normalizedRemotePersonId]);
+            }
+            await grantPhotosAccessToPeer(normalizedRemotePersonId);
+            (fotosModel.glueModule as { requestPeerConnection?: (targetPersonId: string) => boolean } | null)
+                ?.requestPeerConnection?.(normalizedRemotePersonId);
+        });
+
+        return () => {
+            disconnect();
+        };
+    }, [
+        fotosCollections,
+        fotosModel?.connectionsModel?.pairing,
+        fotosModel?.glueModule,
+        grantPhotosAccessToPeer,
+    ]);
+
+    const createGalleryShareInvite = useCallback(async (): Promise<CreatedFotosShareInvite> => {
+        if (!fotosModel?.connectionsModel?.pairing || !fotosModel.publicationIdentity) {
+            throw new Error('Enable sync and prepare your fotos identity before creating a share link.');
+        }
+
+        const pairingInvitation = await fotosModel.connectionsModel.pairing.createInvitation(
+            fotosModel.publicationIdentity,
+            undefined,
+            { mode: 'primed' },
+        );
+        const shareBaseUrl = new URL(window.location.href);
+        shareBaseUrl.searchParams.delete('fotosShare');
+        shareBaseUrl.searchParams.delete('fotosAccount');
+        shareBaseUrl.searchParams.delete('fotosAcceptAsNew');
+        shareBaseUrl.searchParams.delete('one_token');
+        shareBaseUrl.hash = '';
+        const invite = await createFotosShareInvite({
+            baseUrl: shareBaseUrl.toString(),
+            pairingInvitation,
+            senderPersonId: String(fotosModel.publicationIdentity),
+            galleryName: gallery.folder.folderName,
+            openInNewAccount: true,
+        });
+        pendingGalleryInviteTokensRef.current.add(pairingInvitation.token);
+        setCreatedShareInvite(invite);
+        return invite;
+    }, [
+        fotosModel?.connectionsModel?.pairing,
+        fotosModel?.publicationIdentity,
+        gallery.folder.folderName,
+    ]);
+
+    const handleCreateGalleryShareInvite = useCallback(async () => {
+        setCreatingShareInvite(true);
+        try {
+            await createGalleryShareInvite();
+        } catch (error) {
+            console.warn('[fotos.share] Failed to create gallery invite:', error);
+        } finally {
+            setCreatingShareInvite(false);
+        }
+    }, [createGalleryShareInvite]);
+
+    const acceptIncomingGalleryShareInvite = useCallback(async (pin: string) => {
+        if (!incomingShareInvite) {
+            throw new Error('No fotos share invite is pending.');
+        }
+        const validPin = await verifyFotosShareInvitePin(incomingShareInvite, pin);
+        if (!validPin) {
+            throw new Error('The PIN does not match this share link.');
+        }
+
+        if (!fotosModel?.initialized) {
+            throw new Error('fotos is still opening the share.');
+        }
+
+        if (!fotosModel.connectionsModel?.pairing) {
+            setIncomingShareStatus('preparing');
+            const guestSuffix = typeof crypto?.randomUUID === 'function'
+                ? crypto.randomUUID().slice(0, 8)
+                : Math.random().toString(16).slice(2, 10);
+            await ensureConfiguredGlueIdentity(
+                fotosModel.settingsPlan,
+                fotosModel.leuteModel,
+                `Fotos Guest ${guestSuffix}`,
+                fotosModel.ownerId,
+            );
+            await fotosModel.settingsPlan.updateSection({
+                moduleId: 'glue',
+                values: { syncEnabled: true },
+            });
+            try {
+                sessionStorage.setItem('fotos.pendingSharePin', pin.trim());
+            } catch {}
+            window.location.reload();
+            return {
+                accepted: true as const,
+                senderPersonId: incomingShareInvite.senderPersonId,
+            };
+        }
+
+        const localPersonId = fotosModel.publicationIdentity ?? fotosModel.ownerId;
+        if (!localPersonId) {
+            throw new Error('No local fotos identity is available for accepting the share.');
+        }
+
+        setIncomingShareStatus('connecting');
+        await fotosModel.connectionsModel.pairing.connectUsingInvitation(
+            incomingShareInvite.pairingInvitation,
+            localPersonId,
+            { mode: 'primed' },
+        );
+        (fotosModel.glueModule as { requestPeerConnection?: (targetPersonId: string) => boolean } | null)
+            ?.requestPeerConnection?.(incomingShareInvite.senderPersonId);
+        try {
+            sessionStorage.removeItem('fotos.pendingSharePin');
+        } catch {}
+        setIncomingShareStatus('accepted');
+        return {
+            accepted: true as const,
+            senderPersonId: incomingShareInvite.senderPersonId,
+        };
+    }, [
+        fotosModel?.connectionsModel?.pairing,
+        fotosModel?.initialized,
+        fotosModel?.leuteModel,
+        fotosModel?.ownerId,
+        fotosModel?.publicationIdentity,
+        fotosModel?.settingsPlan,
+        incomingShareInvite,
+    ]);
+
+    const handleAcceptIncomingGalleryShareInvite = useCallback(async () => {
+        setIncomingShareStatus('verifying');
+        setIncomingShareError(null);
+        try {
+            await acceptIncomingGalleryShareInvite(incomingSharePin);
+        } catch (error) {
+            setIncomingShareStatus('error');
+            setIncomingShareError(error instanceof Error ? error.message : String(error));
+        }
+    }, [acceptIncomingGalleryShareInvite, incomingSharePin]);
+
+    useEffect(() => {
+        if (!incomingShareInvite || incomingSharePin.length !== 4 || incomingShareStatus !== 'idle') {
+            return;
+        }
+
+        let cancelled = false;
+        void (async () => {
+            if (fotosModel?.connectionsModel?.pairing && !cancelled) {
+                await acceptIncomingGalleryShareInvite(incomingSharePin);
+            }
+        })().catch(error => {
+            if (!cancelled) {
+                setIncomingShareStatus('error');
+                setIncomingShareError(error instanceof Error ? error.message : String(error));
+            }
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        acceptIncomingGalleryShareInvite,
+        fotosModel?.connectionsModel?.pairing,
+        incomingShareInvite,
+        incomingShareStatus,
+        incomingSharePin.length,
+        incomingSharePin,
+    ]);
 
     const mobile = gallery.folder.mobile;
     const intakePlan = gallery.folder.defaultIntakePlan;
@@ -1673,6 +1908,15 @@ export function App({ fotosModel: initialModel }: AppProps) {
                     state: glueModuleWithRequest?.getPeerConnectionState?.(personId) ?? null,
                 };
             },
+            createGalleryShareInvite: async () => {
+                const invite = await createGalleryShareInvite();
+                return {
+                    url: invite.url,
+                    pin: invite.pin,
+                    expiresAt: invite.payload.expiresAt,
+                };
+            },
+            acceptGalleryShareInvite: async (pin: string) => await acceptIncomingGalleryShareInvite(pin),
             forceRouteKeyConnect: async (personId: string, keySource: 'advertised' | 'certified' = 'advertised') => {
                 const activeModel = debugRuntimeRef.current.model;
                 if (
@@ -1705,18 +1949,11 @@ export function App({ fotosModel: initialModel }: AppProps) {
                     requestPeerConnection?: (targetPersonId: string) => boolean;
                 };
                 const transportCapabilities = presenceService.getTransportCapabilities(personId) ?? ['webrtc', 'commserver-relay'];
-                if (
+                const requested =
                     keySource !== 'certified' &&
-                    typeof glueModuleWithRequest.requestPeerConnection === 'function' &&
-                    glueModuleWithRequest.requestPeerConnection(personId)
-                ) {
-                    return {
-                        started: true as const,
-                        encryptionKey,
-                        transportCapabilities,
-                        keySource: 'advertised' as const,
-                    };
-                }
+                    typeof glueModuleWithRequest.requestPeerConnection === 'function'
+                        ? glueModuleWithRequest.requestPeerConnection(personId)
+                        : false;
 
                 await activeModel.connectionModule?.connectToPeerByKey(
                     encryptionKey,
@@ -1727,6 +1964,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
 
                 return {
                     started: true as const,
+                    requested,
                     encryptionKey,
                     transportCapabilities,
                     keySource:
@@ -1742,6 +1980,18 @@ export function App({ fotosModel: initialModel }: AppProps) {
                     granted: true as const,
                     personId,
                 };
+            },
+            getAccessibleRootSummary: async (personId: string) => {
+                const roots = await determineAccessibleHashes(personId as any, false, undefined);
+                return roots.map(root => ({
+                    type: String(root.type),
+                    oneType: typeof (root as any).oneType === 'string' ? (root as any).oneType : null,
+                    hash: typeof (root as any).hash === 'string' ? (root as any).hash : null,
+                    idHash: typeof (root as any).idHash === 'string' ? (root as any).idHash : null,
+                    node: typeof (root as any).node === 'string' ? (root as any).node : null,
+                    dataType: typeof (root as any).dataType === 'string' ? (root as any).dataType : null,
+                    dataIdHash: typeof (root as any).dataIdHash === 'string' ? (root as any).dataIdHash : null,
+                }));
             },
             getFotosSyncState: async () => {
                 await fotosShareController.refreshManifest();
@@ -2055,6 +2305,9 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         onDeletePhoto={handleDelete}
                         onRenameFace={handleRenameFace}
                         onDeleteFace={handleDeleteFace}
+                        galleryShareInvite={createdShareInvite}
+                        creatingGalleryShareInvite={creatingShareInvite}
+                        onCreateGalleryShareInvite={handleCreateGalleryShareInvite}
                         sharePeerOptions={sharePeerOptions}
                         gallerySharePersonIds={fotosCollections.sharing.galleryPersonIds}
                         collectionSharePersonIds={fotosCollections.sharing.collectionPersonIds}
@@ -2086,6 +2339,96 @@ export function App({ fotosModel: initialModel }: AppProps) {
     return (
         <>
             {appContent}
+            {incomingShareInvite && incomingShareStatus !== 'accepted' && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+                    <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#141414] p-4 shadow-2xl">
+                        <div className="space-y-1">
+                            <div className="text-sm font-medium text-white/85">Open shared gallery</div>
+                            <div className="text-xs leading-relaxed text-white/38">
+                                {incomingShareInvite.galleryName ?? 'Shared gallery'} from {incomingShareInvite.senderPersonId.slice(0, 12)}
+                            </div>
+                        </div>
+                        <div className="mt-4 space-y-3">
+                            <input
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                maxLength={4}
+                                value={incomingSharePin}
+                                onChange={event => {
+                                    setIncomingSharePin(event.target.value.replace(/\D/g, '').slice(0, 4));
+                                    if (incomingShareError) {
+                                        setIncomingShareError(null);
+                                        setIncomingShareStatus('idle');
+                                    }
+                                }}
+                                placeholder="PIN"
+                                className="w-full rounded-md border border-white/10 bg-black/25 px-3 py-2 text-center font-mono text-lg tracking-[0.4em] text-white/80 placeholder:text-white/18 focus:border-[#e94560]/50 focus:outline-none"
+                            />
+                            {incomingShareError && (
+                                <div className="rounded-md border border-[#e94560]/25 bg-[#e94560]/10 px-2.5 py-2 text-xs text-[#ffb5c3]">
+                                    {incomingShareError}
+                                </div>
+                            )}
+                            <button
+                                type="button"
+                                disabled={incomingSharePin.length !== 4 || incomingShareStatus === 'verifying' || incomingShareStatus === 'preparing' || incomingShareStatus === 'connecting'}
+                                onClick={() => {
+                                    void handleAcceptIncomingGalleryShareInvite();
+                                }}
+                                className={`w-full rounded-md px-3 py-2 text-xs font-medium transition-colors ${
+                                    incomingSharePin.length !== 4 || incomingShareStatus === 'verifying' || incomingShareStatus === 'preparing' || incomingShareStatus === 'connecting'
+                                        ? 'bg-white/5 text-white/22 cursor-wait'
+                                        : 'bg-[#e94560] text-white hover:bg-[#d13354]'
+                                }`}
+                            >
+                                {incomingShareStatus === 'preparing'
+                                    ? 'Preparing secure sync...'
+                                    : incomingShareStatus === 'connecting'
+                                        ? 'Syncing shared gallery...'
+                                        : incomingShareStatus === 'verifying'
+                                            ? 'Checking PIN...'
+                                            : 'Unlock gallery'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setIncomingShareInvite(null)}
+                                className="w-full rounded-md px-3 py-1.5 text-xs text-white/30 transition-colors hover:text-white/55"
+                            >
+                                Not now
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {incomingShareInvite && incomingShareStatus === 'accepted' && (
+                <div className="fixed bottom-4 left-1/2 z-40 w-[min(92vw,520px)] -translate-x-1/2 rounded-xl border border-white/10 bg-[#141414]/95 p-3 shadow-2xl backdrop-blur">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <div className="min-w-0 flex-1">
+                            <div className="text-xs font-medium text-white/80">Shared gallery is syncing</div>
+                            <div className="text-[11px] text-white/35">Photos will appear as they arrive. Identity setup can wait.</div>
+                        </div>
+                        <div className="flex gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setIncomingShareInvite(null)}
+                                className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] text-white/55 transition-colors hover:bg-white/10 hover:text-white/75"
+                            >
+                                Later
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    writeStoredSidebarTab('settings');
+                                    setIncomingShareInvite(null);
+                                }}
+                                className="rounded-md bg-[#e94560] px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-[#d13354]"
+                            >
+                                Use my ID
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             <UpdatePrompt />
         </>
     );
