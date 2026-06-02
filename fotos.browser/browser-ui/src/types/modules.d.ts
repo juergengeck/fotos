@@ -22,14 +22,25 @@ declare module '@OneObjectInterfaces' {
         FotosEntry: import('../../../../fotos.core/src/recipes/FotosRecipes.js').FotosEntry;
         FotosManifest: import('../../../../fotos.core/src/recipes/FotosRecipes.js').FotosManifest;
         FotosAuthenticityAttestation: import('../../../../fotos.core/src/recipes/FotosRecipes.js').FotosAuthenticityAttestation;
+        FotosDeviceBook: import('../../../../fotos.core/src/recipes/FotosDeviceBookRecipes.js').FotosDeviceBook;
         FotosMediaVariant: import('../../../../fotos.core/src/recipes/FotosMediaRecipes.js').FotosMediaVariant;
         FotosMediaLocator: import('../../../../fotos.core/src/recipes/FotosMediaRecipes.js').FotosMediaLocator;
+        Book: import('../../../../../one/packages/source.core/dist/recipes/index.js').Book;
+        BookProjection: import('../../../../../one/packages/source.core/dist/recipes/index.js').BookProjection;
+        BookRecoveryRequest: import('../../../../../one/packages/source.core/dist/recipes/index.js').BookRecoveryRequest;
+        BookTombstone: import('../../../../../one/packages/source.core/dist/recipes/index.js').BookTombstone;
+        Library: import('../../../../../one/packages/source.core/dist/recipes/index.js').Library;
+        Source: import('../../../../../one/packages/source.core/dist/recipes/index.js').Source;
+        SourceEntry: import('../../../../../one/packages/source.core/dist/recipes/index.js').SourceEntry;
+        SourceRun: import('../../../../../one/packages/source.core/dist/recipes/index.js').SourceRun;
+        SourceRegistryRoot: import('../../../../../one/packages/source.core/dist/recipes/index.js').SourceRegistryRoot;
     }
 
     export interface OneIdObjectInterfaces {
         FotosEntry: Pick<import('../../../../fotos.core/src/recipes/FotosRecipes.js').FotosEntry, '$type$' | 'contentHash'>;
         FotosManifest: Pick<import('../../../../fotos.core/src/recipes/FotosRecipes.js').FotosManifest, '$type$' | 'id'>;
         FotosAuthenticityAttestation: Pick<import('../../../../fotos.core/src/recipes/FotosRecipes.js').FotosAuthenticityAttestation, '$type$' | 'id'>;
+        FotosDeviceBook: Pick<import('../../../../fotos.core/src/recipes/FotosDeviceBookRecipes.js').FotosDeviceBook, '$type$' | 'id'>;
         FotosMediaVariant: Pick<import('../../../../fotos.core/src/recipes/FotosMediaRecipes.js').FotosMediaVariant, '$type$' | 'contentHash'>;
         FotosMediaLocator: Pick<import('../../../../fotos.core/src/recipes/FotosMediaRecipes.js').FotosMediaLocator, '$type$' | 'id'>;
     }

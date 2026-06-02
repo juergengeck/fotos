@@ -17,6 +17,7 @@ import type { ConnectionModule as ConnectionModuleType } from '@vger/vger.core/m
 import type { SHA256IdHash } from '@refinio/one.core/lib/util/type-checks.js';
 import type { Person, Recipe } from '@refinio/one.core/lib/recipes.js';
 import type { TrustPlan } from '@refinio/trust.core/plans/TrustPlan.js';
+import { TRUST_LEVEL_ORDER, type TrustLevel } from '@refinio/trust.core/types/trust-types.js';
 
 // ModuleRegistry + modules
 import { ModuleRegistry } from '@refinio/api/plan-system';
@@ -41,7 +42,8 @@ import {
 import { AllRecipes as TrustCoreRecipes } from '@refinio/trust.core/recipes';
 import { CubeCoreRecipes } from '@refinio/cube.core/recipes/index.js';
 import { CHAT_CORE_RECIPES } from '@refinio/chat.core/recipes/index.js';
-import { FotosRecipes } from '@refinio/fotos.core';
+import { FotosRecipes } from '../../../../fotos.core/src/recipes/FotosRecipes.js';
+import { SourceCoreRecipes } from '../../../../../one/packages/source.core/dist/recipes/index.js';
 import {
   SettingsRecipes,
   InstanceSettingsStorage,
@@ -264,7 +266,12 @@ async function initModules(
 
   // Keep the app offline unless sync is explicitly enabled.
   if (syncEnabled && publicationIdentity) {
-    const nextConnectionModule = new ConnectionModule(commServerUrl, API_BASE, undefined);
+    const nextConnectionModule = new ConnectionModule(
+      commServerUrl,
+      undefined,
+      undefined,
+      API_BASE,
+    );
     nextConnectionModule.enableCredentialAutoConnect = false;
     // GlueModule owns live peer dialing in browser mode. Leaving the generic
     // route manager enabled causes it to redial every cached endpoint on boot.
@@ -279,7 +286,8 @@ async function initModules(
       await grantFotosAccess(remotePersonId);
     };
     connectionModuleWithFotos.fotosTrustFilter = async (remotePersonId: SHA256IdHash<Person>) => {
-      return remotePersonId === publicationIdentity;
+      const trustLevel = (await trustModule.trustModel.getTrustLevel(remotePersonId) ?? 'unknown') as TrustLevel;
+      return trustLevel !== 'ignore' && TRUST_LEVEL_ORDER[trustLevel] >= TRUST_LEVEL_ORDER.low;
     };
     registry.register(connectionModule);
 
@@ -392,21 +400,35 @@ export async function bootFotosModel(
   }
 
   // Check for ONE Auth redirect return
+  let accountSelector: string | null = null;
   try {
     const params = new URLSearchParams(window.location.search);
+    accountSelector = params.get('fotosAccount');
     const oneToken = params.get('one_token');
-    if (oneToken) {
+    if (oneToken || accountSelector) {
       // Clean URL immediately
       const cleanUrl = new URL(window.location.href);
       cleanUrl.searchParams.delete('one_token');
+      cleanUrl.searchParams.delete('fotosAccount');
       window.history.replaceState({}, '', cleanUrl.toString());
+    }
+    if (oneToken) {
       // Store for later use
       sessionStorage.setItem('one_auth_token', oneToken);
     }
   } catch {}
 
+  const {
+    creds: { email, secret, instanceName },
+    accountId,
+    source: credentialSource,
+    persistent: credentialsPersisted,
+    sessionScoped,
+    storageDirectory,
+  } = resolveFotosBootCreds({ accountSelector });
+
   const one = new MultiUser({
-    directory: 'fotos.one.storage',
+    directory: storageDirectory,
     recipes: [
       ...RecipesStable,
       ...RecipesExperimental,
@@ -417,20 +439,19 @@ export async function bootFotosModel(
       ...CubeCoreRecipes,
       ...SettingsRecipes,
       ...CHAT_CORE_RECIPES,
+      ...SourceCoreRecipes,
       ...RefinioApiRecipes,
       ...FotosRecipes,
     ] as Recipe[],
   });
   oneInstance = one;
 
-  const {
-    creds: { email, secret, instanceName },
-    source: credentialSource,
-    persistent: credentialsPersisted,
-  } = resolveFotosBootCreds();
   console.log('[fotos.one] Boot credentials:', {
     source: credentialSource,
     persistent: credentialsPersisted,
+    sessionScoped,
+    accountId,
+    storageDirectory,
     email,
     instanceName,
   });
