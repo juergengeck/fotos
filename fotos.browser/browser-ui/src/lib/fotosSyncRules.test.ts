@@ -6,6 +6,7 @@ import {
     canImportFotosDeviceBook,
     canImportFotosEntry,
     canImportFotosManifest,
+    canImportFotosMediaLocator,
     canImportFotosMediaVariant,
     fotosContentRules,
 } from './fotosSyncRules.js';
@@ -79,6 +80,20 @@ describe('fotosSyncRules', () => {
         })).toBe(true);
     });
 
+    it('admits fotos media locators with bounded metadata', () => {
+        expect(canImportFotosMediaLocator(LOW_TRUST_CONTEXT, {
+            $type$: 'FotosMediaLocator',
+            id: 'locator:variant:browser:path',
+            variant: 'variant-id-hash',
+            platform: 'browser',
+            kind: 'relative-path',
+            scope: 'device-local',
+            locator: 'holiday/rose.jpg',
+            deviceId: 'browser-device',
+            lastVerifiedAt: '2024-10-30T09:10:11.000Z',
+        })).toBe(true);
+    });
+
     it('admits fotos authenticity attestations that carry a detached signature and optional cert reference', () => {
         expect(canImportFotosAuthenticityAttestation(LOW_TRUST_CONTEXT, {
             $type$: 'FotosAuthenticityAttestation',
@@ -110,9 +125,21 @@ describe('fotosSyncRules', () => {
         })).toBe(true);
     });
 
-    it('rejects fotos entries from peers below the content trust floor', () => {
+    it('admits structurally valid fotos entries from explicitly granted ad hoc peers', () => {
         expect(canImportFotosEntry({
             peerTrustLevel: 'unknown' as TrustLevel,
+        }, {
+            $type$: 'FotosEntry',
+            contentHash: 'photo-hash',
+            streamId: 'photo-hash',
+            mime: 'image/jpeg',
+            size: 1,
+        })).toBe(true);
+    });
+
+    it('rejects fotos entries from ignored peers', () => {
+        expect(canImportFotosEntry({
+            peerTrustLevel: 'ignore' as TrustLevel,
         }, {
             $type$: 'FotosEntry',
             contentHash: 'photo-hash',
@@ -122,11 +149,52 @@ describe('fotosSyncRules', () => {
         })).toBe(false);
     });
 
+    it('admits Fotos id objects that CHUM fetches before full versioned objects', () => {
+        expect(canImportFotosManifest(LOW_TRUST_CONTEXT, {
+            $type$: 'FotosManifest',
+            id: 'fotos',
+        })).toBe(true);
+        expect(canImportFotosEntry(LOW_TRUST_CONTEXT, {
+            $type$: 'FotosEntry',
+            contentHash: 'photo-hash',
+        })).toBe(true);
+        expect(canImportFotosMediaVariant(LOW_TRUST_CONTEXT, {
+            $type$: 'FotosMediaVariant',
+            contentHash: 'variant-hash',
+        })).toBe(true);
+        expect(canImportFotosMediaLocator(LOW_TRUST_CONTEXT, {
+            $type$: 'FotosMediaLocator',
+            id: 'locator-id',
+        })).toBe(true);
+        expect(canImportFotosAuthenticityAttestation(LOW_TRUST_CONTEXT, {
+            $type$: 'FotosAuthenticityAttestation',
+            id: 'fotos-authenticity-v1:person-1:photo-hash',
+        })).toBe(true);
+        expect(canImportFotosDeviceBook(LOW_TRUST_CONTEXT, {
+            $type$: 'FotosDeviceBook',
+            id: 'fotos-device-book:spark',
+        })).toBe(true);
+    });
+
+    it('does not treat partial full fotos objects as id objects', () => {
+        expect(canImportFotosEntry(LOW_TRUST_CONTEXT, {
+            $type$: 'FotosEntry',
+            contentHash: 'photo-hash',
+            size: 1,
+        })).toBe(false);
+        expect(canImportFotosManifest(LOW_TRUST_CONTEXT, {
+            $type$: 'FotosManifest',
+            id: 'fotos',
+            authenticityAttestations: new Set(['attestation-a']),
+        })).toBe(false);
+    });
+
     it('extends the shared content rules with fotos-specific types', () => {
         expect(fotosContentRules.has('GlueShareManifest')).toBe(true);
         expect(fotosContentRules.has('FotosManifest')).toBe(true);
         expect(fotosContentRules.has('FotosEntry')).toBe(true);
         expect(fotosContentRules.has('FotosMediaVariant')).toBe(true);
+        expect(fotosContentRules.has('FotosMediaLocator')).toBe(true);
         expect(fotosContentRules.has('FotosAuthenticityAttestation')).toBe(true);
         expect(fotosContentRules.has('FotosDeviceBook')).toBe(true);
     });

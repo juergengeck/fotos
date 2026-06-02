@@ -3,9 +3,8 @@
  *
  * Mirrors the glue-manifest-access.ts pattern from connection.core.
  * The manifest has a fixed identity (id: 'fotos') so all instances share
- * the same deterministic idHash. Granting IdAccess on this manifest lets
- * CHUM export the manifest AND all FotosEntry objects referenced via
- * referenceToObj to the granted peer.
+ * the same deterministic idHash. Sharing grants the manifest root and the
+ * current Fotos-owned content object roots referenced by the manifest.
  */
 
 import type { SHA256Hash, SHA256IdHash } from '@refinio/one.core/lib/util/type-checks.js';
@@ -159,6 +158,54 @@ async function buildGrantedRootAccessEntries(
         hashGroup: [],
         mode: SET_ACCESS_MODE.ADD,
     }];
+}
+
+function buildObjectAccessEntries(
+    remotePersonId: SHA256IdHash<Person>,
+    objectHashes: Iterable<string>,
+): Array<Record<string, unknown>> {
+    const uniqueObjectHashes = [...new Set(Array.from(objectHashes).filter(hash => hash.trim().length > 0))];
+
+    return uniqueObjectHashes.map(objectHash => ({
+        object: objectHash as SHA256Hash,
+        person: [remotePersonId],
+        hashGroup: [],
+        mode: SET_ACCESS_MODE.ADD,
+    }));
+}
+
+async function grantManifestContentAccess(
+    remotePersonId: SHA256IdHash<Person>,
+    manifest: FotosManifest,
+): Promise<number> {
+    const objectAccessEntries = buildObjectAccessEntries(remotePersonId, [
+        ...Array.from(manifest.entries ?? [], entryHash => String(entryHash)),
+        ...Array.from(manifest.authenticityAttestations ?? [], attestationHash => String(attestationHash)),
+    ]);
+
+    if (objectAccessEntries.length === 0) {
+        return 0;
+    }
+
+    await createAccess(objectAccessEntries as any);
+    return objectAccessEntries.length;
+}
+
+async function grantObjectAccessToRememberedPeers(
+    rootIdHash: string,
+    objectHashes: Iterable<string>,
+): Promise<void> {
+    const grantedFotosPeerIds = grantedFotosPeersByRootIdHash.get(rootIdHash);
+    if (!grantedFotosPeerIds || grantedFotosPeerIds.size === 0) {
+        return;
+    }
+
+    await Promise.all(Array.from(grantedFotosPeerIds, remotePersonId =>
+        createAccess(buildObjectAccessEntries(
+            remotePersonId as SHA256IdHash<Person>,
+            objectHashes,
+        ) as any),
+    ));
 }
 
 function basenameFromPath(pathValue: string | null | undefined): string | null {
@@ -451,6 +498,7 @@ export async function addEntryToManifest(entryHash: SHA256Hash<FotosEntry>): Pro
         entries,
         authenticityAttestations,
     } as any);
+    await grantObjectAccessToRememberedPeers(String(manifestIdHash), [String(entryHash)]);
     notifyGrantedFotosPeersAboutRootUpdate(String(manifestIdHash));
 
     console.log(`[fotos-manifest] Added entry ${(entryHash as string).substring(0, 12)}, total: ${entries.size}`);
@@ -478,6 +526,7 @@ export async function addAuthenticityAttestationToManifest(
         entries,
         authenticityAttestations,
     } as any);
+    await grantObjectAccessToRememberedPeers(String(manifestIdHash), [String(attestationHash)]);
     notifyGrantedFotosPeersAboutRootUpdate(String(manifestIdHash));
 
     console.log(
@@ -495,6 +544,8 @@ export async function addAuthenticityAttestationToManifest(
  */
 export async function grantFotosAccess(remotePersonId: SHA256IdHash<Person>): Promise<void> {
     const manifestIdHash = await ensureFotosManifest();
+    const currentManifestVersion = await getObjectByIdHash(manifestIdHash);
+    const manifest = currentManifestVersion.obj as unknown as FotosManifest;
 
     console.log(
         `[fotos-manifest] Granting IdAccess on FotosManifest idHash=${(manifestIdHash as string).substring(0, 12)}` +
@@ -504,13 +555,14 @@ export async function grantFotosAccess(remotePersonId: SHA256IdHash<Person>): Pr
     await createAccess(
         await buildGrantedRootAccessEntries(remotePersonId, String(manifestIdHash)) as any,
     );
+    const contentGrantCount = await grantManifestContentAccess(remotePersonId, manifest);
 
     rememberGrantedFotosPeer(String(manifestIdHash), String(remotePersonId));
     if (notifyRemotePeerAboutNewAccessibleRoots(remotePersonId) === 0) {
         notifyAllActiveExportersAboutNewAccessibleRoots();
     }
 
-    console.log('[fotos-manifest] IdAccess granted');
+    console.log(`[fotos-manifest] IdAccess granted, contentRoots=${contentGrantCount}`);
 }
 
 export interface GrantFotosDeviceBookAccessOptions {

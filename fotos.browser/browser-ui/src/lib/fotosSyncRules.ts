@@ -1,5 +1,4 @@
 import { contentRules } from '@refinio/sync.core/rules/default-rules.js';
-import { TRUST_LEVEL_ORDER } from '@refinio/trust.core/types/trust-types.js';
 import type { TrustLevel } from '@refinio/trust.core/types/trust-types.js';
 
 type SyncRule = typeof contentRules extends Map<string, infer Value> ? Value : never;
@@ -20,6 +19,10 @@ const MAX_MEDIA_ROLE_LENGTH = 64;
 const MAX_MEDIA_LABEL_LENGTH = 255;
 const MAX_DEVICE_ID_LENGTH = 255;
 const MAX_DEVICE_TITLE_LENGTH = 255;
+const MAX_MEDIA_LOCATOR_VALUE_LENGTH = 4_096;
+const MAX_MEDIA_LOCATOR_KIND_LENGTH = 64;
+const MAX_MEDIA_LOCATOR_SCOPE_LENGTH = 64;
+const MAX_MEDIA_LOCATOR_PLATFORM_LENGTH = 64;
 
 interface SyncContextLike {
     peerTrustLevel: TrustLevel;
@@ -27,8 +30,8 @@ interface SyncContextLike {
 
 type ImportedObject = Record<string, unknown>;
 
-function meetsContentTrustFloor(context: SyncContextLike): boolean {
-    return TRUST_LEVEL_ORDER[context.peerTrustLevel] >= TRUST_LEVEL_ORDER.low;
+function allowsExplicitFotosShare(context: SyncContextLike): boolean {
+    return context.peerTrustLevel !== 'ignore';
 }
 
 function isStringWithinBounds(value: unknown, maxLength: number): value is string {
@@ -56,6 +59,20 @@ function isOptionalReference(value: unknown): boolean {
     return value === undefined || isStringWithinBounds(value, MAX_REFERENCE_LENGTH);
 }
 
+function hasOnlyKeys(value: Record<string, unknown>, allowedKeys: ReadonlySet<string>): boolean {
+    return Object.keys(value).every(key => allowedKeys.has(key));
+}
+
+function isIdOnlyObject(
+    value: ImportedObject,
+    allowedKeys: ReadonlySet<string>,
+    idKey: string,
+    maxLength: number,
+): boolean {
+    return hasOnlyKeys(value, allowedKeys)
+        && isStringWithinBounds(value[idKey], maxLength);
+}
+
 function isStringSetWithinBounds(value: unknown, maxEntries: number, maxLength: number): value is Set<string> {
     if (!(value instanceof Set) || value.size > maxEntries) {
         return false;
@@ -71,11 +88,14 @@ function isStringSetWithinBounds(value: unknown, maxEntries: number, maxLength: 
 }
 
 export function canImportFotosManifest(context: SyncContextLike, obj?: object): boolean {
-    if (!meetsContentTrustFloor(context) || !obj) {
+    if (!allowsExplicitFotosShare(context) || !obj) {
         return false;
     }
 
     const manifest = obj as ImportedObject;
+    if (isIdOnlyObject(manifest, new Set(['$type$', 'id']), 'id', MAX_PATH_LENGTH)) {
+        return manifest.id === 'fotos';
+    }
 
     return manifest.id === 'fotos'
         && isStringSetWithinBounds(
@@ -94,12 +114,15 @@ export function canImportFotosManifest(context: SyncContextLike, obj?: object): 
 }
 
 export function canImportFotosEntry(context: SyncContextLike, obj?: object): boolean {
-    if (!meetsContentTrustFloor(context) || !obj) {
+    if (!allowsExplicitFotosShare(context) || !obj) {
         return false;
     }
 
     const entry = obj as ImportedObject;
     const faceCount = entry.faceCount;
+    if (isIdOnlyObject(entry, new Set(['$type$', 'contentHash']), 'contentHash', MAX_REFERENCE_LENGTH)) {
+        return true;
+    }
 
     return isStringWithinBounds(entry.contentHash, MAX_REFERENCE_LENGTH)
         && isStringWithinBounds(entry.streamId, MAX_REFERENCE_LENGTH)
@@ -135,11 +158,14 @@ export function canImportFotosEntry(context: SyncContextLike, obj?: object): boo
 }
 
 export function canImportFotosMediaVariant(context: SyncContextLike, obj?: object): boolean {
-    if (!meetsContentTrustFloor(context) || !obj) {
+    if (!allowsExplicitFotosShare(context) || !obj) {
         return false;
     }
 
     const variant = obj as ImportedObject;
+    if (isIdOnlyObject(variant, new Set(['$type$', 'contentHash']), 'contentHash', MAX_REFERENCE_LENGTH)) {
+        return true;
+    }
 
     return isStringWithinBounds(variant.contentHash, MAX_REFERENCE_LENGTH)
         && isStringWithinBounds(variant.family, MAX_REFERENCE_LENGTH)
@@ -155,11 +181,14 @@ export function canImportFotosMediaVariant(context: SyncContextLike, obj?: objec
 }
 
 export function canImportFotosAuthenticityAttestation(context: SyncContextLike, obj?: object): boolean {
-    if (!meetsContentTrustFloor(context) || !obj) {
+    if (!allowsExplicitFotosShare(context) || !obj) {
         return false;
     }
 
     const attestation = obj as ImportedObject;
+    if (isIdOnlyObject(attestation, new Set(['$type$', 'id']), 'id', MAX_PATH_LENGTH)) {
+        return true;
+    }
 
     return isStringWithinBounds(attestation.id, MAX_PATH_LENGTH)
         && isStringWithinBounds(attestation.contentHash, MAX_REFERENCE_LENGTH)
@@ -171,11 +200,14 @@ export function canImportFotosAuthenticityAttestation(context: SyncContextLike, 
 }
 
 export function canImportFotosDeviceBook(context: SyncContextLike, obj?: object): boolean {
-    if (!meetsContentTrustFloor(context) || !obj) {
+    if (!allowsExplicitFotosShare(context) || !obj) {
         return false;
     }
 
     const book = obj as ImportedObject;
+    if (isIdOnlyObject(book, new Set(['$type$', 'id']), 'id', MAX_PATH_LENGTH)) {
+        return true;
+    }
 
     return isStringWithinBounds(book.id, MAX_PATH_LENGTH)
         && isStringWithinBounds(book.deviceId, MAX_DEVICE_ID_LENGTH)
@@ -210,6 +242,26 @@ export function canImportFotosDeviceBook(context: SyncContextLike, obj?: object)
         && isOptionalNonNegativeNumber(book.updatedAt);
 }
 
+export function canImportFotosMediaLocator(context: SyncContextLike, obj?: object): boolean {
+    if (!allowsExplicitFotosShare(context) || !obj) {
+        return false;
+    }
+
+    const locator = obj as ImportedObject;
+    if (isIdOnlyObject(locator, new Set(['$type$', 'id']), 'id', MAX_PATH_LENGTH)) {
+        return true;
+    }
+
+    return isStringWithinBounds(locator.id, MAX_PATH_LENGTH)
+        && isStringWithinBounds(locator.variant, MAX_REFERENCE_LENGTH)
+        && isStringWithinBounds(locator.platform, MAX_MEDIA_LOCATOR_PLATFORM_LENGTH)
+        && isStringWithinBounds(locator.kind, MAX_MEDIA_LOCATOR_KIND_LENGTH)
+        && isStringWithinBounds(locator.scope, MAX_MEDIA_LOCATOR_SCOPE_LENGTH)
+        && isStringWithinBounds(locator.locator, MAX_MEDIA_LOCATOR_VALUE_LENGTH)
+        && isOptionalStringWithinBounds(locator.deviceId, MAX_DEVICE_ID_LENGTH)
+        && isOptionalStringWithinBounds(locator.lastVerifiedAt, MAX_TIMESTAMP_LENGTH);
+}
+
 const fotosManifestRule: SyncRule = {
     canImport: canImportFotosManifest,
 };
@@ -230,9 +282,14 @@ const fotosDeviceBookRule: SyncRule = {
     canImport: canImportFotosDeviceBook,
 };
 
+const fotosMediaLocatorRule: SyncRule = {
+    canImport: canImportFotosMediaLocator,
+};
+
 export const fotosContentRules = new Map(contentRules);
 fotosContentRules.set('FotosManifest', fotosManifestRule);
 fotosContentRules.set('FotosEntry', fotosEntryRule);
 fotosContentRules.set('FotosMediaVariant', fotosMediaVariantRule);
+fotosContentRules.set('FotosMediaLocator', fotosMediaLocatorRule);
 fotosContentRules.set('FotosAuthenticityAttestation', fotosAuthenticityAttestationRule);
 fotosContentRules.set('FotosDeviceBook', fotosDeviceBookRule);
