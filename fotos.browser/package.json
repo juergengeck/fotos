@@ -13,6 +13,7 @@
     "build": "cd browser-ui && npm run build",
     "test:integration:fotos-share": "cd browser-ui && npm run test:integration:fotos-share",
     "test:integration:fotos-id-share": "cd browser-ui && npm run test:integration:fotos-id-share",
+    "test:integration:fotos-adhoc-gallery-share": "cd browser-ui && npm run test:integration:fotos-adhoc-gallery-share",
     "typecheck": "cd browser-ui && tsc --noEmit"
   }
 }

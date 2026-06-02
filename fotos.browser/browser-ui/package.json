@@ -8,8 +8,10 @@
     "build": "vite build",
     "test:integration:fotos-share": "node ./scripts/fotos-browser-sync-dev-integration.mjs",
     "test:integration:fotos-id-share": "bash ./tests/integration/test-fotos-id-share.sh",
+    "test:integration:fotos-adhoc-gallery-share": "bash ./tests/integration/test-fotos-adhoc-gallery-share.sh",
     "test:live:fotos-share": "node ./scripts/fotos-live-integration.mjs",
     "test:live:fotos-id-share": "node ./tests/integration/fotos-id-share-suite.mjs",
+    "test:live:fotos-adhoc-gallery-share": "node ./tests/integration/fotos-adhoc-gallery-share-suite.mjs",
     "test": "node ./scripts/run-vitest.mjs run",
     "typecheck": "tsc --noEmit"
   },
