@@ -100,6 +100,7 @@ interface SidebarProps {
     galleryShareInvite?: {
         url: string;
         pin: string;
+        sharedCount?: number;
         payload: {
             expiresAt: string;
         };
@@ -1592,6 +1593,7 @@ function ManageTab({
     galleryShareInvite?: {
         url: string;
         pin: string;
+        sharedCount?: number;
         payload: {
             expiresAt: string;
         };
@@ -1634,6 +1636,12 @@ function ManageTab({
                     {galleryShareInvite && (
                         <div className="space-y-1.5 rounded-md border border-white/10 bg-black/20 p-2">
                             <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[10px]">
+                                {typeof galleryShareInvite.sharedCount === 'number' && (
+                                    <>
+                                        <span className="text-white/25">Photos</span>
+                                        <span className="text-white/55">{galleryShareInvite.sharedCount}</span>
+                                    </>
+                                )}
                                 <span className="text-white/25">PIN</span>
                                 <span className="font-mono text-[#ffb5c3]">{galleryShareInvite.pin}</span>
                                 <span className="text-white/25">Expires</span>

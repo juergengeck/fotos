@@ -72,6 +72,9 @@ interface PersistedShareContact {
 }
 
 type IncomingShareInviteStatus = 'idle' | 'verifying' | 'preparing' | 'connecting' | 'accepted' | 'error';
+type CreatedGalleryShareInvite = CreatedFotosShareInvite & {
+    sharedCount: number;
+};
 
 function getCurrentRouteLocation(): RouteLocationSnapshot {
     if (typeof window === 'undefined') {
@@ -285,7 +288,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
     const [contactPersonIds, setContactPersonIds] = useState<string[]>([]);
     const [exportingPhotos, setExportingPhotos] = useState(false);
     const [shareManifestHash, setShareManifestHash] = useState<string | null>(null);
-    const [createdShareInvite, setCreatedShareInvite] = useState<CreatedFotosShareInvite | null>(null);
+    const [createdShareInvite, setCreatedShareInvite] = useState<CreatedGalleryShareInvite | null>(null);
     const [creatingShareInvite, setCreatingShareInvite] = useState(false);
     const [incomingShareInvite, setIncomingShareInvite] = useState<FotosShareInvitePayload | null>(() =>
         typeof window === 'undefined' ? null : parseFotosShareInviteUrl(window.location.href),
@@ -759,9 +762,19 @@ export function App({ fotosModel: initialModel }: AppProps) {
         grantPhotosAccessToPeer,
     ]);
 
-    const createGalleryShareInvite = useCallback(async (): Promise<CreatedFotosShareInvite> => {
+    const createGalleryShareInvite = useCallback(async (): Promise<CreatedGalleryShareInvite> => {
         if (!fotosModel?.connectionsModel?.pairing || !fotosModel.publicationIdentity) {
             throw new Error('Enable sync and prepare your fotos identity before creating a share link.');
+        }
+        if (!gallery.folder.isOpen || gallery.folder.entries.length === 0) {
+            throw new Error('Open a gallery with photos before creating a share link.');
+        }
+
+        await gallery.folder.ensureSyncedToOneCore();
+        const manifestSnapshot = await fotosShareController.refreshManifest();
+        const sharedCount = manifestSnapshot?.entryCount ?? 0;
+        if (sharedCount === 0) {
+            throw new Error('No photos are ready to share yet.');
         }
 
         const pairingInvitation = await fotosModel.connectionsModel.pairing.createInvitation(
@@ -783,12 +796,19 @@ export function App({ fotosModel: initialModel }: AppProps) {
             openInNewAccount: true,
         });
         pendingGalleryInviteTokensRef.current.add(pairingInvitation.token);
-        setCreatedShareInvite(invite);
-        return invite;
+        const galleryInvite = {
+            ...invite,
+            sharedCount,
+        };
+        setCreatedShareInvite(galleryInvite);
+        return galleryInvite;
     }, [
         fotosModel?.connectionsModel?.pairing,
         fotosModel?.publicationIdentity,
+        gallery.folder.entries.length,
         gallery.folder.folderName,
+        gallery.folder.isOpen,
+        gallery.folder.ensureSyncedToOneCore,
     ]);
 
     const handleCreateGalleryShareInvite = useCallback(async () => {
@@ -2034,6 +2054,19 @@ export function App({ fotosModel: initialModel }: AppProps) {
         };
     }, []);
 
+    const incomingShareBusy = incomingShareStatus === 'verifying'
+        || incomingShareStatus === 'preparing'
+        || incomingShareStatus === 'connecting';
+    const incomingShareStatusLabel = incomingShareStatus === 'preparing'
+        ? 'Preparing secure sync...'
+        : incomingShareStatus === 'connecting'
+            ? 'Syncing shared gallery...'
+            : incomingShareStatus === 'verifying'
+                ? 'Checking PIN...'
+                : null;
+    const waitingForIncomingShareContent = Boolean(incomingShareInvite)
+        && (incomingShareStatus === 'accepted' || incomingShareBusy);
+
     const appContent = (() => {
         // Ingestion in progress — show progress overlay
         if (progress && !analysisProgress) {
@@ -2059,6 +2092,27 @@ export function App({ fotosModel: initialModel }: AppProps) {
                             {progress.phase === 'done' && `Done — ${progress.total} images ingested`}
                         </p>
                     </div>
+                </div>
+            );
+        }
+
+        // Incoming share accepted — wait for CHUM to download remote media.
+        if (!gallery.folder.isOpen && waitingForIncomingShareContent) {
+            return (
+                <div className="h-screen flex flex-col bg-[#111]" style={{ fontFamily: "'Figtree', system-ui, sans-serif" }}>
+                    <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-5 p-6 text-center">
+                        <img src="/cam.svg" className="h-40 w-40 invert opacity-15" style={{ objectFit: 'contain' }} />
+                        <div className="space-y-2">
+                            <div className="text-lg font-medium text-white/82">Downloading shared gallery</div>
+                            <p className="max-w-md text-sm leading-relaxed text-white/42">
+                                Photos will appear here as soon as they arrive. No local upload or folder selection is needed.
+                            </p>
+                        </div>
+                        <div className="w-full max-w-md overflow-hidden rounded-full bg-white/8">
+                            <div className="h-1.5 w-1/2 rounded-full bg-[#e94560] animate-pulse" />
+                        </div>
+                    </div>
+                    <Impressum />
                 </div>
             );
         }
@@ -2371,30 +2425,29 @@ export function App({ fotosModel: initialModel }: AppProps) {
                             )}
                             <button
                                 type="button"
-                                disabled={incomingSharePin.length !== 4 || incomingShareStatus === 'verifying' || incomingShareStatus === 'preparing' || incomingShareStatus === 'connecting'}
+                                disabled={incomingSharePin.length !== 4 || incomingShareBusy}
                                 onClick={() => {
                                     void handleAcceptIncomingGalleryShareInvite();
                                 }}
                                 className={`w-full rounded-md px-3 py-2 text-xs font-medium transition-colors ${
-                                    incomingSharePin.length !== 4 || incomingShareStatus === 'verifying' || incomingShareStatus === 'preparing' || incomingShareStatus === 'connecting'
+                                    incomingSharePin.length !== 4 || incomingShareBusy
                                         ? 'bg-white/5 text-white/22 cursor-wait'
                                         : 'bg-[#e94560] text-white hover:bg-[#d13354]'
                                 }`}
                             >
-                                {incomingShareStatus === 'preparing'
-                                    ? 'Preparing secure sync...'
-                                    : incomingShareStatus === 'connecting'
-                                        ? 'Syncing shared gallery...'
-                                        : incomingShareStatus === 'verifying'
-                                            ? 'Checking PIN...'
-                                            : 'Unlock gallery'}
+                                {incomingShareBusy ? 'Opening gallery...' : 'Open gallery'}
                             </button>
+                            {incomingShareStatusLabel && (
+                                <div className="text-center text-[11px] text-white/35">
+                                    {incomingShareStatusLabel}
+                                </div>
+                            )}
                             <button
                                 type="button"
                                 onClick={() => setIncomingShareInvite(null)}
                                 className="w-full rounded-md px-3 py-1.5 text-xs text-white/30 transition-colors hover:text-white/55"
                             >
-                                Not now
+                                Cancel
                             </button>
                         </div>
                     </div>
