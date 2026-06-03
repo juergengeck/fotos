@@ -12,6 +12,7 @@ import { ClusterCard } from './ClusterGallery';
 import { InlineRenameField } from './InlineRenameField';
 import { LLMComparisonPanel } from './LLMComparisonPanel';
 import { ShareWithField, type SharePeerOption } from './ShareWithField';
+import type { ManagedFolder } from '@/hooks/useFolderAccess';
 
 type Tab = 'browse' | 'manage' | 'settings';
 
@@ -40,7 +41,10 @@ interface SidebarProps {
     onHistoryDelete: (eventId: string) => void;
     currentFolderName?: string | null;
     folderName?: string | null;
+    folders?: ManagedFolder[];
     onOpenFolder?: () => void;
+    onSelectFolder?: (folderId: string) => void;
+    onRemoveFolder?: (folderId: string) => void;
     onRescan?: () => void;
     onReanalyze?: () => void;
     canClaimAuthorshipOnIngest: boolean;
@@ -124,7 +128,7 @@ export function Sidebar({
     historyEnabled, historyReady, historyCurrentEventId, historyBranchTree,
     historyVisibleEntryCount, historyBranchCount,
     onHistoryEnabledChange, onHistoryNavigate, onHistoryDelete, currentFolderName,
-    folderName, onOpenFolder, onRescan, onReanalyze,
+    folderName, folders, onOpenFolder, onSelectFolder, onRemoveFolder, onRescan, onReanalyze,
     canClaimAuthorshipOnIngest, claimAuthorshipOnIngest, onClaimAuthorshipOnIngestChange,
     llmComparisonPhoto, llmComparisonPhotoLabel,
     faceSearchActive, onClearFaceSearch,
@@ -267,7 +271,10 @@ export function Sidebar({
                             settings={settings}
                             onUpdateStorage={onUpdateStorage}
                             folderName={folderName}
+                            folders={folders}
                             onOpenFolder={onOpenFolder}
+                            onSelectFolder={onSelectFolder}
+                            onRemoveFolder={onRemoveFolder}
                             onRescan={onRescan}
                             onReanalyze={onReanalyze}
                             canClaimAuthorshipOnIngest={canClaimAuthorshipOnIngest}
@@ -427,7 +434,10 @@ export function Sidebar({
                         settings={settings}
                         onUpdateStorage={onUpdateStorage}
                         folderName={folderName}
+                        folders={folders}
                         onOpenFolder={onOpenFolder}
+                        onSelectFolder={onSelectFolder}
+                        onRemoveFolder={onRemoveFolder}
                         onRescan={onRescan}
                         onReanalyze={onReanalyze}
                         canClaimAuthorshipOnIngest={canClaimAuthorshipOnIngest}
@@ -1549,7 +1559,10 @@ function ManageTab({
     settings,
     onUpdateStorage,
     folderName,
+    folders,
     onOpenFolder,
+    onSelectFolder,
+    onRemoveFolder,
     onRescan,
     onReanalyze,
     canClaimAuthorshipOnIngest,
@@ -1578,7 +1591,10 @@ function ManageTab({
     settings: FotosSettings;
     onUpdateStorage: (updates: Partial<FotosSettings['storage']>) => void;
     folderName?: string | null;
+    folders?: ManagedFolder[];
     onOpenFolder?: () => void;
+    onSelectFolder?: (folderId: string) => void;
+    onRemoveFolder?: (folderId: string) => void;
     onRescan?: () => void;
     onReanalyze?: () => void;
     canClaimAuthorshipOnIngest: boolean;
@@ -1611,6 +1627,8 @@ function ManageTab({
     onClusterSelect: (clusterId: string) => void;
     onRenameFace: (clusterId: string, name: string) => Promise<void> | void;
 }) {
+    const managedFolders = folders ?? [];
+
     return (
         <>
             <SectionLabel>Sharing</SectionLabel>
@@ -1642,8 +1660,6 @@ function ManageTab({
                                         <span className="text-white/55">{galleryShareInvite.sharedCount}</span>
                                     </>
                                 )}
-                                <span className="text-white/25">PIN</span>
-                                <span className="font-mono text-[#ffb5c3]">{galleryShareInvite.pin}</span>
                                 <span className="text-white/25">Expires</span>
                                 <span className="text-white/45">
                                     {new Date(galleryShareInvite.payload.expiresAt).toLocaleString()}
@@ -1669,9 +1685,9 @@ function ManageTab({
                 </div>
             </CollapsibleSection>
 
-            {(folderName || onOpenFolder || onRescan || onReanalyze) && (
+            {(managedFolders.length > 0 || folderName || onOpenFolder || onRescan || onReanalyze) && (
                 <CollapsibleSection
-                    label="Folder"
+                    label="Folders"
                     actions={onOpenFolder ? (
                         <button
                             type="button"
@@ -1685,7 +1701,47 @@ function ManageTab({
                     ) : undefined}
                 >
                     <div className="space-y-1.5">
-                        {folderName ? (
+                        {managedFolders.length > 0 ? (
+                            <div className="space-y-1">
+                                {managedFolders.map(folder => (
+                                    <div
+                                        key={folder.id}
+                                        className={`flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-[11px] ${
+                                            folder.isCurrent
+                                                ? 'border-white/12 bg-white/6 text-white/58'
+                                                : 'border-white/8 bg-white/[0.025] text-white/38'
+                                        }`}
+                                    >
+                                        <button
+                                            type="button"
+                                            onClick={() => onSelectFolder?.(folder.id)}
+                                            className="min-w-0 flex flex-1 items-center gap-2 text-left"
+                                            title={folder.name}
+                                        >
+                                            <FolderOpen className="h-3 w-3 shrink-0 text-white/35" />
+                                            <span className="min-w-0 flex-1 truncate">{folder.name}</span>
+                                        </button>
+                                        {folder.entryCount > 0 && (
+                                            <span className="text-[9px] tabular-nums text-white/20">{folder.entryCount}</span>
+                                        )}
+                                        {folder.isCurrent && (
+                                            <span className="text-[9px] uppercase tracking-[0.16em] text-white/18">current</span>
+                                        )}
+                                        {onRemoveFolder && (
+                                            <button
+                                                type="button"
+                                                onClick={() => onRemoveFolder(folder.id)}
+                                                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-white/25 transition-colors hover:bg-[#e94560]/12 hover:text-[#ff9db0]"
+                                                aria-label={`Remove ${folder.name}`}
+                                                title={`Remove ${folder.name}`}
+                                            >
+                                                <Trash2 className="h-3 w-3" />
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        ) : folderName ? (
                             <div className="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-2 text-[11px] text-white/55">
                                 <FolderOpen className="h-3 w-3 shrink-0 text-white/35" />
                                 <span className="min-w-0 flex-1 truncate">{folderName}</span>

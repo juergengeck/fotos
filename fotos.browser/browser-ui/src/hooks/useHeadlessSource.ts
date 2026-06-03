@@ -236,6 +236,14 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
         // No-op: already connected to headless
     }, []);
 
+    const selectFolder = useCallback((_folderId: string) => {
+        // Headless source exposes a single remote folder.
+    }, []);
+
+    const removeFolder = useCallback((_folderId: string) => {
+        // Headless source exposes a single remote folder.
+    }, []);
+
     const openLocalFiles = useCallback(() => false, []);
 
     const reanalyzeFaces = useCallback(async () => {
@@ -249,6 +257,8 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
     const ensureSyncedToOneCore = useCallback(async () => {
         // Headless sources are already served from the remote fotos runtime.
     }, []);
+
+    const chooseSharedGalleryDestination = useCallback(async () => false, []);
 
     const renameFace = useCallback(async (_clusterId: string, _name: string) => {
         // Future: POST to headless
@@ -281,6 +291,12 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
         defaultIntakePlan,
         shareIntakePlan,
         folderName,
+        folders: folderName ? [{
+            id: 'headless',
+            name: folderName,
+            entryCount: entries.length,
+            isCurrent: true,
+        }] : [],
         entries,
         loading,
         ingestProgress: null,
@@ -290,6 +306,9 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
         claimAuthorshipOnIngest,
         setClaimAuthorshipOnIngest,
         openFolder,
+        selectFolder,
+        removeFolder,
+        chooseSharedGalleryDestination,
         openLocalFiles,
         rescan,
         deletePhoto,

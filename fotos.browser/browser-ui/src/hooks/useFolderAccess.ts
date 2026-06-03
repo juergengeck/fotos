@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { fromByteArray as toBase64, toByteArray as fromBase64 } from 'base64-js';
 import type { PhotoEntry, ExifData, FaceInfo, SemanticInfo } from '@/types/fotos';
 import {
@@ -1185,6 +1185,8 @@ export interface FolderAccess {
     shareIntakePlan: GalleryIntakePlan;
     /** Name of the open folder */
     folderName: string | null;
+    /** Local folders maintained by this source. */
+    folders: ManagedFolder[];
     /** All photo entries from one/ folders */
     entries: PhotoEntry[];
     /** Loading state */
@@ -1203,6 +1205,12 @@ export interface FolderAccess {
     setClaimAuthorshipOnIngest: (enabled: boolean) => void;
     /** Trigger the primary intake action for this surface. */
     openFolder: () => void;
+    /** Make a maintained folder the current target for folder-scoped actions. */
+    selectFolder: (folderId: string) => void;
+    /** Forget a maintained folder without deleting files from disk. */
+    removeFolder: (folderId: string) => void;
+    /** Choose a writable local destination folder for an incoming shared gallery. */
+    chooseSharedGalleryDestination: () => Promise<boolean>;
     /** Debug/test helper that always opens the file-input intake path. */
     openLocalFiles: () => boolean;
     /** Rescan the current folder */
@@ -1235,10 +1243,18 @@ export interface FolderAccess {
     separatePersonGroup: (personId: string) => Promise<void>;
 }
 
+export interface ManagedFolder {
+    id: string;
+    name: string;
+    entryCount: number;
+    isCurrent: boolean;
+}
+
 // ── Persist last-opened folder handle via IndexedDB ──────────────────
 const IDB_NAME = 'fotos-prefs';
 const IDB_STORE = 'handles';
 const IDB_LAST_FOLDER_KEY = 'lastFolder';
+const IDB_FOLDERS_KEY = 'folders';
 const IDB_IMPORT_DESTINATION_KEY = 'importDestination';
 const DEFAULT_SHARED_FOLDER_NAME = 'shared';
 const DEFAULT_LOCAL_FOLDER_NAME = 'photos';
@@ -1261,6 +1277,20 @@ type PendingImport = {
 };
 
 type ImportSource = PendingImport['source'] | 'local-picker';
+
+interface ManagedFolderRecord {
+    id: string;
+    label: string;
+    handle: FileSystemDirectoryHandle;
+    preference: PersistedFolderPreference;
+    entries: PhotoEntry[];
+    isCurrent: boolean;
+}
+
+interface PersistedManagedFolder {
+    id: string;
+    preference: PersistedFolderPreference;
+}
 
 function openPrefsDB(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
@@ -1351,8 +1381,110 @@ function normalizeFolderPreference(value: unknown): PersistedFolderPreference | 
     return null;
 }
 
+function createManagedFolderId(): string {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+
+    return `folder-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+function entryFolderKey(entry: PhotoEntry): string {
+    return `${entry.hash}\n${entry.sourcePath ?? ''}\n${entry.thumb ?? ''}`;
+}
+
+function collectEntryPaths(entry: PhotoEntry): string[] {
+    return [
+        entry.sourcePath,
+        entry.thumb,
+        ...(entry.faces?.crops ?? []),
+    ].filter((path): path is string => Boolean(path));
+}
+
+function buildLocalEntries(records: readonly ManagedFolderRecord[]): PhotoEntry[] {
+    return records.flatMap(record => record.entries);
+}
+
+async function isSameDirectoryHandle(
+    left: FileSystemDirectoryHandle,
+    right: FileSystemDirectoryHandle,
+): Promise<boolean> {
+    const comparable = left as FileSystemDirectoryHandle & {
+        isSameEntry?: (other: FileSystemDirectoryHandle) => Promise<boolean>;
+    };
+
+    if (typeof comparable.isSameEntry === 'function') {
+        try {
+            return await comparable.isSameEntry(right);
+        } catch {
+            return false;
+        }
+    }
+
+    return left === right;
+}
+
+async function isSameFolderPreference(
+    left: PersistedFolderPreference,
+    leftHandle: FileSystemDirectoryHandle,
+    right: PersistedFolderPreference,
+    rightHandle: FileSystemDirectoryHandle,
+): Promise<boolean> {
+    if (left.kind === 'opfs' && right.kind === 'opfs') {
+        return left.path.join('\u0000') === right.path.join('\u0000');
+    }
+
+    if (left.kind === 'handle' && right.kind === 'handle') {
+        return isSameDirectoryHandle(leftHandle, rightHandle);
+    }
+
+    return false;
+}
+
+function normalizeManagedFolder(value: unknown): PersistedManagedFolder | null {
+    if (!value || typeof value !== 'object') {
+        return null;
+    }
+
+    const candidate = value as { id?: unknown; preference?: unknown };
+    const preference = normalizeFolderPreference(candidate.preference);
+    if (!preference) {
+        return null;
+    }
+
+    return {
+        id: typeof candidate.id === 'string' && candidate.id.trim()
+            ? candidate.id
+            : createManagedFolderId(),
+        preference,
+    };
+}
+
+function normalizeManagedFolders(value: unknown): PersistedManagedFolder[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+
+    return value
+        .map(normalizeManagedFolder)
+        .filter((folder): folder is PersistedManagedFolder => folder !== null);
+}
+
 async function saveLastFolderPreference(preference: PersistedFolderPreference): Promise<void> {
     await savePreference(IDB_LAST_FOLDER_KEY, preference);
+}
+
+async function saveManagedFolderPreferences(records: readonly ManagedFolderRecord[]): Promise<void> {
+    await savePreference(
+        IDB_FOLDERS_KEY,
+        records.map(record => ({
+            id: record.id,
+            preference: {
+                ...record.preference,
+                label: record.label,
+            },
+        })),
+    );
 }
 
 async function saveImportDestinationPreference(preference: PersistedFolderPreference): Promise<void> {
@@ -1361,6 +1493,10 @@ async function saveImportDestinationPreference(preference: PersistedFolderPrefer
 
 async function loadLastFolderPreference(): Promise<PersistedFolderPreference | null> {
     return normalizeFolderPreference(await loadPreference<unknown>(IDB_LAST_FOLDER_KEY));
+}
+
+async function loadManagedFolderPreferences(): Promise<PersistedManagedFolder[]> {
+    return normalizeManagedFolders(await loadPreference<unknown>(IDB_FOLDERS_KEY));
 }
 
 async function loadImportDestinationPreference(): Promise<PersistedFolderPreference | null> {
@@ -1480,6 +1616,10 @@ async function clearSharedFiles(): Promise<void> {
     }
 }
 
+function canUseDirectoryPicker(): boolean {
+    return typeof (window as { showDirectoryPicker?: unknown }).showDirectoryPicker === 'function';
+}
+
 function faceWorkerStatusLabel(progress: FaceWorkerProgress): string | null {
     switch (progress.stage) {
         case 'init-start':
@@ -1530,19 +1670,24 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     const clusterThreshold = clusterSensitivityToThreshold(clusterSensitivity);
     const [isOpen, setIsOpen] = useState(false);
     const [folderName, setFolderName] = useState<string | null>(null);
+    const [folders, setFolders] = useState<ManagedFolderRecord[]>([]);
     const [entries, setEntries] = useState<PhotoEntry[]>([]);
     const [loading, setLoading] = useState(false);
     const [ingestProgress, setIngestProgress] = useState<IngestProgress | null>(null);
     const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
     const [claimAuthorshipOnIngest, setClaimAuthorshipOnIngest] = useState(true);
     const rootHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
+    const foldersRef = useRef<ManagedFolderRecord[]>([]);
+    const entriesRef = useRef<PhotoEntry[]>([]);
+    const currentFolderIdRef = useRef<string | null>(null);
+    const entryFolderIdsRef = useRef<Map<string, string>>(new Map());
+    const pathFolderIdsRef = useRef<Map<string, string>>(new Map());
     const mobile = isMobile();
     const surface: GallerySurface = mobile ? 'fotos-browser-mobile' : 'fotos-browser-desktop';
     const surfaceProfile = getGallerySurfaceProfile(surface);
     const defaultIntakePlan = planGalleryIntake(surface, surfaceProfile.defaultSource);
     const shareIntakePlan = planGalleryIntake(surface, 'shared-files');
     const allowsLocalFaceEnrichment = faceAnalyticsEnabled && defaultIntakePlan.faceEnrichment === 'local';
-    const usesWritableLibraryAttach = defaultIntakePlan.mode === 'attach-library';
     // Cache object URLs to avoid re-reading files
     const urlCacheRef = useRef<Map<string, string>>(new Map());
     // Face worker — initialized lazily, persists across ingests
@@ -1557,6 +1702,12 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     const clusterDimRef = useRef<FaceClusterDimension | null>(null);
     const clusterThresholdRef = useRef<number | null>(null);
     const previousAllowsLocalFaceEnrichmentRef = useRef(allowsLocalFaceEnrichment);
+    const managedFolders = useMemo<ManagedFolder[]>(() => folders.map(folder => ({
+        id: folder.id,
+        name: folder.label,
+        entryCount: folder.entries.length,
+        isCurrent: folder.isCurrent,
+    })), [folders]);
 
     useEffect(() => {
         return () => {
@@ -1567,6 +1718,66 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                 mobileInput.parentNode.removeChild(mobileInput);
             }
         };
+    }, []);
+
+    useEffect(() => {
+        foldersRef.current = folders;
+    }, [folders]);
+
+    useEffect(() => {
+        entriesRef.current = entries;
+    }, [entries]);
+
+    const rebuildFolderLookups = useCallback((records: readonly ManagedFolderRecord[]) => {
+        const entryFolders = new Map<string, string>();
+        const pathFolders = new Map<string, string>();
+        const orderedRecords = [
+            ...records.filter(record => record.isCurrent),
+            ...records.filter(record => !record.isCurrent),
+        ];
+
+        for (const record of orderedRecords) {
+            for (const entry of record.entries) {
+                entryFolders.set(entryFolderKey(entry), record.id);
+                for (const path of collectEntryPaths(entry)) {
+                    if (!pathFolders.has(path)) {
+                        pathFolders.set(path, record.id);
+                    }
+                }
+            }
+        }
+
+        entryFolderIdsRef.current = entryFolders;
+        pathFolderIdsRef.current = pathFolders;
+    }, []);
+
+    const applyManagedFolders = useCallback((nextRecords: ManagedFolderRecord[]) => {
+        const current = nextRecords.find(record => record.isCurrent) ?? nextRecords[0] ?? null;
+        const normalizedRecords = nextRecords.map(record => ({
+            ...record,
+            isCurrent: current ? record.id === current.id : false,
+        }));
+        const normalizedCurrent = normalizedRecords.find(record => record.isCurrent) ?? null;
+
+        foldersRef.current = normalizedRecords;
+        currentFolderIdRef.current = normalizedCurrent?.id ?? null;
+        rootHandleRef.current = normalizedCurrent?.handle ?? null;
+        rebuildFolderLookups(normalizedRecords);
+
+        setFolders(normalizedRecords);
+        setFolderName(normalizedCurrent?.label ?? null);
+        setIsOpen(normalizedRecords.length > 0 || entriesRef.current.some(isRemoteGalleryEntry));
+        setEntries(previousEntries => mergeWithRemoteEntries(buildLocalEntries(normalizedRecords), previousEntries));
+    }, [rebuildFolderLookups]);
+
+    const findFolderForEntry = useCallback((entry: PhotoEntry): ManagedFolderRecord | null => {
+        const folderId = entryFolderIdsRef.current.get(entryFolderKey(entry));
+        return foldersRef.current.find(record => record.id === folderId) ?? null;
+    }, []);
+
+    const findFolderForPath = useCallback((relativePath: string): ManagedFolderRecord | null => {
+        const folderId = pathFolderIdsRef.current.get(relativePath);
+        return foldersRef.current.find(record => record.id === folderId) ?? null;
     }, []);
 
     useEffect(() => {
@@ -1897,7 +2108,6 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         traceHang('scan-start', { folderName: handle.name });
         const found: PhotoEntry[] = [];
         await walkForOneIndices(handle, handle, '', found);
-        setEntries(found);
         setLoading(false);
         traceHang('scan-complete', {
             folderName: handle.name,
@@ -2161,6 +2371,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                     });
                 }
 
+                photo.semantic = semantic;
                 setEntries(prev => prev.map(entry => {
                     if (entry.hash !== photo.hash) {
                         return entry;
@@ -2202,8 +2413,12 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         if (!handle) {
             return;
         }
+        const currentFolder = currentFolderIdRef.current
+            ? foldersRef.current.find(record => record.id === currentFolderIdRef.current) ?? null
+            : null;
+        const targetEntries = currentFolder?.entries ?? entries;
 
-        const hasPending = entries.some(photo => photo.semantic === undefined);
+        const hasPending = targetEntries.some(photo => photo.semantic === undefined);
         if (!hasPending) {
             return;
         }
@@ -2212,7 +2427,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             return semanticPassPromiseRef.current;
         }
 
-        const promise = runBackgroundSemanticPass(handle, entries)
+        const promise = runBackgroundSemanticPass(handle, targetEntries)
             .finally(() => {
                 semanticPassPromiseRef.current = null;
             });
@@ -2272,7 +2487,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             }
         }
 
-        const canUseAppLocalFolder = mobile || !('showDirectoryPicker' in window);
+        const canUseAppLocalFolder = mobile || !canUseDirectoryPicker();
         if (canUseAppLocalFolder) {
             const preference: PersistedFolderPreference = {
                 kind: 'opfs',
@@ -2291,7 +2506,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             }
         }
 
-        if (options.allowPicker && 'showDirectoryPicker' in window) {
+        if (options.allowPicker && canUseDirectoryPicker()) {
             try {
                 const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
                 return {
@@ -2315,16 +2530,24 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         handle: FileSystemDirectoryHandle,
         options: {
             forceIngest?: boolean;
+            id?: string;
             label?: string | null;
+            preference?: PersistedFolderPreference;
         } = {},
     ) => {
         const forceIngest = options.forceIngest ?? false;
         const nextFolderName = options.label ?? handle.name;
+        const preference = options.preference ?? {
+            kind: 'handle' as const,
+            handle,
+            label: nextFolderName,
+        };
         traceHang('open-folder-start', {
             folderName: nextFolderName,
             forceIngest,
         });
         rootHandleRef.current = handle;
+        currentFolderIdRef.current = options.id ?? currentFolderIdRef.current;
         clusterDimRef.current = null;
         clusterThresholdRef.current = null;
         semanticPassPromiseRef.current = null;
@@ -2334,6 +2557,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
 
         const found = forceIngest ? [] : await scan(handle);
 
+        let nextEntries: PhotoEntry[];
         if (forceIngest || found.length === 0) {
             traceHang('open-folder-ingest', {
                 folderName: nextFolderName,
@@ -2356,7 +2580,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                 ingested = ensured.entries;
                 void runBackgroundFacePass(handle, ingested);
             }
-            setEntries(prev => mergeWithRemoteEntries(ingested, prev));
+            nextEntries = ingested;
             syncPhotosToOneCore(ingested, handle, {
                 claimAuthorship: claimAuthorshipOnIngest,
             }).catch(err =>
@@ -2372,13 +2596,48 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                 currentEntries = ensured.entries;
                 void runBackgroundFacePass(handle, currentEntries);
             }
-            setEntries(prev => mergeWithRemoteEntries(currentEntries, prev));
+            nextEntries = currentEntries;
             syncPhotosToOneCore(currentEntries, handle, {
                 claimAuthorship: claimAuthorshipOnIngest,
             }).catch(err =>
                 console.warn('[fotos-sync]', err));
         }
+
+        const previousRecords = foldersRef.current;
+        const matchingRecord = options.id
+            ? previousRecords.find(record => record.id === options.id) ?? null
+            : (await (async () => {
+                for (const record of previousRecords) {
+                    if (await isSameFolderPreference(record.preference, record.handle, preference, handle)) {
+                        return record;
+                    }
+                }
+                return null;
+            })());
+        const id = matchingRecord?.id ?? options.id ?? createManagedFolderId();
+        const nextRecord: ManagedFolderRecord = {
+            id,
+            label: nextFolderName,
+            handle,
+            preference: {
+                ...preference,
+                label: nextFolderName,
+            },
+            entries: nextEntries,
+            isCurrent: true,
+        };
+        const nextRecords = [
+            ...previousRecords.filter(record => record.id !== id).map(record => ({
+                ...record,
+                isCurrent: false,
+            })),
+            nextRecord,
+        ];
+        applyManagedFolders(nextRecords);
+        void saveManagedFolderPreferences(nextRecords).catch(() => {});
+        void saveLastFolderPreference(nextRecord.preference).catch(() => {});
     }, [
+        applyManagedFolders,
         allowsLocalFaceEnrichment,
         claimAuthorshipOnIngest,
         clearUrlCache,
@@ -2419,6 +2678,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         await openFromHandle(destination.handle, {
             forceIngest: true,
             label: destination.preference.label ?? destination.handle.name,
+            preference: destination.preference,
         });
 
         if (source === 'share-target') {
@@ -2434,11 +2694,30 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     useEffect(() => {
         if (restoredRef.current) return;
         restoredRef.current = true;
-        loadLastFolderPreference().then(async (preference) => {
+        loadManagedFolderPreferences().then(async (managedPreferences) => {
+            if (managedPreferences.length > 0) {
+                for (const managed of managedPreferences) {
+                    const handle = await resolveFolderPreference(managed.preference, false);
+                    if (!handle) {
+                        continue;
+                    }
+                    await openFromHandle(handle, {
+                        id: managed.id,
+                        label: managed.preference.label ?? handle.name,
+                        preference: managed.preference,
+                    });
+                }
+                return;
+            }
+
+            const preference = await loadLastFolderPreference();
             if (!preference) return;
             const handle = await resolveFolderPreference(preference, false);
             if (!handle) return;
-            await openFromHandle(handle, { label: preference.label ?? handle.name });
+            await openFromHandle(handle, {
+                label: preference.label ?? handle.name,
+                preference,
+            });
         }).catch(() => {});
     }, [openFromHandle]);
 
@@ -2474,8 +2753,8 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         }).catch(err => console.warn('[share-target]', err));
     }, [clearUrlCache, importFilesIntoLibrary, shareIntakePlan.supported]);
 
-    // Process files selected via the mobile file input.
-    const handleMobileFiles = useCallback(async (input: HTMLInputElement) => {
+    // Process files selected via the file/directory fallback input.
+    const handleFallbackFiles = useCallback(async (input: HTMLInputElement) => {
         const files = input.files ? Array.from(input.files) : [];
         // Reset so the same selection can be re-picked next time.
         input.value = '';
@@ -2501,7 +2780,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     // NOT async — iOS Safari PWA drops user-activation for programmatic
     // input.click() when the handler is async, causing the photo picker to
     // silently refuse to open (requiring multiple taps).
-    const openLocalFiles = useCallback(() => {
+    const openFallbackInput = useCallback((options: { directory: boolean }) => {
         // Reuse a persistent hidden file input so Safari treats it as a
         // trusted element.  Creating a fresh <input> on every tap is unreliable
         // in iOS Safari standalone/PWA mode.
@@ -2522,14 +2801,51 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         }
 
         const input = mobileInputRef.current;
+        if (options.directory) {
+            input.setAttribute('webkitdirectory', '');
+            input.setAttribute('directory', '');
+        } else {
+            input.removeAttribute('webkitdirectory');
+            input.removeAttribute('directory');
+        }
+        input.multiple = true;
+        input.accept = 'image/*,.heic,.heif';
         // Allow re-selecting the same files.
         input.value = '';
         input.onchange = () => {
-            void handleMobileFiles(input);
+            void handleFallbackFiles(input);
         };
         input.click();
         return true;
-    }, [handleMobileFiles]);
+    }, [handleFallbackFiles]);
+
+    const openLocalFiles = useCallback(() => openFallbackInput({ directory: false }), [openFallbackInput]);
+
+    const chooseSharedGalleryDestination = useCallback(async (): Promise<boolean> => {
+        if (!mobile && canUseDirectoryPicker()) {
+            try {
+                const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
+                const preference: PersistedFolderPreference = {
+                    kind: 'handle',
+                    handle,
+                    label: handle.name,
+                };
+                await Promise.all([
+                    saveLastFolderPreference(preference),
+                    saveImportDestinationPreference(preference),
+                ]);
+                await openFromHandle(handle, {
+                    label: preference.label ?? handle.name,
+                    preference,
+                });
+                return true;
+            } catch {
+                return false;
+            }
+        }
+
+        return false;
+    }, [mobile, openFromHandle]);
 
     const openFolder = useCallback(() => {
         if (pendingImport?.files.length) {
@@ -2540,7 +2856,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             return;
         }
 
-        if (usesWritableLibraryAttach && 'showDirectoryPicker' in window) {
+        if (!mobile && canUseDirectoryPicker()) {
             void (async () => {
                 try {
                     const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
@@ -2551,7 +2867,10 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                     };
                     void saveLastFolderPreference(preference).catch(() => {});
                     void saveImportDestinationPreference(preference).catch(() => {});
-                    await openFromHandle(handle);
+                    await openFromHandle(handle, {
+                        label: preference.label ?? handle.name,
+                        preference,
+                    });
                 } catch {
                     // User cancelled the directory picker.
                 }
@@ -2559,12 +2878,78 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             return;
         }
 
-        openLocalFiles();
-    }, [importFilesIntoLibrary, openFromHandle, openLocalFiles, pendingImport, usesWritableLibraryAttach]);
+        openFallbackInput({ directory: !mobile });
+    }, [importFilesIntoLibrary, mobile, openFallbackInput, openFromHandle, pendingImport]);
+
+    const selectFolder = useCallback((folderId: string) => {
+        const target = foldersRef.current.find(record => record.id === folderId);
+        if (!target) {
+            return;
+        }
+
+        clusterDimRef.current = null;
+        clusterThresholdRef.current = null;
+        semanticPassPromiseRef.current = null;
+        const nextRecords = [
+            ...foldersRef.current
+                .filter(record => record.id !== folderId)
+                .map(record => ({
+                    ...record,
+                    isCurrent: false,
+                })),
+            {
+                ...target,
+                isCurrent: true,
+            },
+        ];
+        applyManagedFolders(nextRecords);
+        void saveManagedFolderPreferences(nextRecords).catch(() => {});
+        void saveLastFolderPreference(target.preference).catch(() => {});
+    }, [applyManagedFolders]);
+
+    const removeFolder = useCallback((folderId: string) => {
+        const previousRecords = foldersRef.current;
+        const removed = previousRecords.find(record => record.id === folderId);
+        if (!removed) {
+            return;
+        }
+
+        for (const entry of removed.entries) {
+            for (const key of collectEntryPaths(entry)) {
+                for (const cacheKey of [key, `${removed.id}:${key}`]) {
+                    const cachedUrl = urlCacheRef.current.get(cacheKey);
+                    if (cachedUrl) {
+                        URL.revokeObjectURL(cachedUrl);
+                        urlCacheRef.current.delete(cacheKey);
+                    }
+                }
+            }
+        }
+
+        const remaining = previousRecords.filter(record => record.id !== folderId);
+        const nextCurrentId = removed.isCurrent
+            ? remaining[remaining.length - 1]?.id ?? null
+            : currentFolderIdRef.current;
+        const nextRecords = remaining.map(record => ({
+            ...record,
+            isCurrent: nextCurrentId ? record.id === nextCurrentId : false,
+        }));
+
+        clusterDimRef.current = null;
+        clusterThresholdRef.current = null;
+        semanticPassPromiseRef.current = null;
+        applyManagedFolders(nextRecords);
+        void saveManagedFolderPreferences(nextRecords).catch(() => {});
+        const nextCurrent = nextRecords.find(record => record.isCurrent) ?? null;
+        if (nextCurrent) {
+            void saveLastFolderPreference(nextCurrent.preference).catch(() => {});
+        }
+    }, [applyManagedFolders]);
 
     const rescan = useCallback(async () => {
         if (!rootHandleRef.current) return;
         const handle = rootHandleRef.current;
+        const currentFolderId = currentFolderIdRef.current;
         semanticPassPromiseRef.current = null;
         clearUrlCache();
         try {
@@ -2575,7 +2960,13 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                 found = ensured.entries;
                 void runBackgroundFacePass(handle, found);
             }
-            setEntries(prev => mergeWithRemoteEntries(found, prev));
+            const nextRecords = foldersRef.current.map(record => (
+                record.id === currentFolderId
+                    ? { ...record, entries: found }
+                    : record
+            ));
+            applyManagedFolders(nextRecords);
+            void saveManagedFolderPreferences(nextRecords).catch(() => {});
             syncPhotosToOneCore(found, handle, {
                 claimAuthorship: claimAuthorshipOnIngest,
             }).catch(err =>
@@ -2584,6 +2975,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             setIngestProgress(null);
         }
     }, [
+        applyManagedFolders,
         allowsLocalFaceEnrichment,
         claimAuthorshipOnIngest,
         clearUrlCache,
@@ -2598,8 +2990,23 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         if (!removedPhoto) {
             return;
         }
-        const remaining = entries.filter(photo => photo.hash !== hash);
-        setEntries(remaining);
+        const ownerFolder = findFolderForEntry(removedPhoto);
+        const folderRemaining = ownerFolder
+            ? ownerFolder.entries.filter(photo => photo.hash !== hash)
+            : entries.filter(photo => photo.hash !== hash);
+        const nextRecords = ownerFolder
+            ? foldersRef.current.map(record => (
+                record.id === ownerFolder.id
+                    ? { ...record, entries: folderRemaining }
+                    : record
+            ))
+            : foldersRef.current;
+        if (ownerFolder) {
+            applyManagedFolders(nextRecords);
+            void saveManagedFolderPreferences(nextRecords).catch(() => {});
+        } else {
+            setEntries(folderRemaining);
+        }
 
         const cachedKeys = [
             removedPhoto.sourcePath,
@@ -2609,10 +3016,13 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         ].filter((key): key is string => Boolean(key));
 
         for (const key of cachedKeys) {
-            const cachedUrl = urlCacheRef.current.get(key);
-            if (cachedUrl) {
-                URL.revokeObjectURL(cachedUrl);
-                urlCacheRef.current.delete(key);
+            const ownerId = ownerFolder?.id;
+            for (const cacheKey of ownerId ? [key, `${ownerId}:${key}`] : [key]) {
+                const cachedUrl = urlCacheRef.current.get(cacheKey);
+                if (cachedUrl) {
+                    URL.revokeObjectURL(cachedUrl);
+                    urlCacheRef.current.delete(cacheKey);
+                }
             }
         }
 
@@ -2624,9 +3034,9 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             urlCacheRef.current.delete(key);
         }
 
-        const handle = rootHandleRef.current;
+        const handle = ownerFolder?.handle ?? rootHandleRef.current;
         if (!handle || !removedPhoto.sourcePath || isRemoteGalleryEntry(removedPhoto)) {
-            if (remaining.length === 0) {
+            if (folderRemaining.length === 0 && foldersRef.current.length === 0) {
                 setIsOpen(false);
             }
             return;
@@ -2647,16 +3057,23 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                 ...(removedPhoto.faces?.crops ?? []).map(crop => removeGeneratedMetadataFile(handle, crop)),
             ]);
 
-            clusterDimRef.current = await rebuildPersistedClusterStateFromEntries(handle, remaining, clusterThreshold);
+            clusterDimRef.current = await rebuildPersistedClusterStateFromEntries(handle, folderRemaining, clusterThreshold);
             clusterThresholdRef.current = clusterThreshold;
-            if (remaining.length === 0) {
+            if (folderRemaining.length === 0 && foldersRef.current.length === 0) {
                 setIsOpen(false);
             }
         } catch (error) {
             console.warn('[fotos-delete] Failed to persist deletion:', error);
             void scan(handle).catch(() => {});
         }
-    }, [clusterThreshold, entries, rebuildPersistedClusterStateFromEntries, scan]);
+    }, [
+        applyManagedFolders,
+        clusterThreshold,
+        entries,
+        findFolderForEntry,
+        rebuildPersistedClusterStateFromEntries,
+        scan,
+    ]);
 
     const reanalyzeFaces = useCallback(async () => {
         if (!rootHandleRef.current) {
@@ -2664,6 +3081,10 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         }
 
         const handle = rootHandleRef.current;
+        const currentFolder = currentFolderIdRef.current
+            ? foldersRef.current.find(record => record.id === currentFolderIdRef.current) ?? null
+            : null;
+        const targetEntries = currentFolder?.entries ?? entries;
         const shouldReanalyzeFaces = allowsLocalFaceEnrichment;
         const shouldReanalyzeSemantic = semanticSearchEnabled;
         if (!shouldReanalyzeFaces && !shouldReanalyzeSemantic) {
@@ -2673,24 +3094,24 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         semanticPassPromiseRef.current = null;
         traceHang('analysis-reanalyze-start', {
             folderName,
-            entries: entries.length,
+            entries: targetEntries.length,
             faces: shouldReanalyzeFaces,
             semantic: shouldReanalyzeSemantic,
         });
         console.log('[fotos-analysis] reanalyze-start', {
             folder: folderName,
-            entries: entries.length,
+            entries: targetEntries.length,
             faces: shouldReanalyzeFaces,
             semantic: shouldReanalyzeSemantic,
         });
 
         try {
-            for (let index = 0; index < entries.length; index++) {
-                const photo = entries[index];
+            for (let index = 0; index < targetEntries.length; index++) {
+                const photo = targetEntries[index];
                 setIngestProgress({
                     phase: shouldReanalyzeFaces ? 'preparing-faces' : 'preparing-semantic',
                     current: index,
-                    total: entries.length,
+                    total: targetEntries.length,
                     fileName: photo.name,
                     statusLabel: 'Clearing saved analysis...',
                 });
@@ -2702,11 +3123,11 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                 }
             }
 
-            if (entries.length > 0) {
+            if (targetEntries.length > 0) {
                 setIngestProgress({
                     phase: shouldReanalyzeFaces ? 'preparing-faces' : 'preparing-semantic',
-                    current: entries.length,
-                    total: entries.length,
+                    current: targetEntries.length,
+                    total: targetEntries.length,
                     statusLabel: 'Saved analysis cleared.',
                 });
             }
@@ -2717,12 +3138,20 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                 clusterThresholdRef.current = null;
             }
 
-            const cleared = entries.map(photo => ({
+            const cleared = targetEntries.map(photo => ({
                 ...photo,
                 faces: shouldReanalyzeFaces ? undefined : photo.faces,
                 semantic: shouldReanalyzeSemantic ? undefined : photo.semantic,
             }));
-            setEntries(cleared);
+            if (currentFolder) {
+                applyManagedFolders(foldersRef.current.map(record => (
+                    record.id === currentFolder.id
+                        ? { ...record, entries: cleared }
+                        : record
+                )));
+            } else {
+                setEntries(cleared);
+            }
 
             if (cleared.length === 0) {
                 setIngestProgress(null);
@@ -2746,12 +3175,13 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         } finally {
             traceHang('analysis-reanalyze-complete', {
                 folderName,
-                entries: entries.length,
+                entries: targetEntries.length,
                 faces: shouldReanalyzeFaces,
                 semantic: shouldReanalyzeSemantic,
             });
         }
     }, [
+        applyManagedFolders,
         allowsLocalFaceEnrichment,
         entries,
         folderName,
@@ -2772,17 +3202,29 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         if (clusterThresholdRef.current !== null && isSameThreshold(clusterThresholdRef.current, clusterThreshold)) {
             return;
         }
+        const currentFolder = currentFolderIdRef.current
+            ? foldersRef.current.find(record => record.id === currentFolderIdRef.current) ?? null
+            : null;
+        const targetEntries = currentFolder?.entries ?? entries;
 
-        void ensureClusterDimension(handle, entries, clusterThreshold)
+        void ensureClusterDimension(handle, targetEntries, clusterThreshold)
             .then(result => {
-                if (result.entries !== entries) {
-                    setEntries(result.entries);
+                if (result.entries !== targetEntries) {
+                    if (currentFolder) {
+                        applyManagedFolders(foldersRef.current.map(record => (
+                            record.id === currentFolder.id
+                                ? { ...record, entries: result.entries }
+                                : record
+                        )));
+                    } else {
+                        setEntries(result.entries);
+                    }
                 }
             })
             .catch(err => {
                 console.warn('[FacePass] Failed to rebuild clusters for new sensitivity:', err);
             });
-    }, [allowsLocalFaceEnrichment, clusterThreshold, entries, ensureClusterDimension, isOpen]);
+    }, [allowsLocalFaceEnrichment, applyManagedFolders, clusterThreshold, entries, ensureClusterDimension, isOpen]);
 
     useEffect(() => {
         const handle = rootHandleRef.current;
@@ -2795,14 +3237,26 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         if (facePassProgressRef.current) {
             return;
         }
-        if (!entries.some(entry => entry.faces === undefined)) {
+        const currentFolder = currentFolderIdRef.current
+            ? foldersRef.current.find(record => record.id === currentFolderIdRef.current) ?? null
+            : null;
+        const targetEntries = currentFolder?.entries ?? entries;
+        if (!targetEntries.some(entry => entry.faces === undefined)) {
             return;
         }
 
-        void ensureClusterDimension(handle, entries, clusterThreshold)
+        void ensureClusterDimension(handle, targetEntries, clusterThreshold)
             .then(result => {
-                if (result.entries !== entries) {
-                    setEntries(result.entries);
+                if (result.entries !== targetEntries) {
+                    if (currentFolder) {
+                        applyManagedFolders(foldersRef.current.map(record => (
+                            record.id === currentFolder.id
+                                ? { ...record, entries: result.entries }
+                                : record
+                        )));
+                    } else {
+                        setEntries(result.entries);
+                    }
                 }
                 return runBackgroundFacePass(handle, result.entries);
             })
@@ -2811,6 +3265,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             });
     }, [
         allowsLocalFaceEnrichment,
+        applyManagedFolders,
         clusterThreshold,
         entries,
         ensureClusterDimension,
@@ -2819,53 +3274,68 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     ]);
 
     const getFileUrl = useCallback(async (relativePath: string): Promise<string> => {
-        const cached = urlCacheRef.current.get(relativePath);
-        if (cached) return cached;
         if (relativePath.startsWith('blob:') || relativePath.startsWith('data:')) {
             return relativePath;
         }
 
-        if (!rootHandleRef.current) throw new Error('No folder open');
-        const file = await readFileFromHandle(rootHandleRef.current, relativePath);
+        const folder = findFolderForPath(relativePath);
+        const cacheKey = folder ? `${folder.id}:${relativePath}` : relativePath;
+        const cached = urlCacheRef.current.get(cacheKey) ?? urlCacheRef.current.get(relativePath);
+        if (cached) return cached;
+
+        const handle = folder?.handle ?? rootHandleRef.current;
+        if (!handle) throw new Error('No folder open');
+        const file = await readFileFromHandle(handle, relativePath);
         const url = URL.createObjectURL(file);
-        urlCacheRef.current.set(relativePath, url);
+        urlCacheRef.current.set(cacheKey, url);
         return url;
-    }, []);
+    }, [findFolderForPath]);
 
     const getThumbUrl = useCallback(async (entry: PhotoEntry): Promise<string | null> => {
         if (!entry.thumb) return null;
 
-        const cached = urlCacheRef.current.get(entry.thumb);
-        if (cached) return cached;
         if (entry.thumb.startsWith('blob:') || entry.thumb.startsWith('data:')) {
             return entry.thumb;
         }
 
-        if (!rootHandleRef.current) return null;
+        const folder = findFolderForEntry(entry) ?? findFolderForPath(entry.thumb);
+        const cacheKey = folder ? `${folder.id}:${entry.thumb}` : entry.thumb;
+        const cached = urlCacheRef.current.get(cacheKey) ?? urlCacheRef.current.get(entry.thumb);
+        if (cached) return cached;
+
+        const handle = folder?.handle ?? rootHandleRef.current;
+        if (!handle) return null;
 
         try {
-            const file = await readFileFromHandle(rootHandleRef.current, entry.thumb);
+            const file = await readFileFromHandle(handle, entry.thumb);
             const url = URL.createObjectURL(file);
-            urlCacheRef.current.set(entry.thumb, url);
+            urlCacheRef.current.set(cacheKey, url);
             return url;
         } catch {
             return null;
         }
-    }, []);
+    }, [findFolderForEntry, findFolderForPath]);
 
     const readFile = useCallback(async (relativePath: string): Promise<File> => {
-        if (!rootHandleRef.current) throw new Error('No folder open');
-        return readFileFromHandle(rootHandleRef.current, relativePath);
-    }, []);
+        const handle = findFolderForPath(relativePath)?.handle ?? rootHandleRef.current;
+        if (!handle) throw new Error('No folder open');
+        return readFileFromHandle(handle, relativePath);
+    }, [findFolderForPath]);
 
     const ensureSyncedToOneCore = useCallback(async (): Promise<void> => {
         if (!isOpen || entries.length === 0) {
             return;
         }
 
-        await syncPhotosToOneCore(entries, rootHandleRef.current, {
-            claimAuthorship: claimAuthorshipOnIngest,
-        });
+        for (const folder of foldersRef.current) {
+            if (folder.entries.length === 0) {
+                continue;
+            }
+
+            await syncPhotosToOneCore(folder.entries, folder.handle, {
+                claimAuthorship: claimAuthorshipOnIngest,
+            });
+        }
     }, [claimAuthorshipOnIngest, entries, isOpen]);
 
     const renameFace = useCallback(async (clusterId: string, name: string) => {
@@ -3374,6 +3844,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         defaultIntakePlan,
         shareIntakePlan,
         folderName,
+        folders: managedFolders,
         entries,
         loading,
         ingestProgress,
@@ -3383,6 +3854,9 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         claimAuthorshipOnIngest,
         setClaimAuthorshipOnIngest,
         openFolder,
+        selectFolder,
+        removeFolder,
+        chooseSharedGalleryDestination,
         openLocalFiles,
         rescan,
         deletePhoto,

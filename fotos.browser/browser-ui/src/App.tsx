@@ -47,7 +47,6 @@ import { writeStoredSidebarTab } from '@/lib/authFlowState';
 import {
     createFotosShareInvite,
     parseFotosShareInviteUrl,
-    verifyFotosShareInvitePin,
     type CreatedFotosShareInvite,
     type FotosShareInvitePayload,
 } from '@/lib/fotosShareInvite';
@@ -71,7 +70,7 @@ interface PersistedShareContact {
     glueIdentity: string | null;
 }
 
-type IncomingShareInviteStatus = 'idle' | 'verifying' | 'preparing' | 'connecting' | 'accepted' | 'error';
+type IncomingShareInviteStatus = 'idle' | 'choosing-folder' | 'preparing' | 'connecting' | 'accepted' | 'error';
 type CreatedGalleryShareInvite = CreatedFotosShareInvite & {
     sharedCount: number;
 };
@@ -204,7 +203,7 @@ interface FotosDebugApi {
         pin: string;
         expiresAt: string;
     }>;
-    acceptGalleryShareInvite: (pin: string) => Promise<{
+    acceptGalleryShareInvite: (pin?: string) => Promise<{
         accepted: true;
         senderPersonId: string;
     }>;
@@ -293,15 +292,9 @@ export function App({ fotosModel: initialModel }: AppProps) {
     const [incomingShareInvite, setIncomingShareInvite] = useState<FotosShareInvitePayload | null>(() =>
         typeof window === 'undefined' ? null : parseFotosShareInviteUrl(window.location.href),
     );
-    const [incomingSharePin, setIncomingSharePin] = useState(() => {
-        try {
-            return sessionStorage.getItem('fotos.pendingSharePin') ?? '';
-        } catch {
-            return '';
-        }
-    });
     const [incomingShareStatus, setIncomingShareStatus] = useState<IncomingShareInviteStatus>('idle');
     const [incomingShareError, setIncomingShareError] = useState<string | null>(null);
+    const [shareSnapshot, setShareSnapshot] = useState<FotosShareSnapshot | null>(null);
 
     // Wire up model updater so async state changes (e.g. headlessConnected) trigger re-renders
     useEffect(() => {
@@ -730,7 +723,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
         }
 
         const disconnect = pairing.onPairingSuccess(async (
-            initiatedLocally,
+            _initiatedLocally,
             _localPersonId,
             _localInstanceId,
             remotePersonId,
@@ -822,13 +815,27 @@ export function App({ fotosModel: initialModel }: AppProps) {
         }
     }, [createGalleryShareInvite]);
 
-    const acceptIncomingGalleryShareInvite = useCallback(async (pin: string) => {
+    const acceptIncomingGalleryShareInvite = useCallback(async (
+        options: { requireDestination?: boolean } = {},
+    ) => {
         if (!incomingShareInvite) {
             throw new Error('No fotos share invite is pending.');
         }
-        const validPin = await verifyFotosShareInvitePin(incomingShareInvite, pin);
-        if (!validPin) {
-            throw new Error('The PIN does not match this share link.');
+
+        if (
+            Number.isNaN(Date.parse(incomingShareInvite.expiresAt))
+            || Date.now() > Date.parse(incomingShareInvite.expiresAt)
+        ) {
+            throw new Error('This share link has expired.');
+        }
+
+        if (options.requireDestination ?? true) {
+            setIncomingShareStatus('choosing-folder');
+            const destinationReady = await gallery.folder.chooseSharedGalleryDestination();
+            if (!destinationReady) {
+                setIncomingShareStatus('idle');
+                throw new Error('Choose a folder to store the shared gallery.');
+            }
         }
 
         if (!fotosModel?.initialized) {
@@ -850,9 +857,6 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 moduleId: 'glue',
                 values: { syncEnabled: true },
             });
-            try {
-                sessionStorage.setItem('fotos.pendingSharePin', pin.trim());
-            } catch {}
             window.location.reload();
             return {
                 accepted: true as const,
@@ -873,9 +877,6 @@ export function App({ fotosModel: initialModel }: AppProps) {
         );
         (fotosModel.glueModule as { requestPeerConnection?: (targetPersonId: string) => boolean } | null)
             ?.requestPeerConnection?.(incomingShareInvite.senderPersonId);
-        try {
-            sessionStorage.removeItem('fotos.pendingSharePin');
-        } catch {}
         setIncomingShareStatus('accepted');
         return {
             accepted: true as const,
@@ -888,48 +889,19 @@ export function App({ fotosModel: initialModel }: AppProps) {
         fotosModel?.ownerId,
         fotosModel?.publicationIdentity,
         fotosModel?.settingsPlan,
+        gallery.folder,
         incomingShareInvite,
     ]);
 
     const handleAcceptIncomingGalleryShareInvite = useCallback(async () => {
-        setIncomingShareStatus('verifying');
         setIncomingShareError(null);
         try {
-            await acceptIncomingGalleryShareInvite(incomingSharePin);
+            await acceptIncomingGalleryShareInvite({ requireDestination: true });
         } catch (error) {
             setIncomingShareStatus('error');
             setIncomingShareError(error instanceof Error ? error.message : String(error));
         }
-    }, [acceptIncomingGalleryShareInvite, incomingSharePin]);
-
-    useEffect(() => {
-        if (!incomingShareInvite || incomingSharePin.length !== 4 || incomingShareStatus !== 'idle') {
-            return;
-        }
-
-        let cancelled = false;
-        void (async () => {
-            if (fotosModel?.connectionsModel?.pairing && !cancelled) {
-                await acceptIncomingGalleryShareInvite(incomingSharePin);
-            }
-        })().catch(error => {
-            if (!cancelled) {
-                setIncomingShareStatus('error');
-                setIncomingShareError(error instanceof Error ? error.message : String(error));
-            }
-        });
-
-        return () => {
-            cancelled = true;
-        };
-    }, [
-        acceptIncomingGalleryShareInvite,
-        fotosModel?.connectionsModel?.pairing,
-        incomingShareInvite,
-        incomingShareStatus,
-        incomingSharePin.length,
-        incomingSharePin,
-    ]);
+    }, [acceptIncomingGalleryShareInvite]);
 
     const mobile = gallery.folder.mobile;
     const intakePlan = gallery.folder.defaultIntakePlan;
@@ -1473,11 +1445,14 @@ export function App({ fotosModel: initialModel }: AppProps) {
     useEffect(() => {
         if (!fotosModel?.initialized) {
             setShareManifestHash(null);
+            setShareSnapshot(null);
             return;
         }
 
         const syncManifestHash = () => {
-            setShareManifestHash(fotosShareController.getSnapshot().manifest?.hash ?? null);
+            const snapshot = fotosShareController.getSnapshot();
+            setShareManifestHash(snapshot.manifest?.hash ?? null);
+            setShareSnapshot(snapshot);
         };
 
         syncManifestHash();
@@ -1936,7 +1911,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                     expiresAt: invite.payload.expiresAt,
                 };
             },
-            acceptGalleryShareInvite: async (pin: string) => await acceptIncomingGalleryShareInvite(pin),
+            acceptGalleryShareInvite: async () => await acceptIncomingGalleryShareInvite({ requireDestination: false }),
             forceRouteKeyConnect: async (personId: string, keySource: 'advertised' | 'certified' = 'advertised') => {
                 const activeModel = debugRuntimeRef.current.model;
                 if (
@@ -2054,18 +2029,28 @@ export function App({ fotosModel: initialModel }: AppProps) {
         };
     }, []);
 
-    const incomingShareBusy = incomingShareStatus === 'verifying'
+    const incomingShareBusy = incomingShareStatus === 'choosing-folder'
         || incomingShareStatus === 'preparing'
         || incomingShareStatus === 'connecting';
-    const incomingShareStatusLabel = incomingShareStatus === 'preparing'
+    const incomingShareStatusLabel = incomingShareStatus === 'choosing-folder'
+        ? 'Waiting for a destination folder...'
+        : incomingShareStatus === 'preparing'
         ? 'Preparing secure sync...'
         : incomingShareStatus === 'connecting'
             ? 'Syncing shared gallery...'
-            : incomingShareStatus === 'verifying'
-                ? 'Checking PIN...'
-                : null;
+            : null;
     const waitingForIncomingShareContent = Boolean(incomingShareInvite)
         && (incomingShareStatus === 'accepted' || incomingShareBusy);
+    const incomingShareExpectedCount = shareSnapshot?.manifestEntries.length ?? 0;
+    const incomingShareReceivedCount = shareSnapshot?.remoteItems.length ?? 0;
+    const incomingShareProgressPercent = incomingShareExpectedCount > 0
+        ? Math.min(100, Math.round((incomingShareReceivedCount / incomingShareExpectedCount) * 100))
+        : null;
+    const incomingShareProgressLabel = incomingShareExpectedCount > 0
+        ? `${incomingShareReceivedCount}/${incomingShareExpectedCount} photos received`
+        : incomingShareReceivedCount > 0
+            ? `${incomingShareReceivedCount} photos received`
+            : 'Waiting for shared photos...';
 
     const appContent = (() => {
         // Ingestion in progress — show progress overlay
@@ -2308,7 +2293,10 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         onHistoryDelete={breadcrumbHistory.deleteEntry}
                         currentFolderName={gallery.folder.folderName}
                         folderName={gallery.folder.folderName}
+                        folders={gallery.folder.folders}
                         onOpenFolder={gallery.folder.openFolder}
+                        onSelectFolder={gallery.folder.selectFolder}
+                        onRemoveFolder={gallery.folder.removeFolder}
                         onRescan={gallery.folder.rescan}
                         onReanalyze={canReanalyze ? gallery.folder.reanalyzeFaces : undefined}
                         canClaimAuthorshipOnIngest={gallery.folder.canClaimAuthorshipOnIngest}
@@ -2403,21 +2391,9 @@ export function App({ fotosModel: initialModel }: AppProps) {
                             </div>
                         </div>
                         <div className="mt-4 space-y-3">
-                            <input
-                                inputMode="numeric"
-                                pattern="[0-9]*"
-                                maxLength={4}
-                                value={incomingSharePin}
-                                onChange={event => {
-                                    setIncomingSharePin(event.target.value.replace(/\D/g, '').slice(0, 4));
-                                    if (incomingShareError) {
-                                        setIncomingShareError(null);
-                                        setIncomingShareStatus('idle');
-                                    }
-                                }}
-                                placeholder="PIN"
-                                className="w-full rounded-md border border-white/10 bg-black/25 px-3 py-2 text-center font-mono text-lg tracking-[0.4em] text-white/80 placeholder:text-white/18 focus:border-[#e94560]/50 focus:outline-none"
-                            />
+                            <div className="rounded-md border border-white/10 bg-black/25 px-3 py-2 text-xs leading-relaxed text-white/45">
+                                Choose a local folder for this shared gallery. fotos will use it as the destination while shared photos sync.
+                            </div>
                             {incomingShareError && (
                                 <div className="rounded-md border border-[#e94560]/25 bg-[#e94560]/10 px-2.5 py-2 text-xs text-[#ffb5c3]">
                                     {incomingShareError}
@@ -2425,21 +2401,35 @@ export function App({ fotosModel: initialModel }: AppProps) {
                             )}
                             <button
                                 type="button"
-                                disabled={incomingSharePin.length !== 4 || incomingShareBusy}
+                                disabled={incomingShareBusy}
                                 onClick={() => {
                                     void handleAcceptIncomingGalleryShareInvite();
                                 }}
                                 className={`w-full rounded-md px-3 py-2 text-xs font-medium transition-colors ${
-                                    incomingSharePin.length !== 4 || incomingShareBusy
+                                    incomingShareBusy
                                         ? 'bg-white/5 text-white/22 cursor-wait'
                                         : 'bg-[#e94560] text-white hover:bg-[#d13354]'
                                 }`}
                             >
-                                {incomingShareBusy ? 'Opening gallery...' : 'Open gallery'}
+                                {incomingShareBusy ? 'Opening gallery...' : 'Choose folder and open'}
                             </button>
                             {incomingShareStatusLabel && (
-                                <div className="text-center text-[11px] text-white/35">
-                                    {incomingShareStatusLabel}
+                                <div className="space-y-1.5">
+                                    <div className="h-1.5 overflow-hidden rounded-full bg-white/8">
+                                        <div
+                                            className="h-full rounded-full bg-[#e94560] transition-all"
+                                            style={{
+                                                width: incomingShareStatus === 'connecting'
+                                                    ? '70%'
+                                                    : incomingShareStatus === 'preparing'
+                                                        ? '42%'
+                                                        : '18%',
+                                            }}
+                                        />
+                                    </div>
+                                    <div className="text-center text-[11px] text-white/35">
+                                        {incomingShareStatusLabel}
+                                    </div>
                                 </div>
                             )}
                             <button
@@ -2455,12 +2445,20 @@ export function App({ fotosModel: initialModel }: AppProps) {
             )}
             {incomingShareInvite && incomingShareStatus === 'accepted' && (
                 <div className="fixed bottom-4 left-1/2 z-40 w-[min(92vw,520px)] -translate-x-1/2 rounded-xl border border-white/10 bg-[#141414]/95 p-3 shadow-2xl backdrop-blur">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <div className="flex flex-col gap-3">
                         <div className="min-w-0 flex-1">
                             <div className="text-xs font-medium text-white/80">Shared gallery is syncing</div>
-                            <div className="text-[11px] text-white/35">Photos will appear as they arrive. Identity setup can wait.</div>
+                            <div className="text-[11px] text-white/35">{incomingShareProgressLabel}</div>
+                            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/8">
+                                <div
+                                    className="h-full rounded-full bg-[#e94560] transition-all"
+                                    style={{
+                                        width: `${incomingShareProgressPercent ?? (incomingShareReceivedCount > 0 ? 45 : 12)}%`,
+                                    }}
+                                />
+                            </div>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 sm:justify-end">
                             <button
                                 type="button"
                                 onClick={() => setIncomingShareInvite(null)}
