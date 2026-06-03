@@ -78,6 +78,7 @@ describe('useGallery', () => {
             entries: [],
             isOpen: true,
             ingestProgress: null,
+            deletePhoto: vi.fn().mockResolvedValue(undefined),
             ensureSemanticEmbeddings: vi.fn().mockResolvedValue(undefined),
         };
         const galleryState = {
@@ -97,6 +98,7 @@ describe('useGallery', () => {
             expect.objectContaining({
                 source: folder,
                 resolveDayGroups: expect.any(Function),
+                deletePhoto: folder.deletePhoto,
             }),
         );
         expect(result.folder).toBe(folder);

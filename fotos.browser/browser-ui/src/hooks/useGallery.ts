@@ -59,6 +59,7 @@ export function useGallery(options: UseGalleryOptions = {}) {
     const gallery = useFotosGalleryState<PhotoEntry>({
         source: folder,
         resolveDayGroups: resolveCaptureDayGroups,
+        deletePhoto: folder.deletePhoto,
     });
 
     const allClusters = useMemo(() => buildFaceClusterSummaries(folder.entries), [folder.entries]);

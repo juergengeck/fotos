@@ -173,6 +173,10 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
         }
     }, []);
 
+    const deletePhoto = useCallback(async (hash: string) => {
+        setEntries(prev => prev.filter(photo => photo.hash !== hash));
+    }, []);
+
     const getThumbUrl = useCallback(async (entry: PhotoEntry): Promise<string | null> => {
         const url = headlessUrlRef.current;
         if (!url) return null;
@@ -242,6 +246,10 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
         // Future: trigger server-side semantic embedding
     }, []);
 
+    const ensureSyncedToOneCore = useCallback(async () => {
+        // Headless sources are already served from the remote fotos runtime.
+    }, []);
+
     const renameFace = useCallback(async (_clusterId: string, _name: string) => {
         // Future: POST to headless
     }, []);
@@ -284,8 +292,10 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
         openFolder,
         openLocalFiles,
         rescan,
+        deletePhoto,
         reanalyzeFaces,
         ensureSemanticEmbeddings,
+        ensureSyncedToOneCore,
         getFileUrl,
         getThumbUrl,
         readFile,

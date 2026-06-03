@@ -215,6 +215,106 @@ async function updateIndexHtmlSemanticData(
     await updateIndexHtmlData(rootHandle, photo, 'semantic', dataAttrs);
 }
 
+async function removeIndexHtmlPhoto(
+    rootHandle: FileSystemDirectoryHandle,
+    photo: PhotoEntry,
+): Promise<void> {
+    await queueIndexHtmlWrite(async () => {
+        const segments = (photo.sourcePath ?? '').split('/').filter(Boolean);
+        if (segments.length === 0) {
+            return;
+        }
+
+        let dirHandle = rootHandle;
+        for (let index = 0; index < segments.length - 1; index++) {
+            dirHandle = await dirHandle.getDirectoryHandle(segments[index]);
+        }
+
+        const oneDir = await dirHandle.getDirectoryHandle('one');
+        const indexHandle = await oneDir.getFileHandle('index.html');
+        const file = await indexHandle.getFile();
+        const html = await file.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const photoName = segments[segments.length - 1];
+
+        const rows = Array.from(doc.querySelectorAll<HTMLTableRowElement>('tr.fs-entry'));
+        const row = rows.find(candidate => {
+            const streamId = candidate.getAttribute('data-stream-id');
+            const contentHash = candidate.getAttribute('data-content-hash') ?? candidate.getAttribute('data-hash');
+            if (photo.hash && (streamId === photo.hash || contentHash === photo.hash)) {
+                return true;
+            }
+
+            const linkName = candidate.querySelector('.fs-name a:last-of-type')?.textContent?.trim();
+            return linkName === photoName;
+        });
+
+        if (!row) {
+            console.warn('[fotos-delete] index row not found', {
+                photo: photo.sourcePath ?? photo.name,
+                hash: photo.hash,
+            });
+            return;
+        }
+
+        row.remove();
+
+        const summary = doc.querySelector('.fs-summary');
+        if (summary) {
+            const entryCount = doc.querySelectorAll('tr.fs-entry').length;
+            const childCount = doc.querySelectorAll('tr.fs-child').length;
+            summary.textContent = `${entryCount} files, ${childCount} folders`;
+        }
+
+        const nextHtml = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+        const writable = await indexHandle.createWritable();
+        await writable.write(nextHtml);
+        await writable.close();
+    });
+}
+
+async function removeGeneratedMetadataFile(
+    rootHandle: FileSystemDirectoryHandle,
+    relativePath: string | undefined,
+): Promise<void> {
+    if (!relativePath || relativePath.startsWith('remote:') || relativePath.startsWith('blob:') || relativePath.startsWith('data:')) {
+        return;
+    }
+
+    const segments = relativePath.split('/').filter(Boolean);
+    if (segments.length === 0 || !segments.includes('one')) {
+        return;
+    }
+
+    try {
+        let dirHandle = rootHandle;
+        for (let index = 0; index < segments.length - 1; index++) {
+            dirHandle = await dirHandle.getDirectoryHandle(segments[index]);
+        }
+        await dirHandle.removeEntry(segments[segments.length - 1]);
+    } catch {
+        // Generated files may already have been pruned by a rescan or older ingest.
+    }
+}
+
+async function removeLocalPhotoFile(
+    rootHandle: FileSystemDirectoryHandle,
+    relativePath: string,
+): Promise<void> {
+    const segments = relativePath.split('/').filter(Boolean);
+    if (segments.length === 0 || segments.includes('one')) {
+        return;
+    }
+
+    let dirHandle = rootHandle;
+    for (let index = 0; index < segments.length - 1; index++) {
+        dirHandle = await dirHandle.getDirectoryHandle(segments[index]);
+    }
+
+    await dirHandle.removeEntry(segments[segments.length - 1]);
+}
+
 function inferFaceInfoCount({
     parsedCount,
     detailedFaceCount,
@@ -1107,10 +1207,14 @@ export interface FolderAccess {
     openLocalFiles: () => boolean;
     /** Rescan the current folder */
     rescan: () => Promise<void>;
+    /** Remove a photo from the current gallery metadata */
+    deletePhoto: (hash: string) => Promise<void>;
     /** Force rerun of enabled analysis for the current folder */
     reanalyzeFaces: () => Promise<void>;
     /** Ensure photo-level semantic embeddings exist for the current folder */
     ensureSemanticEmbeddings: () => Promise<void>;
+    /** Ensure the current gallery entries are represented in ONE.core for sharing */
+    ensureSyncedToOneCore: () => Promise<void>;
     /** Get an object URL for a file (for display). Caller must revoke. */
     getFileUrl: (relativePath: string) => Promise<string>;
     /** Get an object URL for a thumbnail */
@@ -2489,6 +2593,71 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         scan,
     ]);
 
+    const deletePhoto = useCallback(async (hash: string) => {
+        const removedPhoto = entries.find(photo => photo.hash === hash) ?? null;
+        if (!removedPhoto) {
+            return;
+        }
+        const remaining = entries.filter(photo => photo.hash !== hash);
+        setEntries(remaining);
+
+        const cachedKeys = [
+            removedPhoto.sourcePath,
+            removedPhoto.thumb,
+            `remote:${removedPhoto.hash}`,
+            ...(removedPhoto.faces?.crops ?? []),
+        ].filter((key): key is string => Boolean(key));
+
+        for (const key of cachedKeys) {
+            const cachedUrl = urlCacheRef.current.get(key);
+            if (cachedUrl) {
+                URL.revokeObjectURL(cachedUrl);
+                urlCacheRef.current.delete(key);
+            }
+        }
+
+        for (const [key, cachedUrl] of Array.from(urlCacheRef.current.entries())) {
+            if (!key.startsWith(`remote-face:${removedPhoto.hash}:`)) {
+                continue;
+            }
+            URL.revokeObjectURL(cachedUrl);
+            urlCacheRef.current.delete(key);
+        }
+
+        const handle = rootHandleRef.current;
+        if (!handle || !removedPhoto.sourcePath || isRemoteGalleryEntry(removedPhoto)) {
+            if (remaining.length === 0) {
+                setIsOpen(false);
+            }
+            return;
+        }
+
+        try {
+            try {
+                await removeLocalPhotoFile(handle, removedPhoto.sourcePath);
+            } catch (fileError) {
+                if (!(fileError instanceof DOMException) || fileError.name !== 'NotFoundError') {
+                    throw fileError;
+                }
+                console.warn('[fotos-delete] Source file was already missing; pruning metadata only:', fileError);
+            }
+            await removeIndexHtmlPhoto(handle, removedPhoto);
+            await Promise.all([
+                removeGeneratedMetadataFile(handle, removedPhoto.thumb),
+                ...(removedPhoto.faces?.crops ?? []).map(crop => removeGeneratedMetadataFile(handle, crop)),
+            ]);
+
+            clusterDimRef.current = await rebuildPersistedClusterStateFromEntries(handle, remaining, clusterThreshold);
+            clusterThresholdRef.current = clusterThreshold;
+            if (remaining.length === 0) {
+                setIsOpen(false);
+            }
+        } catch (error) {
+            console.warn('[fotos-delete] Failed to persist deletion:', error);
+            void scan(handle).catch(() => {});
+        }
+    }, [clusterThreshold, entries, rebuildPersistedClusterStateFromEntries, scan]);
+
     const reanalyzeFaces = useCallback(async () => {
         if (!rootHandleRef.current) {
             return;
@@ -2688,6 +2857,16 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         if (!rootHandleRef.current) throw new Error('No folder open');
         return readFileFromHandle(rootHandleRef.current, relativePath);
     }, []);
+
+    const ensureSyncedToOneCore = useCallback(async (): Promise<void> => {
+        if (!isOpen || entries.length === 0) {
+            return;
+        }
+
+        await syncPhotosToOneCore(entries, rootHandleRef.current, {
+            claimAuthorship: claimAuthorshipOnIngest,
+        });
+    }, [claimAuthorshipOnIngest, entries, isOpen]);
 
     const renameFace = useCallback(async (clusterId: string, name: string) => {
         const handle = rootHandleRef.current;
@@ -3206,8 +3385,10 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         openFolder,
         openLocalFiles,
         rescan,
+        deletePhoto,
         reanalyzeFaces,
         ensureSemanticEmbeddings,
+        ensureSyncedToOneCore,
         getFileUrl,
         getThumbUrl,
         readFile,
