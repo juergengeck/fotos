@@ -1,8 +1,9 @@
 #!/bin/bash
 set -e
 
-# Build the app at root (no /app/ subpath)
-cd browser-ui && npx vite build --base=/ && cd ..
+# Build the app at root (no /app/ subpath). Run from browser-ui so Tailwind
+# content paths resolve correctly, but bypass the stale generated .bin shim.
+cd browser-ui && node node_modules/vite/bin/vite.js build --base=/ && cd ..
 
 # Assemble deploy directory: app at root, cam.svg as favicon
 # Assemble deploy: strip WASM > 25MB (served from refinio.one)
