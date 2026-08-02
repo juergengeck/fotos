@@ -1,6 +1,6 @@
 # Epic: Explicit Sharing
 
-Status: In progress
+Status: Implemented
 Owner: fotos product and engineering
 Last updated: 2026-08-02
 Evidence: [UX-03 and UX-19](../ui.prd.md#ux-03--sharing-grants-are-silent-immediate-and-unreviewable)
@@ -128,11 +128,10 @@ Implemented in the browser and shared core:
   certificate discovery; late stale active versions cannot replace a current revocation.
 - The centralized Sharing view summarizes outgoing and received scopes and renders
   certificate-backed Received state.
-
-Still required before this epic is complete:
-
-- Protocol/E2E coverage proving that an offline removed recipient receives revocation
-  evidence but no later scope or content versions.
+- The two-browser identity-share protocol test disables the recipient network before
+  removal, commits revocation and a later photo while that recipient is offline, then
+  proves on reconnect that the detached signature verifies, the revoked projection wins,
+  and the later photo remains unavailable.
 
 ## Acceptance Criteria
 

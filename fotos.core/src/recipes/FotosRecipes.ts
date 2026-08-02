@@ -10,7 +10,7 @@
  * Fixed id 'fotos' ensures deterministic idHash across all instances.
  * IdAccess grants on this manifest gate who can sync photo metadata.
  */
-import type {BLOB, Person, Recipe, VersionNode} from '@refinio/one.core/lib/recipes.js';
+import type {BLOB, CLOB, Person, Recipe, VersionNode} from '@refinio/one.core/lib/recipes.js';
 import type {SHA256Hash, SHA256IdHash} from '@refinio/one.core/lib/util/type-checks.js';
 import {GalleryTrieRecipes} from './GalleryTrieRecipes.js';
 import {FotosDeviceBookRecipes} from './FotosDeviceBookRecipes.js';
@@ -83,6 +83,13 @@ export interface FotosShareManifest {
     scopeKind: FotosShareScopeKind;
     scopeId: string;
     entries: Set<SHA256Hash<FotosEntry>>;
+    /** Producer-written flat closure used by live CHUM root notifications. */
+    snapshotObjects: Set<SHA256Hash<FotosEntry | FotosMediaVariant>>;
+    snapshotIds: Set<SHA256IdHash<Person | FotosEntry | FotosMediaVariant>>;
+    snapshotBlobs?: Set<SHA256Hash<BLOB>>;
+    snapshotClobs?: Set<SHA256Hash<CLOB>>;
+    /** Parent-before-dependency order; CHUM reverses this before fetching. */
+    snapshotOrder: string[];
 }
 
 /**
@@ -104,6 +111,24 @@ export interface FotosShareCertificate {
     revocationReason?: string;
 }
 
+/**
+ * Transfer root for one certificate version and its detached ONE signature.
+ * Access is granted to this stable id before a new chain version is stored, so
+ * an already-running CHUM session observes active, renewal, and revocation
+ * transitions as one complete evidence graph.
+ */
+export interface FotosShareCertificateChain {
+    $type$: 'FotosShareCertificateChain';
+    $version$: 'v1';
+    id: string;
+    issuer: SHA256IdHash<Person>;
+    subject: SHA256IdHash<Person>;
+    scopeKind: FotosShareScopeKind;
+    scopeId: string;
+    certificate: SHA256Hash<FotosShareCertificate>;
+    signature: SHA256Hash<any>;
+}
+
 declare module '@OneObjectInterfaces' {
     export interface OneIdObjectInterfaces {
         FotosEntry: Pick<FotosEntry, '$type$' | 'contentHash'>;
@@ -111,6 +136,7 @@ declare module '@OneObjectInterfaces' {
         FotosAuthenticityAttestation: Pick<FotosAuthenticityAttestation, '$type$' | 'id'>;
         FotosShareManifest: Pick<FotosShareManifest, '$type$' | 'id'>;
         FotosShareCertificate: Pick<FotosShareCertificate, '$type$' | 'id'>;
+        FotosShareCertificateChain: Pick<FotosShareCertificateChain, '$type$' | 'id'>;
     }
 
     export interface OneVersionedObjectInterfaces {
@@ -119,6 +145,7 @@ declare module '@OneObjectInterfaces' {
         FotosAuthenticityAttestation: FotosAuthenticityAttestation;
         FotosShareManifest: FotosShareManifest;
         FotosShareCertificate: FotosShareCertificate;
+        FotosShareCertificateChain: FotosShareCertificateChain;
     }
 }
 
@@ -227,6 +254,40 @@ export const FotosShareManifestRecipe: Recipe = {
                 item: {type: 'referenceToObj', allowedTypes: new Set(['FotosEntry'])},
             },
         },
+        {
+            itemprop: 'snapshotObjects',
+            itemtype: {
+                type: 'set',
+                item: {
+                    type: 'referenceToObj',
+                    allowedTypes: new Set(['FotosEntry', 'FotosMediaVariant']),
+                },
+            },
+        },
+        {
+            itemprop: 'snapshotIds',
+            itemtype: {
+                type: 'set',
+                item: {
+                    type: 'referenceToId',
+                    allowedTypes: new Set(['Person', 'FotosEntry', 'FotosMediaVariant']),
+                },
+            },
+        },
+        {
+            itemprop: 'snapshotBlobs',
+            optional: true,
+            itemtype: {type: 'set', item: {type: 'referenceToBlob'}},
+        },
+        {
+            itemprop: 'snapshotClobs',
+            optional: true,
+            itemtype: {type: 'set', item: {type: 'referenceToClob'}},
+        },
+        {
+            itemprop: 'snapshotOrder',
+            itemtype: {type: 'array', item: {type: 'string'}},
+        },
     ],
 };
 
@@ -247,12 +308,28 @@ export const FotosShareCertificateRecipe: Recipe = {
     ],
 };
 
+export const FotosShareCertificateChainRecipe: Recipe = {
+    $type$: 'Recipe',
+    name: 'FotosShareCertificateChain',
+    rule: [
+        {itemprop: '$version$', itemtype: {type: 'string', regexp: /^v1$/}},
+        {itemprop: 'id', isId: true, itemtype: {type: 'string'}},
+        {itemprop: 'issuer', itemtype: {type: 'referenceToId', allowedTypes: new Set(['Person'])}},
+        {itemprop: 'subject', itemtype: {type: 'referenceToId', allowedTypes: new Set(['Person'])}},
+        {itemprop: 'scopeKind', itemtype: {type: 'string', regexp: /^(gallery|collection|person)$/}},
+        {itemprop: 'scopeId', itemtype: {type: 'string'}},
+        {itemprop: 'certificate', itemtype: {type: 'referenceToObj', allowedTypes: new Set(['FotosShareCertificate'])}},
+        {itemprop: 'signature', itemtype: {type: 'referenceToObj', allowedTypes: new Set(['Signature']) as any}},
+    ],
+};
+
 export const FotosRecipes: Recipe[] = [
     FotosEntryRecipe,
     FotosManifestRecipe,
     FotosAuthenticityAttestationRecipe,
     FotosShareManifestRecipe,
     FotosShareCertificateRecipe,
+    FotosShareCertificateChainRecipe,
     ...FotosMediaRecipes,
     ...FotosDeviceBookRecipes,
     ...GalleryTrieRecipes,

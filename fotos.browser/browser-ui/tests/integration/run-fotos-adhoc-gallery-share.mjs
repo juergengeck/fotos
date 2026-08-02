@@ -2,6 +2,7 @@
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { createSocket } from 'node:dgram';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path, { dirname, resolve } from 'node:path';
@@ -18,12 +19,10 @@ const HEADLESS_CLI = 'src/cli.ts';
 const COMM_SERVER_BUNDLE = resolve(ONE_ROOT, 'packages/one.models/comm_server.bundle.js');
 const SUITE_SCRIPT = resolve(__dirname, 'fotos-adhoc-gallery-share-suite.mjs');
 const STATIC_SERVER = resolve(__dirname, 'browser-static-server.cjs');
-const VITE_BIN = resolve(BROWSER_UI_ROOT, 'node_modules/vite/bin/vite.js');
+const VITE_BIN = resolve(VGER_ROOT, 'node_modules/.bin/vite');
 const SELLER_PAYMENTS_ROOT = resolve(VGER_ROOT, 'packages/seller.payments');
 const SELLER_PAYMENTS_DIST = resolve(SELLER_PAYMENTS_ROOT, 'dist/index.js');
 const START_TIMEOUT_MS = Number(process.env.FOTOS_ADHOC_SERVER_TIMEOUT_MS || 90_000);
-const DEFAULT_SENDER_PORT = 3101;
-const DEFAULT_RECIPIENT_PORT = 3102;
 
 function sleep(ms) {
   return new Promise(resolvePromise => setTimeout(resolvePromise, ms));
@@ -90,6 +89,27 @@ function getFreePort() {
       });
     });
     server.on('error', rejectPromise);
+  });
+}
+
+function getFreeUdpPort() {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const socket = createSocket('udp4');
+    socket.bind(0, '127.0.0.1', () => {
+      const address = socket.address();
+      if (typeof address === 'string') {
+        socket.close();
+        rejectPromise(new Error('Failed to allocate a free UDP port'));
+        return;
+      }
+
+      const { port } = address;
+      socket.close(() => resolvePromise(port));
+    });
+    socket.on('error', error => {
+      socket.close();
+      rejectPromise(error);
+    });
   });
 }
 
@@ -257,8 +277,8 @@ async function ensureBuiltPrerequisites() {
 
 async function buildBrowserUi(env, outDir) {
   await runCheckedCommand(
-    process.execPath,
-    [VITE_BIN, 'build', '--outDir', outDir, '--emptyOutDir'],
+    '/bin/bash',
+    ['-lc', `"${VITE_BIN}" build --outDir "${outDir}" --emptyOutDir`],
     {
       cwd: BROWSER_UI_ROOT,
       env,
@@ -286,8 +306,11 @@ function spawnStaticServer(label, port, rootDir) {
 async function main() {
   const commPort = Number(process.env.FOTOS_ADHOC_COMM_PORT || await getFreePort());
   const headlessPort = Number(process.env.FOTOS_ADHOC_HEADLESS_PORT || await getFreePort());
-  const senderPort = Number(process.env.FOTOS_ADHOC_SENDER_PORT || DEFAULT_SENDER_PORT);
-  const recipientPort = Number(process.env.FOTOS_ADHOC_RECIPIENT_PORT || DEFAULT_RECIPIENT_PORT);
+  const headlessQuicVCPort = Number(
+    process.env.FOTOS_ADHOC_HEADLESS_QUICVC_PORT || await getFreeUdpPort(),
+  );
+  const senderPort = Number(process.env.FOTOS_ADHOC_SENDER_PORT || await getFreePort());
+  const recipientPort = Number(process.env.FOTOS_ADHOC_RECIPIENT_PORT || await getFreePort());
   const commUrl = `ws://localhost:${commPort}`;
   const headlessUrl = `http://localhost:${headlessPort}`;
   const senderUrl = `http://localhost:${senderPort}/`;
@@ -328,6 +351,7 @@ async function main() {
       'tsx',
       HEADLESS_CLI,
       '--port', String(headlessPort),
+      '--quicvc-port', String(headlessQuicVCPort),
       '--host', 'localhost',
       '--storage', storageDir,
       '--comm-server', commUrl,

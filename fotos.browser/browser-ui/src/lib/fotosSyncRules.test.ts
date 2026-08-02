@@ -7,6 +7,7 @@ import {
     canImportFotosEntry,
     canImportFotosManifest,
     canImportFotosShareCertificate,
+    canImportFotosShareCertificateChain,
     canImportFotosShareManifest,
     canImportFotosMediaLocator,
     canImportFotosMediaVariant,
@@ -199,6 +200,9 @@ describe('fotosSyncRules', () => {
             scopeKind: 'collection',
             scopeId: 'summer',
             entries: new Set(['entry-hash']),
+            snapshotObjects: new Set(['entry-hash']),
+            snapshotIds: new Set(['issuer']),
+            snapshotOrder: ['object:entry-hash', 'id:issuer'],
         })).toBe(true);
         expect(canImportFotosShareCertificate(LOW_TRUST_CONTEXT, {
             $type$: 'FotosShareCertificate',
@@ -224,6 +228,17 @@ describe('fotosSyncRules', () => {
             status: 'revoked',
             issuedAt: '2026-08-02T11:00:00.000Z',
         })).toBe(false);
+        expect(canImportFotosShareCertificateChain(LOW_TRUST_CONTEXT, {
+            $type$: 'FotosShareCertificateChain',
+            $version$: 'v1',
+            id: 'fotos-share-certificate-chain:v1:issuer:anna:collection:summer',
+            issuer: 'issuer',
+            subject: 'anna',
+            scopeKind: 'collection',
+            scopeId: 'summer',
+            certificate: 'certificate-hash',
+            signature: 'signature-hash',
+        })).toBe(true);
         expect(canImportFotosShareCertificate(LOW_TRUST_CONTEXT, {
             $type$: 'FotosShareCertificate',
             $version$: 'v1',
@@ -243,6 +258,7 @@ describe('fotosSyncRules', () => {
         expect(fotosContentRules.has('FotosEntry')).toBe(true);
         expect(fotosContentRules.has('FotosShareManifest')).toBe(true);
         expect(fotosContentRules.has('FotosShareCertificate')).toBe(true);
+        expect(fotosContentRules.has('FotosShareCertificateChain')).toBe(true);
         expect(fotosContentRules.has('FotosMediaVariant')).toBe(true);
         expect(fotosContentRules.has('FotosMediaLocator')).toBe(true);
         expect(fotosContentRules.has('FotosAuthenticityAttestation')).toBe(true);

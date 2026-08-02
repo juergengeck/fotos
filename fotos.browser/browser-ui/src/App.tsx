@@ -12,7 +12,9 @@ import { TimelineScrubber } from '@/components/TimelineScrubber';
 import { ClusterGallery } from '@/components/ClusterGallery';
 import { SelectionActionBar } from '@/components/SelectionActionBar';
 import { UndoToast } from '@/components/UndoToast';
+import {KeyboardShortcutsDialog} from '@/components/KeyboardShortcutsDialog';
 import { useGallery } from '@/hooks/useGallery';
+import { isRemoteGalleryEntry } from '@/hooks/useFolderAccess';
 import { useHeadlessSource } from '@/hooks/useHeadlessSource';
 import { useBreadcrumbHistory } from '@/hooks/useBreadcrumbHistory';
 import { useFotosCollections } from '@/hooks/useFotosCollections';
@@ -33,6 +35,7 @@ import { fotosShareController, type FotosShareSnapshot } from '@/lib/fotosShareC
 import { buildFotosCollectionSummaries } from '@/lib/fotosCollections';
 import {
     buildAcceptedIncomingSharingPeerIds,
+    collectShareLifecyclePersonIds,
     collectSharedPersonIds,
     shouldAdvertiseSharingIdentity,
 } from '@/lib/fotosSharingPolicy';
@@ -59,6 +62,7 @@ import { readStoredSidebarTab, writeStoredSidebarTab } from '@/lib/authFlowState
 import {
     createFotosShareInvite,
     parseFotosShareInviteUrl,
+    verifyFotosShareInvitePin,
     type CreatedFotosShareInvite,
     type FotosShareInvitePayload,
 } from '@/lib/fotosShareInvite';
@@ -71,7 +75,16 @@ import {
     type ReceivedFotosShareScope,
 } from '@/lib/fotosReceivedShareProjection';
 import type { FotosShareScope } from '@refinio/fotos.core';
-import {onVersionedObj} from '@refinio/one.core/lib/storage-versioned-objects.js';
+import {
+    getObjectByIdHash,
+    onVersionedObj,
+} from '@refinio/one.core/lib/storage-versioned-objects.js';
+import {calculateIdHashOfObj} from '@refinio/one.core/lib/util/object.js';
+import {
+    getChumSyncDiagnostics,
+    onChumImportBatch,
+    onChumObjectImported,
+} from '@refinio/one.core/lib/chum-sync.js';
 import {
     EMPTY_SELECTION_STATE,
     countHiddenSelection,
@@ -227,7 +240,7 @@ interface FotosDebugApi {
         pin: string;
         expiresAt: string;
     }>;
-    acceptGalleryShareInvite: (pin?: string) => Promise<{
+    acceptGalleryShareInvite: (pin: string) => Promise<{
         accepted: true;
         senderPersonId: string;
     }>;
@@ -247,6 +260,8 @@ interface FotosDebugApi {
         dataType: string | null;
         dataIdHash: string | null;
     }>>;
+    getChumSyncDiagnostics: () => ReturnType<typeof getChumSyncDiagnostics>;
+    getStoredFotosEntry: (contentHash: string) => Promise<Record<string, unknown> | null>;
     getFotosSyncState: () => Promise<FotosShareSnapshot>;
     getShareState: () => Promise<FotosShareSnapshot>;
     getReceivedShareScopes: () => ReceivedFotosShareScope[];
@@ -307,6 +322,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
     const [sidebarTab, setSidebarTab] = useState<SidebarTab>(() => readStoredSidebarTab() ?? 'browse');
     const [sidebarVisible, setSidebarVisible] = useState(true);
     const [sidebarOpenRequest, setSidebarOpenRequest] = useState(0);
+    const [shortcutsOpen, setShortcutsOpen] = useState(false);
     const [selection, dispatchSelection] = useReducer(selectionReducer, EMPTY_SELECTION_STATE);
     const [sharePeerOptions, setSharePeerOptions] = useState<SharePeerOption[]>([]);
     const [contactPersonIds, setContactPersonIds] = useState<string[]>([]);
@@ -319,6 +335,10 @@ export function App({ fotosModel: initialModel }: AppProps) {
     );
     const [incomingShareStatus, setIncomingShareStatus] = useState<IncomingShareInviteStatus>('idle');
     const [incomingShareError, setIncomingShareError] = useState<string | null>(null);
+    const [incomingSharePin, setIncomingSharePin] = useState('');
+    const incomingShareDialogRef = useRef<HTMLDivElement>(null);
+    const incomingSharePinRef = useRef<HTMLInputElement>(null);
+    const incomingSharePreviousFocusRef = useRef<HTMLElement | null>(null);
     const [shareSnapshot, setShareSnapshot] = useState<FotosShareSnapshot | null>(null);
     const [receivedShareScopes, setReceivedShareScopes] = useState<ReceivedFotosShareScope[]>([]);
     const [confirmState, setConfirmState] = useState<{
@@ -355,6 +375,23 @@ export function App({ fotosModel: initialModel }: AppProps) {
     }, []);
     const dismissUndo = useCallback(() => setUndoState(null), []);
 
+    useEffect(() => {
+        const openShortcutGuide = (event: KeyboardEvent) => {
+            if (event.key !== '?' || event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+            const target = event.target;
+            if (
+                target instanceof HTMLInputElement
+                || target instanceof HTMLTextAreaElement
+                || target instanceof HTMLSelectElement
+                || (target instanceof HTMLElement && target.isContentEditable)
+            ) return;
+            event.preventDefault();
+            setShortcutsOpen(true);
+        };
+        window.addEventListener('keydown', openShortcutGuide);
+        return () => window.removeEventListener('keydown', openShortcutGuide);
+    }, []);
+
     // Wire up model updater so async state changes (e.g. headlessConnected) trigger re-renders
     useEffect(() => {
         setModelUpdater(setFotosModel);
@@ -380,7 +417,9 @@ export function App({ fotosModel: initialModel }: AppProps) {
     });
     const scrollRef = useRef<HTMLDivElement>(null);
     const pendingGalleryInviteTokensRef = useRef(new Set<string>());
+    const pendingShareResumeStartedRef = useRef(false);
     const certificateBackfilledScopesRef = useRef(new Set<string>());
+    const committedShareScopeFingerprintsRef = useRef(new Map<string, string>());
     const legacyFotosAccessRetiredRef = useRef(false);
     const [routeLocation, setRouteLocation] = useState<RouteLocationSnapshot>(getCurrentRouteLocation);
     const selectedPhotoHashes = selection.photoIds;
@@ -413,6 +452,10 @@ export function App({ fotosModel: initialModel }: AppProps) {
             }
             refreshRunning = true;
             try {
+                // Pairing can import the issuer Profile/Keys after LeuteModel's
+                // initial trust cache was built. Refresh at this feed-forward
+                // checkpoint before verifying certificate signatures.
+                await fotosModel.leuteModel.trust.refreshCaches();
                 const projected = (await Promise.all(Array.from(ownKnownPersonIds).map(subject => (
                     projectReceivedFotosShares(subject, async signature => {
                         try {
@@ -437,16 +480,50 @@ export function App({ fotosModel: initialModel }: AppProps) {
         void refresh();
         const unsubscribe = onVersionedObj.addListener(result => {
             const type = (result as {obj?: {$type$?: string}}).obj?.$type$;
-            if (type === 'FotosShareCertificate' || type === 'FotosShareManifest') void refresh();
+            if (
+                type === 'FotosShareCertificate'
+                || type === 'FotosShareCertificateChain'
+                || type === 'FotosShareManifest'
+            ) void refresh();
+        });
+        const unsubscribeImported = onChumObjectImported.addListener(event => {
+            if (event.imported.kind !== 'object') return;
+            if (
+                event.imported.type === 'FotosShareCertificate'
+                || event.imported.type === 'FotosShareCertificateChain'
+                || event.imported.type === 'FotosShareManifest'
+                || event.imported.type === 'Signature'
+            ) void refresh();
+        });
+        const unsubscribeImportBatch = onChumImportBatch.addListener(event => {
+            if (event.batch.imported.some(imported => (
+                imported.kind === 'object'
+                && (
+                    imported.type === 'FotosShareCertificate'
+                    || imported.type === 'FotosShareCertificateChain'
+                    || imported.type === 'FotosShareManifest'
+                    || imported.type === 'Signature'
+                )
+            ))) void refresh();
         });
         return () => {
             cancelled = true;
             unsubscribe();
+            unsubscribeImported();
+            unsubscribeImportBatch();
         };
     }, [fotosModel, ownKnownPersonIds]);
     const collectionSummaries = useMemo(
         () => buildFotosCollectionSummaries(fotosCollections.collections, gallery.folder.entries),
         [fotosCollections.collections, gallery.folder.entries],
+    );
+    const locallyOwnedGalleryEntries = useMemo(
+        () => gallery.folder.entries.filter(photo => !isRemoteGalleryEntry(photo)),
+        [gallery.folder.entries],
+    );
+    const locallyOwnedPhotoHashes = useMemo(
+        () => new Set(locallyOwnedGalleryEntries.map(photo => photo.hash)),
+        [locallyOwnedGalleryEntries],
     );
     const selectedPhotosForCollections = useMemo(
         () => gallery.folder.entries.filter(photo => selectedPhotoHashSet.has(photo.hash)),
@@ -460,13 +537,29 @@ export function App({ fotosModel: initialModel }: AppProps) {
         () => collectSharedPersonIds(fotosCollections.sharing).filter(personId => !ownKnownPersonIds.has(personId)),
         [fotosCollections.sharing, ownKnownPersonIds],
     );
+    const receivedCertificateIssuerIds = useMemo(
+        () => receivedShareScopes
+            .filter(scope => scope.verified && scope.status !== 'invalid')
+            .map(scope => scope.issuer),
+        [receivedShareScopes],
+    );
+    const shareLifecyclePersonIds = useMemo(
+        () => Array.from(new Set([
+            ...collectShareLifecyclePersonIds(fotosCollections.sharing),
+            ...receivedCertificateIssuerIds,
+        ])).filter(personId => !ownKnownPersonIds.has(personId)),
+        [fotosCollections.sharing, ownKnownPersonIds, receivedCertificateIssuerIds],
+    );
     const acceptedIncomingPeerIds = useMemo(
-        () => buildAcceptedIncomingSharingPeerIds({
-            sharing: fotosCollections.sharing,
-            contactPersonIds,
-            acceptSharing,
-        }).filter(personId => !ownKnownPersonIds.has(personId)),
-        [acceptSharing, contactPersonIds, fotosCollections.sharing, ownKnownPersonIds],
+        () => Array.from(new Set([
+            ...buildAcceptedIncomingSharingPeerIds({
+                sharing: fotosCollections.sharing,
+                contactPersonIds,
+                acceptSharing,
+            }),
+            ...receivedCertificateIssuerIds,
+        ])).filter(personId => !ownKnownPersonIds.has(personId)),
+        [acceptSharing, contactPersonIds, fotosCollections.sharing, ownKnownPersonIds, receivedCertificateIssuerIds],
     );
     const advertiseSharingIdentity = useMemo(
         () => shouldAdvertiseSharingIdentity({
@@ -544,13 +637,18 @@ export function App({ fotosModel: initialModel }: AppProps) {
         setShowOnboarding(false);
     }, []);
 
-    const handlePhotoContextMenu = useCallback((photo: PhotoEntry, _index: number, event: React.MouseEvent | React.TouchEvent) => {
+    const handlePhotoContextMenu = useCallback((photo: PhotoEntry, index: number, event: React.MouseEvent | React.TouchEvent | KeyboardEvent) => {
         event.preventDefault();
         event.stopPropagation();
         
         let clientX = 0;
         let clientY = 0;
-        if ('touches' in event) {
+        if (event instanceof KeyboardEvent) {
+            const anchor = document.querySelector<HTMLElement>(`[data-photo-index="${index}"]`);
+            const rect = anchor?.getBoundingClientRect();
+            clientX = rect?.left ?? 0;
+            clientY = rect?.bottom ?? 0;
+        } else if ('touches' in event) {
             const touch = event.touches[0];
             if (touch) {
                 clientX = touch.clientX;
@@ -570,13 +668,19 @@ export function App({ fotosModel: initialModel }: AppProps) {
         });
     }, []);
 
-    const handleClusterContextMenu = useCallback((cluster: any, event: React.MouseEvent | React.TouchEvent) => {
+    const handleClusterContextMenu = useCallback((cluster: any, event: React.MouseEvent | React.TouchEvent | KeyboardEvent) => {
         event.preventDefault();
         event.stopPropagation();
         
         let clientX = 0;
         let clientY = 0;
-        if ('touches' in event) {
+        if (event instanceof KeyboardEvent) {
+            const clusterIndex = gallery.clusters.findIndex(candidate => candidate.clusterId === cluster.clusterId);
+            const anchor = document.querySelector<HTMLElement>(`[data-person-index="${clusterIndex}"]`);
+            const rect = anchor?.getBoundingClientRect();
+            clientX = rect?.left ?? 0;
+            clientY = rect?.bottom ?? 0;
+        } else if ('touches' in event) {
             const touch = event.touches[0];
             if (touch) {
                 clientX = touch.clientX;
@@ -594,7 +698,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
             type: 'cluster',
             data: cluster,
         });
-    }, []);
+    }, [gallery.clusters]);
 
     const handleCollectionContextMenu = useCallback((collection: any, event: React.MouseEvent | React.TouchEvent) => {
         event.preventDefault();
@@ -704,9 +808,14 @@ export function App({ fotosModel: initialModel }: AppProps) {
             message: `Remove “${folderName}” from fotos? Original files and the folder on disk are not deleted.`,
             confirmLabel: 'Remove folder',
             isDestructive: true,
-            onConfirm: () => gallery.folder.removeFolder(folderId),
+            onConfirm: () => {
+                const restoreFolder = gallery.folder.removeFolder(folderId);
+                if (restoreFolder) {
+                    showUndo(`Folder “${folderName}” removed from fotos. Original files remain on disk.`, restoreFolder);
+                }
+            },
         });
-    }, [gallery.folder, showConfirm]);
+    }, [gallery.folder, showConfirm, showUndo]);
 
     const handleAssociateFaceWithCluster = useCallback((photoHash: string, faceIndex: number, clusterId: string) => {
         void gallery.folder.associateFaceWithCluster(photoHash, faceIndex, clusterId);
@@ -739,11 +848,16 @@ export function App({ fotosModel: initialModel }: AppProps) {
             message: `Group ${uniqueIds.length} face clusters as one person? You can separate them again later.`,
             confirmLabel: 'Group as one person',
             onConfirm: async () => {
-                await gallery.folder.groupFaceClustersAsPerson(uniqueIds);
+                const personId = await gallery.folder.groupFaceClustersAsPerson(uniqueIds);
                 onCompleted?.();
+                if (personId) {
+                    showUndo('Face clusters grouped as one person.', () => {
+                        void gallery.folder.separatePersonGroup(personId);
+                    });
+                }
             },
         });
-    }, [gallery.folder, showConfirm]);
+    }, [gallery.folder, showConfirm, showUndo]);
 
     // Name (and, when more than one is involved, group) face clusters under a
     // single identity. Powers the implicit "select faces → name them" flow.
@@ -767,11 +881,16 @@ export function App({ fotosModel: initialModel }: AppProps) {
             message: 'Separate this person back into individual face clusters? Existing person grouping will be removed.',
             confirmLabel: 'Separate clusters',
             isDestructive: true,
-            onConfirm: () => {
-                void gallery.folder.separatePersonGroup(personId);
+            onConfirm: async () => {
+                const separatedClusterIds = await gallery.folder.separatePersonGroup(personId);
+                if (separatedClusterIds.length > 1) {
+                    showUndo('Person separated into face clusters.', () => {
+                        void gallery.folder.groupFaceClustersAsPerson(separatedClusterIds, personId);
+                    });
+                }
             },
         });
-    }, [gallery.folder, showConfirm]);
+    }, [gallery.folder, showConfirm, showUndo]);
 
     useEffect(() => {
         const activePresenceService = fotosModel?.glueModule?.presenceTrieService;
@@ -905,14 +1024,14 @@ export function App({ fotosModel: initialModel }: AppProps) {
             return;
         }
 
-        activeGlueModule.setRouteWantedPeerIds?.(sharedPersonIds);
+        activeGlueModule.setRouteWantedPeerIds?.(shareLifecyclePersonIds);
         activeGlueModule.setAcceptedIncomingPeerIds?.(acceptedIncomingPeerIds);
         void activeGlueModule.setOwnPresencePublishingEnabled?.(advertiseSharingIdentity);
     }, [
         acceptedIncomingPeerIds,
         advertiseSharingIdentity,
         fotosModel?.glueModule,
-        sharedPersonIds,
+        shareLifecyclePersonIds,
     ]);
 
     useEffect(() => {
@@ -1093,6 +1212,22 @@ export function App({ fotosModel: initialModel }: AppProps) {
             throw new Error('This scope has no photos to share.');
         }
 
+        const scopeKey = `${params.scope.kind}:${params.scope.id}`;
+        const previousPersonIds = expandSharePersonIds(params.previousPersonIds);
+        const nextPersonIds = expandSharePersonIds(params.nextPersonIds);
+        const fingerprint = JSON.stringify({
+            issuer: String(issuer),
+            recipients: [...nextPersonIds].sort(),
+            content: [...params.contentHashes].sort(),
+        });
+        if (
+            certificateBackfilledScopesRef.current.has(scopeKey)
+            && committedShareScopeFingerprintsRef.current.get(scopeKey) === fingerprint
+        ) {
+            params.persist();
+            return;
+        }
+
         await gallery.folder.ensureSyncedToOneCore();
         const snapshot = await fotosShareController.refreshManifest();
         const entryHashByContentHash = new Map(
@@ -1106,11 +1241,12 @@ export function App({ fotosModel: initialModel }: AppProps) {
         const result = await commitFotosShareScope({
             issuer: issuer as any,
             scope: params.scope,
-            previousPersonIds: expandSharePersonIds(params.previousPersonIds),
-            nextPersonIds: expandSharePersonIds(params.nextPersonIds),
+            previousPersonIds,
+            nextPersonIds,
             entryHashes: params.contentHashes.map(hash => entryHashByContentHash.get(hash) as any),
         });
-        certificateBackfilledScopesRef.current.add(`${params.scope.kind}:${params.scope.id}`);
+        certificateBackfilledScopesRef.current.add(scopeKey);
+        committedShareScopeFingerprintsRef.current.set(scopeKey, fingerprint);
         params.persist();
         for (const transition of result.transitions) {
             if (transition.status === 'active') fotosShareController.recordGrant(transition.personId);
@@ -1156,10 +1292,10 @@ export function App({ fotosModel: initialModel }: AppProps) {
             scopeLabel: 'gallery',
             previousPersonIds: previousIds,
             nextPersonIds,
-            contentHashes: gallery.folder.entries.map(photo => photo.hash),
+            contentHashes: locallyOwnedGalleryEntries.map(photo => photo.hash),
             persist: () => fotosCollections.setGallerySharePersonIds(nextPersonIds),
         });
-    }, [fotosCollections, gallery.folder.entries, requestShareAssignment]);
+    }, [fotosCollections, locallyOwnedGalleryEntries, requestShareAssignment]);
 
     const handleCollectionShareChange = useCallback(async (collectionId: string, nextPersonIds: string[]) => {
         const previousIds = fotosCollections.sharing.collectionPersonIds[collectionId] ?? [];
@@ -1169,16 +1305,16 @@ export function App({ fotosModel: initialModel }: AppProps) {
             scopeLabel: collection?.name ?? 'collection',
             previousPersonIds: previousIds,
             nextPersonIds,
-            contentHashes: collection?.matchedPhotoHashes ?? [],
+            contentHashes: collection?.matchedPhotoHashes.filter(hash => locallyOwnedPhotoHashes.has(hash)) ?? [],
             persist: () => fotosCollections.setCollectionSharePersonIds(collectionId, nextPersonIds),
         });
-    }, [collectionSummaries, fotosCollections, requestShareAssignment]);
+    }, [collectionSummaries, fotosCollections, locallyOwnedPhotoHashes, requestShareAssignment]);
 
     const handleClusterShareChange = useCallback(async (clusterId: string, nextPersonIds: string[]) => {
         const previousIds = fotosCollections.sharing.clusterPersonIds[clusterId] ?? [];
         const cluster = gallery.allClusters.find(candidate => candidate.clusterId === clusterId);
         const memberIds = new Set(cluster?.memberClusterIds ?? [clusterId]);
-        const contentHashes = gallery.folder.entries
+        const contentHashes = locallyOwnedGalleryEntries
             .filter(photo => (
                 photo.faces?.clusterIds?.some(memberId => memberIds.has(memberId))
                 || (cluster?.personId && photo.faces?.personIds?.includes(cluster.personId))
@@ -1192,7 +1328,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
             contentHashes,
             persist: () => fotosCollections.setClusterSharePersonIds(clusterId, nextPersonIds),
         });
-    }, [fotosCollections, gallery.allClusters, gallery.folder.entries, requestShareAssignment]);
+    }, [fotosCollections, gallery.allClusters, locallyOwnedGalleryEntries, requestShareAssignment]);
 
     useEffect(() => {
         const pairing = fotosModel?.connectionsModel?.pairing;
@@ -1222,11 +1358,9 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 scope: {kind: 'gallery', id: 'main'},
                 previousPersonIds: previousIds,
                 nextPersonIds,
-                contentHashes: gallery.folder.entries.map(photo => photo.hash),
+                contentHashes: locallyOwnedGalleryEntries.map(photo => photo.hash),
                 persist: () => fotosCollections.setGallerySharePersonIds(nextPersonIds),
             });
-            (fotosModel.glueModule as { requestPeerConnection?: (targetPersonId: string) => boolean } | null)
-                ?.requestPeerConnection?.(normalizedRemotePersonId);
         });
 
         return () => {
@@ -1235,16 +1369,15 @@ export function App({ fotosModel: initialModel }: AppProps) {
     }, [
         fotosCollections,
         fotosModel?.connectionsModel?.pairing,
-        fotosModel?.glueModule,
         commitShareAssignment,
-        gallery.folder.entries,
+        locallyOwnedGalleryEntries,
     ]);
 
     const createGalleryShareInvite = useCallback(async (): Promise<CreatedGalleryShareInvite> => {
         if (!fotosModel?.connectionsModel?.pairing || !fotosModel.publicationIdentity) {
             throw new Error('Enable sync and prepare your fotos identity before creating a share link.');
         }
-        if (!gallery.folder.isOpen || gallery.folder.entries.length === 0) {
+        if (!gallery.folder.isOpen || locallyOwnedGalleryEntries.length === 0) {
             throw new Error('Open a gallery with photos before creating a share link.');
         }
 
@@ -1258,7 +1391,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
         const pairingInvitation = await fotosModel.connectionsModel.pairing.createInvitation(
             fotosModel.publicationIdentity,
             undefined,
-            { mode: 'primed' },
+            { mode: 'standard' },
         );
         const shareBaseUrl = new URL(window.location.href);
         shareBaseUrl.searchParams.delete('fotosShare');
@@ -1283,7 +1416,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
     }, [
         fotosModel?.connectionsModel?.pairing,
         fotosModel?.publicationIdentity,
-        gallery.folder.entries.length,
+        locallyOwnedGalleryEntries.length,
         gallery.folder.folderName,
         gallery.folder.isOpen,
         gallery.folder.ensureSyncedToOneCore,
@@ -1320,7 +1453,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
     }, [createdShareInvite, fotosModel?.connectionsModel?.pairing, showConfirm]);
 
     const acceptIncomingGalleryShareInvite = useCallback(async (
-        options: { requireDestination?: boolean } = {},
+        options: { requireDestination?: boolean; pin?: string } = {},
     ) => {
         if (!incomingShareInvite) {
             throw new Error('No fotos share invite is pending.');
@@ -1331,6 +1464,14 @@ export function App({ fotosModel: initialModel }: AppProps) {
             || Date.now() > Date.parse(incomingShareInvite.expiresAt)
         ) {
             throw new Error('This share link has expired.');
+        }
+
+        const pin = (options.pin ?? incomingSharePin).trim();
+        if (!/^\d{4}$/.test(pin)) {
+            throw new Error('Enter the four-digit PIN the sender gave you.');
+        }
+        if (!await verifyFotosShareInvitePin(incomingShareInvite, pin)) {
+            throw new Error('That PIN does not match this invitation.');
         }
 
         if (options.requireDestination ?? true) {
@@ -1361,6 +1502,13 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 moduleId: 'glue',
                 values: { syncEnabled: true },
             });
+            sessionStorage.setItem('fotos.pendingShareAcceptance', JSON.stringify({
+                token: incomingShareInvite.pairingInvitation.token,
+                pin,
+            }));
+            const resumeUrl = new URL(window.location.href);
+            resumeUrl.searchParams.set('fotosAcceptAsNew', '1');
+            window.history.replaceState(window.history.state, '', resumeUrl);
             window.location.reload();
             return {
                 accepted: true as const,
@@ -1377,10 +1525,11 @@ export function App({ fotosModel: initialModel }: AppProps) {
         await fotosModel.connectionsModel.pairing.connectUsingInvitation(
             incomingShareInvite.pairingInvitation,
             localPersonId,
-            { mode: 'primed' },
+            {
+                mode: 'standard',
+                expectedRemotePersonId: incomingShareInvite.senderPersonId as any,
+            },
         );
-        (fotosModel.glueModule as { requestPeerConnection?: (targetPersonId: string) => boolean } | null)
-            ?.requestPeerConnection?.(incomingShareInvite.senderPersonId);
         setIncomingShareStatus('accepted');
         return {
             accepted: true as const,
@@ -1395,7 +1544,48 @@ export function App({ fotosModel: initialModel }: AppProps) {
         fotosModel?.settingsPlan,
         gallery.folder,
         incomingShareInvite,
+        incomingSharePin,
     ]);
+
+    useEffect(() => {
+        if (
+            pendingShareResumeStartedRef.current
+            || !incomingShareInvite
+            || !fotosModel?.connectionsModel?.pairing
+            || new URL(window.location.href).searchParams.get('fotosAcceptAsNew') !== '1'
+        ) {
+            return;
+        }
+
+        let stored: {token?: string; pin?: string} | null = null;
+        try {
+            stored = JSON.parse(sessionStorage.getItem('fotos.pendingShareAcceptance') ?? 'null');
+        } catch {
+            stored = null;
+        }
+        if (
+            stored?.token !== incomingShareInvite.pairingInvitation.token
+            || typeof stored.pin !== 'string'
+        ) {
+            setIncomingShareStatus('error');
+            setIncomingShareError('The pending invitation could not be resumed. Enter the PIN again.');
+            return;
+        }
+
+        pendingShareResumeStartedRef.current = true;
+        setIncomingSharePin(stored.pin);
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete('fotosAcceptAsNew');
+        window.history.replaceState(window.history.state, '', cleanUrl);
+        void acceptIncomingGalleryShareInvite({requireDestination: false, pin: stored.pin})
+            .catch(error => {
+                setIncomingShareStatus('error');
+                setIncomingShareError(error instanceof Error ? error.message : String(error));
+            })
+            .finally(() => {
+                sessionStorage.removeItem('fotos.pendingShareAcceptance');
+            });
+    }, [acceptIncomingGalleryShareInvite, fotosModel?.connectionsModel?.pairing, incomingShareInvite]);
 
     const handleAcceptIncomingGalleryShareInvite = useCallback(async () => {
         setIncomingShareError(null);
@@ -1841,9 +2031,12 @@ export function App({ fotosModel: initialModel }: AppProps) {
             message: 'Delete this saved place from breadcrumb history? Photos, folders, and collections are not deleted.',
             confirmLabel: 'Delete history entry',
             isDestructive: true,
-            onConfirm: () => breadcrumbHistory.deleteEntry(eventId),
+            onConfirm: () => {
+                breadcrumbHistory.deleteEntry(eventId);
+                showUndo('Saved history entry deleted.', () => breadcrumbHistory.restoreDeletedEntry(eventId));
+            },
         });
-    }, [breadcrumbHistory.deleteEntry, showConfirm]);
+    }, [breadcrumbHistory.deleteEntry, breadcrumbHistory.restoreDeletedEntry, showConfirm, showUndo]);
 
     useEffect(() => {
         const restoreEntry = breadcrumbHistory.restoreEntry;
@@ -2198,7 +2391,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 scope: {kind: 'gallery', id: 'main'},
                 previousPersonIds: fotosCollections.sharing.galleryPersonIds,
                 nextPersonIds: fotosCollections.sharing.galleryPersonIds,
-                contentHashes: gallery.folder.entries.map(photo => photo.hash),
+                contentHashes: locallyOwnedGalleryEntries.map(photo => photo.hash),
                 persist: () => {},
             });
             for (const collection of collectionSummaries) {
@@ -2207,14 +2400,14 @@ export function App({ fotosModel: initialModel }: AppProps) {
                     scope: {kind: 'collection', id: collection.id},
                     previousPersonIds: personIds,
                     nextPersonIds: personIds,
-                    contentHashes: collection.matchedPhotoHashes,
+                    contentHashes: collection.matchedPhotoHashes.filter(hash => locallyOwnedPhotoHashes.has(hash)),
                     persist: () => {},
                 });
             }
             for (const cluster of gallery.allClusters) {
                 const personIds = fotosCollections.sharing.clusterPersonIds[cluster.clusterId] ?? [];
                 const memberIds = new Set(cluster.memberClusterIds);
-                const contentHashes = gallery.folder.entries
+                const contentHashes = locallyOwnedGalleryEntries
                     .filter(photo => (
                         photo.faces?.clusterIds?.some(memberId => memberIds.has(memberId))
                         || (cluster.personId && photo.faces?.personIds?.includes(cluster.personId))
@@ -2247,7 +2440,8 @@ export function App({ fotosModel: initialModel }: AppProps) {
         fotosCollections.sharing,
         fotosModel?.initialized,
         gallery.allClusters,
-        gallery.folder.entries,
+        locallyOwnedGalleryEntries,
+        locallyOwnedPhotoHashes,
         shareManifestHash,
         sharedPersonIds,
     ]);
@@ -2496,8 +2690,8 @@ export function App({ fotosModel: initialModel }: AppProps) {
                     expiresAt: invite.payload.expiresAt,
                 };
             },
-            acceptGalleryShareInvite: async () => (
-                await debugRuntimeRef.current.acceptIncomingGalleryShareInvite({ requireDestination: false })
+            acceptGalleryShareInvite: async (pin: string) => (
+                await debugRuntimeRef.current.acceptIncomingGalleryShareInvite({ requireDestination: false, pin })
             ),
             forceRouteKeyConnect: async (personId: string, keySource: 'advertised' | 'certified' = 'advertised') => {
                 const activeModel = debugRuntimeRef.current.model;
@@ -2575,6 +2769,15 @@ export function App({ fotosModel: initialModel }: AppProps) {
                     dataIdHash: typeof (root as any).dataIdHash === 'string' ? (root as any).dataIdHash : null,
                 }));
             },
+            getChumSyncDiagnostics: () => getChumSyncDiagnostics({traceLimit: 500}),
+            getStoredFotosEntry: async (contentHash: string) => {
+                const idHash = await calculateIdHashOfObj({$type$: 'FotosEntry', contentHash} as any);
+                try {
+                    return (await getObjectByIdHash(idHash as any)).obj as unknown as Record<string, unknown>;
+                } catch {
+                    return null;
+                }
+            },
             getFotosSyncState: async () => {
                 await fotosShareController.refreshManifest();
                 return fotosShareController.getSnapshot();
@@ -2603,7 +2806,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 };
             },
             openLocalPicker: () => {
-                debugRuntimeRef.current.folder.openLocalFiles();
+                debugRuntimeRef.current.folder.openFolder();
                 return true;
             },
         };
@@ -2639,6 +2842,48 @@ export function App({ fotosModel: initialModel }: AppProps) {
         : incomingShareReceivedCount > 0
             ? `${incomingShareReceivedCount} photos received`
             : 'Waiting for shared photos...';
+    const incomingShareDialogOpen = Boolean(incomingShareInvite)
+        && incomingShareStatus !== 'accepted';
+    const dismissIncomingShareInvite = useCallback(() => {
+        if (incomingShareBusy) return;
+        sessionStorage.removeItem('fotos.pendingShareAcceptance');
+        setIncomingShareInvite(null);
+    }, [incomingShareBusy]);
+    useEffect(() => {
+        if (!incomingShareDialogOpen) return;
+        incomingSharePreviousFocusRef.current = document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null;
+        const frame = requestAnimationFrame(() => incomingSharePinRef.current?.focus());
+        return () => {
+            cancelAnimationFrame(frame);
+            const previous = incomingSharePreviousFocusRef.current;
+            incomingSharePreviousFocusRef.current = null;
+            if (previous?.isConnected) previous.focus();
+        };
+    }, [incomingShareDialogOpen]);
+    const handleIncomingShareDialogKeyDown = useCallback((event: React.KeyboardEvent) => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            dismissIncomingShareInvite();
+            return;
+        }
+        if (event.key !== 'Tab') return;
+        const focusable = incomingShareDialogRef.current?.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+        );
+        if (!focusable || focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    }, [dismissIncomingShareInvite]);
 
     const appContent = (() => {
         // Before the first library exists there is nothing to browse yet. Rescans and
@@ -2788,6 +3033,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                             else setSidebarVisible(visible => !visible);
                         }}
                         onOpenSharing={() => openSidebarTab('sharing')}
+                        onOpenShortcuts={() => setShortcutsOpen(true)}
                         onOpenSettings={() => openSidebarTab('settings')}
                     />
                     {/* Portrait mobile: sheet over the grid. Landscape mobile and
@@ -2809,6 +3055,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                     selectedClusterIds={selectedClusterIdSet}
                                     onToggleClusterSelection={(clusterId, _index, options) => toggleSelectedClusterId(clusterId, options)}
                                     onNameClusters={handleNameClusters}
+                                    onClusterContextMenu={handleClusterContextMenu}
                                 />
                             ) : (
                                 <PhotoGrid
@@ -3046,30 +3293,54 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 />
             ) : null}
             {incomingShareInvite && incomingShareStatus !== 'accepted' && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-                    <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#141414] p-4 shadow-2xl">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" role="presentation">
+                    <div
+                        ref={incomingShareDialogRef}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="incoming-share-title"
+                        aria-describedby="incoming-share-description"
+                        onKeyDown={handleIncomingShareDialogKeyDown}
+                        className="w-full max-w-md rounded-xl border border-white/10 bg-[#141414] p-4 shadow-2xl"
+                    >
                         <div className="space-y-1">
-                            <div className="text-sm font-medium text-white/85">Open shared gallery</div>
-                            <div className="text-xs leading-relaxed text-white/55">
+                            <div id="incoming-share-title" className="text-sm font-medium text-white/85">Open shared gallery</div>
+                            <div id="incoming-share-description" className="text-xs leading-relaxed text-white/55">
                                 {incomingShareInvite.galleryName ?? 'Shared gallery'} from {incomingShareInvite.senderPersonId.slice(0, 12)}
                             </div>
                         </div>
                         <div className="mt-4 space-y-3">
                             <div className="rounded-md border border-white/10 bg-black/25 px-3 py-2 text-xs leading-relaxed text-white/55">
-                                Choose a local folder for this shared gallery. fotos will use it as the destination while shared photos sync.
+                                Enter the PIN sent separately, then choose a local folder. If fotos needs to prepare a private sharing identity, it will reopen this invitation automatically.
                             </div>
+                            <label className="block text-xs font-medium text-white/70">
+                                Invitation PIN
+                                <input
+                                    ref={incomingSharePinRef}
+                                    type="text"
+                                    inputMode="numeric"
+                                    autoComplete="one-time-code"
+                                    pattern="[0-9]{4}"
+                                    maxLength={4}
+                                    value={incomingSharePin}
+                                    disabled={incomingShareBusy}
+                                    onChange={event => setIncomingSharePin(event.target.value.replace(/\D/g, '').slice(0, 4))}
+                                    className="mt-1.5 min-h-11 w-full rounded-md border border-white/12 bg-black/35 px-3 font-mono text-base tracking-[0.3em] text-white outline-none focus:border-[#ff9db0]/70"
+                                    aria-describedby={incomingShareError ? 'incoming-share-error' : undefined}
+                                />
+                            </label>
                             {incomingShareError && (
-                                <div className="rounded-md border border-[#e94560]/25 bg-[#e94560]/10 px-2.5 py-2 text-xs text-[#ffb5c3]">
+                                <div id="incoming-share-error" role="alert" className="rounded-md border border-[#e94560]/25 bg-[#e94560]/10 px-2.5 py-2 text-xs text-[#ffb5c3]">
                                     {incomingShareError}
                                 </div>
                             )}
                             <button
                                 type="button"
-                                disabled={incomingShareBusy}
+                                disabled={incomingShareBusy || incomingSharePin.length !== 4}
                                 onClick={() => {
                                     void handleAcceptIncomingGalleryShareInvite();
                                 }}
-                                className={`w-full rounded-md px-3 py-2 text-xs font-medium transition-colors ${
+                                className={`min-h-11 w-full rounded-md px-3 py-2 text-xs font-medium transition-colors ${
                                     incomingShareBusy
                                         ? 'bg-white/5 text-white/55 cursor-wait'
                                         : 'bg-[#e94560] text-white hover:bg-[#d13354]'
@@ -3089,8 +3360,9 @@ export function App({ fotosModel: initialModel }: AppProps) {
                             )}
                             <button
                                 type="button"
-                                onClick={() => setIncomingShareInvite(null)}
-                                className="w-full rounded-md px-3 py-1.5 text-xs text-white/55 transition-colors hover:text-white/55"
+                                onClick={dismissIncomingShareInvite}
+                                disabled={incomingShareBusy}
+                                className="min-h-11 w-full rounded-md px-3 py-2 text-xs text-white/55 transition-colors hover:text-white/75 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 Cancel
                             </button>
@@ -3143,6 +3415,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 </div>
             )}
             <UpdatePrompt lane={undoState && incomingShareInvite && incomingShareStatus === 'accepted' ? 3 : undoState || (incomingShareInvite && incomingShareStatus === 'accepted') ? 2 : selectedPhotoHashes.length + selectedClusterIds.length > 0 ? 1 : 0} />
+            <KeyboardShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
             <ContextMenu
                 x={contextMenu?.x ?? 0}
                 y={contextMenu?.y ?? 0}

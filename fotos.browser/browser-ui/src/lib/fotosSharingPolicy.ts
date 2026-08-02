@@ -25,12 +25,19 @@ export function collectSharedPersonIds(sharing: FotosShareAssignments): string[]
     ]);
 }
 
+export function collectShareLifecyclePersonIds(sharing: FotosShareAssignments): string[] {
+    return uniquePersonIds([
+        ...collectSharedPersonIds(sharing),
+        ...sharing.certificatePersonIds,
+    ]);
+}
+
 export function buildAcceptedIncomingSharingPeerIds(options: {
     sharing: FotosShareAssignments;
     contactPersonIds: readonly string[];
     acceptSharing: boolean;
 }): string[] {
-    const sharedPersonIds = collectSharedPersonIds(options.sharing);
+    const sharedPersonIds = collectShareLifecyclePersonIds(options.sharing);
     if (!options.acceptSharing) {
         return sharedPersonIds;
     }
@@ -45,5 +52,5 @@ export function shouldAdvertiseSharingIdentity(options: {
     sharing: FotosShareAssignments;
     acceptSharing: boolean;
 }): boolean {
-    return options.acceptSharing || collectSharedPersonIds(options.sharing).length > 0;
+    return options.acceptSharing || collectShareLifecyclePersonIds(options.sharing).length > 0;
 }

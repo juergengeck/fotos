@@ -27,7 +27,6 @@ const DEFAULT_FIXTURE_B = resolve(
 );
 const FIXTURE_A = process.env.FOTOS_LIVE_FIXTURE_A?.trim() || DEFAULT_FIXTURE_A;
 const FIXTURE_B = process.env.FOTOS_LIVE_FIXTURE_B?.trim() || DEFAULT_FIXTURE_B;
-const OPEN_FOLDER_BUTTON_PATTERN = /^Open photo folder$/i;
 const RESCAN_BUTTON_PATTERN = /^Rescan folder$/i;
 
 function sleep(ms) {
@@ -465,6 +464,10 @@ async function getGalleryState(page, timeoutMs = READY_TIMEOUT_MS) {
   return await evaluateWithDebugApi(page, () => window.__fotosDebug.getGalleryState(), undefined, timeoutMs);
 }
 
+async function openLocalPicker(page, timeoutMs = READY_TIMEOUT_MS) {
+  return await evaluateWithDebugApi(page, () => window.__fotosDebug.openLocalPicker(), undefined, timeoutMs);
+}
+
 function galleryHasItem(galleryState, fileName) {
   return Boolean(galleryState?.items?.some(item => item?.name === fileName));
 }
@@ -831,7 +834,7 @@ async function ensureGalleryOpenWithFixture(page, label, fixturePath, fileName) 
   }
 
   await installSeededFolderPicker(page, label, fixturePath, fileName);
-  await clickVisibleButton(page, OPEN_FOLDER_BUTTON_PATTERN);
+  await openLocalPicker(page);
 
   await waitForStage(
     `${label}-local-gallery`,
@@ -1054,7 +1057,7 @@ async function main() {
     };
   };
 
-  pages.forEach((page, index) => {
+  const attachPageDiagnostics = (page, index) => {
     page.on('console', message => {
       const text = message.text();
       if (
@@ -1075,7 +1078,8 @@ async function main() {
       report.logs[index === 0 ? 'page1' : 'page2'].push(`[pageerror] ${message}`);
       recordFatalPageError(index, `[pageerror] ${message}`);
     });
-  });
+  };
+  pages.forEach(attachPageDiagnostics);
 
   const captureSnapshot = async () => {
     const identities = await Promise.all(pages.map(page => getLocalIdentitySnapshot(page).catch(() => null)));
@@ -1185,18 +1189,8 @@ async function main() {
     if (!page1PeerId || !page2PeerId) {
       throw new Error('Missing publication identities after authentication');
     }
-    const page1ShareTargetId = page2PeerId;
-    const page2ShareTargetId = page1PeerId;
-    const refreshPeerConnections = createPeerConnectionRefresher(
-      pages,
-      page1ShareTargetId,
-      page2ShareTargetId,
-      Math.max(POLL_INTERVAL_MS * 2, 2_000),
-    );
     report.peerIds.page1 = page1PeerId;
     report.peerIds.page2 = page2PeerId;
-    report.shareTargetIds.page1 = page1ShareTargetId;
-    report.shareTargetIds.page2 = page2ShareTargetId;
 
     const bootstrapInvite = await createGalleryShareInvite(pages[0]);
     await pages[1].goto(buildRecipientInviteUrl(bootstrapInvite.url, 'b'), {
@@ -1205,6 +1199,21 @@ async function main() {
     await waitForDebugApi(pages[1], READY_TIMEOUT_MS);
     await acceptGalleryShareInvite(pages[1], bootstrapInvite.pin);
     await ensureGalleryOpenWithFixture(pages[1], 'page2', seedFixtures.page2, initialFileNames.page2);
+
+    const acceptedRecipientIdentity = await getLocalIdentitySnapshot(pages[1]);
+    const page1ShareTargetId = acceptedRecipientIdentity?.publicationIdentity;
+    const page2ShareTargetId = page1PeerId;
+    if (!page1ShareTargetId) {
+      throw new Error('Missing recipient publication identity after accepting the share');
+    }
+    const refreshPeerConnections = createPeerConnectionRefresher(
+      pages,
+      page1ShareTargetId,
+      page2ShareTargetId,
+      Math.max(POLL_INTERVAL_MS * 2, 2_000),
+    );
+    report.shareTargetIds.page1 = page1ShareTargetId;
+    report.shareTargetIds.page2 = page2ShareTargetId;
 
     await waitForStage(
       'page1-bootstrap-invite-share',
@@ -1399,7 +1408,7 @@ async function main() {
       SHARE_TIMEOUT_MS,
       async () => {
         const [page1Scopes, page2Scopes] = await Promise.all(pages.map(page => getReceivedShareScopes(page, 5_000)));
-        const page1Active = page1Scopes.some(scope => scope.issuer === page2PeerId && scope.scope?.kind === 'gallery' && scope.status === 'active' && scope.verified === true);
+        const page1Active = page1Scopes.some(scope => scope.issuer === page1ShareTargetId && scope.scope?.kind === 'gallery' && scope.status === 'active' && scope.verified === true);
         const page2Active = page2Scopes.some(scope => scope.issuer === page1PeerId && scope.scope?.kind === 'gallery' && scope.status === 'active' && scope.verified === true);
         return page1Active && page2Active ? {page1Scopes, page2Scopes} : false;
       },
@@ -1407,18 +1416,18 @@ async function main() {
       refreshPeerConnections,
     );
 
-    await removeGalleryShare(pages[0], page1ShareTargetId);
+    // Exercise the protocol invariant from D-03: the issuer commits revocation
+    // while the recipient network is offline, retains the control path, and the
+    // recipient projects the signed revocation only after reconnecting.
+    await contexts[1].setOffline(true);
     await waitForStage(
-      'certificate-projection-revoked',
+      'recipient-offline-before-revocation',
       SHARE_TIMEOUT_MS,
-      async () => {
-        const scopes = await getReceivedShareScopes(pages[1], 5_000);
-        const revokedScope = scopes.find(scope => scope.issuer === page1PeerId && scope.scope?.kind === 'gallery');
-        return revokedScope?.status === 'revoked' && revokedScope.verified === true ? revokedScope : false;
-      },
+      async () => ({recipientNetworkOffline: true}),
       captureSnapshot,
-      refreshPeerConnections,
     );
+
+    await removeGalleryShare(pages[0], page1ShareTargetId);
 
     await appendSharedFixtureAndRescan(pages[0], 'page1', sharedFixtures.afterRevoke, sharedFileNames.afterRevoke);
     await waitForStage(
@@ -1430,7 +1439,21 @@ async function main() {
       },
       captureSnapshot,
     );
+
+    await contexts[1].setOffline(false);
     await refreshPeerConnections({force: true, label: 'post-revocation-refresh'});
+
+    await waitForStage(
+      'certificate-projection-revoked-after-reconnect',
+      SHARE_TIMEOUT_MS,
+      async () => {
+        const scopes = await getReceivedShareScopes(pages[1], 5_000);
+        const revokedScope = scopes.find(scope => scope.issuer === page1PeerId && scope.scope?.kind === 'gallery');
+        return revokedScope?.status === 'revoked' && revokedScope.verified === true ? revokedScope : false;
+      },
+      captureSnapshot,
+      refreshPeerConnections,
+    );
     await assertPhotoRemainsUnavailable(pages[1], sharedFileNames.afterRevoke);
 
     report.finalState = await captureSnapshot();

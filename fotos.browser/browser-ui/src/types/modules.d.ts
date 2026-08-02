@@ -24,6 +24,7 @@ declare module '@OneObjectInterfaces' {
         FotosAuthenticityAttestation: import('../../../../fotos.core/src/recipes/FotosRecipes.js').FotosAuthenticityAttestation;
         FotosShareManifest: import('../../../../fotos.core/src/recipes/FotosRecipes.js').FotosShareManifest;
         FotosShareCertificate: import('../../../../fotos.core/src/recipes/FotosRecipes.js').FotosShareCertificate;
+        FotosShareCertificateChain: import('../../../../fotos.core/src/recipes/FotosRecipes.js').FotosShareCertificateChain;
         FotosDeviceBook: import('../../../../fotos.core/src/recipes/FotosDeviceBookRecipes.js').FotosDeviceBook;
         FotosMediaVariant: import('../../../../fotos.core/src/recipes/FotosMediaRecipes.js').FotosMediaVariant;
         FotosMediaLocator: import('../../../../fotos.core/src/recipes/FotosMediaRecipes.js').FotosMediaLocator;
@@ -44,6 +45,7 @@ declare module '@OneObjectInterfaces' {
         FotosAuthenticityAttestation: Pick<import('../../../../fotos.core/src/recipes/FotosRecipes.js').FotosAuthenticityAttestation, '$type$' | 'id'>;
         FotosShareManifest: Pick<import('../../../../fotos.core/src/recipes/FotosRecipes.js').FotosShareManifest, '$type$' | 'id'>;
         FotosShareCertificate: Pick<import('../../../../fotos.core/src/recipes/FotosRecipes.js').FotosShareCertificate, '$type$' | 'id'>;
+        FotosShareCertificateChain: Pick<import('../../../../fotos.core/src/recipes/FotosRecipes.js').FotosShareCertificateChain, '$type$' | 'id'>;
         FotosDeviceBook: Pick<import('../../../../fotos.core/src/recipes/FotosDeviceBookRecipes.js').FotosDeviceBook, '$type$' | 'id'>;
         FotosMediaVariant: Pick<import('../../../../fotos.core/src/recipes/FotosMediaRecipes.js').FotosMediaVariant, '$type$' | 'contentHash'>;
         FotosMediaLocator: Pick<import('../../../../fotos.core/src/recipes/FotosMediaRecipes.js').FotosMediaLocator, '$type$' | 'id'>;

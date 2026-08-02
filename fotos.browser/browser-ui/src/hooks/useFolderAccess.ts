@@ -718,7 +718,7 @@ function shouldAdoptIncomingFaces(currentFaces: FaceInfo | undefined, nextFaces:
     return nextCount > currentCount;
 }
 
-function isRemoteGalleryEntry(entry: PhotoEntry): boolean {
+export function isRemoteGalleryEntry(entry: PhotoEntry): boolean {
     return entry.sourcePath?.startsWith('remote:') === true
         || entry.thumb?.startsWith('remote:') === true;
 }
@@ -1208,7 +1208,7 @@ export interface FolderAccess {
     /** Make a maintained folder the current target for folder-scoped actions. */
     selectFolder: (folderId: string) => void;
     /** Forget a maintained folder without deleting files from disk. */
-    removeFolder: (folderId: string) => void;
+    removeFolder: (folderId: string) => (() => void) | null;
     /** Choose a writable local destination folder for an incoming shared gallery. */
     chooseSharedGalleryDestination: () => Promise<boolean>;
     /** Debug/test helper that always opens the file-input intake path. */
@@ -1238,9 +1238,9 @@ export interface FolderAccess {
     /** Merge source clusters into one target cluster */
     mergeFaceClusters: (targetClusterId: string, sourceClusterIds: string[]) => Promise<void>;
     /** Explicitly manage multiple clusters as one named person without merging them */
-    groupFaceClustersAsPerson: (clusterIds: string[]) => Promise<void>;
+    groupFaceClustersAsPerson: (clusterIds: string[], personId?: string) => Promise<string | null>;
     /** Remove the explicit person collapse for a grouped person */
-    separatePersonGroup: (personId: string) => Promise<void>;
+    separatePersonGroup: (personId: string) => Promise<string[]>;
 }
 
 export interface ManagedFolder {
@@ -2909,9 +2909,10 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
 
     const removeFolder = useCallback((folderId: string) => {
         const previousRecords = foldersRef.current;
-        const removed = previousRecords.find(record => record.id === folderId);
+        const removedIndex = previousRecords.findIndex(record => record.id === folderId);
+        const removed = previousRecords[removedIndex];
         if (!removed) {
-            return;
+            return null;
         }
 
         for (const entry of removed.entries) {
@@ -2944,6 +2945,29 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         if (nextCurrent) {
             void saveLastFolderPreference(nextCurrent.preference).catch(() => {});
         }
+
+        return () => {
+            if (foldersRef.current.some(record => record.id === removed.id)) {
+                return;
+            }
+            const currentRecords = removed.isCurrent
+                ? foldersRef.current.map(record => ({...record, isCurrent: false}))
+                : foldersRef.current;
+            const insertAt = Math.min(removedIndex, currentRecords.length);
+            const restoredRecords = [
+                ...currentRecords.slice(0, insertAt),
+                removed,
+                ...currentRecords.slice(insertAt),
+            ];
+            clusterDimRef.current = null;
+            clusterThresholdRef.current = null;
+            semanticPassPromiseRef.current = null;
+            applyManagedFolders(restoredRecords);
+            void saveManagedFolderPreferences(restoredRecords).catch(() => {});
+            if (removed.isCurrent) {
+                void saveLastFolderPreference(removed.preference).catch(() => {});
+            }
+        };
     }, [applyManagedFolders]);
 
     const rescan = useCallback(async () => {
@@ -3672,7 +3696,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         clusterThresholdRef.current = clusterThreshold;
     }, [clusterThreshold, entries]);
 
-    const groupFaceClustersAsPerson = useCallback(async (clusterIds: string[]) => {
+    const groupFaceClustersAsPerson = useCallback(async (clusterIds: string[], preferredPersonId?: string) => {
         const handle = rootHandleRef.current;
         if (!handle) {
             throw new Error('No folder open');
@@ -3684,10 +3708,11 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                 .filter(Boolean),
         )];
         if (uniqueClusterIds.length < 2) {
-            return;
+            return null;
         }
 
-        const personId = uniqueClusterIds
+        const personId = normalizePersonId(preferredPersonId)
+            ?? uniqueClusterIds
             .map(clusterId => findClusterPersonIdInEntries(entries, clusterId))
             .find(Boolean)
             ?? createExplicitPersonId();
@@ -3766,7 +3791,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         });
 
         if (!changed) {
-            return;
+            return personId;
         }
 
         setEntries(nextEntries);
@@ -3775,6 +3800,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                 updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry))
             ),
         );
+        return personId;
     }, [ensureClusterDimensionForEditing, entries]);
 
     const separatePersonGroup = useCallback(async (personId: string) => {
@@ -3785,10 +3811,11 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
 
         const normalizedPersonId = normalizePersonId(personId);
         if (!normalizedPersonId) {
-            return;
+            return [];
         }
 
         const affectedEntries: PhotoEntry[] = [];
+        const separatedClusterIds = new Set<string>();
         let changed = false;
 
         const nextEntries = entries.map(entry => {
@@ -3805,6 +3832,8 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                     continue;
                 }
 
+                const clusterId = faces.clusterIds?.[index];
+                if (clusterId) separatedClusterIds.add(clusterId);
                 personIds[index] = '';
                 entryChanged = true;
                 changed = true;
@@ -3826,7 +3855,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         });
 
         if (!changed) {
-            return;
+            return [];
         }
 
         setEntries(nextEntries);
@@ -3835,6 +3864,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                 updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry))
             ),
         );
+        return [...separatedClusterIds];
     }, [entries]);
 
     return {

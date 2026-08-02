@@ -1,6 +1,7 @@
 import {describe, expect, it, vi} from 'vitest';
 import {
     createActiveFotosShareCertificate,
+    createFotosShareCertificateChain,
     createFotosShareManifest,
     createRevokedFotosShareCertificate,
 } from '@refinio/fotos.core';
@@ -20,18 +21,40 @@ function depsFor(options?: {badSignature?: boolean; missingManifest?: boolean}):
         ['active-hash', active],
         ['revoked-hash', revoked],
     ]);
+    const chains = new Map([
+        ['active-chain-hash', createFotosShareCertificateChain({
+            issuer,
+            subject,
+            scope,
+            certificate: 'active-hash' as any,
+            signature: 'active-signature' as any,
+        })],
+        ['revoked-chain-hash', createFotosShareCertificateChain({
+            issuer,
+            subject,
+            scope,
+            certificate: 'revoked-hash' as any,
+            signature: 'revoked-signature' as any,
+        })],
+    ]);
     return {
-        listLatestCertificates: vi.fn(async () => [
-            {hash: 'active-hash', idHash: 'stable-id', timestamp: 1},
-            {hash: 'revoked-hash', idHash: 'stable-id', timestamp: 2},
+        listLatestCertificateChains: vi.fn(async () => [
+            {hash: 'active-chain-hash', idHash: 'stable-chain-id', timestamp: 1},
+            {hash: 'revoked-chain-hash', idHash: 'stable-chain-id', timestamp: 2},
         ]),
+        getCertificateChain: vi.fn(async hash => chains.get(hash)!),
         getCertificate: vi.fn(async hash => certificates.get(hash)!),
         getManifest: vi.fn(async () => {
             if (options?.missingManifest) throw new Error('missing');
             return createFotosShareManifest({issuer, scope, entries: ['entry-a', 'entry-b'] as any});
         }),
         certificateIdHash: vi.fn(async () => 'stable-id'),
-        getCertificateSignatures: vi.fn(async () => options?.badSignature ? [{valid: false}] : [{valid: true}]),
+        getCertificateSignature: vi.fn(async hash => ({
+            $type$: 'Signature',
+            data: hash === 'active-signature' ? 'active-hash' : 'revoked-hash',
+            issuer,
+            valid: !options?.badSignature,
+        })),
     };
 }
 
@@ -54,8 +77,8 @@ describe('projectReceivedFotosShares', () => {
 
     it('binds an active certificate to its current scope manifest and measured count', async () => {
         const deps = depsFor();
-        deps.listLatestCertificates = vi.fn(async () => [
-            {hash: 'active-hash', idHash: 'stable-id', timestamp: 1},
+        deps.listLatestCertificateChains = vi.fn(async () => [
+            {hash: 'active-chain-hash', idHash: 'stable-chain-id', timestamp: 1},
         ]);
         const projection = await projectReceivedFotosShares(
             subject,
@@ -63,5 +86,30 @@ describe('projectReceivedFotosShares', () => {
             deps,
         );
         expect(projection[0]).toMatchObject({status: 'active', verified: true, photoCount: 2});
+    });
+
+    it('does not project outbound certificates indexed through the issuer reverse map', async () => {
+        const outboundCertificate = createActiveFotosShareCertificate({
+            issuer: subject,
+            subject: 'other-recipient' as any,
+            scope,
+            issuedAt: '2026-08-01T11:00:00.000Z',
+        });
+        const deps = depsFor();
+        const outbound = createFotosShareCertificateChain({
+            issuer: subject,
+            subject: 'other-recipient' as any,
+            scope,
+            certificate: 'outbound-certificate' as any,
+            signature: 'outbound-signature' as any,
+        });
+        deps.listLatestCertificateChains = vi.fn(async () => [
+            {hash: 'outbound-hash', idHash: 'outbound-id', timestamp: 3},
+        ]);
+        deps.getCertificateChain = vi.fn(async () => outbound);
+        deps.getCertificate = vi.fn(async () => outboundCertificate);
+
+        await expect(projectReceivedFotosShares(subject, async () => true, deps)).resolves.toEqual([]);
+        expect(deps.getCertificateSignature).not.toHaveBeenCalled();
     });
 });

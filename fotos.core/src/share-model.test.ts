@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import {
     buildFotosShareCertificateId,
+    buildFotosShareCertificateChainId,
     createActiveFotosShareCertificate,
     createRevokedFotosShareCertificate,
     isActiveFotosShareCertificate,
@@ -41,5 +42,7 @@ describe('fotos share certificate lifecycle', () => {
         const galleryId = buildFotosShareCertificateId('issuer', 'recipient', {kind: 'gallery', id: 'main'});
         const personId = buildFotosShareCertificateId('issuer', 'recipient', {kind: 'person', id: 'person-1'});
         expect(galleryId).not.toBe(personId);
+        expect(buildFotosShareCertificateChainId('issuer', 'recipient', scope))
+            .toContain('fotos-share-certificate-chain:v1:issuer:recipient:collection:summer-2026');
     });
 });

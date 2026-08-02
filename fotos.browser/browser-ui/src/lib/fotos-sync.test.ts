@@ -90,7 +90,11 @@ vi.mock('./fotos-authenticity.js', () => ({
     createFotosAuthenticityAttestation: createFotosAuthenticityAttestationMock,
 }));
 
-import { shouldClaimFotosAuthorship, syncPhotosToOneCore } from './fotos-sync.js';
+import {
+    getVersionedObjectIfPresent,
+    shouldClaimFotosAuthorship,
+    syncPhotosToOneCore,
+} from './fotos-sync.js';
 
 describe('fotos sync authorship toggle', () => {
     beforeEach(() => {
@@ -112,6 +116,10 @@ describe('fotos sync authorship toggle', () => {
 
     it('claims authorship by default', () => {
         expect(shouldClaimFotosAuthorship()).toBe(true);
+    });
+
+    it('adapts a missing ONE.core version head to an optional source.media read', async () => {
+        await expect(getVersionedObjectIfPresent('missing-id' as any)).resolves.toBeUndefined();
     });
 
     it('lets ingestion opt out of claiming authorship', async () => {

@@ -242,6 +242,7 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
 
     const removeFolder = useCallback((_folderId: string) => {
         // Headless source exposes a single remote folder.
+        return null;
     }, []);
 
     const openLocalFiles = useCallback(() => false, []);
@@ -276,12 +277,14 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
         // Future: POST to headless
     }, []);
 
-    const groupFaceClustersAsPerson = useCallback(async (_clusterIds: string[]) => {
+    const groupFaceClustersAsPerson = useCallback(async (_clusterIds: string[], _personId?: string) => {
         // Future: POST to headless
+        return null;
     }, []);
 
     const separatePersonGroup = useCallback(async (_personId: string) => {
         // Future: POST to headless
+        return [];
     }, []);
 
     return {

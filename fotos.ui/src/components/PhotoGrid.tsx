@@ -27,7 +27,7 @@ export interface PhotoGridProps<TPhoto extends PhotoEntry = PhotoEntry> {
     loadingLabel?: ReactNode;
     emptyTitle?: ReactNode;
     emptyHint?: ReactNode;
-    onPhotoContextMenu?: (photo: TPhoto, index: number, event: React.MouseEvent | React.TouchEvent) => void;
+    onPhotoContextMenu?: (photo: TPhoto, index: number, event: React.MouseEvent | React.TouchEvent | KeyboardEvent) => void;
 }
 
 /** Generate a deterministic color from a hash string. */
@@ -138,6 +138,18 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
                         }
                     }
                     return;
+                case 'ContextMenu':
+                case 'F10':
+                    if (
+                        cursor >= 0
+                        && onPhotoContextMenu
+                        && (e.key === 'ContextMenu' || e.shiftKey)
+                    ) {
+                        e.preventDefault();
+                        const photo = photos[cursor];
+                        if (photo) onPhotoContextMenu(photo, cursor, e);
+                    }
+                    return;
                 case 'Escape':
                     if (selectionActive && onClearSelection) {
                         e.preventDefault();
@@ -152,13 +164,14 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
             setCursor(next);
 
             // Scroll focused card into view
-            const card = gridRef.current?.querySelector(`[data-photo-index="${next}"]`);
+            const card = gridRef.current?.querySelector<HTMLElement>(`[data-photo-index="${next}"]`);
+            card?.focus();
             card?.scrollIntoView({block: 'nearest', behavior: 'smooth'});
         };
 
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
-    }, [cursor, photos, getColumnCount, onPhotoClick, onPhotoToggleSelection, onClearSelection, selectionActive]);
+    }, [cursor, photos, getColumnCount, onPhotoClick, onPhotoToggleSelection, onClearSelection, onPhotoContextMenu, selectionActive]);
 
     // Reset cursor when photos change
     useEffect(() => { setCursor(-1); }, [photos]);

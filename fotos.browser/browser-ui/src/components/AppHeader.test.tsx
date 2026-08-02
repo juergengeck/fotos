@@ -37,6 +37,7 @@ describe('AppHeader', () => {
             onToggleFacets={vi.fn()}
             onOpenSharing={vi.fn()}
             onOpenSettings={vi.fn()}
+            onOpenShortcuts={vi.fn()}
         />));
 
         expect(container.querySelector<HTMLInputElement>('input[type="search"]')?.getAttribute('aria-label')).toBe('Search photos');
@@ -44,6 +45,7 @@ describe('AppHeader', () => {
         expect(container.textContent).toContain('Sync ready');
         expect(container.querySelector('[role="status"]')?.textContent).toContain('2/12');
         expect(container.querySelector('[aria-label*="gallery shared with 2 people"]')).not.toBeNull();
+        expect(container.querySelector('[aria-label="Open keyboard shortcuts"]')).not.toBeNull();
         const people = Array.from(container.querySelectorAll('button')).find(button => button.textContent === 'People');
         act(() => people?.click());
         expect(onModeChange).toHaveBeenCalledWith('clusters');

@@ -16,6 +16,8 @@ import {
     storeVersionedObject,
     onVersionedObj,
 } from '@refinio/one.core/lib/storage-versioned-objects.js';
+import {getObjectWithType} from '@refinio/one.core/lib/storage-unversioned-objects.js';
+import {onChumObjectImported} from '@refinio/one.core/lib/chum-sync.js';
 import {storeArrayBufferAsBlob, readBlobAsArrayBuffer} from '@refinio/one.core/lib/storage-blob.js';
 import {getInstanceIdHash, getInstanceOwnerIdHash} from '@refinio/one.core/lib/instance.js';
 import {calculateIdHashOfObj} from '@refinio/one.core/lib/util/object.js';
@@ -61,6 +63,25 @@ export function shouldClaimFotosAuthorship(
     options: SyncPhotosToOneCoreOptions = {},
 ): boolean {
     return options.claimAuthorship !== false;
+}
+
+function isMissingVersionedObject(error: unknown): boolean {
+    if (!error || typeof error !== 'object') return false;
+    const name = String((error as {name?: unknown}).name ?? '');
+    const message = String((error as {message?: unknown}).message ?? '').toLowerCase();
+    return name === 'FileNotFoundError'
+        || message.includes('not found')
+        || message.includes('sb-read2');
+}
+
+/** Adapt ONE.core's throwing lookup to source.media's optional-read contract. */
+export async function getVersionedObjectIfPresent(idHash: SHA256IdHash<any>) {
+    try {
+        return await getObjectByIdHash(idHash);
+    } catch (error) {
+        if (isMissingVersionedObject(error)) return undefined;
+        throw error;
+    }
 }
 
 /**
@@ -556,7 +577,7 @@ export async function syncPhotoToOneCore(
     });
     await appendMediaBookContent({
         calculateIdHashOfObj,
-        getObjectByIdHash,
+        getObjectByIdHash: getVersionedObjectIfPresent,
         storeVersionedObject,
     }, {
         deviceId,
@@ -638,7 +659,7 @@ export function listenForFotosUpdates(
         metadata: { versionHash: string | null },
     ) => void,
 ): () => void {
-    return onVersionedObj.addListener(result => {
+    const unsubscribeVersioned = onVersionedObj.addListener(result => {
         // Only process newly stored objects, not re-reads of existing ones
         if (result.status === 'exists') return;
 
@@ -650,4 +671,26 @@ export function listenForFotosUpdates(
             versionHash: typeof result.hash === 'string' ? result.hash : null,
         });
     });
+
+    // Share snapshots transfer the immutable current FotosEntry data object as
+    // part of a producer-written flat closure. That object is intentionally
+    // usable before any version-history backfill, so consume CHUM's semantic
+    // import event instead of waiting for an onVersionedObj notification.
+    const unsubscribeImported = onChumObjectImported.addListener(event => {
+        if (event.imported.kind !== 'object' || event.imported.type !== 'FotosEntry') return;
+        void (async () => {
+            const entry = await getObjectWithType(
+                event.imported.hash as SHA256Hash<FotosEntry>,
+                'FotosEntry',
+            ) as FotosEntry;
+            onEntryReceived(entry, {versionHash: null});
+        })().catch(error => {
+            console.warn('[fotos-sync] Failed to materialize imported FotosEntry:', error);
+        });
+    });
+
+    return () => {
+        unsubscribeVersioned();
+        unsubscribeImported();
+    };
 }

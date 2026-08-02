@@ -2,6 +2,7 @@ import { contentRules } from '@refinio/sync.core/rules/default-rules.js';
 import type { TrustLevel } from '@refinio/trust.core/types/trust-types.js';
 import {
     buildFotosShareCertificateId,
+    buildFotosShareCertificateChainId,
     buildFotosShareManifestId,
 } from '@refinio/fotos.core';
 
@@ -9,6 +10,7 @@ type SyncRule = typeof contentRules extends Map<string, infer Value> ? Value : n
 
 const MAX_REFERENCE_LENGTH = 256;
 const MAX_FOTOS_MANIFEST_ENTRIES = 250_000;
+const MAX_FOTOS_SNAPSHOT_REFS = 1_000_000;
 const MAX_FOTOS_ATTESTATIONS = 250_000;
 const MAX_MIME_TYPE_LENGTH = 255;
 const MAX_PATH_LENGTH = 4_096;
@@ -34,6 +36,32 @@ interface SyncContextLike {
 }
 
 type ImportedObject = Record<string, unknown>;
+
+const rejectedFotosImportKeys = new Set<string>();
+
+function logRejectedFotosImport(type: string, obj?: object): void {
+    const value = obj as ImportedObject | undefined;
+    const shape = value
+        ? Object.keys(value).sort().join(',')
+        : 'missing-object';
+    const key = `${type}:${shape}`;
+    if (rejectedFotosImportKeys.has(key)) return;
+    rejectedFotosImportKeys.add(key);
+    console.warn(`[fotos.sync] Rejected ${type} import with shape: ${shape}`);
+}
+
+function fotosImportRule(
+    type: string,
+    canImport: (context: SyncContextLike, obj?: object) => boolean,
+): SyncRule {
+    return {
+        canImport: (context, obj) => {
+            const allowed = canImport(context, obj);
+            if (!allowed) logRejectedFotosImport(type, obj);
+            return allowed;
+        },
+    } as SyncRule;
+}
 
 function allowsExplicitFotosShare(context: SyncContextLike): boolean {
     return context.peerTrustLevel !== 'ignore';
@@ -89,6 +117,51 @@ function isStringSetWithinBounds(value: unknown, maxEntries: number, maxLength: 
         }
     }
 
+    return true;
+}
+
+function hasValidFotosShareSnapshotClosure(manifest: ImportedObject): boolean {
+    if (!isStringSetWithinBounds(
+        manifest.snapshotObjects,
+        MAX_FOTOS_SNAPSHOT_REFS,
+        MAX_REFERENCE_LENGTH,
+    ) || !isStringSetWithinBounds(
+        manifest.snapshotIds,
+        MAX_FOTOS_SNAPSHOT_REFS,
+        MAX_REFERENCE_LENGTH,
+    )) return false;
+    if (manifest.snapshotBlobs !== undefined && !isStringSetWithinBounds(
+        manifest.snapshotBlobs,
+        MAX_FOTOS_SNAPSHOT_REFS,
+        MAX_REFERENCE_LENGTH,
+    )) return false;
+    if (manifest.snapshotClobs !== undefined && !isStringSetWithinBounds(
+        manifest.snapshotClobs,
+        MAX_FOTOS_SNAPSHOT_REFS,
+        MAX_REFERENCE_LENGTH,
+    )) return false;
+
+    const objects = manifest.snapshotObjects;
+    const ids = manifest.snapshotIds;
+    const blobs = (manifest.snapshotBlobs ?? new Set<string>()) as Set<string>;
+    const clobs = (manifest.snapshotClobs ?? new Set<string>()) as Set<string>;
+    if (!ids.has(String(manifest.issuer))) return false;
+    if (!(manifest.entries instanceof Set)
+        || Array.from(manifest.entries).some(entry => !objects.has(String(entry)))) return false;
+
+    const expectedKeys = new Set([
+        ...Array.from(objects, hash => `object:${hash}`),
+        ...Array.from(ids, hash => `id:${hash}`),
+        ...Array.from(blobs, hash => `blob:${hash}`),
+        ...Array.from(clobs, hash => `clob:${hash}`),
+    ]);
+    if (!Array.isArray(manifest.snapshotOrder)
+        || manifest.snapshotOrder.length !== expectedKeys.size) return false;
+    const seen = new Set<string>();
+    for (const value of manifest.snapshotOrder) {
+        if (typeof value !== 'string' || !expectedKeys.has(value) || seen.has(value)) return false;
+        seen.add(value);
+    }
     return true;
 }
 
@@ -174,7 +247,8 @@ export function canImportFotosShareManifest(context: SyncContextLike, obj?: obje
         && typeof manifest.scopeKind === 'string'
         && FOTOS_SHARE_SCOPE_KINDS.has(manifest.scopeKind)
         && isStringWithinBounds(manifest.scopeId, MAX_PATH_LENGTH)
-        && isStringSetWithinBounds(manifest.entries, MAX_FOTOS_MANIFEST_ENTRIES, MAX_REFERENCE_LENGTH);
+        && isStringSetWithinBounds(manifest.entries, MAX_FOTOS_MANIFEST_ENTRIES, MAX_REFERENCE_LENGTH)
+        && hasValidFotosShareSnapshotClosure(manifest);
     return structurallyValid && manifest.id === buildFotosShareManifestId(
         String(manifest.issuer),
         {kind: manifest.scopeKind as 'gallery' | 'collection' | 'person', id: String(manifest.scopeId)},
@@ -207,6 +281,28 @@ export function canImportFotosShareCertificate(context: SyncContextLike, obj?: o
         String(certificate.issuer),
         String(certificate.subject),
         {kind: certificate.scopeKind as 'gallery' | 'collection' | 'person', id: String(certificate.scopeId)},
+    );
+}
+
+export function canImportFotosShareCertificateChain(context: SyncContextLike, obj?: object): boolean {
+    if (!allowsExplicitFotosShare(context) || !obj) return false;
+    const chain = obj as ImportedObject;
+    if (isIdOnlyObject(chain, new Set(['$type$', 'id']), 'id', MAX_PATH_LENGTH)) {
+        return String(chain.id).startsWith('fotos-share-certificate-chain:v1:');
+    }
+    const structurallyValid = chain.$version$ === 'v1'
+        && isStringWithinBounds(chain.id, MAX_PATH_LENGTH)
+        && isStringWithinBounds(chain.issuer, MAX_REFERENCE_LENGTH)
+        && isStringWithinBounds(chain.subject, MAX_REFERENCE_LENGTH)
+        && typeof chain.scopeKind === 'string'
+        && FOTOS_SHARE_SCOPE_KINDS.has(chain.scopeKind)
+        && isStringWithinBounds(chain.scopeId, MAX_PATH_LENGTH)
+        && isStringWithinBounds(chain.certificate, MAX_REFERENCE_LENGTH)
+        && isStringWithinBounds(chain.signature, MAX_REFERENCE_LENGTH);
+    return structurallyValid && chain.id === buildFotosShareCertificateChainId(
+        String(chain.issuer),
+        String(chain.subject),
+        {kind: chain.scopeKind as 'gallery' | 'collection' | 'person', id: String(chain.scopeId)},
     );
 }
 
@@ -315,43 +411,28 @@ export function canImportFotosMediaLocator(context: SyncContextLike, obj?: objec
         && isOptionalStringWithinBounds(locator.lastVerifiedAt, MAX_TIMESTAMP_LENGTH);
 }
 
-const fotosManifestRule: SyncRule = {
-    canImport: canImportFotosManifest,
-};
-
-const fotosEntryRule: SyncRule = {
-    canImport: canImportFotosEntry,
-};
-
-const fotosShareManifestRule: SyncRule = {
-    canImport: canImportFotosShareManifest,
-};
-
-const fotosShareCertificateRule: SyncRule = {
-    canImport: canImportFotosShareCertificate,
-};
-
-const fotosMediaVariantRule: SyncRule = {
-    canImport: canImportFotosMediaVariant,
-};
-
-const fotosAuthenticityAttestationRule: SyncRule = {
-    canImport: canImportFotosAuthenticityAttestation,
-};
-
-const fotosDeviceBookRule: SyncRule = {
-    canImport: canImportFotosDeviceBook,
-};
-
-const fotosMediaLocatorRule: SyncRule = {
-    canImport: canImportFotosMediaLocator,
-};
+const fotosManifestRule = fotosImportRule('FotosManifest', canImportFotosManifest);
+const fotosEntryRule = fotosImportRule('FotosEntry', canImportFotosEntry);
+const fotosShareManifestRule = fotosImportRule('FotosShareManifest', canImportFotosShareManifest);
+const fotosShareCertificateRule = fotosImportRule('FotosShareCertificate', canImportFotosShareCertificate);
+const fotosShareCertificateChainRule = fotosImportRule(
+    'FotosShareCertificateChain',
+    canImportFotosShareCertificateChain,
+);
+const fotosMediaVariantRule = fotosImportRule('FotosMediaVariant', canImportFotosMediaVariant);
+const fotosAuthenticityAttestationRule = fotosImportRule(
+    'FotosAuthenticityAttestation',
+    canImportFotosAuthenticityAttestation,
+);
+const fotosDeviceBookRule = fotosImportRule('FotosDeviceBook', canImportFotosDeviceBook);
+const fotosMediaLocatorRule = fotosImportRule('FotosMediaLocator', canImportFotosMediaLocator);
 
 export const fotosContentRules = new Map(contentRules);
 fotosContentRules.set('FotosManifest', fotosManifestRule);
 fotosContentRules.set('FotosEntry', fotosEntryRule);
 fotosContentRules.set('FotosShareManifest', fotosShareManifestRule);
 fotosContentRules.set('FotosShareCertificate', fotosShareCertificateRule);
+fotosContentRules.set('FotosShareCertificateChain', fotosShareCertificateChainRule);
 fotosContentRules.set('FotosMediaVariant', fotosMediaVariantRule);
 fotosContentRules.set('FotosMediaLocator', fotosMediaLocatorRule);
 fotosContentRules.set('FotosAuthenticityAttestation', fotosAuthenticityAttestationRule);

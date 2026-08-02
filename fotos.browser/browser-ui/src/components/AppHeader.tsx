@@ -1,4 +1,4 @@
-import {FolderOpen, PanelRight, Search, Settings, Share2} from 'lucide-react';
+import {CircleHelp, FolderOpen, PanelRight, Search, Settings, Share2} from 'lucide-react';
 
 interface AppHeaderProps {
     folderName: string;
@@ -16,6 +16,7 @@ interface AppHeaderProps {
     onToggleFacets: () => void;
     onOpenSharing: () => void;
     onOpenSettings: () => void;
+    onOpenShortcuts: () => void;
 }
 
 export function AppHeader({
@@ -34,6 +35,7 @@ export function AppHeader({
     onToggleFacets,
     onOpenSharing,
     onOpenSettings,
+    onOpenShortcuts,
 }: AppHeaderProps) {
     const searchScope = mode === 'images' ? 'Photos' : 'People';
     return (
@@ -71,6 +73,7 @@ export function AppHeader({
                         <Share2 className="h-4 w-4" />
                         {galleryShareCount > 0 ? <span className="ml-1 text-xs tabular-nums">{galleryShareCount}</span> : null}
                     </button>
+                    <button type="button" onClick={onOpenShortcuts} className="flex h-11 w-11 items-center justify-center rounded-lg text-white/60 hover:bg-white/10 hover:text-white" aria-label="Open keyboard shortcuts" title="Keyboard shortcuts (?)"><CircleHelp className="h-4 w-4" /></button>
                     <button type="button" onClick={onOpenSettings} className="flex h-11 w-11 items-center justify-center rounded-lg text-white/60 hover:bg-white/10 hover:text-white" aria-label="Open settings"><Settings className="h-4 w-4" /></button>
                     <button type="button" onClick={onToggleFacets} className="flex h-11 w-11 items-center justify-center rounded-lg text-white/60 hover:bg-white/10 hover:text-white" aria-label={`${facetsOpen ? 'Hide' : 'Show'} filters`} aria-expanded={facetsOpen}><PanelRight className="h-4 w-4" /></button>
                 </div>

@@ -15,13 +15,12 @@ import type LeuteModel from '@refinio/one.models/lib/models/Leute/LeuteModel.js'
 import type ConnectionsModel from '@refinio/one.models/lib/models/ConnectionsModel.js';
 import type { ConnectionModule as ConnectionModuleType } from '@vger/vger.core/modules/ConnectionModule.js';
 import type { SHA256IdHash } from '@refinio/one.core/lib/util/type-checks.js';
-import type { Person, Recipe } from '@refinio/one.core/lib/recipes.js';
+import type { Person } from '@refinio/one.core/lib/recipes.js';
 import type { TrustPlan } from '@refinio/trust.core/plans/TrustPlan.js';
 import { TRUST_LEVEL_ORDER, type TrustLevel } from '@refinio/trust.core/types/trust-types.js';
 
 // ModuleRegistry + modules
 import { ModuleRegistry } from '@refinio/api/plan-system';
-import { RefinioApiRecipes } from '@refinio/api/recipes';
 import { CoreModule } from '@vger/vger.core/modules/CoreModule.js';
 import { ChatModule } from '@vger/vger.core/modules/ChatModule.js';
 import { IndexModule } from '@vger/vger.core/modules/IndexModule.js';
@@ -30,28 +29,10 @@ import { ConnectionModule } from '@vger/vger.core/modules/ConnectionModule.js';
 import { GlueModule, ensureCommserverEndpointForPerson } from '@vger/vger.glue';
 import { ExportPlan } from '@vger/vger.core/plans/ExportPlan.js';
 
-// Recipes
-import RecipesStable from '@refinio/one.models/lib/recipes/recipes-stable.js';
-import RecipesExperimental from '@refinio/one.models/lib/recipes/recipes-experimental.js';
-import { ReverseMapsStable, ReverseMapsForIdObjectsStable } from '@refinio/one.models/lib/recipes/reversemaps-stable.js';
-import { ReverseMapsExperimental, ReverseMapsForIdObjectsExperimental } from '@refinio/one.models/lib/recipes/reversemaps-experimental.js';
-import GlueContentRecipes from '@glueone/glue.core/recipes/GlueContentRecipes.js';
-import PresenceRecipes from '@glueone/glue.core/recipes/PresenceRecipes.js';
-import TimeTrieRecipes from '@glueone/glue.core/recipes/TimeTrieRecipes.js';
 import {
   DEFAULT_GLUE_CONNECTION_BINDING_ID,
 } from '@glueone/glue.core';
 import {
-  AllRecipes as TrustCoreRecipes,
-  AllReverseMaps as TrustCoreReverseMaps,
-  AllReverseMapsForIdObjects as TrustCoreReverseMapsForIdObjects,
-} from '@refinio/trust.core/recipes';
-import { CubeCoreRecipes } from '@refinio/cube.core/recipes/index.js';
-import { CHAT_CORE_RECIPES } from '@refinio/chat.core/recipes/index.js';
-import { FotosRecipes } from '../../../../fotos.core/src/recipes/FotosRecipes.js';
-import { SourceCoreRecipes } from '../../../../../one/packages/source.core/dist/recipes/index.js';
-import {
-  SettingsRecipes,
   InstanceSettingsStorage,
   SettingsPlan,
   registerDeviceSettings,
@@ -70,6 +51,11 @@ import { fotosContentRules } from './fotosSyncRules.js';
 import { API_BASE, COMM_SERVER_URL } from '../config.js';
 import { resolveFotosBootCreds } from './fotosBootCreds.js';
 import { resolveGluePublicationIdentity } from './glueIdentityState.js';
+import {
+  FotosOneCoreRecipes,
+  FotosReverseMaps,
+  FotosReverseMapsForIdObjects,
+} from './fotosOneCoreConfig.js';
 
 // ---------------------------------------------------------------------------
 // Credentials (auto-generated, stored in localStorage/sessionStorage)
@@ -429,31 +415,9 @@ export async function bootFotosModel(
 
   const one = new MultiUser({
     directory: storageDirectory,
-    recipes: [
-      ...RecipesStable,
-      ...RecipesExperimental,
-      ...GlueContentRecipes,
-      ...PresenceRecipes,
-      ...TimeTrieRecipes,
-      ...TrustCoreRecipes,
-      ...CubeCoreRecipes,
-      ...SettingsRecipes,
-      ...CHAT_CORE_RECIPES,
-      ...SourceCoreRecipes,
-      ...RefinioApiRecipes,
-      ...FotosRecipes,
-    ] as Recipe[],
-    reverseMaps: new Map([
-      ...ReverseMapsStable,
-      ...ReverseMapsExperimental,
-      ...TrustCoreReverseMaps,
-      ['FotosShareCertificate', new Set(['subject', 'issuer'])],
-    ]) as never,
-    reverseMapsForIdObjects: new Map([
-      ...ReverseMapsForIdObjectsStable,
-      ...ReverseMapsForIdObjectsExperimental,
-      ...TrustCoreReverseMapsForIdObjects,
-    ]) as never,
+    recipes: FotosOneCoreRecipes,
+    reverseMaps: FotosReverseMaps as never,
+    reverseMapsForIdObjects: FotosReverseMapsForIdObjects as never,
   });
   oneInstance = one;
 

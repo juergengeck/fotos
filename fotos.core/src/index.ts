@@ -160,22 +160,26 @@ export {
     FotosAuthenticityAttestationRecipe,
     FotosShareManifestRecipe,
     FotosShareCertificateRecipe,
+    FotosShareCertificateChainRecipe,
 } from './recipes/FotosRecipes.js';
 export {
     buildFotosShareManifestId,
     buildFotosShareCertificateId,
+    buildFotosShareCertificateChainId,
+    createFotosShareCertificateChain,
     createFotosShareManifest,
     createActiveFotosShareCertificate,
     createRevokedFotosShareCertificate,
     isActiveFotosShareCertificate,
 } from './share-model.js';
-export type {FotosShareScope} from './share-model.js';
+export type {FotosShareScope, FotosShareSnapshotChild} from './share-model.js';
 export type {
     FotosEntry,
     FotosManifest,
     FotosAuthenticityAttestation,
     FotosShareManifest,
     FotosShareCertificate,
+    FotosShareCertificateChain,
     FotosShareScopeKind,
     FotosShareCertificateStatus,
 } from './recipes/FotosRecipes.js';

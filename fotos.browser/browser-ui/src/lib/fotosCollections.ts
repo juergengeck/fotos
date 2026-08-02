@@ -19,6 +19,8 @@ export interface FotosShareAssignments {
     galleryPersonIds: string[];
     collectionPersonIds: Record<string, string[]>;
     clusterPersonIds: Record<string, string[]>;
+    /** Peers with a durable certificate lifecycle, including revoked scopes. */
+    certificatePersonIds: string[];
 }
 
 export interface FotosLibraryState {
@@ -41,6 +43,7 @@ export const EMPTY_FOTOS_LIBRARY_STATE: FotosLibraryState = {
         galleryPersonIds: [],
         collectionPersonIds: {},
         clusterPersonIds: {},
+        certificatePersonIds: [],
     },
 };
 
@@ -140,12 +143,27 @@ function normalizeShareAssignments(value: unknown): FotosShareAssignments {
         return nextRecord;
     };
 
-    return {
-        galleryPersonIds: Array.isArray(candidate.galleryPersonIds)
+    const galleryPersonIds = Array.isArray(candidate.galleryPersonIds)
             ? uniqueStrings(candidate.galleryPersonIds.filter((item): item is string => typeof item === 'string'))
-            : [],
-        collectionPersonIds: normalizeRecord(candidate.collectionPersonIds),
-        clusterPersonIds: normalizeRecord(candidate.clusterPersonIds),
+            : [];
+    const collectionPersonIds = normalizeRecord(candidate.collectionPersonIds);
+    const clusterPersonIds = normalizeRecord(candidate.clusterPersonIds);
+    const activePersonIds = uniqueStrings([
+        ...galleryPersonIds,
+        ...Object.values(collectionPersonIds).flat(),
+        ...Object.values(clusterPersonIds).flat(),
+    ]);
+
+    return {
+        galleryPersonIds,
+        collectionPersonIds,
+        clusterPersonIds,
+        certificatePersonIds: uniqueStrings([
+            ...activePersonIds,
+            ...(Array.isArray(candidate.certificatePersonIds)
+                ? candidate.certificatePersonIds.filter((item): item is string => typeof item === 'string')
+                : []),
+        ]),
     };
 }
 
@@ -212,7 +230,8 @@ export function isFotosLibraryStateEmpty(state: FotosLibraryState): boolean {
     return state.collections.length === 0
         && state.sharing.galleryPersonIds.length === 0
         && Object.keys(state.sharing.collectionPersonIds).length === 0
-        && Object.keys(state.sharing.clusterPersonIds).length === 0;
+        && Object.keys(state.sharing.clusterPersonIds).length === 0
+        && state.sharing.certificatePersonIds.length === 0;
 }
 
 export function collectionMatchesPhoto(

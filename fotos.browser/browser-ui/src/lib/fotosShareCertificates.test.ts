@@ -19,7 +19,13 @@ function makeDeps() {
     const deps: FotosShareCertificateDeps = {
         calculateIdHash: vi.fn(async () => 'manifest-id' as any),
         getByIdHash: vi.fn(async () => ({
-            obj: {$type$: 'FotosShareManifest', entries: new Set(['entry-a'])},
+            obj: {
+                $type$: 'FotosShareManifest',
+                entries: new Set(['entry-a']),
+                snapshotObjects: new Set(['entry-a']),
+                snapshotIds: new Set(['issuer']),
+                snapshotOrder: ['object:entry-a', 'id:issuer'],
+            },
             hash: 'current-manifest-hash',
             idHash: 'manifest-id',
         } as any)),
@@ -29,6 +35,7 @@ function makeDeps() {
             return 'signature-hash' as any;
         }),
         setAccess,
+        resolveEntryChildren: vi.fn(async () => []),
     };
     return {calls, deps, setAccess, storeVersioned};
 }
@@ -48,6 +55,7 @@ describe('commitFotosShareScope', () => {
             'store:FotosShareCertificate:revoked',
             'sign-certificate',
             'publish-certificate',
+            'store:FotosShareCertificateChain:manifest',
             'replace-scope-access',
         ]);
         expect(storeVersioned.mock.calls[0]?.[0]).toMatchObject({
@@ -61,7 +69,11 @@ describe('commitFotosShareScope', () => {
             mode: SET_ACCESS_MODE.REPLACE,
         });
         expect(result.transitions).toEqual([
-            expect.objectContaining({personId: 'anna', status: 'revoked'}),
+            expect.objectContaining({
+                personId: 'anna',
+                status: 'revoked',
+                chainHash: 'hash:FotosShareCertificateChain:manifest',
+            }),
         ]);
     });
 
@@ -94,7 +106,11 @@ describe('commitFotosShareScope', () => {
     it('does not mint a new active version when reload migration finds one current', async () => {
         const {deps, storeVersioned, setAccess} = makeDeps();
         (deps.calculateIdHash as ReturnType<typeof vi.fn>).mockImplementation(async (object: any) => (
-            object.$type$ === 'FotosShareCertificate' ? 'certificate-id' : 'manifest-id'
+            object.$type$ === 'FotosShareCertificate'
+                ? 'certificate-id'
+                : object.$type$ === 'FotosShareCertificateChain'
+                    ? 'chain-id'
+                    : 'manifest-id'
         ));
         (deps.getByIdHash as ReturnType<typeof vi.fn>).mockImplementation(async (idHash: string) => (
             idHash === 'certificate-id'
@@ -103,8 +119,27 @@ describe('commitFotosShareScope', () => {
                     hash: 'active-certificate-hash',
                     idHash,
                 }
+                : idHash === 'chain-id'
+                    ? {
+                        obj: {
+                            $type$: 'FotosShareCertificateChain',
+                            issuer: 'issuer',
+                            subject: 'anna',
+                            scopeKind: 'gallery',
+                            scopeId: 'main',
+                            certificate: 'active-certificate-hash',
+                        },
+                        hash: 'active-chain-hash',
+                        idHash,
+                    }
                 : {
-                    obj: {$type$: 'FotosShareManifest', entries: new Set(['entry-a'])},
+                    obj: {
+                        $type$: 'FotosShareManifest',
+                        entries: new Set(['entry-a']),
+                        snapshotObjects: new Set(['entry-a']),
+                        snapshotIds: new Set(['issuer']),
+                        snapshotOrder: ['object:entry-a', 'id:issuer'],
+                    },
                     hash: 'current-manifest-hash',
                     idHash,
                 }
@@ -121,5 +156,76 @@ describe('commitFotosShareScope', () => {
         expect(result.transitions).toEqual([]);
         expect(storeVersioned).not.toHaveBeenCalled();
         expect(setAccess).toHaveBeenCalledTimes(1);
+    });
+
+    it('publishes a chain-backed version when reload migration finds only a legacy certificate', async () => {
+        const {deps, storeVersioned} = makeDeps();
+        (deps.calculateIdHash as ReturnType<typeof vi.fn>).mockImplementation(async (object: any) => (
+            object.$type$ === 'FotosShareCertificate'
+                ? 'certificate-id'
+                : object.$type$ === 'FotosShareCertificateChain'
+                    ? 'chain-id'
+                    : 'manifest-id'
+        ));
+        (deps.getByIdHash as ReturnType<typeof vi.fn>).mockImplementation(async (idHash: string) => {
+            if (idHash === 'certificate-id') {
+                return {
+                    obj: {$type$: 'FotosShareCertificate', status: 'active'},
+                    hash: 'legacy-certificate-hash',
+                    idHash,
+                };
+            }
+            if (idHash === 'chain-id') throw new Error('File not found');
+            return {
+                obj: {
+                    $type$: 'FotosShareManifest',
+                    entries: new Set(['entry-a']),
+                    snapshotObjects: new Set(['entry-a']),
+                    snapshotIds: new Set(['issuer']),
+                    snapshotOrder: ['object:entry-a', 'id:issuer'],
+                },
+                hash: 'current-manifest-hash',
+                idHash,
+            };
+        });
+
+        const result = await commitFotosShareScope({
+            issuer: 'issuer' as any,
+            scope: {kind: 'gallery', id: 'main'},
+            previousPersonIds: [],
+            nextPersonIds: ['anna'],
+            entryHashes: ['entry-a' as any],
+        }, deps);
+
+        expect(result.transitions).toEqual([
+            expect.objectContaining({personId: 'anna', status: 'active'}),
+        ]);
+        expect(storeVersioned.mock.calls.map(call => call[0].$type$)).toEqual([
+            'FotosShareCertificate',
+            'FotosShareCertificateChain',
+        ]);
+    });
+
+    it('migrates an existing manifest when its entry set matches but its snapshot closure is stale', async () => {
+        const {deps, storeVersioned} = makeDeps();
+        (deps.getByIdHash as ReturnType<typeof vi.fn>).mockResolvedValue({
+            obj: {$type$: 'FotosShareManifest', entries: new Set(['entry-a'])},
+            hash: 'legacy-manifest-hash',
+            idHash: 'manifest-id',
+        });
+
+        await commitFotosShareScope({
+            issuer: 'issuer' as any,
+            scope: {kind: 'gallery', id: 'main'},
+            previousPersonIds: [],
+            nextPersonIds: [],
+            entryHashes: ['entry-a' as any],
+        }, deps);
+
+        expect(storeVersioned).toHaveBeenCalledTimes(1);
+        expect(storeVersioned.mock.calls[0]?.[0]).toMatchObject({
+            $type$: 'FotosShareManifest',
+            snapshotOrder: ['object:entry-a', 'id:issuer'],
+        });
     });
 });

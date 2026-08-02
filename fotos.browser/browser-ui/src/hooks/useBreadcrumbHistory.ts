@@ -36,6 +36,7 @@ interface UseBreadcrumbHistoryResult {
     setEnabled: (enabled: boolean) => void;
     navigateTo: (eventId: string) => void;
     deleteEntry: (eventId: string) => void;
+    restoreDeletedEntry: (eventId: string) => void;
 }
 
 function normalizeBreadcrumbs(breadcrumbs: string[]): string[] {
@@ -339,6 +340,17 @@ export function useBreadcrumbHistory({
         });
     }, [commitSection, history.entriesById]);
 
+    const restoreDeletedEntry = useCallback((eventId: string) => {
+        if (!history.entriesById[eventId]) {
+            return;
+        }
+
+        commitSection(current => ({
+            ...current,
+            deletedEventIds: (current.deletedEventIds ?? []).filter(id => id !== eventId),
+        }));
+    }, [commitSection, history.entriesById]);
+
     return {
         ready,
         enabled: section.enabled,
@@ -351,5 +363,6 @@ export function useBreadcrumbHistory({
         setEnabled,
         navigateTo,
         deleteEntry,
+        restoreDeletedEntry,
     };
 }

@@ -277,6 +277,23 @@ async function getAccessibleRootSummary(page, personId, timeoutMs = READY_TIMEOU
   }, personId, timeoutMs);
 }
 
+async function getChumSyncDiagnostics(page, timeoutMs = READY_TIMEOUT_MS) {
+  return evaluateWithDebugApi(page, () => window.__fotosDebug.getChumSyncDiagnostics(), undefined, timeoutMs);
+}
+
+async function getReceivedShareScopes(page, timeoutMs = READY_TIMEOUT_MS) {
+  return evaluateWithDebugApi(page, () => window.__fotosDebug.getReceivedShareScopes(), undefined, timeoutMs);
+}
+
+async function getStoredFotosEntry(page, contentHash, timeoutMs = READY_TIMEOUT_MS) {
+  return evaluateWithDebugApi(
+    page,
+    hash => window.__fotosDebug.getStoredFotosEntry(hash),
+    contentHash,
+    timeoutMs,
+  );
+}
+
 function galleryHasItem(galleryState, fileName) {
   return Boolean(galleryState?.items?.some(item => item?.name === fileName));
 }
@@ -604,6 +621,20 @@ async function main() {
         ? getAccessibleRootSummary(recipient.page, senderPersonId, SNAPSHOT_TIMEOUT_MS).catch(() => null)
         : Promise.resolve(null),
     ]);
+    const chumSyncDiagnostics = await Promise.all(
+      roles.map(role => getChumSyncDiagnostics(role.page, SNAPSHOT_TIMEOUT_MS).catch(() => null)),
+    );
+    const receivedShareScopes = await Promise.all(
+      roles.map(role => getReceivedShareScopes(role.page, SNAPSHOT_TIMEOUT_MS).catch(() => null)),
+    );
+    const sharedContentHash = shareStates[0]?.manifest?.contentHashes?.[0] ?? null;
+    const storedFotosEntries = sharedContentHash
+      ? await Promise.all(roles.map(role => getStoredFotosEntry(
+        role.page,
+        sharedContentHash,
+        SNAPSHOT_TIMEOUT_MS,
+      ).catch(() => null)))
+      : [null, null];
 
     return {
       statuses,
@@ -612,6 +643,9 @@ async function main() {
       galleryStates,
       connectionInfo,
       accessibleRoots,
+      chumSyncDiagnostics,
+      receivedShareScopes,
+      storedFotosEntries,
       logs: report.logs,
     };
   };

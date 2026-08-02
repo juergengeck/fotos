@@ -16,6 +16,7 @@ interface ClusterGalleryProps {
      * expected to merge them into that identity.
      */
     onNameClusters?: (memberClusterIds: string[], name: string) => void | Promise<void>;
+    onClusterContextMenu?: (cluster: FaceClusterSummary, event: React.MouseEvent | React.TouchEvent | KeyboardEvent) => void;
 }
 
 export function ClusterGallery({
@@ -27,8 +28,60 @@ export function ClusterGallery({
     selectedClusterIds,
     onToggleClusterSelection,
     onNameClusters,
+    onClusterContextMenu,
 }: ClusterGalleryProps) {
     const selectionActive = selectedClusterIds.size > 0;
+    const [cursor, setCursor] = useState(-1);
+    const gridRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => setCursor(-1), [clusters]);
+
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (
+                event.target instanceof HTMLInputElement
+                || event.target instanceof HTMLTextAreaElement
+                || event.target instanceof HTMLSelectElement
+            ) return;
+            if (clusters.length === 0) return;
+            const columnCount = (() => {
+                const columns = getComputedStyle(gridRef.current as HTMLElement).gridTemplateColumns;
+                return Math.max(1, columns.split(' ').filter(Boolean).length);
+            })();
+            let next = cursor;
+            if (event.key === 'ArrowRight') next = cursor < 0 ? 0 : Math.min(cursor + 1, clusters.length - 1);
+            else if (event.key === 'ArrowLeft') next = cursor < 0 ? 0 : Math.max(cursor - 1, 0);
+            else if (event.key === 'ArrowDown') next = cursor < 0 ? 0 : Math.min(cursor + columnCount, clusters.length - 1);
+            else if (event.key === 'ArrowUp') next = cursor < 0 ? 0 : Math.max(cursor - columnCount, 0);
+            else if (event.key === 'Enter' && cursor >= 0) {
+                event.preventDefault();
+                if (selectionActive) onToggleClusterSelection(clusters[cursor].clusterId, cursor);
+                else onSelectCluster(clusters[cursor].clusterId);
+                return;
+            } else if ((event.key === 'x' || event.key === 'X' || event.key === ' ') && cursor >= 0) {
+                event.preventDefault();
+                onToggleClusterSelection(clusters[cursor].clusterId, cursor, {range: event.shiftKey});
+                return;
+            } else if (
+                (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey))
+                && cursor >= 0
+                && onClusterContextMenu
+            ) {
+                event.preventDefault();
+                onClusterContextMenu(clusters[cursor], event);
+                return;
+            } else {
+                return;
+            }
+            event.preventDefault();
+            setCursor(next);
+            const card = gridRef.current?.querySelector<HTMLElement>(`[data-person-index="${next}"]`);
+            card?.focus();
+            card?.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [clusters, cursor, onClusterContextMenu, onSelectCluster, onToggleClusterSelection, selectionActive]);
 
     // Renaming a name-grouped card should rename the whole identity, not just one
     // member cluster — route through onNameClusters when available.
@@ -55,7 +108,7 @@ export function ClusterGallery({
 
     return (
         <div className="p-3">
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div ref={gridRef} role="grid" aria-label="People" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {clusters.map((cluster, index) => (
                     <ClusterCard
                         key={cluster.clusterId}
@@ -65,12 +118,14 @@ export function ClusterGallery({
                         selectionActive={selectionActive}
                         onToggleSelect={options => onToggleClusterSelection(cluster.clusterId, index, options)}
                         onClick={() => onSelectCluster(cluster.clusterId)}
+                        index={index}
                         getFileUrl={getFileUrl}
                         onRename={
                             (onNameClusters || onRenameCluster)
                                 ? (name) => renameCluster(cluster, name)
                                 : undefined
                         }
+                        onContextMenu={event => onClusterContextMenu?.(cluster, event)}
                     />
                 ))}
             </div>
@@ -88,6 +143,7 @@ export function ClusterCard({
     getFileUrl,
     onRename,
     onContextMenu,
+    index,
 }: {
     cluster: FaceClusterSummary;
     active: boolean;
@@ -98,6 +154,7 @@ export function ClusterCard({
     getFileUrl: (relativePath: string) => Promise<string>;
     onRename?: (name: string) => Promise<void> | void;
     onContextMenu?: (e: React.MouseEvent | React.TouchEvent) => void;
+    index: number;
 }) {
     const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
@@ -249,6 +306,7 @@ export function ClusterCard({
             </div>
             <button
                 type="button"
+                data-person-index={index}
                 onClick={handleClick}
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}

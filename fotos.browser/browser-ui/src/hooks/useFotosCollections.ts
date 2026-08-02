@@ -198,6 +198,11 @@ export function useFotosCollections(
             sharing: {
                 ...currentState.sharing,
                 galleryPersonIds: [...personIds],
+                certificatePersonIds: [
+                    ...currentState.sharing.certificatePersonIds,
+                    ...currentState.sharing.galleryPersonIds,
+                    ...personIds,
+                ],
             },
         }));
     }, [persist]);
@@ -211,6 +216,11 @@ export function useFotosCollections(
                     ...currentState.sharing.collectionPersonIds,
                     [collectionId]: [...personIds],
                 },
+                certificatePersonIds: [
+                    ...currentState.sharing.certificatePersonIds,
+                    ...(currentState.sharing.collectionPersonIds[collectionId] ?? []),
+                    ...personIds,
+                ],
             },
         }));
     }, [persist]);
@@ -224,6 +234,11 @@ export function useFotosCollections(
                     ...currentState.sharing.clusterPersonIds,
                     [clusterId]: [...personIds],
                 },
+                certificatePersonIds: [
+                    ...currentState.sharing.certificatePersonIds,
+                    ...(currentState.sharing.clusterPersonIds[clusterId] ?? []),
+                    ...personIds,
+                ],
             },
         }));
     }, [persist]);

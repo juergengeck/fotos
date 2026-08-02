@@ -6,16 +6,23 @@ import {
     storeVersionedObject,
 } from '@refinio/one.core/lib/storage-versioned-objects.js';
 import {calculateIdHashOfObj} from '@refinio/one.core/lib/util/object.js';
+import {
+    determineChildren,
+    type ChildObject,
+} from '@refinio/one.core/lib/util/determine-children.js';
 import type {SHA256Hash, SHA256IdHash} from '@refinio/one.core/lib/util/type-checks.js';
 import {sign} from '@refinio/one.models/lib/misc/Signature.js';
 import {
     createActiveFotosShareCertificate,
+    createFotosShareCertificateChain,
     createFotosShareManifest,
     createRevokedFotosShareCertificate,
     buildFotosShareCertificateId,
+    buildFotosShareCertificateChainId,
     type FotosEntry,
     type FotosShareCertificate,
     type FotosShareManifest,
+    type FotosShareSnapshotChild,
     type FotosShareScope,
 } from '@refinio/fotos.core';
 
@@ -31,6 +38,7 @@ export interface FotosShareCertificateDeps {
     storeVersioned<T>(object: T): Promise<StoredVersion<T>>;
     signVersion(hash: SHA256Hash<any>, issuer: SHA256IdHash<Person>): Promise<SHA256Hash<any>>;
     setAccess(entries: Array<Record<string, unknown>>): Promise<void>;
+    resolveEntryChildren(hash: SHA256Hash<FotosEntry>): Promise<ChildObject[]>;
 }
 
 const defaultDeps: FotosShareCertificateDeps = {
@@ -41,6 +49,7 @@ const defaultDeps: FotosShareCertificateDeps = {
     setAccess: async entries => {
         await createAccess(entries as any);
     },
+    resolveEntryChildren: hash => determineChildren(hash),
 };
 
 export interface CommitFotosShareScopeParams {
@@ -58,6 +67,8 @@ export interface FotosShareCertificateTransition {
     certificateIdHash: string;
     certificateHash: string;
     signatureHash: string;
+    chainIdHash: string;
+    chainHash: string;
 }
 
 export interface CommitFotosShareScopeResult {
@@ -77,6 +88,24 @@ function sameHashSet(left: Iterable<unknown>, right: Iterable<unknown>): boolean
         && Array.from(leftValues).every(value => rightValues.has(value));
 }
 
+function sameStringArray(left: readonly unknown[] | undefined, right: readonly unknown[]): boolean {
+    return Array.isArray(left)
+        && left.length === right.length
+        && left.every((value, index) => String(value) === String(right[index]));
+}
+
+function sameFotosShareManifest(
+    current: Partial<FotosShareManifest>,
+    next: FotosShareManifest,
+): boolean {
+    return sameHashSet(current.entries ?? [], next.entries)
+        && sameHashSet(current.snapshotObjects ?? [], next.snapshotObjects)
+        && sameHashSet(current.snapshotIds ?? [], next.snapshotIds)
+        && sameHashSet(current.snapshotBlobs ?? [], next.snapshotBlobs ?? [])
+        && sameHashSet(current.snapshotClobs ?? [], next.snapshotClobs ?? [])
+        && sameStringArray(current.snapshotOrder, next.snapshotOrder);
+}
+
 async function hasCurrentCertificateStatus(
     issuer: SHA256IdHash<Person>,
     subject: SHA256IdHash<Person>,
@@ -88,8 +117,30 @@ async function hasCurrentCertificateStatus(
     const idHash = await deps.calculateIdHash({$type$: 'FotosShareCertificate', id});
     try {
         const current = await deps.getByIdHash(idHash);
-        return current.obj?.$type$ === 'FotosShareCertificate'
-            && current.obj.status === status;
+        if (
+            current.obj?.$type$ !== 'FotosShareCertificate'
+            || current.obj.status !== status
+        ) return false;
+
+        // Certificates created before the transfer-chain model existed are not
+        // discoverable by recipients. Treat them as incomplete so the normal
+        // transition path mints and publishes a signed chain-backed version.
+        const chainId = buildFotosShareCertificateChainId(
+            String(issuer),
+            String(subject),
+            scope,
+        );
+        const chainIdHash = await deps.calculateIdHash({
+            $type$: 'FotosShareCertificateChain',
+            id: chainId,
+        });
+        const currentChain = await deps.getByIdHash(chainIdHash);
+        return currentChain.obj?.$type$ === 'FotosShareCertificateChain'
+            && String(currentChain.obj.issuer) === String(issuer)
+            && String(currentChain.obj.subject) === String(subject)
+            && currentChain.obj.scopeKind === scope.kind
+            && currentChain.obj.scopeId === scope.id
+            && String(currentChain.obj.certificate) === String(current.hash);
     } catch {
         return false;
     }
@@ -101,29 +152,34 @@ async function storeAndPublishCertificate(
 ): Promise<FotosShareCertificateTransition> {
     const stored = await deps.storeVersioned(certificate);
     const signatureHash = await deps.signVersion(stored.hash, certificate.issuer);
+    const scope: FotosShareScope = {
+        kind: certificate.scopeKind,
+        id: certificate.scopeId,
+    };
+    const chain = createFotosShareCertificateChain({
+        issuer: certificate.issuer,
+        subject: certificate.subject,
+        scope,
+        certificate: stored.hash,
+        signature: signatureHash,
+    });
+    const chainIdHash = await deps.calculateIdHash({
+        $type$: chain.$type$,
+        id: chain.id,
+    });
 
-    // This IdAccess is intentionally retained after revocation. It is the control
-    // path over which the recipient observes later lifecycle versions.
+    // Retain this IdAccess after revocation and establish it before storing the
+    // chain version. The store event is the feed-forward checkpoint that makes
+    // an already-running CHUM session observe the complete cert+signature DAG.
     await deps.setAccess([
         {
-            id: stored.idHash,
-            person: [certificate.subject],
-            hashGroup: [],
-            mode: SET_ACCESS_MODE.ADD,
-        },
-        {
-            object: stored.hash,
-            person: [certificate.subject],
-            hashGroup: [],
-            mode: SET_ACCESS_MODE.ADD,
-        },
-        {
-            object: signatureHash,
+            id: chainIdHash,
             person: [certificate.subject],
             hashGroup: [],
             mode: SET_ACCESS_MODE.ADD,
         },
     ]);
+    const storedChain = await deps.storeVersioned(chain);
 
     return {
         personId: String(certificate.subject),
@@ -131,6 +187,8 @@ async function storeAndPublishCertificate(
         certificateIdHash: String(stored.idHash),
         certificateHash: String(stored.hash),
         signatureHash: String(signatureHash),
+        chainIdHash: String(chainIdHash),
+        chainHash: String(storedChain.hash),
     };
 }
 
@@ -152,10 +210,19 @@ export async function commitFotosShareScope(
     const nextSet = new Set(nextPersonIds);
     const removed = previousPersonIds.filter(personId => !nextSet.has(personId));
     const added = nextPersonIds.filter(personId => !previousSet.has(personId));
+    const snapshotChildren: FotosShareSnapshotChild[] = [];
+    for (const entryHash of params.entryHashes) {
+        const children = await deps.resolveEntryChildren(entryHash);
+        snapshotChildren.push(...children.map(child => ({
+            type: child.type,
+            hash: String(child.hash),
+        })));
+    }
     const manifest = createFotosShareManifest({
         issuer: params.issuer,
         scope: params.scope,
         entries: params.entryHashes,
+        snapshotChildren,
     });
     const manifestIdHash = await deps.calculateIdHash({
         $type$: manifest.$type$,
@@ -226,7 +293,7 @@ export async function commitFotosShareScope(
         },
     ]);
 
-    if (!sameHashSet(currentManifest.obj.entries ?? [], manifest.entries)) {
+    if (!sameFotosShareManifest(currentManifest.obj, manifest)) {
         currentManifest = await deps.storeVersioned(manifest);
     }
 

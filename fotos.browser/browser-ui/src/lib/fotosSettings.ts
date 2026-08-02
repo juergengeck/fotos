@@ -9,12 +9,14 @@ import {
   type FotosSettings,
   type StorageMode,
 } from '@refinio/fotos.ui';
+import { FOTOS_LIBRARY_STATE_FIELD } from './fotosCollections.js';
 
 export const FOTOS_SETTINGS_MODULE_ID = 'fotos';
 export const FOTOS_ACCEPT_SHARING_FIELD = 'acceptSharing';
 
 export interface FotosSettingsSectionValues extends SectionValues {
   acceptSharing: boolean;
+  libraryStateJson?: string;
   faceAnalyticsEnabled: boolean;
   semanticSearchEnabled: boolean;
   defaultMode: StorageMode;
@@ -67,6 +69,13 @@ export const FotosSettingsSection = defineSection({
       label: 'Accept Sharing',
       description: 'Advertise this fotos identity to trusted glue contacts so shared content can connect automatically.',
       default: DEFAULT_FOTOS_SECTION_VALUES.acceptSharing,
+    }),
+    defineField({
+      key: FOTOS_LIBRARY_STATE_FIELD,
+      type: 'string',
+      label: 'Library state',
+      description: 'Serialized fotos collections and certificate-backed sharing assignments.',
+      default: '{"version":1,"collections":[],"sharing":{"galleryPersonIds":[],"collectionPersonIds":{},"clusterPersonIds":{},"certificatePersonIds":[]}}',
     }),
     defineField({
       key: 'faceAnalyticsEnabled',

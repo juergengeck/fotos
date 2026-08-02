@@ -44,6 +44,7 @@ describe('deserializeFotosLibraryState', () => {
                 clusterPersonIds: {
                     'person:abc': ['person-c'],
                 },
+                certificatePersonIds: ['person-d'],
             },
         }))).toEqual({
             version: 1,
@@ -64,6 +65,7 @@ describe('deserializeFotosLibraryState', () => {
                 clusterPersonIds: {
                     'person:abc': ['person-c'],
                 },
+                certificatePersonIds: ['person-a', 'person-b', 'person-c', 'person-d'],
             },
         });
     });

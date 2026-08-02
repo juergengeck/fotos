@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
     buildAcceptedIncomingSharingPeerIds,
+    collectShareLifecyclePersonIds,
     collectSharedPersonIds,
     shouldAdvertiseSharingIdentity,
 } from './fotosSharingPolicy.js';
@@ -15,6 +16,7 @@ describe('fotosSharingPolicy', () => {
         clusterPersonIds: {
             clusterA: ['peer-d', 'peer-a'],
         },
+        certificatePersonIds: ['peer-e'],
     };
 
     it('collects unique shared peer ids across gallery, collections, and clusters', () => {
@@ -23,6 +25,16 @@ describe('fotosSharingPolicy', () => {
             'peer-b',
             'peer-c',
             'peer-d',
+        ]);
+    });
+
+    it('keeps revoked certificate peers in the durable lifecycle relationship', () => {
+        expect(collectShareLifecyclePersonIds(sharing)).toEqual([
+            'peer-a',
+            'peer-b',
+            'peer-c',
+            'peer-d',
+            'peer-e',
         ]);
     });
 
@@ -36,6 +48,7 @@ describe('fotosSharingPolicy', () => {
             'peer-b',
             'peer-c',
             'peer-d',
+            'peer-e',
             'peer-z',
         ]);
     });
@@ -50,6 +63,7 @@ describe('fotosSharingPolicy', () => {
             'peer-b',
             'peer-c',
             'peer-d',
+            'peer-e',
         ]);
     });
 
@@ -63,6 +77,7 @@ describe('fotosSharingPolicy', () => {
                 galleryPersonIds: [],
                 collectionPersonIds: {},
                 clusterPersonIds: {},
+                certificatePersonIds: [],
             },
             acceptSharing: true,
         })).toBe(true);
@@ -71,6 +86,7 @@ describe('fotosSharingPolicy', () => {
                 galleryPersonIds: [],
                 collectionPersonIds: {},
                 clusterPersonIds: {},
+                certificatePersonIds: [],
             },
             acceptSharing: false,
         })).toBe(false);
