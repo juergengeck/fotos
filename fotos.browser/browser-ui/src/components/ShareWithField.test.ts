@@ -16,7 +16,7 @@ function createPeer(overrides: Partial<SharePeerOption> & Pick<SharePeerOption, 
 }
 
 describe('ShareWithField', () => {
-    it('keeps quick-add contact tags collapsed by default', () => {
+    it('presents trusted contacts before the identity escape hatch', () => {
         const html = renderToStaticMarkup(createElement(ShareWithField, {
             value: [],
             peers: [
@@ -32,7 +32,8 @@ describe('ShareWithField', () => {
             onChange: vi.fn(),
         }));
 
-        expect(html).toContain('Show 2 contact tags');
-        expect(html).not.toContain('Hide contact tags');
+        expect(html.indexOf('Authority')).toBeLessThan(html.indexOf('Invite by identity or ID'));
+        expect(html).toContain('Identity not verified');
+        expect(html).toContain('Offline');
     });
 });

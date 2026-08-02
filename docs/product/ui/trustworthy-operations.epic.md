@@ -94,6 +94,8 @@ Implemented in the first slice:
 - keyboard/focus semantics for dialogs, context menus, lightbox, photo cards, and
   touched sidebar/cluster controls;
 - D-07 discovery: no pause/cancel/resume control is exposed before engine support exists.
+- first-run controls, legal-notice controls/dialog, selection actions, header actions,
+  invite results, and the contact picker use the touched 44px, focus, and dialog gates.
 
 Still required before this epic is complete:
 

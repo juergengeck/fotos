@@ -1,6 +1,6 @@
 # Epic: Unified Selection
 
-Status: Proposed
+Status: In progress
 Owner: fotos product and engineering
 Last updated: 2026-08-02
 Evidence: [UX-01–02](../ui.prd.md#ux-01--three-incompatible-selection-models-for-the-same-concept)
@@ -85,6 +85,23 @@ confirm this representation before implementation.
 - Sharing grant confirmation and recipient management; this epic only hands an
   explicit selected scope to the Sharing epic.
 - Bulk operations over an unmaterialized “all matching” query unless separately scoped.
+
+## Implementation Status
+
+Implemented:
+
+- One App-owned reducer coordinates photo and people selection, including independent
+  range anchors and reconciliation against the active library.
+- `ClusterGallery` no longer owns a local selection set and the explicit sidebar
+  “Select People” mode and merge-candidate selection have been removed.
+- One adaptive main-pane action bar owns clear, clear-hidden, select-all-visible,
+  new/existing collection, naming, grouping, merge-target, and photo export actions.
+- Filters preserve hidden selections and the action bar discloses their count.
+- Unsupported mixed export is disabled with an explicit explanation rather than
+  silently exporting only the photo subset.
+
+Still required for completion: selection-driven sharing scope, populated-gallery
+screen-reader/mobile task validation, and an undo boundary for collection membership.
 
 ## Acceptance Criteria
 

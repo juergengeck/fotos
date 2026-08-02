@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Impressum } from '@/components/Impressum';
 import { GalleryBreadcrumbs } from '@/components/GalleryBreadcrumbs';
 import { PhotoGrid } from '@/components/PhotoGrid';
 import { Lightbox } from '@/components/Lightbox';
-import { Sidebar } from '@/components/Sidebar';
+import { Sidebar, type SidebarTab } from '@/components/Sidebar';
+import { AppHeader } from '@/components/AppHeader';
 import { ConfirmModal } from '@/components/ConfirmModal';
 import { ContextMenu } from '@/components/ContextMenu';
 import { RenameModal } from '@/components/RenameModal';
 import { TimelineScrubber } from '@/components/TimelineScrubber';
 import { ClusterGallery } from '@/components/ClusterGallery';
+import { SelectionActionBar } from '@/components/SelectionActionBar';
 import { useGallery } from '@/hooks/useGallery';
 import { useHeadlessSource } from '@/hooks/useHeadlessSource';
 import { useBreadcrumbHistory } from '@/hooks/useBreadcrumbHistory';
@@ -50,7 +52,7 @@ import {
 } from '@/lib/photoRoute';
 import { resolveGlueIdentityState } from '@/lib/glueIdentityState';
 import { resolveTokenToPersonId, type SharePeerOption } from '@/components/ShareWithField';
-import { writeStoredSidebarTab } from '@/lib/authFlowState';
+import { readStoredSidebarTab, writeStoredSidebarTab } from '@/lib/authFlowState';
 import {
     createFotosShareInvite,
     parseFotosShareInviteUrl,
@@ -62,6 +64,11 @@ import { setFotosRuntimeSnapshot, setFotosRuntimeVisiblePhotos } from './lib/run
 import { determineAccessibleHashes } from '@refinio/one.core/lib/util/determine-accessible-hashes.js';
 import { commitFotosShareScope } from '@/lib/fotosShareCertificates';
 import type { FotosShareScope } from '@refinio/fotos.core';
+import {
+    EMPTY_SELECTION_STATE,
+    countHiddenSelection,
+    selectionReducer,
+} from '@/lib/selectionCoordinator';
 
 interface AppProps {
     fotosModel?: FotosModel;
@@ -288,9 +295,10 @@ export function App({ fotosModel: initialModel }: AppProps) {
     const [headlessUrl, setHeadlessUrl] = useState<string | null>(null);
     const [headlessInput, setHeadlessInput] = useState('');
     const [showHeadlessConnect, setShowHeadlessConnect] = useState(false);
-    const [clusterSelectionEnabled, setClusterSelectionEnabled] = useState(false);
-    const [selectedPhotoHashes, setSelectedPhotoHashes] = useState<string[]>([]);
-    const [selectedClusterIds, setSelectedClusterIds] = useState<string[]>([]);
+    const [sidebarTab, setSidebarTab] = useState<SidebarTab>(() => readStoredSidebarTab() ?? 'browse');
+    const [sidebarVisible, setSidebarVisible] = useState(true);
+    const [sidebarOpenRequest, setSidebarOpenRequest] = useState(0);
+    const [selection, dispatchSelection] = useReducer(selectionReducer, EMPTY_SELECTION_STATE);
     const [sharePeerOptions, setSharePeerOptions] = useState<SharePeerOption[]>([]);
     const [contactPersonIds, setContactPersonIds] = useState<string[]>([]);
     const [exportingPhotos, setExportingPhotos] = useState(false);
@@ -356,6 +364,8 @@ export function App({ fotosModel: initialModel }: AppProps) {
     const certificateBackfilledScopesRef = useRef(new Set<string>());
     const legacyFotosAccessRetiredRef = useRef(false);
     const [routeLocation, setRouteLocation] = useState<RouteLocationSnapshot>(getCurrentRouteLocation);
+    const selectedPhotoHashes = selection.photoIds;
+    const selectedClusterIds = selection.peopleIds;
     const selectedPhotoHashSet = useMemo(() => new Set(selectedPhotoHashes), [selectedPhotoHashes]);
     // Selection is implicit: the grid is "selecting" whenever anything is selected.
     const photoSelectionActive = selectedPhotoHashes.length > 0;
@@ -417,6 +427,32 @@ export function App({ fotosModel: initialModel }: AppProps) {
         : gallery.dayGroups;
     const showClusterGallery = gallery.galleryMode === 'clusters' && !gallery.activeClusterId;
     const trimmedSearchQuery = gallery.searchQuery.trim();
+    const visibleSelectionPhotoIds = useMemo(
+        () => showClusterGallery ? [] : visiblePhotos.map(photo => photo.hash),
+        [showClusterGallery, visiblePhotos],
+    );
+    const visibleSelectionPeopleIds = useMemo(
+        () => showClusterGallery ? gallery.clusters.map(cluster => cluster.clusterId) : [],
+        [gallery.clusters, showClusterGallery],
+    );
+    const hiddenSelection = useMemo(() => countHiddenSelection(
+        selection,
+        visibleSelectionPhotoIds,
+        visibleSelectionPeopleIds,
+    ), [selection, visibleSelectionPeopleIds, visibleSelectionPhotoIds]);
+
+    useEffect(() => {
+        if (selectedPhotoHashes.length + selectedClusterIds.length === 0) return;
+        const clearOnEscape = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape' || event.defaultPrevented) return;
+            const target = event.target as HTMLElement | null;
+            if (target?.closest('input, textarea, select, [role="dialog"]')) return;
+            event.preventDefault();
+            dispatchSelection({type: 'clear'});
+        };
+        window.addEventListener('keydown', clearOnEscape);
+        return () => window.removeEventListener('keydown', clearOnEscape);
+    }, [selectedClusterIds.length, selectedPhotoHashes.length]);
 
     const [contextMenu, setContextMenu] = useState<{
         x: number;
@@ -611,7 +647,11 @@ export function App({ fotosModel: initialModel }: AppProps) {
         void gallery.folder.associateFaceWithCluster(photoHash, faceIndex, clusterId);
     }, [gallery.folder]);
 
-    const handleMergeFaceClusters = useCallback((targetClusterId: string, sourceClusterIds: string[]) => {
+    const handleMergeFaceClusters = useCallback((
+        targetClusterId: string,
+        sourceClusterIds: string[],
+        onCompleted?: () => void,
+    ) => {
         const uniqueSourceIds = Array.from(new Set(sourceClusterIds.filter(id => id !== targetClusterId)));
         if (uniqueSourceIds.length === 0) return;
         showConfirm({
@@ -619,21 +659,23 @@ export function App({ fotosModel: initialModel }: AppProps) {
             message: `Merge ${uniqueSourceIds.length} face cluster${uniqueSourceIds.length === 1 ? '' : 's'} into the selected person? This changes face associations and cannot currently be undone.`,
             confirmLabel: 'Merge clusters',
             isDestructive: true,
-            onConfirm: () => {
-                void gallery.folder.mergeFaceClusters(targetClusterId, uniqueSourceIds);
+            onConfirm: async () => {
+                await gallery.folder.mergeFaceClusters(targetClusterId, uniqueSourceIds);
+                onCompleted?.();
             },
         });
     }, [gallery.folder, showConfirm]);
 
-    const handleGroupFaceClustersAsPerson = useCallback((clusterIds: string[]) => {
+    const handleGroupFaceClustersAsPerson = useCallback((clusterIds: string[], onCompleted?: () => void) => {
         const uniqueIds = Array.from(new Set(clusterIds));
         if (uniqueIds.length < 2) return;
         showConfirm({
             title: 'Group as one person',
             message: `Group ${uniqueIds.length} face clusters as one person? You can separate them again later.`,
             confirmLabel: 'Group as one person',
-            onConfirm: () => {
-                void gallery.folder.groupFaceClustersAsPerson(uniqueIds);
+            onConfirm: async () => {
+                await gallery.folder.groupFaceClustersAsPerson(uniqueIds);
+                onCompleted?.();
             },
         });
     }, [gallery.folder, showConfirm]);
@@ -809,56 +851,68 @@ export function App({ fotosModel: initialModel }: AppProps) {
     ]);
 
     useEffect(() => {
-        const availableHashes = new Set(gallery.folder.entries.map(photo => photo.hash));
-        setSelectedPhotoHashes(currentHashes => (
-            currentHashes.filter(hash => availableHashes.has(hash))
-        ));
-    }, [gallery.folder.entries]);
+        dispatchSelection({
+            type: 'reconcile',
+            availablePhotoIds: gallery.folder.entries.map(photo => photo.hash),
+            availablePeopleIds: gallery.allClusters.map(cluster => cluster.clusterId),
+        });
+    }, [gallery.allClusters, gallery.folder.entries]);
 
-    useEffect(() => {
-        const availableClusterIds = new Set(gallery.allClusters.map(cluster => cluster.clusterId));
-        setSelectedClusterIds(currentIds => (
-            currentIds.filter(clusterId => availableClusterIds.has(clusterId))
-        ));
-    }, [gallery.allClusters]);
-
-    const toggleSelectedPhotoHash = useCallback((photoHash: string) => {
-        setSelectedPhotoHashes(currentHashes => (
-            currentHashes.includes(photoHash)
-                ? currentHashes.filter(hash => hash !== photoHash)
-                : [...currentHashes, photoHash]
-        ));
-    }, []);
-
-    const toggleSelectedClusterId = useCallback((clusterId: string) => {
-        setSelectedClusterIds(currentIds => (
-            currentIds.includes(clusterId)
-                ? currentIds.filter(id => id !== clusterId)
-                : [...currentIds, clusterId]
-        ));
-    }, []);
-
-    const clearCollectionSelection = useCallback(() => {
-        setSelectedPhotoHashes([]);
-        setSelectedClusterIds([]);
-    }, []);
-
-    const selectAllVisiblePhotos = useCallback(() => {
-        setSelectedPhotoHashes(currentHashes => {
-            const nextHashes = new Set(currentHashes);
-            for (const photo of visiblePhotos) {
-                nextHashes.add(photo.hash);
-            }
-            return [...nextHashes];
+    const toggleSelectedPhotoHash = useCallback((
+        photoHash: string,
+        options?: {range?: boolean},
+    ) => {
+        dispatchSelection({
+            type: 'toggle',
+            domain: 'photos',
+            id: photoHash,
+            orderedIds: visiblePhotos.map(photo => photo.hash),
+            range: options?.range,
         });
     }, [visiblePhotos]);
 
+    const toggleSelectedClusterId = useCallback((
+        clusterId: string,
+        options?: {range?: boolean},
+    ) => {
+        dispatchSelection({
+            type: 'toggle',
+            domain: 'people',
+            id: clusterId,
+            orderedIds: gallery.clusters.map(cluster => cluster.clusterId),
+            range: options?.range,
+        });
+    }, [gallery.clusters]);
+
+    const clearCollectionSelection = useCallback(() => {
+        dispatchSelection({type: 'clear'});
+    }, []);
+
+    const selectAllVisible = useCallback(() => {
+        dispatchSelection(showClusterGallery
+            ? {type: 'select-visible', domain: 'people', ids: gallery.clusters.map(cluster => cluster.clusterId)}
+            : {type: 'select-visible', domain: 'photos', ids: visiblePhotos.map(photo => photo.hash)});
+    }, [gallery.clusters, showClusterGallery, visiblePhotos]);
+
     const handleGalleryModeChange = useCallback((mode: 'images' | 'clusters') => {
+        if (mode === 'clusters' && !settings.analysis.faceAnalyticsEnabled) {
+            showConfirm({
+                title: 'Turn on face analytics?',
+                message: 'People view uses an on-device face model downloaded once when you choose to use it.',
+                confirmLabel: 'Turn on People view',
+                onConfirm: () => {
+                    updateAnalysis({faceAnalyticsEnabled: true});
+                    gallery.setActiveCollectionId(null);
+                    gallery.setGalleryMode('clusters');
+                },
+            });
+            return;
+        }
         if (mode === 'clusters') {
             gallery.setActiveCollectionId(null);
         }
         gallery.setGalleryMode(mode);
-    }, [gallery]);
+    }, [gallery, settings.analysis.faceAnalyticsEnabled, showConfirm, updateAnalysis]);
 
     const handleCollectionSelect = useCallback((collectionId: string | null) => {
         gallery.setGalleryMode('images');
@@ -885,7 +939,6 @@ export function App({ fotosModel: initialModel }: AppProps) {
             selectedClustersForCollections,
         );
         clearCollectionSelection();
-        setClusterSelectionEnabled(false);
         handleCollectionSelect(nextCollection.id);
         return true;
     }, [
@@ -894,6 +947,54 @@ export function App({ fotosModel: initialModel }: AppProps) {
         handleCollectionSelect,
         selectedClustersForCollections,
         selectedPhotosForCollections,
+    ]);
+
+    const handleAddSelectionToCollection = useCallback((collectionId: string) => {
+        if (selectedPhotosForCollections.length === 0 && selectedClustersForCollections.length === 0) return;
+        fotosCollections.addSelectionToCollection(
+            collectionId,
+            selectedPhotosForCollections,
+            selectedClustersForCollections,
+        );
+        clearCollectionSelection();
+    }, [
+        clearCollectionSelection,
+        fotosCollections,
+        selectedClustersForCollections,
+        selectedPhotosForCollections,
+    ]);
+
+    const handleNameSelectedPeople = useCallback(async (name: string) => {
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        const selectedMemberIds = selectedClustersForCollections.flatMap(cluster => cluster.memberClusterIds);
+        const matchingPerson = gallery.people.find(person => (
+            (person.personName ?? person.label).trim().toLowerCase() === trimmed.toLowerCase()
+        ));
+        await handleNameClusters([
+            ...(matchingPerson?.memberClusterIds ?? []),
+            ...selectedMemberIds,
+        ], trimmed);
+        clearCollectionSelection();
+    }, [clearCollectionSelection, gallery.people, handleNameClusters, selectedClustersForCollections]);
+
+    const handleGroupSelectedPeople = useCallback(() => {
+        const memberIds = selectedClustersForCollections.flatMap(cluster => cluster.memberClusterIds);
+        handleGroupFaceClustersAsPerson(memberIds, clearCollectionSelection);
+    }, [clearCollectionSelection, handleGroupFaceClustersAsPerson, selectedClustersForCollections]);
+
+    const handleMergeSelectedPeople = useCallback(() => {
+        const target = gallery.allClusters.find(cluster => cluster.clusterId === gallery.activeClusterId);
+        const targetId = target?.memberClusterIds[0];
+        if (!targetId) return;
+        const sourceIds = selectedClustersForCollections.flatMap(cluster => cluster.memberClusterIds);
+        handleMergeFaceClusters(targetId, sourceIds, clearCollectionSelection);
+    }, [
+        clearCollectionSelection,
+        gallery.activeClusterId,
+        gallery.allClusters,
+        handleMergeFaceClusters,
+        selectedClustersForCollections,
     ]);
 
     const expandSharePersonIds = useCallback((personIds: readonly string[]) => (
@@ -1124,6 +1225,25 @@ export function App({ fotosModel: initialModel }: AppProps) {
         }
     }, [createGalleryShareInvite]);
 
+    const handleRevokeGalleryShareInvite = useCallback(() => {
+        if (!createdShareInvite) return;
+        showConfirm({
+            title: 'Revoke gallery invitation?',
+            message: 'This invitation link and PIN will stop accepting new recipients. Existing trusted shares are not removed.',
+            confirmLabel: 'Revoke link',
+            isDestructive: true,
+            onConfirm: () => {
+                fotosModel?.connectionsModel?.pairing.invalidateInvitation(
+                    createdShareInvite.payload.pairingInvitation,
+                );
+                pendingGalleryInviteTokensRef.current.delete(
+                    createdShareInvite.payload.pairingInvitation.token,
+                );
+                setCreatedShareInvite(null);
+            },
+        });
+    }, [createdShareInvite, fotosModel?.connectionsModel?.pairing, showConfirm]);
+
     const acceptIncomingGalleryShareInvite = useCallback(async (
         options: { requireDestination?: boolean } = {},
     ) => {
@@ -1215,8 +1335,6 @@ export function App({ fotosModel: initialModel }: AppProps) {
     const mobile = gallery.folder.mobile;
     const intakePlan = gallery.folder.defaultIntakePlan;
     const pendingImportCount = gallery.folder.pendingImportCount;
-    const canClaimAuthorshipOnIngest = gallery.folder.canClaimAuthorshipOnIngest;
-    const claimAuthorshipOnIngest = gallery.folder.claimAuthorshipOnIngest;
     const primaryIntakeActionLabel = pendingImportCount > 0
         ? `Choose folder for ${pendingImportCount} shared photo${pendingImportCount === 1 ? '' : 's'}`
         : intakePlan.actionLabel;
@@ -1411,6 +1529,15 @@ export function App({ fotosModel: initialModel }: AppProps) {
         )
         ? progress
         : null;
+    const headerProgress = progress ? resolveProgressDisplay(progress) : null;
+    const headerBackgroundStatus = headerProgress
+        ? `${headerProgress.label}${headerProgress.countLabel ? ` · ${headerProgress.countLabel}` : ''}`
+        : null;
+    const openSidebarTab = useCallback((tab: SidebarTab) => {
+        setSidebarTab(tab);
+        setSidebarVisible(true);
+        setSidebarOpenRequest(request => request + 1);
+    }, []);
     const breadcrumbItems = useMemo(() => {
         const items: Array<{ key: string; label: string; onClick?: () => void }> = [];
 
@@ -2441,79 +2568,32 @@ export function App({ fotosModel: initialModel }: AppProps) {
         if (!gallery.folder.isOpen) {
             return (
                 <div className="h-screen flex flex-col bg-[#111] view-enter">
-                    <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-6 p-6">
-                        <img src="/cam.svg" className="flex-1 min-h-0 invert opacity-20" style={{ maxWidth: '80vw', objectFit: 'contain' }} />
-                        <div className="w-full max-w-lg space-y-3 rounded-2xl border border-white/10 bg-white/[0.035] p-4 backdrop-blur-sm">
-                            <label className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-3">
-                                <input
-                                    type="checkbox"
-                                    checked={settings.analysis.faceAnalyticsEnabled}
-                                    onChange={event => updateAnalysis({ faceAnalyticsEnabled: event.target.checked })}
-                                    className="mt-0.5 h-4 w-4 accent-[#e94560]"
-                                />
-                                <div className="space-y-1">
-                                    <div className="text-sm font-medium text-white/80">Enable face analytics</div>
-                                    <p className="text-xs leading-relaxed text-white/38">
-                                        Downloads on-device face detection and recognition weights when needed for people clustering and similar-face search.
-                                    </p>
-                                </div>
-                            </label>
-
-                            <label className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-3">
-                                <input
-                                    type="checkbox"
-                                    checked={settings.analysis.semanticSearchEnabled}
-                                    onChange={event => updateAnalysis({ semanticSearchEnabled: event.target.checked })}
-                                    className="mt-0.5 h-4 w-4 accent-[#e94560]"
-                                />
-                                <div className="space-y-1">
-                                    <div className="text-sm font-medium text-white/80">Enable semantic search</div>
-                                    <p className="text-xs leading-relaxed text-white/38">
-                                        Downloads the multimodal search model when you search by meaning instead of exact words.
-                                    </p>
-                                </div>
-                            </label>
+                    <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-5 p-6 text-center">
+                        <img src="/cam.svg" alt="" className="h-36 w-36 invert opacity-20" />
+                        <div className="space-y-2">
+                            <h1 className="text-2xl font-semibold text-white/90">Your photos, on your device</h1>
+                            <p className="max-w-md text-sm leading-relaxed text-white/60">
+                                Open a library to start browsing. Fotos keeps your originals in place and does not upload them to a cloud photo service.
+                            </p>
                         </div>
                         {pendingImportCount > 0 && (
                             <div className="w-full max-w-lg rounded-2xl border border-[#e94560]/30 bg-[#2b0f16]/80 px-4 py-3 text-sm text-white/80 shadow-[0_16px_40px_rgba(0,0,0,0.25)]">
                                 {pendingImportCount} shared photo{pendingImportCount === 1 ? ' is' : 's are'} ready to be stored locally.
                             </div>
                         )}
-                        {canClaimAuthorshipOnIngest && (
-                            <label className="flex w-full max-w-lg items-start gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-left">
-                                <input
-                                    type="checkbox"
-                                    checked={claimAuthorshipOnIngest}
-                                    onChange={event => gallery.folder.setClaimAuthorshipOnIngest(event.target.checked)}
-                                    className="mt-0.5 h-4 w-4 accent-[#e94560]"
-                                />
-                                <div className="space-y-1">
-                                    <div className="text-sm font-medium text-white/80">Claim authorship on ingest</div>
-                                    <p className="text-xs leading-relaxed text-white/38">
-                                        Sign each imported image hash with this fotos identity so authenticity proof can travel with shared photos.
-                                    </p>
-                                </div>
-                            </label>
-                        )}
                         <button
                             onClick={gallery.folder.openFolder}
-                            className="px-5 py-2.5 rounded-lg bg-[#e94560] text-white text-sm font-medium hover:bg-[#d13354] transition-colors"
+                            className="min-h-11 rounded-lg bg-[#e94560] px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-[#d13354] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff9db0]"
                         >
                             {primaryIntakeActionLabel}
                         </button>
 
-                        <div className="flex items-center gap-3 w-full max-w-lg">
-                            <div className="flex-1 h-px bg-white/10" />
-                            <span className="text-xs text-white/30">or</span>
-                            <div className="flex-1 h-px bg-white/10" />
-                        </div>
-
-                        {!showHeadlessConnect ? (
+                        {import.meta.env.DEV && (!showHeadlessConnect ? (
                             <button
                                 onClick={() => setShowHeadlessConnect(true)}
-                                className="px-5 py-2.5 rounded-lg border border-white/15 text-white/60 text-sm font-medium hover:border-white/25 hover:text-white/80 transition-colors"
+                                className="min-h-11 rounded-lg px-4 text-xs text-white/55 hover:bg-white/5 hover:text-white/80"
                             >
-                                Connect to server
+                                Advanced: connect to server
                             </button>
                         ) : (
                             <div className="flex gap-2 w-full max-w-lg">
@@ -2542,7 +2622,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                     Connect
                                 </button>
                             </div>
-                        )}
+                        ))}
 
                         <p className="max-w-md text-center text-xs text-white/45">
                             {primaryIntakeSummary}
@@ -2555,9 +2635,29 @@ export function App({ fotosModel: initialModel }: AppProps) {
 
         return (
             <>
-                {/* Portrait mobile: column (grid above, sidebar below)
-                     Landscape mobile + desktop: row (grid left, sidebar right) */}
-                <div className={`h-screen flex ${mobile ? 'flex-col landscape:flex-row' : ''}`}>
+                <div className="flex h-screen flex-col">
+                    <AppHeader
+                        folderName={gallery.folder.folderName ?? 'Photos'}
+                        mode={gallery.galleryMode}
+                        query={gallery.searchQuery}
+                        resultCount={showClusterGallery ? gallery.clusters.length : visiblePhotos.length}
+                        totalCount={gallery.galleryMode === 'clusters' ? gallery.allClusters.length : gallery.totalCount}
+                        identityReady={Boolean(fotosModel?.publicationIdentity)}
+                        identityLabel={fotosModel?.publicationIdentity ? String(fotosModel.publicationIdentity) : null}
+                        backgroundStatus={headerBackgroundStatus}
+                        facetsOpen={sidebarVisible}
+                        onModeChange={handleGalleryModeChange}
+                        onQueryChange={gallery.setSearchQuery}
+                        onToggleFacets={() => {
+                            if (mobile) openSidebarTab('browse');
+                            else setSidebarVisible(visible => !visible);
+                        }}
+                        onOpenSharing={() => openSidebarTab('sharing')}
+                        onOpenSettings={() => openSidebarTab('settings')}
+                    />
+                    {/* Portrait mobile: sheet over the grid. Landscape mobile and
+                        desktop place the current task panel beside the main pane. */}
+                    <div className={`flex min-h-0 flex-1 ${mobile ? 'flex-col landscape:flex-row' : ''}`}>
                     {/* Main content area */}
                     <div className="flex-1 min-w-0 min-h-0 relative">
                         <div ref={scrollRef} className={`h-full overflow-y-auto hide-scrollbar ${mobile ? 'pb-20 landscape:pb-0' : ''}`}>
@@ -2571,7 +2671,8 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                     onSelectCluster={gallery.setActiveClusterId}
                                     getFileUrl={gallery.folder.getFileUrl}
                                     onRenameCluster={handleRenameFace}
-                                    people={gallery.people}
+                                    selectedClusterIds={selectedClusterIdSet}
+                                    onToggleClusterSelection={(clusterId, _index, options) => toggleSelectedClusterId(clusterId, options)}
                                     onNameClusters={handleNameClusters}
                                 />
                             ) : (
@@ -2583,8 +2684,8 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                     onPhotoContextMenu={handlePhotoContextMenu}
                                     selectionActive={photoSelectionActive}
                                     selectedPhotoHashes={selectedPhotoHashSet}
-                                    onPhotoToggleSelection={(photo) => toggleSelectedPhotoHash(photo.hash)}
-                                    onClearSelection={() => setSelectedPhotoHashes([])}
+                                    onPhotoToggleSelection={(photo, _index, options) => toggleSelectedPhotoHash(photo.hash, options)}
+                                    onClearSelection={clearCollectionSelection}
                                     loading={gallery.loading}
                                     getThumbUrl={gallery.folder.getThumbUrl}
                                     mobile={mobile}
@@ -2604,7 +2705,18 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                     }
                                     emptyHint={
                                         trimmedSearchQuery.length > 0
-                                            ? 'Try a different search term or clear the current filter.'
+                                            ? settings.analysis.semanticSearchEnabled
+                                                ? 'Try a different search term or clear the current filter.'
+                                                : <span className="inline-flex flex-col items-center gap-2">
+                                                    <span>No filename or tag matched this search.</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => updateAnalysis({semanticSearchEnabled: true})}
+                                                        className="min-h-11 rounded-md border border-white/15 bg-white/8 px-3 text-xs text-white/75 hover:bg-white/12 hover:text-white"
+                                                    >
+                                                        Search by meaning
+                                                    </button>
+                                                </span>
                                             : gallery.searchFace !== null
                                                 ? 'Try with a different face or lower the similarity threshold.'
                                                 : gallery.activeCollectionId
@@ -2637,48 +2749,41 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                 )}
                             </>
                         )}
-                        {/* Selection toolbar — appears whenever photos are selected */}
-                        {selectedPhotoHashes.length > 0 && (
-                            <div className={`absolute ${mobile ? 'bottom-20 landscape:bottom-3' : 'bottom-3'} left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-xl border border-white/10 bg-black/80 px-3 py-2 shadow-2xl backdrop-blur-md view-enter`}>
-                                <span className="text-xs font-medium text-white/80 tabular-nums whitespace-nowrap">
-                                    {selectedPhotoHashes.length} selected
-                                </span>
-                                <div className="h-4 w-px bg-white/10" />
-                                <button
-                                    type="button"
-                                    onClick={() => { setSelectedPhotoHashes([]); }}
-                                    className="rounded-md px-2 py-1 text-[11px] text-white/45 transition-colors hover:bg-white/10 hover:text-white/75"
-                                >
-                                    Clear
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={selectAllVisiblePhotos}
-                                    className="rounded-md px-2 py-1 text-[11px] text-white/45 transition-colors hover:bg-white/10 hover:text-white/75"
-                                >
-                                    Select all
-                                </button>
-                                {mobile && (
-                                    <button
-                                        type="button"
-                                        onClick={() => { void handleExportSelectedPhotos(); }}
-                                        disabled={exportingPhotos}
-                                        className="rounded-md bg-white/10 px-2.5 py-1 text-[11px] font-medium text-white/80 transition-colors hover:bg-white/15 disabled:opacity-30"
-                                    >
-                                        Export
-                                    </button>
-                                )}
-                            </div>
-                        )}
+                        <SelectionActionBar
+                            photoCount={selectedPhotoHashes.length}
+                            peopleCount={selectedClusterIds.length}
+                            hiddenCount={hiddenSelection.total}
+                            visibleDomain={showClusterGallery ? 'people' : 'photos'}
+                            mobile={mobile}
+                            exporting={exportingPhotos}
+                            collections={collectionSummaries}
+                            onClear={clearCollectionSelection}
+                            onClearHidden={() => dispatchSelection({
+                                type: 'clear-hidden',
+                                visiblePhotoIds: visibleSelectionPhotoIds,
+                                visiblePeopleIds: visibleSelectionPeopleIds,
+                            })}
+                            onSelectAllVisible={selectAllVisible}
+                            onCreateCollection={handleCreateCollection}
+                            onAddToCollection={handleAddSelectionToCollection}
+                            onExportPhotos={handleExportSelectedPhotos}
+                            onNamePeople={handleNameSelectedPeople}
+                            onGroupPeople={handleGroupSelectedPeople}
+                            mergeTargetLabel={gallery.activeClusterId
+                                ? gallery.allClusters.find(cluster => cluster.clusterId === gallery.activeClusterId)?.label
+                                : undefined}
+                            onMergePeople={gallery.activeClusterId ? handleMergeSelectedPeople : undefined}
+                        />
                     </div>
 
-                    {/* Sidebar — on mobile: below grid (portrait) or right (landscape) */}
-                    <Sidebar
+                    {/* Sidebar/task panel */}
+                    {sidebarVisible && <Sidebar
+                        activeTab={sidebarTab}
+                        onTabChange={setSidebarTab}
+                        openRequest={sidebarOpenRequest}
                         tags={gallery.tags}
                         activeTag={gallery.activeTag}
                         onTagClick={gallery.setActiveTag}
-                        searchQuery={gallery.searchQuery}
-                        onSearchChange={gallery.setSearchQuery}
                         browseSummary={gallery.galleryMode === 'clusters'
                             ? gallery.activeCluster
                                 ? `${gallery.clusterPhotos.length} photos in ${gallery.activeCluster.label}`
@@ -2706,7 +2811,10 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         folderName={gallery.folder.folderName}
                         folders={gallery.folder.folders}
                         onOpenFolder={gallery.folder.openFolder}
-                        onSelectFolder={gallery.folder.selectFolder}
+                        onSelectFolder={folderId => {
+                            clearCollectionSelection();
+                            gallery.folder.selectFolder(folderId);
+                        }}
                         onRemoveFolder={handleRemoveFolder}
                         onRescan={gallery.folder.rescan}
                         onReanalyze={canReanalyze ? gallery.folder.reanalyzeFaces : undefined}
@@ -2720,21 +2828,11 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         fotosModel={fotosModel}
                         mobile={mobile}
                         galleryMode={gallery.galleryMode}
-                        onGalleryModeChange={handleGalleryModeChange}
                         collections={collectionSummaries}
                         activeCollectionId={gallery.activeCollectionId}
                         onCollectionSelect={handleCollectionSelect}
-                        selectedPhotoCount={selectedPhotoHashes.length}
-                        onSelectAllVisiblePhotos={selectAllVisiblePhotos}
-                        onExportSelectedPhotos={mobile ? handleExportSelectedPhotos : undefined}
-                        exportSelectedPhotosDisabled={exportingPhotos}
-                        clusterSelectionEnabled={clusterSelectionEnabled}
-                        onClusterSelectionModeChange={setClusterSelectionEnabled}
                         selectedClusterIds={selectedClusterIds}
-                        selectedClusterCount={selectedClusterIds.length}
-                        onToggleSelectedCluster={toggleSelectedClusterId}
-                        onClearCollectionSelection={clearCollectionSelection}
-                        onCreateCollection={handleCreateCollection}
+                        onToggleSelectedCluster={clusterId => toggleSelectedClusterId(clusterId)}
                         onRenameCollection={fotosCollections.renameCollection}
                         onDeleteCollection={handleDeleteCollection}
                         clusters={gallery.clusters}
@@ -2747,8 +2845,6 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         onClusterSelect={handleClusterSelect}
                         getFileUrl={gallery.folder.getFileUrl}
                         onAssociateFaceWithCluster={handleAssociateFaceWithCluster}
-                        onMergeFaceClusters={handleMergeFaceClusters}
-                        onGroupFaceClustersAsPerson={handleGroupFaceClustersAsPerson}
                         onSeparatePersonGroup={handleSeparatePersonGroup}
                         onOpenSimilarFace={handleOpenSimilarFace}
                         onDeletePhoto={handleDelete}
@@ -2757,6 +2853,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         galleryShareInvite={createdShareInvite}
                         creatingGalleryShareInvite={creatingShareInvite}
                         onCreateGalleryShareInvite={handleCreateGalleryShareInvite}
+                        onRevokeGalleryShareInvite={handleRevokeGalleryShareInvite}
                         sharePeerOptions={sharePeerOptions}
                         gallerySharePersonIds={fotosCollections.sharing.galleryPersonIds}
                         collectionSharePersonIds={fotosCollections.sharing.collectionPersonIds}
@@ -2768,7 +2865,9 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         onCollectionContextMenu={handleCollectionContextMenu}
                         showOnboarding={showOnboarding}
                         onDismissOnboarding={handleDismissOnboarding}
-                    />
+                    />}
+                    </div>
+                    <Impressum />
                 </div>
 
                 {!showClusterGallery && gallery.selectedIndex !== null && (
@@ -2902,7 +3001,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 onClose={() => setContextMenu(null)}
                 mobile={mobile}
                 onDeletePhoto={handleDelete}
-                onToggleSelectPhoto={toggleSelectedPhotoHash}
+                onToggleSelectPhoto={hash => toggleSelectedPhotoHash(hash)}
                 isPhotoSelected={(hash) => selectedPhotoHashSet.has(hash)}
                 onSharePhoto={handleSharePhoto}
                 onRenameCluster={handleRenameCluster}

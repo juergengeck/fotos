@@ -1,6 +1,6 @@
 # Epic: App Shell and Navigation
 
-Status: Proposed
+Status: In progress
 Owner: fotos product and engineering
 Last updated: 2026-08-02
 Evidence: [UX-09–11, UX-14, UX-17–18, UX-23](../ui.prd.md#ux-09--the-bottom-right-corner-is-contested-by-four-different-controls)
@@ -81,6 +81,30 @@ connection placement depends on D-01.
 - A full visual-brand redesign.
 - Mobile-sheet physics beyond what is necessary to deliver the D-02 decision.
 - Redesigning Breadcrumb History before D-04.
+
+## Implementation Status
+
+Implemented:
+
+- A persistent header owns library context, Photos/People switching, scoped search
+  with result counts, identity/sync state, background status, panel visibility,
+  Sharing, and Settings entry points.
+- Browse, Sharing, and Settings are explicit peer navigation destinations; sharing is
+  no longer rendered as a Browse section.
+- Desktop sidebar collapse controls were removed from the contested floating-control
+  lane; header controls now own panel visibility.
+- Folder add, switch, remove, rescan, and reanalysis controls are consolidated under
+  Settings → Library instead of appearing in Browse or Sharing.
+- First run presents one dominant library-intake action and a local-originals privacy
+  promise. AI setup moved to the People job and settings; headless connection is
+  development-only Advanced UI.
+- A failed literal search offers semantic search enablement at the moment it is useful,
+  rather than making model configuration a first-run requirement.
+- The legal notice remains reachable after a library opens and its dialog/targets meet
+  the touched accessibility contract.
+
+Still required for completion: finish route-backed full-pane task history and run the
+populated-library responsive navigation matrix.
 
 ## Dependencies and Decisions
 

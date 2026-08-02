@@ -32,12 +32,12 @@ All UI work must reinforce the existing product strategy:
 
 | ID | Decision | Blocks | Status |
 |---|---|---|---|
-| D-01 | Is headless `Connect to server` an end-user path or an Advanced/development affordance? | App shell and first run | Open |
-| D-02 | Does mobile use a simplified shell, or the desktop information architecture adapted to a sheet? | App shell | Open |
+| [D-01](./decisions/D-01-headless-path.md) | Headless `Connect to server` is a development-only Advanced affordance. | — | Decided |
+| [D-02](./decisions/D-02-mobile-shell.md) | Mobile uses the same information architecture through a compact header and task sheet. | — | Decided |
 | D-03 | Recipient removal publishes a newer revocation version of the sharing certificate, removes derived access to the affected roots, and stops future synchronization. It does not remotely delete content already synchronized or saved by the recipient. | — | [Decided](./decisions/D-03-sharing-revocation.md) |
-| D-04 | Is Breadcrumb History a user-facing “Saved places” feature or an Advanced/platform tool? | App shell | Open |
-| D-05 | Is portable HTML export a v1 commitment? If yes, what artifact does it produce? | Trustworthy operations | Open |
-| D-06 | Is AI Audit allowed in production builds? | App shell | Open |
+| [D-04](./decisions/D-04-saved-places.md) | Breadcrumb branches are the user-facing Saved places feature in Settings. | — | Decided |
+| [D-05](./decisions/D-05-html-export.md) | Portable HTML export is not a v1 commitment; its handlerless control is removed. | — | Decided |
+| [D-06](./decisions/D-06-ai-audit.md) | AI Audit is development-only and absent from production UI. | — | Decided |
 | [D-07](./decisions/D-07-operation-interruption.md) | Which ingest and analysis phases have safe pause, cancel, and resume semantics? | Trustworthy operations | Resolved for v1: do not expose until operation lifecycle and commit boundaries exist |
 
 Decision records should state the chosen behavior, rationale, owner, date, and affected

@@ -1,26 +1,28 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { Search, FolderOpen, Download, SlidersHorizontal, ChevronLeft, ChevronRight, ChevronDown, Trash2, Check, Plus, Link, Compass, Settings } from 'lucide-react';
+import { FolderOpen, SlidersHorizontal, ChevronDown, Trash2, Check, Link, Compass, Settings } from 'lucide-react';
 import type { FotosSettings, StorageMode, DisplaySettings, PhotoEntry } from '@/types/fotos';
 import type { FotosModel } from '@/lib/onecore-boot';
 import type { FaceClusterSummary, SimilarFaceMatch } from '@/lib/cluster-gallery';
 import type { FotosCollectionSummary } from '@/lib/fotosCollections';
 import type { FotosHistoryBranchNode } from '@/lib/fotosHistorySettings';
 import { useDeviceSettings, type FotosDeviceSettings } from '@/hooks/useDeviceSettings';
-import { readStoredSidebarTab, writeStoredSidebarTab } from '@/lib/authFlowState';
+import { writeStoredSidebarTab } from '@/lib/authFlowState';
 import { FotosSettings as FotosSettingsPanel } from './FotosSettings';
 import { InlineRenameField } from './InlineRenameField';
 import { LLMComparisonPanel } from './LLMComparisonPanel';
 import { ShareWithField, type SharePeerOption } from './ShareWithField';
 import type { ManagedFolder } from '@/hooks/useFolderAccess';
+import { ShareInviteCard } from './ShareInviteCard';
 
-type Tab = 'browse' | 'settings';
+export type SidebarTab = 'browse' | 'sharing' | 'settings';
 
 interface SidebarProps {
+    activeTab: SidebarTab;
+    onTabChange: (tab: SidebarTab) => void;
+    openRequest?: number;
     tags: [string, number][];
     activeTag: string | null;
     onTagClick: (tag: string | null) => void;
-    searchQuery: string;
-    onSearchChange: (q: string) => void;
     browseSummary: string;
     settings: FotosSettings;
     acceptSharing: boolean;
@@ -56,21 +58,11 @@ interface SidebarProps {
     fotosModel?: FotosModel | null;
     mobile?: boolean;
     galleryMode: 'images' | 'clusters';
-    onGalleryModeChange: (mode: 'images' | 'clusters') => void;
     collections: FotosCollectionSummary[];
     activeCollectionId: string | null;
     onCollectionSelect: (collectionId: string | null) => void;
-    selectedPhotoCount: number;
-    onSelectAllVisiblePhotos: () => void;
-    onExportSelectedPhotos?: () => Promise<void> | void;
-    exportSelectedPhotosDisabled?: boolean;
-    clusterSelectionEnabled: boolean;
-    onClusterSelectionModeChange: (enabled: boolean) => void;
     selectedClusterIds: string[];
-    selectedClusterCount: number;
     onToggleSelectedCluster: (clusterId: string) => void;
-    onClearCollectionSelection: () => void;
-    onCreateCollection: (name: string) => boolean;
     onRenameCollection: (collectionId: string, name: string) => void;
     onDeleteCollection: (collectionId: string) => void;
     clusters: FaceClusterSummary[];
@@ -83,8 +75,6 @@ interface SidebarProps {
     onClusterSelect: (clusterId: string | null) => void;
     getFileUrl: (relativePath: string) => Promise<string>;
     onAssociateFaceWithCluster: (photoHash: string, faceIndex: number, clusterId: string) => void;
-    onMergeFaceClusters: (targetClusterId: string, sourceClusterIds: string[]) => void;
-    onGroupFaceClustersAsPerson: (clusterIds: string[]) => void;
     onSeparatePersonGroup: (personId: string) => void;
     onOpenSimilarFace: (match: SimilarFaceMatch) => void;
     onDeletePhoto: (hash: string) => void;
@@ -100,6 +90,7 @@ interface SidebarProps {
     } | null;
     creatingGalleryShareInvite?: boolean;
     onCreateGalleryShareInvite?: () => Promise<void> | void;
+    onRevokeGalleryShareInvite?: () => void;
     sharePeerOptions: SharePeerOption[];
     gallerySharePersonIds: string[];
     collectionSharePersonIds: Record<string, string[]>;
@@ -114,8 +105,10 @@ interface SidebarProps {
 }
 
 export function Sidebar({
+    activeTab,
+    onTabChange,
+    openRequest = 0,
     tags, activeTag, onTagClick,
-    searchQuery, onSearchChange,
     browseSummary,
     settings, acceptSharing, onUpdateStorage, onUpdateDisplay, onUpdateDeviceName, onUpdateAnalysis,
     historyEnabled, historyReady, historyCurrentEventId, historyBranchTree,
@@ -127,21 +120,12 @@ export function Sidebar({
     faceSearchActive, onClearFaceSearch,
     fotosModel,
     mobile,
-    galleryMode, onGalleryModeChange,
+    galleryMode,
     collections,
     activeCollectionId,
     onCollectionSelect,
-    selectedPhotoCount,
-    onSelectAllVisiblePhotos,
-    onExportSelectedPhotos,
-    exportSelectedPhotosDisabled,
-    clusterSelectionEnabled,
-    onClusterSelectionModeChange,
     selectedClusterIds,
-    selectedClusterCount,
     onToggleSelectedCluster,
-    onClearCollectionSelection,
-    onCreateCollection,
     onRenameCollection,
     onDeleteCollection,
     clusters, people, groups,
@@ -150,8 +134,6 @@ export function Sidebar({
     activeClusterId, onClusterSelect,
     getFileUrl,
     onAssociateFaceWithCluster,
-    onMergeFaceClusters,
-    onGroupFaceClustersAsPerson,
     onSeparatePersonGroup,
     onOpenSimilarFace,
     onDeletePhoto,
@@ -160,6 +142,7 @@ export function Sidebar({
     galleryShareInvite,
     creatingGalleryShareInvite,
     onCreateGalleryShareInvite,
+    onRevokeGalleryShareInvite,
     sharePeerOptions,
     gallerySharePersonIds,
     collectionSharePersonIds,
@@ -172,8 +155,8 @@ export function Sidebar({
     showOnboarding,
     onDismissOnboarding,
 }: SidebarProps) {
-    const [tab, setTab] = useState<Tab>(() => readStoredSidebarTab() ?? 'browse');
-    const [collapsed, setCollapsed] = useState(false);
+    const tab = activeTab;
+    const setTab = onTabChange;
     const [mobileSheetState, setMobileSheetState] = useState<'collapsed' | 'half' | 'full'>('collapsed');
 
     const startYRef = useRef(0);
@@ -209,7 +192,7 @@ export function Sidebar({
         }
     }, []);
 
-    const handleTabClick = useCallback((t: Tab) => {
+    const handleTabClick = useCallback((t: SidebarTab) => {
         if (mobileSheetState === 'collapsed') {
             setTab(t);
             setMobileSheetState('half');
@@ -221,8 +204,12 @@ export function Sidebar({
     }, [tab, mobileSheetState]);
 
     useEffect(() => {
-        writeStoredSidebarTab(tab);
+        if (tab !== 'sharing') writeStoredSidebarTab(tab);
     }, [tab]);
+
+    useEffect(() => {
+        if (openRequest > 0 && mobile) setMobileSheetState('half');
+    }, [mobile, openRequest]);
 
     // Mobile: inline panel, no overlay/drawer
     if (mobile) {
@@ -252,6 +239,7 @@ export function Sidebar({
                 {/* Floating bottom tab bar (mobile portrait only) */}
                 <div className="fixed bottom-0 left-0 right-0 h-14 bg-[#0d0d0d]/95 backdrop-blur-md border-t border-white/10 z-50 flex justify-around items-center px-4 landscape:hidden">
                     <TabBtnIcon active={tab === 'browse' && mobileSheetState !== 'collapsed'} onClick={() => handleTabClick('browse')} label="Browse" icon="browse" />
+                    <TabBtnIcon active={tab === 'sharing' && mobileSheetState !== 'collapsed'} onClick={() => handleTabClick('sharing')} label="Sharing" icon="sharing" />
                     <TabBtnIcon active={tab === 'settings' && mobileSheetState !== 'collapsed'} onClick={() => handleTabClick('settings')} label="Settings" icon="settings" />
                 </div>
 
@@ -284,10 +272,6 @@ export function Sidebar({
                         <SidebarTabHeader tab={tab} setTab={setTab} />
                     </div>
 
-                <div className="px-3 py-2 border-b border-white/10">
-                    <FolderHeader folderName={folderName} onOpenFolder={onOpenFolder} />
-                </div>
-
                 {faceSearchActive && (
                     <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
                         <span className="text-[11px] text-blue-400/80 flex-1">Showing similar faces</span>
@@ -302,7 +286,6 @@ export function Sidebar({
                     {tab === 'browse' && (
                         <BrowseTab
                             tags={tags} activeTag={activeTag} onTagClick={onTagClick}
-                            searchQuery={searchQuery} onSearchChange={onSearchChange}
                             browseSummary={browseSummary}
                             settings={settings}
                             onUpdateAnalysis={onUpdateAnalysis}
@@ -311,21 +294,11 @@ export function Sidebar({
                             sortBy={settings.display.sortBy} onSortByChange={sortBy => onUpdateDisplay({ sortBy })}
                             sortOrder={settings.display.sortOrder} onSortOrderChange={sortOrder => onUpdateDisplay({ sortOrder })}
                             galleryMode={galleryMode}
-                            onGalleryModeChange={onGalleryModeChange}
                             collections={collections}
                             activeCollectionId={activeCollectionId}
                             onCollectionSelect={onCollectionSelect}
-                            selectedPhotoCount={selectedPhotoCount}
-                            onSelectAllVisiblePhotos={onSelectAllVisiblePhotos}
-                            onExportSelectedPhotos={onExportSelectedPhotos}
-                            exportSelectedPhotosDisabled={exportSelectedPhotosDisabled}
-                            clusterSelectionEnabled={clusterSelectionEnabled}
-                            onClusterSelectionModeChange={onClusterSelectionModeChange}
                             selectedClusterIds={selectedClusterIds}
-                            selectedClusterCount={selectedClusterCount}
                             onToggleSelectedCluster={onToggleSelectedCluster}
-                            onClearCollectionSelection={onClearCollectionSelection}
-                            onCreateCollection={onCreateCollection}
                             onRenameCollection={onRenameCollection}
                             onDeleteCollection={onDeleteCollection}
                             clusters={clusters}
@@ -337,8 +310,6 @@ export function Sidebar({
                             onClusterSelect={onClusterSelect}
                             getFileUrl={getFileUrl}
                             onAssociateFaceWithCluster={onAssociateFaceWithCluster}
-                            onMergeFaceClusters={onMergeFaceClusters}
-                            onGroupFaceClustersAsPerson={onGroupFaceClustersAsPerson}
                             onSeparatePersonGroup={onSeparatePersonGroup}
                             onOpenSimilarFace={onOpenSimilarFace}
                             onDeletePhoto={onDeletePhoto}
@@ -349,15 +320,8 @@ export function Sidebar({
                             onDismissOnboarding={onDismissOnboarding}
                         />
                     )}
-                    {tab === 'browse' && (
+                    {tab === 'sharing' && (
                         <LibrarySharingPanel
-                            folderName={folderName}
-                            folders={folders}
-                            onOpenFolder={onOpenFolder}
-                            onSelectFolder={onSelectFolder}
-                            onRemoveFolder={onRemoveFolder}
-                            onRescan={onRescan}
-                            onReanalyze={onReanalyze}
                             collections={collections}
                             onRenameCollection={onRenameCollection}
                             onDeleteCollection={onDeleteCollection}
@@ -365,6 +329,7 @@ export function Sidebar({
                             galleryShareInvite={galleryShareInvite}
                             creatingGalleryShareInvite={creatingGalleryShareInvite}
                             onCreateGalleryShareInvite={onCreateGalleryShareInvite}
+                            onRevokeGalleryShareInvite={onRevokeGalleryShareInvite}
                             sharePeerOptions={sharePeerOptions}
                             gallerySharePersonIds={gallerySharePersonIds}
                             collectionSharePersonIds={collectionSharePersonIds}
@@ -372,6 +337,17 @@ export function Sidebar({
                             onGalleryShareChange={onGalleryShareChange}
                             onCollectionShareChange={onCollectionShareChange}
                             onClusterShareChange={onClusterShareChange}
+                        />
+                    )}
+                    {tab === 'settings' && (
+                        <FolderManagementPanel
+                            folderName={folderName}
+                            folders={folders}
+                            onOpenFolder={onOpenFolder}
+                            onSelectFolder={onSelectFolder}
+                            onRemoveFolder={onRemoveFolder}
+                            onRescan={onRescan}
+                            onReanalyze={onReanalyze}
                         />
                     )}
                     {tab === 'settings' && (
@@ -416,29 +392,12 @@ export function Sidebar({
     // Desktop: fixed-width sidebar with collapse/expand
     return (
         <>
-        {/* Desktop expand toggle — lower-right */}
-        {collapsed && (
-            <button
-                onClick={() => setCollapsed(false)}
-                className="fixed bottom-[4.75rem] right-4 z-50 flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/70 text-white/50 backdrop-blur-sm transition-colors hover:text-white/70"
-                aria-label="Expand sidebar"
-            >
-                <ChevronLeft className="w-5 h-5" />
-            </button>
-        )}
-
         <aside className={`
-            w-64 h-full min-h-0 overflow-hidden flex flex-col bg-[#0d0d0d] border-l border-white/10 shrink-0
-            ${collapsed ? 'hidden' : ''}
+            ${tab === 'browse' ? 'w-64' : 'w-[min(34rem,48vw)]'} h-full min-h-0 overflow-hidden flex flex-col bg-[#0d0d0d] border-l border-white/10 shrink-0
         `}>
             {/* Tabs */}
             <div className="flex items-center border-b border-white/10">
                 <SidebarTabHeader tab={tab} setTab={setTab} />
-            </div>
-
-            {/* Folder controls */}
-            <div className="px-3 py-2 border-b border-white/10">
-                <FolderHeader folderName={folderName} onOpenFolder={onOpenFolder} />
             </div>
 
             {/* Face search indicator */}
@@ -459,8 +418,6 @@ export function Sidebar({
                         tags={tags}
                         activeTag={activeTag}
                         onTagClick={onTagClick}
-                        searchQuery={searchQuery}
-                        onSearchChange={onSearchChange}
                         browseSummary={browseSummary}
                         settings={settings}
                         onUpdateAnalysis={onUpdateAnalysis}
@@ -471,21 +428,11 @@ export function Sidebar({
                         sortOrder={settings.display.sortOrder}
                         onSortOrderChange={sortOrder => onUpdateDisplay({ sortOrder })}
                         galleryMode={galleryMode}
-                        onGalleryModeChange={onGalleryModeChange}
                         collections={collections}
                         activeCollectionId={activeCollectionId}
                         onCollectionSelect={onCollectionSelect}
-                        selectedPhotoCount={selectedPhotoCount}
-                        onSelectAllVisiblePhotos={onSelectAllVisiblePhotos}
-                        onExportSelectedPhotos={onExportSelectedPhotos}
-                        exportSelectedPhotosDisabled={exportSelectedPhotosDisabled}
-                        clusterSelectionEnabled={clusterSelectionEnabled}
-                        onClusterSelectionModeChange={onClusterSelectionModeChange}
                         selectedClusterIds={selectedClusterIds}
-                        selectedClusterCount={selectedClusterCount}
                         onToggleSelectedCluster={onToggleSelectedCluster}
-                        onClearCollectionSelection={onClearCollectionSelection}
-                        onCreateCollection={onCreateCollection}
                         onRenameCollection={onRenameCollection}
                         onDeleteCollection={onDeleteCollection}
                         clusters={clusters}
@@ -497,8 +444,6 @@ export function Sidebar({
                         onClusterSelect={onClusterSelect}
                         getFileUrl={getFileUrl}
                         onAssociateFaceWithCluster={onAssociateFaceWithCluster}
-                        onMergeFaceClusters={onMergeFaceClusters}
-                        onGroupFaceClustersAsPerson={onGroupFaceClustersAsPerson}
                         onSeparatePersonGroup={onSeparatePersonGroup}
                         onOpenSimilarFace={onOpenSimilarFace}
                         onDeletePhoto={onDeletePhoto}
@@ -509,15 +454,8 @@ export function Sidebar({
                         onDismissOnboarding={onDismissOnboarding}
                     />
                 )}
-                {tab === 'browse' && (
+                {tab === 'sharing' && (
                     <LibrarySharingPanel
-                        folderName={folderName}
-                        folders={folders}
-                        onOpenFolder={onOpenFolder}
-                        onSelectFolder={onSelectFolder}
-                        onRemoveFolder={onRemoveFolder}
-                        onRescan={onRescan}
-                        onReanalyze={onReanalyze}
                         collections={collections}
                         onRenameCollection={onRenameCollection}
                         onDeleteCollection={onDeleteCollection}
@@ -525,6 +463,7 @@ export function Sidebar({
                         galleryShareInvite={galleryShareInvite}
                         creatingGalleryShareInvite={creatingGalleryShareInvite}
                         onCreateGalleryShareInvite={onCreateGalleryShareInvite}
+                        onRevokeGalleryShareInvite={onRevokeGalleryShareInvite}
                         sharePeerOptions={sharePeerOptions}
                         gallerySharePersonIds={gallerySharePersonIds}
                         collectionSharePersonIds={collectionSharePersonIds}
@@ -532,6 +471,17 @@ export function Sidebar({
                         onGalleryShareChange={onGalleryShareChange}
                         onCollectionShareChange={onCollectionShareChange}
                         onClusterShareChange={onClusterShareChange}
+                    />
+                )}
+                {tab === 'settings' && (
+                    <FolderManagementPanel
+                        folderName={folderName}
+                        folders={folders}
+                        onOpenFolder={onOpenFolder}
+                        onSelectFolder={onSelectFolder}
+                        onRemoveFolder={onRemoveFolder}
+                        onRescan={onRescan}
+                        onReanalyze={onReanalyze}
                     />
                 )}
                 {tab === 'settings' && (
@@ -571,48 +521,18 @@ export function Sidebar({
             </div>
         </aside>
 
-        {/* Collapse — fixed circle, bottom-right */}
-        {!collapsed && (
-            <button
-                onClick={() => setCollapsed(true)}
-                className="fixed bottom-6 right-4 z-50 flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/70 text-white/50 backdrop-blur-sm transition-colors hover:text-white/70"
-                aria-label="Collapse sidebar"
-            >
-                <ChevronRight className="w-5 h-5" />
-            </button>
-        )}
         </>
     );
 }
 
-function SidebarTabHeader({ tab, setTab }: { tab: Tab; setTab: (tab: Tab) => void }) {
+function SidebarTabHeader({ tab, setTab }: { tab: SidebarTab; setTab: (tab: SidebarTab) => void }) {
     return (
-        <div className="flex flex-1 items-center px-2 py-1.5">
-            {tab === 'settings' && (
-                <button
-                    type="button"
-                    onClick={() => setTab('browse')}
-                    className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium uppercase tracking-wide text-white/55 transition-colors hover:bg-white/5 hover:text-white/85"
-                    aria-label="Back to browse"
-                >
-                    <ChevronLeft className="h-4 w-4" />
-                    Back
+        <div className="grid min-h-11 flex-1 grid-cols-3 gap-1 p-1.5" aria-label="Side panel">
+            {(['browse', 'sharing', 'settings'] as const).map(value => (
+                <button key={value} type="button" onClick={() => setTab(value)} aria-pressed={tab === value} className={`min-h-9 rounded-md px-2 text-[12px] capitalize ${tab === value ? 'bg-white/10 text-white' : 'text-white/50 hover:bg-white/5 hover:text-white/80'}`}>
+                    {value}
                 </button>
-            )}
-            <div className="flex-1" />
-            <button
-                type="button"
-                onClick={() => setTab('settings')}
-                className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
-                    tab === 'settings'
-                        ? 'bg-[#e94560]/10 text-[#ff9db0]'
-                        : 'text-white/45 hover:bg-white/5 hover:text-white/75'
-                }`}
-                aria-label="Settings"
-                title="Settings"
-            >
-                <Settings className="h-4 w-4" />
-            </button>
+            ))}
         </div>
     );
 }
@@ -626,14 +546,14 @@ function TabBtnIcon({
     active: boolean;
     onClick: () => void;
     label: string;
-    icon: 'browse' | 'settings';
+    icon: 'browse' | 'sharing' | 'settings';
 }) {
-    const Icon = icon === 'browse' ? Compass : Settings;
+    const Icon = icon === 'browse' ? Compass : icon === 'sharing' ? Link : Settings;
     return (
         <button
             type="button"
             onClick={onClick}
-            className={`flex flex-col items-center justify-center flex-1 h-full py-1 text-[10px] font-semibold transition-colors ${
+            className={`flex flex-col items-center justify-center flex-1 h-full py-1 text-xs font-semibold transition-colors ${
                 active ? 'text-[#e94560]' : 'text-white/40 hover:text-white/60'
             }`}
         >
@@ -643,36 +563,8 @@ function TabBtnIcon({
     );
 }
 
-function FolderHeader({
-    folderName,
-    onOpenFolder,
-}: {
-    folderName?: string | null;
-    onOpenFolder?: () => void;
-}) {
-    if (folderName) {
-        return (
-            <div className="flex items-center gap-2">
-                <FolderOpen className="w-3.5 h-3.5 text-white/40 shrink-0" />
-                <span className="text-xs text-white/60 truncate">{folderName}</span>
-            </div>
-        );
-    }
-
-    if (onOpenFolder) {
-        return (
-            <button type="button" onClick={onOpenFolder} className="flex min-h-11 items-center gap-2 rounded-md px-2 text-xs text-white/55 hover:bg-white/5 hover:text-white/75">
-                <FolderOpen className="w-3.5 h-3.5" />
-                Open folder...
-            </button>
-        );
-    }
-
-    return null;
-}
-
 function SectionLabel({ children }: { children: React.ReactNode }) {
-    return <div className="text-[11px] text-white/25 uppercase tracking-wider font-medium">{children}</div>;
+    return <div className="text-xs text-white/55 uppercase tracking-wider font-medium">{children}</div>;
 }
 
 function CollapsibleSection({
@@ -747,25 +639,19 @@ function SizeSlider({ value, onChange }: { value: number; onChange: (value: numb
 
 function BrowseTab({
     tags, activeTag, onTagClick,
-    searchQuery, onSearchChange,
     browseSummary,
     settings, onUpdateAnalysis,
     thumbScale, onThumbScaleChange,
     sortBy, onSortByChange,
     sortOrder, onSortOrderChange,
-    galleryMode, onGalleryModeChange,
+    galleryMode,
     collections, activeCollectionId, onCollectionSelect,
-    selectedPhotoCount, onSelectAllVisiblePhotos,
-    onExportSelectedPhotos, exportSelectedPhotosDisabled,
-    clusterSelectionEnabled, onClusterSelectionModeChange, selectedClusterIds, selectedClusterCount,
-    onToggleSelectedCluster, onClearCollectionSelection, onCreateCollection, onRenameCollection, onDeleteCollection,
+    selectedClusterIds, onToggleSelectedCluster, onRenameCollection, onDeleteCollection,
     clusters, people, groups,
     similarFaces, searchClusters,
     activeClusterId, onClusterSelect,
     getFileUrl,
     onAssociateFaceWithCluster,
-    onMergeFaceClusters,
-    onGroupFaceClustersAsPerson,
     onSeparatePersonGroup,
     onOpenSimilarFace, onDeletePhoto,
     onRenameFace, onDeleteFace,
@@ -776,8 +662,6 @@ function BrowseTab({
     tags: [string, number][];
     activeTag: string | null;
     onTagClick: (tag: string | null) => void;
-    searchQuery: string;
-    onSearchChange: (q: string) => void;
     browseSummary: string;
     settings: FotosSettings;
     onUpdateAnalysis: (updates: Partial<FotosSettings['analysis']>) => void;
@@ -788,21 +672,11 @@ function BrowseTab({
     sortOrder: string;
     onSortOrderChange: (o: 'asc' | 'desc') => void;
     galleryMode: 'images' | 'clusters';
-    onGalleryModeChange: (mode: 'images' | 'clusters') => void;
     collections: FotosCollectionSummary[];
     activeCollectionId: string | null;
     onCollectionSelect: (collectionId: string | null) => void;
-    selectedPhotoCount: number;
-    onSelectAllVisiblePhotos: () => void;
-    onExportSelectedPhotos?: () => Promise<void> | void;
-    exportSelectedPhotosDisabled?: boolean;
-    clusterSelectionEnabled: boolean;
-    onClusterSelectionModeChange: (enabled: boolean) => void;
     selectedClusterIds: string[];
-    selectedClusterCount: number;
     onToggleSelectedCluster: (clusterId: string) => void;
-    onClearCollectionSelection: () => void;
-    onCreateCollection: (name: string) => boolean;
     onRenameCollection: (collectionId: string, name: string) => void;
     onDeleteCollection: (collectionId: string) => void;
     clusters: FaceClusterSummary[];
@@ -814,8 +688,6 @@ function BrowseTab({
     onClusterSelect: (clusterId: string | null) => void;
     getFileUrl: (relativePath: string) => Promise<string>;
     onAssociateFaceWithCluster: (photoHash: string, faceIndex: number, clusterId: string) => void;
-    onMergeFaceClusters: (targetClusterId: string, sourceClusterIds: string[]) => void;
-    onGroupFaceClustersAsPerson: (clusterIds: string[]) => void;
     onSeparatePersonGroup: (personId: string) => void;
     onOpenSimilarFace: (match: SimilarFaceMatch) => void;
     onDeletePhoto: (hash: string) => void;
@@ -834,44 +706,7 @@ function BrowseTab({
     const activePersonGroupId = activeCluster?.personId && activeCluster.memberClusterIds.length > 1
         ? activeCluster.personId
         : null;
-    const [selectedClusterCandidateIds, setSelectedClusterCandidateIds] = useState<string[]>([]);
-    const [collectionDraftName, setCollectionDraftName] = useState('');
     const selectedClusterIdSet = new Set(selectedClusterIds);
-
-    useEffect(() => {
-        setSelectedClusterCandidateIds([]);
-    }, [activeCluster?.clusterId]);
-
-    const toggleClusterCandidate = (clusterId: string) => {
-        setSelectedClusterCandidateIds(current => (
-            current.includes(clusterId)
-                ? current.filter(id => id !== clusterId)
-                : [...current, clusterId]
-        ));
-    };
-
-    const applyClusterMerges = () => {
-        if (!selectedAssociationClusterId || selectedClusterCandidateIds.length === 0) {
-            return;
-        }
-        onMergeFaceClusters(selectedAssociationClusterId, selectedClusterCandidateIds);
-        setSelectedClusterCandidateIds([]);
-    };
-
-    const collapseClustersAsPerson = () => {
-        if (!selectedAssociationClusterId || selectedClusterCandidateIds.length === 0) {
-            return;
-        }
-        onGroupFaceClustersAsPerson([selectedAssociationClusterId, ...selectedClusterCandidateIds]);
-        setSelectedClusterCandidateIds([]);
-    };
-
-    const submitCollection = () => {
-        const created = onCreateCollection(collectionDraftName);
-        if (created) {
-            setCollectionDraftName('');
-        }
-    };
 
     return (
         <>
@@ -892,114 +727,13 @@ function BrowseTab({
                 {browseSummary}
             </div>
 
-            <div>
-                <SectionLabel>Gallery</SectionLabel>
-                <div className="mt-1.5 grid grid-cols-2 gap-1.5">
-                    <TogglePill
-                        active={galleryMode === 'images'}
-                        onClick={() => onGalleryModeChange('images')}
-                        label="Images"
-                    />
-                    <TogglePill
-                        active={galleryMode === 'clusters'}
-                        onClick={() => onGalleryModeChange('clusters')}
-                        label={`Clusters ${clusters.length}`}
-                    />
-                </div>
-            </div>
-
             <CollapsibleSection
                 label="Collections"
-                defaultOpen={collections.length > 0 || selectedPhotoCount > 0 || selectedClusterCount > 0}
+                defaultOpen={collections.length > 0}
             >
-                <div className="rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-2 space-y-2">
-                    <div className="text-[11px] leading-relaxed text-white/35">
-                        Build reusable groups from selected images and named people or clusters.
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                        <button
-                            type="button"
-                            onClick={() => onClusterSelectionModeChange(!clusterSelectionEnabled)}
-                            className={`rounded-md border px-2 py-1 text-[11px] uppercase tracking-[0.16em] transition-colors ${
-                                clusterSelectionEnabled
-                                    ? 'border-[#e94560]/35 bg-[#e94560]/10 text-[#ff9db0]'
-                                    : 'border-white/10 bg-white/5 text-white/38 hover:text-white/60'
-                            }`}
-                        >
-                            {clusterSelectionEnabled ? 'Done People' : 'Select People'}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={onSelectAllVisiblePhotos}
-                            className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-white/38 transition-colors hover:text-white/60"
-                        >
-                            Select Visible
-                        </button>
-                        {onExportSelectedPhotos && (
-                            <button
-                                type="button"
-                                onClick={() => { void onExportSelectedPhotos(); }}
-                                disabled={selectedPhotoCount === 0 || exportSelectedPhotosDisabled}
-                                className={`rounded-md border px-2 py-1 text-[11px] uppercase tracking-[0.16em] transition-colors ${
-                                    selectedPhotoCount === 0 || exportSelectedPhotosDisabled
-                                        ? 'border-white/10 bg-white/5 text-white/20 cursor-not-allowed'
-                                        : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/16'
-                                }`}
-                            >
-                                <span className="inline-flex items-center gap-1">
-                                    <Download className="h-3 w-3" />
-                                    Export to Photos
-                                </span>
-                            </button>
-                        )}
-                        {(selectedPhotoCount > 0 || selectedClusterCount > 0) && (
-                            <button
-                                type="button"
-                                onClick={onClearCollectionSelection}
-                                className="rounded-md border border-white/10 bg-black/20 px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-white/32 transition-colors hover:text-white/58"
-                            >
-                                Clear
-                            </button>
-                        )}
-                    </div>
-                    <div className="text-[11px] text-white/28">
-                        {selectedPhotoCount} selected image{selectedPhotoCount === 1 ? '' : 's'} · {selectedClusterCount} selected people/cluster{selectedClusterCount === 1 ? '' : 's'}
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <input
-                            type="text"
-                            value={collectionDraftName}
-                            onChange={event => setCollectionDraftName(event.target.value)}
-                            onKeyDown={event => {
-                                if (event.key === 'Enter') {
-                                    event.preventDefault();
-                                    submitCollection();
-                                }
-                            }}
-                            placeholder="Collection name"
-                            className="min-w-0 flex-1 rounded-md border border-white/10 bg-black/20 px-2.5 py-1.5 text-[11px] text-white/72 placeholder:text-white/20 focus:border-white/20 focus:outline-none"
-                        />
-                        <button
-                            type="button"
-                            onClick={submitCollection}
-                            disabled={selectedPhotoCount === 0 && selectedClusterCount === 0}
-                            className={`rounded-md border px-2.5 py-1.5 text-[11px] uppercase tracking-[0.16em] transition-colors ${
-                                selectedPhotoCount === 0 && selectedClusterCount === 0
-                                    ? 'border-white/10 bg-white/5 text-white/20 cursor-not-allowed'
-                                    : 'border-[#e94560]/25 bg-[#e94560]/10 text-[#ff9db0] hover:bg-[#e94560]/16'
-                            }`}
-                        >
-                            <span className="inline-flex items-center gap-1">
-                                <Plus className="h-3 w-3" />
-                                Create
-                            </span>
-                        </button>
-                    </div>
-                </div>
-
                 {collections.length === 0 ? (
                     <div className="rounded-md border border-dashed border-white/10 px-2.5 py-2 text-[11px] text-white/24">
-                        Select images or people, then create your first collection here.
+                        Select photos or people, then use the selection action bar to create a collection.
                     </div>
                 ) : (
                     <div className="space-y-1.5">
@@ -1017,18 +751,6 @@ function BrowseTab({
                     </div>
                 )}
             </CollapsibleSection>
-
-            {/* Search */}
-            <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/25" />
-                <input
-                    type="search"
-                    placeholder={galleryMode === 'clusters' ? 'Search people or groups...' : 'Search photos...'}
-                    value={searchQuery}
-                    onChange={e => onSearchChange(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 bg-white/5 border border-white/10 rounded-md text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-white/20"
-                />
-            </div>
 
             {galleryMode === 'clusters' && (
                 <>
@@ -1069,46 +791,6 @@ function BrowseTab({
                         </button>
                     )}
 
-                    {selectedAssociationClusterId && (
-                        <div className="rounded-md border border-[#e94560]/25 bg-[#1a1115] px-2.5 py-2">
-                            <div className="text-[11px] text-white/50">
-                                Check thumbnails on the right, then either merge them into this cluster or manage them as one person.
-                            </div>
-                            <div className="mt-2 flex items-center gap-1.5">
-                                <button
-                                    onClick={applyClusterMerges}
-                                    disabled={selectedClusterCandidateIds.length === 0}
-                                    className={`rounded-md px-2 py-1 text-[11px] uppercase tracking-[0.16em] transition-colors ${
-                                        selectedClusterCandidateIds.length > 0
-                                            ? 'bg-[#e94560] text-white hover:bg-[#d73b56]'
-                                            : 'bg-white/5 text-white/25 cursor-not-allowed'
-                                    }`}
-                                >
-                                    Merge Selected {selectedClusterCandidateIds.length > 0 ? `(${selectedClusterCandidateIds.length})` : ''}
-                                </button>
-                                <button
-                                    onClick={collapseClustersAsPerson}
-                                    disabled={selectedClusterCandidateIds.length === 0}
-                                    className={`rounded-md px-2 py-1 text-[11px] uppercase tracking-[0.16em] transition-colors ${
-                                        selectedClusterCandidateIds.length > 0
-                                            ? 'bg-white/10 text-[#ff9db0] hover:bg-white/15'
-                                            : 'bg-white/5 text-white/25 cursor-not-allowed'
-                                    }`}
-                                >
-                                    One Person
-                                </button>
-                                {selectedClusterCandidateIds.length > 0 && (
-                                    <button
-                                        onClick={() => setSelectedClusterCandidateIds([])}
-                                        className="text-[11px] text-white/35 hover:text-white/60"
-                                    >
-                                        clear
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
                     {activePersonGroupId && (
                         <div className="rounded-md border border-white/10 bg-white/5 px-2.5 py-2">
                             <div className="text-[11px] text-white/45">
@@ -1134,10 +816,8 @@ function BrowseTab({
                                         active={cluster.clusterId === activeClusterId}
                                         onClick={() => onClusterSelect(cluster.clusterId)}
                                         getFileUrl={getFileUrl}
-                                        showMergeCheckbox={Boolean(selectedAssociationClusterId) && cluster.memberClusterIds.length === 1 && cluster.memberClusterIds[0] !== selectedAssociationClusterId}
-                                        mergeSelected={selectedClusterCandidateIds.includes(cluster.memberClusterIds[0] ?? cluster.clusterId)}
-                                        onToggleMergeSelected={() => toggleClusterCandidate(cluster.memberClusterIds[0] ?? cluster.clusterId)}
-                                        showSelectionCheckbox={clusterSelectionEnabled && !(selectedAssociationClusterId && cluster.memberClusterIds.length === 1 && cluster.memberClusterIds[0] !== selectedAssociationClusterId)}
+                                        showSelectionCheckbox
+                                        selectionActive={selectedClusterIdSet.size > 0}
                                         selectionChecked={selectedClusterIdSet.has(cluster.clusterId)}
                                         onToggleSelection={() => onToggleSelectedCluster(cluster.clusterId)}
                                         onRename={onRenameFace}
@@ -1159,10 +839,8 @@ function BrowseTab({
                                         active={cluster.clusterId === activeClusterId}
                                         onClick={() => onClusterSelect(cluster.clusterId)}
                                         getFileUrl={getFileUrl}
-                                        showMergeCheckbox={Boolean(selectedAssociationClusterId) && cluster.memberClusterIds.length === 1 && cluster.memberClusterIds[0] !== selectedAssociationClusterId}
-                                        mergeSelected={selectedClusterCandidateIds.includes(cluster.memberClusterIds[0] ?? cluster.clusterId)}
-                                        onToggleMergeSelected={() => toggleClusterCandidate(cluster.memberClusterIds[0] ?? cluster.clusterId)}
-                                        showSelectionCheckbox={clusterSelectionEnabled && !(selectedAssociationClusterId && cluster.memberClusterIds.length === 1 && cluster.memberClusterIds[0] !== selectedAssociationClusterId)}
+                                        showSelectionCheckbox
+                                        selectionActive={selectedClusterIdSet.size > 0}
                                         selectionChecked={selectedClusterIdSet.has(cluster.clusterId)}
                                         onToggleSelection={() => onToggleSelectedCluster(cluster.clusterId)}
                                         onRename={onRenameFace}
@@ -1188,7 +866,8 @@ function BrowseTab({
                                         active={cluster.clusterId === activeClusterId}
                                         onClick={() => onClusterSelect(cluster.clusterId)}
                                         getFileUrl={getFileUrl}
-                                        showSelectionCheckbox={clusterSelectionEnabled}
+                                        showSelectionCheckbox
+                                        selectionActive={selectedClusterIdSet.size > 0}
                                         selectionChecked={selectedClusterIdSet.has(cluster.clusterId)}
                                         onToggleSelection={() => onToggleSelectedCluster(cluster.clusterId)}
                                         onRename={onRenameFace}
@@ -1288,11 +967,11 @@ function BrowseTab({
                                         cluster={cluster}
                                         active={false}
                                         onClick={() => {
-                                            onGalleryModeChange('clusters');
                                             onClusterSelect(cluster.clusterId);
                                         }}
                                         getFileUrl={getFileUrl}
-                                        showSelectionCheckbox={clusterSelectionEnabled}
+                                        showSelectionCheckbox
+                                        selectionActive={selectedClusterIdSet.size > 0}
                                         selectionChecked={selectedClusterIdSet.has(cluster.clusterId)}
                                         onToggleSelection={() => onToggleSelectedCluster(cluster.clusterId)}
                                         onRename={onRenameFace}
@@ -1316,21 +995,6 @@ function TagPill({ active, onClick, label }: { active: boolean; onClick: () => v
                 active
                     ? 'bg-white/10 text-white/80 border-white/20'
                     : 'bg-white/5 text-white/35 border-transparent hover:text-white/55'
-            }`}
-        >
-            {label}
-        </button>
-    );
-}
-
-function TogglePill({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
-    return (
-        <button
-            onClick={onClick}
-            className={`rounded-md border px-2 py-1 text-[11px] uppercase tracking-[0.18em] transition-colors ${
-                active
-                    ? 'border-[#e94560]/50 bg-[#e94560]/12 text-[#ff9db0]'
-                    : 'border-white/10 bg-white/5 text-white/35 hover:text-white/55'
             }`}
         >
             {label}
@@ -1443,10 +1107,8 @@ function ClusterBrowseRow({
     active,
     onClick,
     getFileUrl,
-    showMergeCheckbox,
-    mergeSelected,
-    onToggleMergeSelected,
     showSelectionCheckbox,
+    selectionActive,
     selectionChecked,
     onToggleSelection,
     onRename,
@@ -1456,10 +1118,8 @@ function ClusterBrowseRow({
     active: boolean;
     onClick: () => void;
     getFileUrl: (relativePath: string) => Promise<string>;
-    showMergeCheckbox?: boolean;
-    mergeSelected?: boolean;
-    onToggleMergeSelected?: () => void;
     showSelectionCheckbox?: boolean;
+    selectionActive?: boolean;
     selectionChecked?: boolean;
     onToggleSelection?: () => void;
     onRename?: (clusterId: string, name: string) => Promise<void> | void;
@@ -1494,14 +1154,22 @@ function ClusterBrowseRow({
     return (
         <div
             className={`group flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left transition-colors ${
-                active
+                selectionChecked
+                    ? 'border-[#ff9db0] bg-[#1f1015] ring-1 ring-[#e94560]/70'
+                    : active
                     ? 'border-[#e94560]/50 bg-[#e94560]/10'
                     : 'border-white/10 bg-white/5 hover:bg-white/10'
             }`}
         >
             <button
                 type="button"
-                onClick={onClick}
+                onClick={selectionActive ? onToggleSelection : onClick}
+                onKeyDown={event => {
+                    if (event.key.toLowerCase() === 'x') {
+                        event.preventDefault();
+                        onToggleSelection?.();
+                    }
+                }}
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80"
                 aria-label={`Open ${cluster.label}`}
             >
@@ -1527,7 +1195,7 @@ function ClusterBrowseRow({
                     {cluster.memberClusterIds.length > 1 ? ` · ${cluster.memberClusterIds.length} clusters` : ''}
                 </div>
             </div>
-            {(showMergeCheckbox || showSelectionCheckbox || onDelete) && (
+            {(showSelectionCheckbox || onDelete) && (
                 <div className="flex shrink-0 items-center gap-1.5">
                     {onDelete && (
                         <button
@@ -1555,20 +1223,6 @@ function ClusterBrowseRow({
                                 onChange={() => onToggleSelection?.()}
                                 className="h-4 w-4 rounded-sm border border-white/20 bg-black/20 accent-[#e94560]"
                                 aria-label={selectionChecked ? `Remove ${cluster.label} from collection selection` : `Add ${cluster.label} to collection selection`}
-                            />
-                        </label>
-                    ) : null}
-                    {showMergeCheckbox ? (
-                        <label
-                            className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md hover:bg-white/8"
-                            title={mergeSelected ? 'Marked for this cluster' : 'Mark for this cluster'}
-                        >
-                            <input
-                                type="checkbox"
-                                checked={Boolean(mergeSelected)}
-                                onChange={() => onToggleMergeSelected?.()}
-                                className="h-4 w-4 rounded-sm border border-white/20 bg-black/20 accent-[#e94560]"
-                                aria-label={mergeSelected ? `Remove ${cluster.label} from merge` : `Add ${cluster.label} to merge`}
                             />
                         </label>
                     ) : null}
@@ -1699,7 +1353,7 @@ function SimilarFaceRow({
     );
 }
 
-function LibrarySharingPanel({
+function FolderManagementPanel({
     folderName,
     folders,
     onOpenFolder,
@@ -1707,20 +1361,6 @@ function LibrarySharingPanel({
     onRemoveFolder,
     onRescan,
     onReanalyze,
-    collections,
-    onRenameCollection,
-    onDeleteCollection,
-    clusters,
-    galleryShareInvite,
-    creatingGalleryShareInvite,
-    onCreateGalleryShareInvite,
-    sharePeerOptions,
-    gallerySharePersonIds,
-    collectionSharePersonIds,
-    clusterSharePersonIds,
-    onGalleryShareChange,
-    onCollectionShareChange,
-    onClusterShareChange,
 }: {
     folderName?: string | null;
     folders?: ManagedFolder[];
@@ -1729,6 +1369,68 @@ function LibrarySharingPanel({
     onRemoveFolder?: (folderId: string) => void;
     onRescan?: () => void;
     onReanalyze?: () => void;
+}) {
+    const managedFolders = folders ?? [];
+    if (managedFolders.length === 0 && !folderName && !onOpenFolder && !onRescan && !onReanalyze) return null;
+
+    return (
+        <>
+            <SectionLabel>Library</SectionLabel>
+            <CollapsibleSection
+                label="Folders"
+                actions={onOpenFolder ? (
+                    <button type="button" onClick={onOpenFolder} className="flex h-11 w-11 items-center justify-center rounded-md border border-white/10 bg-white/5 text-lg text-white/55 hover:bg-white/10 hover:text-white" aria-label="Add photo folder" title="Add photo folder">+</button>
+                ) : undefined}
+            >
+                <div className="space-y-2">
+                    {managedFolders.length > 0 ? (
+                        <div className="space-y-1">
+                            {managedFolders.map(folder => (
+                                <div key={folder.id} className={`flex min-h-11 items-center gap-1.5 rounded-md border px-2 text-xs ${folder.isCurrent ? 'border-white/15 bg-white/8 text-white/75' : 'border-white/8 bg-white/[0.025] text-white/55'}`}>
+                                    <button type="button" onClick={() => onSelectFolder?.(folder.id)} className="flex min-h-11 min-w-0 flex-1 items-center gap-2 text-left" title={folder.name} aria-current={folder.isCurrent ? 'true' : undefined}>
+                                        <FolderOpen className="h-4 w-4 shrink-0 text-white/45" />
+                                        <span className="min-w-0 flex-1 truncate">{folder.name}</span>
+                                    </button>
+                                    {folder.entryCount > 0 ? <span className="tabular-nums text-white/45">{folder.entryCount}</span> : null}
+                                    {folder.isCurrent ? <span className="uppercase tracking-wider text-white/45">current</span> : null}
+                                    {onRemoveFolder ? (
+                                        <button type="button" onClick={() => onRemoveFolder(folder.id)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-white/45 hover:bg-red-500/10 hover:text-red-300" aria-label={`Remove ${folder.name}`} title={`Remove ${folder.name}`}><Trash2 className="h-4 w-4" /></button>
+                                    ) : null}
+                                </div>
+                            ))}
+                        </div>
+                    ) : folderName ? (
+                        <div className="flex min-h-11 items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 text-xs text-white/65"><FolderOpen className="h-4 w-4 shrink-0 text-white/45" /><span className="min-w-0 flex-1 truncate">{folderName}</span><span className="uppercase tracking-wider text-white/45">current</span></div>
+                    ) : (
+                        <div className="rounded-md border border-dashed border-white/10 bg-white/[0.03] px-3 py-3 text-xs text-white/55">No folder selected</div>
+                    )}
+                    <div className="grid gap-2 sm:grid-cols-2">
+                        {onRescan ? <ManageOptionButton onClick={onRescan}>Rescan folder</ManageOptionButton> : null}
+                        {onReanalyze ? <ManageOptionButton onClick={onReanalyze} accent>Reanalyze image AI</ManageOptionButton> : null}
+                    </div>
+                </div>
+            </CollapsibleSection>
+        </>
+    );
+}
+
+function LibrarySharingPanel({
+    collections,
+    onRenameCollection,
+    onDeleteCollection,
+    clusters,
+    galleryShareInvite,
+    creatingGalleryShareInvite,
+    onCreateGalleryShareInvite,
+    onRevokeGalleryShareInvite,
+    sharePeerOptions,
+    gallerySharePersonIds,
+    collectionSharePersonIds,
+    clusterSharePersonIds,
+    onGalleryShareChange,
+    onCollectionShareChange,
+    onClusterShareChange,
+}: {
     collections: FotosCollectionSummary[];
     onRenameCollection: (collectionId: string, name: string) => void;
     onDeleteCollection: (collectionId: string) => void;
@@ -1743,6 +1445,7 @@ function LibrarySharingPanel({
     } | null;
     creatingGalleryShareInvite?: boolean;
     onCreateGalleryShareInvite?: () => Promise<void> | void;
+    onRevokeGalleryShareInvite?: () => void;
     sharePeerOptions: SharePeerOption[];
     gallerySharePersonIds: string[];
     collectionSharePersonIds: Record<string, string[]>;
@@ -1751,94 +1454,15 @@ function LibrarySharingPanel({
     onCollectionShareChange: (collectionId: string, personIds: string[]) => Promise<void> | void;
     onClusterShareChange: (clusterId: string, personIds: string[]) => Promise<void> | void;
 }) {
-    const managedFolders = folders ?? [];
+    const [clusterShareQuery, setClusterShareQuery] = useState('');
+    const normalizedClusterShareQuery = clusterShareQuery.trim().toLocaleLowerCase();
+    const matchingSharingClusters = normalizedClusterShareQuery
+        ? clusters.filter(cluster => cluster.label.toLocaleLowerCase().includes(normalizedClusterShareQuery))
+        : clusters;
+    const visibleSharingClusters = matchingSharingClusters.slice(0, 50);
 
     return (
         <>
-            {(managedFolders.length > 0 || folderName || onOpenFolder || onRescan || onReanalyze) && (
-                <CollapsibleSection
-                    label="Folders"
-                    actions={onOpenFolder ? (
-                        <button
-                            type="button"
-                            onClick={onOpenFolder}
-                            className="flex h-5 w-5 items-center justify-center rounded-sm border border-white/10 bg-white/5 text-[12px] leading-none text-white/45 transition-colors hover:bg-white/10 hover:text-white/75"
-                            aria-label="Open folder picker"
-                            title="Open folder picker"
-                        >
-                            +
-                        </button>
-                    ) : undefined}
-                >
-                    <div className="space-y-1.5">
-                        {managedFolders.length > 0 ? (
-                            <div className="space-y-1">
-                                {managedFolders.map(folder => (
-                                    <div
-                                        key={folder.id}
-                                        className={`flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-[11px] ${
-                                            folder.isCurrent
-                                                ? 'border-white/12 bg-white/6 text-white/58'
-                                                : 'border-white/8 bg-white/[0.025] text-white/38'
-                                        }`}
-                                    >
-                                        <button
-                                            type="button"
-                                            onClick={() => onSelectFolder?.(folder.id)}
-                                            className="min-w-0 flex flex-1 items-center gap-2 text-left"
-                                            title={folder.name}
-                                        >
-                                            <FolderOpen className="h-3 w-3 shrink-0 text-white/35" />
-                                            <span className="min-w-0 flex-1 truncate">{folder.name}</span>
-                                        </button>
-                                        {folder.entryCount > 0 && (
-                                            <span className="text-[11px] tabular-nums text-white/20">{folder.entryCount}</span>
-                                        )}
-                                        {folder.isCurrent && (
-                                            <span className="text-[11px] uppercase tracking-[0.16em] text-white/18">current</span>
-                                        )}
-                                        {onRemoveFolder && (
-                                            <button
-                                                type="button"
-                                                onClick={() => onRemoveFolder(folder.id)}
-                                                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-white/45 transition-colors hover:bg-red-500/10 hover:text-red-300"
-                                                aria-label={`Remove ${folder.name}`}
-                                                title={`Remove ${folder.name}`}
-                                            >
-                                                <Trash2 className="h-3 w-3" />
-                                            </button>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                        ) : folderName ? (
-                            <div className="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-2 text-[11px] text-white/55">
-                                <FolderOpen className="h-3 w-3 shrink-0 text-white/35" />
-                                <span className="min-w-0 flex-1 truncate">{folderName}</span>
-                                <span className="text-[11px] uppercase tracking-[0.18em] text-white/18">current</span>
-                            </div>
-                        ) : (
-                            <div className="rounded-md border border-dashed border-white/10 bg-white/[0.03] px-2.5 py-2 text-[11px] text-white/30">
-                                No folder selected
-                            </div>
-                        )}
-
-                        <div className="grid gap-1">
-                            {onRescan && (
-                                <ManageOptionButton onClick={onRescan}>
-                                    Rescan folder
-                                </ManageOptionButton>
-                            )}
-                            {onReanalyze && (
-                                <ManageOptionButton onClick={onReanalyze} accent>
-                                    Reanalyze image AI
-                                </ManageOptionButton>
-                            )}
-                        </div>
-                    </div>
-                </CollapsibleSection>
-            )}
-
             <SectionLabel>Sharing</SectionLabel>
             <CollapsibleSection label="Share gallery">
                 <div className="space-y-2">
@@ -1859,28 +1483,9 @@ function LibrarySharingPanel({
                             {creatingGalleryShareInvite ? 'Creating link' : 'Create share link'}
                         </button>
                     )}
-                    {galleryShareInvite && (
-                        <div className="space-y-1.5 rounded-md border border-white/10 bg-black/20 p-2">
-                            <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[11px]">
-                                {typeof galleryShareInvite.sharedCount === 'number' && (
-                                    <>
-                                        <span className="text-white/25">Photos</span>
-                                        <span className="text-white/55">{galleryShareInvite.sharedCount}</span>
-                                    </>
-                                )}
-                                <span className="text-white/25">Expires</span>
-                                <span className="text-white/45">
-                                    {new Date(galleryShareInvite.payload.expiresAt).toLocaleString()}
-                                </span>
-                            </div>
-                            <input
-                                readOnly
-                                value={galleryShareInvite.url}
-                                onFocus={event => event.currentTarget.select()}
-                                className="w-full rounded-sm border border-white/10 bg-white/5 px-2 py-1 font-mono text-[11px] text-white/45"
-                            />
-                        </div>
-                    )}
+                    {galleryShareInvite && onRevokeGalleryShareInvite ? (
+                        <ShareInviteCard invite={galleryShareInvite} onRevoke={onRevokeGalleryShareInvite} />
+                    ) : null}
                     <div className="pt-1">
                         <div className="mb-1 text-[11px] uppercase tracking-[0.16em] text-white/22">Existing people</div>
                         <ShareWithField
@@ -1915,14 +1520,19 @@ function LibrarySharingPanel({
                 )}
             </CollapsibleSection>
 
-            <CollapsibleSection label="Cluster Sharing" defaultOpen={clusters.length > 0}>
+            <CollapsibleSection label="People sharing" defaultOpen={false}>
                 {clusters.length === 0 ? (
-                    <div className="rounded-md border border-dashed border-white/10 px-2.5 py-2 text-[11px] text-white/24">
-                        No face clusters yet.
+                    <div className="rounded-md border border-dashed border-white/10 px-3 py-3 text-xs text-white/55">
+                        No named people yet.
                     </div>
                 ) : (
                     <div className="space-y-3">
-                        {clusters.map(cluster => (
+                        <label className="block">
+                            <span className="sr-only">Search people sharing scopes</span>
+                            <input type="search" value={clusterShareQuery} onChange={event => setClusterShareQuery(event.target.value)} placeholder="Search people…" className="min-h-11 w-full rounded-md border border-white/12 bg-black/25 px-3 text-xs text-white outline-none placeholder:text-white/40 focus:border-[#ff9db0]/60" />
+                        </label>
+                        <div className="text-xs text-white/55">Showing {visibleSharingClusters.length} of {matchingSharingClusters.length} matching people</div>
+                        {visibleSharingClusters.map(cluster => (
                             <ManageClusterShareRow
                                 key={cluster.clusterId}
                                 cluster={cluster}
@@ -1931,6 +1541,7 @@ function LibrarySharingPanel({
                                 onShareChange={personIds => onClusterShareChange(cluster.clusterId, personIds)}
                             />
                         ))}
+                        {visibleSharingClusters.length === 0 ? <div className="rounded-md border border-dashed border-white/10 px-3 py-3 text-xs text-white/55">No people match this search.</div> : null}
                     </div>
                 )}
             </CollapsibleSection>
@@ -2021,7 +1632,7 @@ function ManageOptionButton({
         <button
             type="button"
             onClick={onClick}
-            className={`w-full rounded-md border px-2.5 py-1.5 text-left text-[11px] transition-colors ${
+            className={`min-h-11 w-full rounded-md border px-3 py-2 text-left text-xs transition-colors ${
                 accent
                     ? 'border-[#e94560]/25 bg-[#e94560]/8 text-[#ff9db0]/75 hover:bg-[#e94560]/14 hover:text-[#ffc3cf]'
                     : 'border-white/10 bg-white/5 text-white/45 hover:bg-white/10 hover:text-white/68'
@@ -2162,7 +1773,7 @@ function SettingsTab({
         { id: 'settings-identity', label: 'Identity' },
         { id: 'settings-storage', label: 'Storage' },
         { id: 'settings-imageai', label: 'Image AI' },
-        { id: 'settings-history', label: 'History' },
+        { id: 'settings-history', label: 'Saved places' },
         { id: 'settings-devices', label: 'Devices' },
     ] as const;
 
@@ -2353,7 +1964,7 @@ function SettingsTab({
                 </div>
 
                 <div id="settings-history" ref={el => setSectionRef('settings-history', el)}>
-                    <CollapsibleSection label="Breadcrumb History" defaultOpen={historyEnabled || historyVisibleEntryCount > 0}>
+                    <CollapsibleSection label="Saved places" defaultOpen={historyEnabled || historyVisibleEntryCount > 0}>
                         <label className="flex items-start gap-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-2">
                             <input
                                 type="checkbox"
@@ -2362,9 +1973,9 @@ function SettingsTab({
                                 className="mt-0.5 h-3.5 w-3.5 accent-[#e94560]"
                             />
                             <div className="space-y-1">
-                                <div className="text-[11px] text-white/72">Record breadcrumb history</div>
+                                <div className="text-[11px] text-white/72">Remember places as you browse</div>
                                 <p className="text-[11px] leading-relaxed text-white/30">
-                                    Keep branchable gallery places in synced settings so trusted instances can resume where you left off.
+                                    Save gallery locations in synced settings so your trusted devices can resume where you left off.
                                 </p>
                             </div>
                         </label>

@@ -108,6 +108,14 @@ Implemented in the browser and shared core:
   migrated to certificate-backed scopes.
 - Removal copy states that future updates stop and already stored photos are not
   deleted.
+- Sharing has its own app-shell destination. Trusted contacts are presented list-first
+  with separate verified and presence states; identity/ID entry is secondary and
+  resolution failures distinguish incomplete IDs from unregistered identities.
+- Gallery invite output displays the required PIN, QR code, Copy, Web Share where
+  supported, absolute/relative expiry, scope count, and a real revoke action backed by
+  `PairingManager.invalidateInvitation()`.
+- People-scope sharing is collapsed by default, searchable, and capped at 50 rendered
+  matches instead of instantiating every recipient picker in a large library.
 
 Still required before this epic is complete:
 
@@ -115,8 +123,8 @@ Still required before this epic is complete:
   certificate version, including stale-version replay handling.
 - Protocol/E2E coverage proving that an offline removed recipient receives revocation
   evidence but no later scope or content versions.
-- The centralized Sharing view, selection-driven sharing, invite-link lifecycle, and
-  typed recipient-resolution states described above.
+- Selection-driven sharing, recipient-side received-share projection, and a complete
+  centralized scope/status summary across outgoing and received shares.
 
 ## Acceptance Criteria
 

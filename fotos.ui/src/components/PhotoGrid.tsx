@@ -17,7 +17,7 @@ export interface PhotoGridProps<TPhoto extends PhotoEntry = PhotoEntry> {
     /** True whenever at least one photo is selected. Drives the implicit selecting state. */
     selectionActive?: boolean;
     selectedPhotoHashes?: ReadonlySet<string>;
-    onPhotoToggleSelection?: (photo: TPhoto, index: number) => void;
+    onPhotoToggleSelection?: (photo: TPhoto, index: number, options?: {range?: boolean}) => void;
     /** Clear the current selection (wired to Escape while a selection is active). */
     onClearSelection?: () => void;
     loading?: boolean;
@@ -247,7 +247,7 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
                                         onOpen={() => onPhotoClick(fi)}
                                         onToggleSelection={
                                             onPhotoToggleSelection
-                                                ? () => onPhotoToggleSelection(photo, fi)
+                                                ? options => onPhotoToggleSelection(photo, fi, options)
                                                 : undefined
                                         }
                                         onContextMenu={(e) => {
@@ -284,7 +284,7 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
     selected: boolean;
     selectionActive: boolean;
     onOpen: () => void;
-    onToggleSelection?: () => void;
+    onToggleSelection?: (options?: {range?: boolean}) => void;
     onContextMenu?: (e: React.MouseEvent | React.TouchEvent) => void;
     getThumbUrl: (entry: TPhoto) => Promise<string | null>;
 }) {
@@ -342,7 +342,7 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
         // selection instead of opening — no "manage mode" to switch into.
         if (onToggleSelection && (selectionActive || e.metaKey || e.ctrlKey || e.shiftKey)) {
             e.preventDefault();
-            onToggleSelection();
+            onToggleSelection({range: e.shiftKey});
             return;
         }
 

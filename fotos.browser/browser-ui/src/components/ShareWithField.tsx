@@ -1,6 +1,6 @@
 import { nameToIdentity } from '@glueone/glue.core';
-import { useId, useMemo, useState } from 'react';
-import { ChevronDown, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Search, UserPlus, X } from 'lucide-react';
 import { API_BASE } from '@/config';
 
 const MIN_PERSON_ID_PREFIX_LENGTH = 8;
@@ -350,21 +350,25 @@ export function ShareWithField({
     placeholder = 'Add glue contact, name, @identity, or person id',
     emptyLabel = 'Nobody selected yet',
 }: ShareWithFieldProps) {
-    const datalistId = useId();
-    const contactTagsId = useId();
+    const [contactQuery, setContactQuery] = useState('');
     const [draft, setDraft] = useState('');
     const [saving, setSaving] = useState(false);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [manualLabels, setManualLabels] = useState<Record<string, string>>({});
-    const [contactTagsOpen, setContactTagsOpen] = useState(false);
     const unselectedPeers = useMemo(
         () => peers.filter(peer => !value.includes(peer.personId)),
         [peers, value],
     );
-    const suggestedPeers = useMemo(
-        () => unselectedPeers.slice(0, 8),
-        [unselectedPeers],
-    );
+    const suggestedPeers = useMemo(() => {
+        const query = contactQuery.trim().toLowerCase();
+        return unselectedPeers
+            .filter(peer => !query || [peer.displayName, peer.glueIdentity, peer.personId]
+                .some(value => value?.toLowerCase().includes(query)))
+            .sort((left, right) => Number(right.online) - Number(left.online)
+                || Number(right.hasVerifiedIdentity) - Number(left.hasVerifiedIdentity)
+                || (left.displayName ?? left.personId).localeCompare(right.displayName ?? right.personId))
+            .slice(0, 12);
+    }, [contactQuery, unselectedPeers]);
 
     const resolveSelectedPeerLabel = (personId: string): string => {
         const match = peers.find(peer => peer.personId === personId);
@@ -401,9 +405,14 @@ export function ShareWithField({
             return;
         }
 
+        setErrorMessage(`Looking up ${token}…`);
         const personId = await resolveTokenToPersonId(token, peers);
         if (!personId) {
-            setErrorMessage('No matching glue identity or person id found.');
+            setErrorMessage(/^[0-9a-f]{8,15}$/i.test(token)
+                ? 'Ambiguous or incomplete person ID. Enter the full ID.'
+                : token.includes('@') || token.startsWith('@')
+                    ? 'Identity is not registered or could not be found.'
+                    : 'No trusted contact or registered identity matched this value.');
             return;
         }
 
@@ -425,20 +434,16 @@ export function ShareWithField({
         await applyChange([...value, personId]);
     };
 
-    const contactTagsToggleLabel = suggestedPeers.length === unselectedPeers.length
-        ? `Show ${suggestedPeers.length} contact tag${suggestedPeers.length === 1 ? '' : 's'}`
-        : `Show ${suggestedPeers.length} of ${unselectedPeers.length} contact tags`;
-
     return (
         <div className="space-y-2">
-            <div className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border border-white/10 bg-black/20 px-2 py-2">
+            <div className="flex min-h-11 flex-wrap items-center gap-1.5 rounded-md border border-white/10 bg-black/20 px-2 py-2">
                 {value.length === 0 ? (
-                    <span className="text-[10px] text-white/25">{emptyLabel}</span>
+                    <span className="text-xs text-white/55">{emptyLabel}</span>
                 ) : (
                     value.map(personId => (
                         <span
                             key={personId}
-                            className="inline-flex items-center gap-1 rounded-full border border-[#e94560]/25 bg-[#e94560]/10 px-2 py-0.5 text-[10px] text-[#ffb5c3]"
+                            className="inline-flex min-h-9 items-center gap-1 rounded-full border border-[#e94560]/25 bg-[#e94560]/10 pl-3 text-xs text-[#ffb5c3]"
                         >
                             <span>{resolveSelectedPeerLabel(personId)}</span>
                             <button
@@ -447,7 +452,7 @@ export function ShareWithField({
                                 onClick={() => {
                                     void applyChange(value.filter(entry => entry !== personId));
                                 }}
-                                className="text-[#ffb5c3]/75 transition-colors hover:text-white"
+                                className="flex h-9 w-9 items-center justify-center rounded-full text-[#ffb5c3]/75 transition-colors hover:bg-white/10 hover:text-white"
                                 aria-label={`Remove ${personId}`}
                             >
                                 <X className="h-3 w-3" />
@@ -457,94 +462,30 @@ export function ShareWithField({
                 )}
             </div>
 
-            <div className="flex items-center gap-2">
-                <input
-                    type="text"
-                    value={draft}
-                    list={datalistId}
-                    disabled={saving}
-                    placeholder={placeholder}
-                    onChange={event => {
-                        setDraft(event.target.value);
-                        if (errorMessage) {
-                            setErrorMessage(null);
-                        }
-                    }}
-                    onKeyDown={event => {
-                        if (event.key === 'Enter' || event.key === ',') {
-                            event.preventDefault();
-                            void commitDraft();
-                        }
-                    }}
-                    className="min-w-0 flex-1 rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] text-white/68 placeholder:text-white/20 focus:border-white/20 focus:outline-none"
-                />
-                <button
-                    type="button"
-                    disabled={saving || !normalizeToken(draft)}
-                    onClick={() => {
-                        void commitDraft();
-                    }}
-                    className={`rounded-md border px-2.5 py-1.5 text-[10px] uppercase tracking-[0.16em] transition-colors ${
-                        saving || !normalizeToken(draft)
-                            ? 'border-white/10 bg-white/5 text-white/20 cursor-not-allowed'
-                            : 'border-[#e94560]/25 bg-[#e94560]/10 text-[#ff9db0] hover:bg-[#e94560]/16'
-                    }`}
-                >
-                    Add
-                </button>
-                <datalist id={datalistId}>
-                    {peers.map(peer => (
-                        <option
-                            key={peer.personId}
-                            value={peer.glueIdentity ?? peer.displayName ?? peer.personId}
-                            label={peer.personId}
-                        />
-                    ))}
-                </datalist>
+            <label className="flex min-h-11 items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 focus-within:border-[#ff9db0]/60">
+                <Search className="h-4 w-4 text-white/45" />
+                <input type="search" value={contactQuery} onChange={event => setContactQuery(event.target.value)} placeholder="Search trusted contacts" className="min-w-0 flex-1 bg-transparent py-2 text-sm text-white outline-none placeholder:text-white/45" />
+            </label>
+
+            <div className="max-h-72 space-y-1 overflow-y-auto" aria-label="Trusted contacts">
+                {suggestedPeers.map(peer => (
+                    <button key={peer.personId} type="button" disabled={saving} onClick={() => { void applyChange([...value, peer.personId]); }} className="flex min-h-11 w-full items-center gap-3 rounded-md border border-white/8 bg-white/[0.035] px-3 text-left hover:bg-white/8 disabled:opacity-40">
+                        <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${peer.online ? 'bg-emerald-400' : 'bg-white/25'}`} aria-hidden="true" />
+                        <span className="min-w-0 flex-1"><span className="block truncate text-sm text-white/85">{peer.displayName ?? peer.glueIdentity ?? `${peer.personId.slice(0, 12)}…`}</span><span className="block truncate text-xs text-white/50">{peer.hasVerifiedIdentity ? 'Verified identity' : 'Identity not verified'} · {peer.online ? 'Online' : 'Offline'}</span></span>
+                        <UserPlus className="h-4 w-4 text-white/50" />
+                    </button>
+                ))}
+                {suggestedPeers.length === 0 ? <p className="rounded-md border border-dashed border-white/10 p-3 text-xs text-white/50">{contactQuery ? 'No trusted contacts match this search.' : 'No trusted contacts available.'}</p> : null}
             </div>
 
-            {errorMessage && (
-                <div className="text-[10px] text-[#ff9db0]/80">
-                    {errorMessage}
+            <details className="rounded-md border border-white/8 bg-black/15">
+                <summary className="flex min-h-11 cursor-pointer items-center px-3 text-xs text-white/65 hover:text-white">Invite by identity or ID</summary>
+                <div className="flex gap-2 border-t border-white/8 p-2">
+                    <input type="text" value={draft} disabled={saving} placeholder={placeholder} onChange={event => { setDraft(event.target.value); setErrorMessage(null); }} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); void commitDraft(); } }} className="min-h-11 min-w-0 flex-1 rounded-md border border-white/10 bg-white/5 px-3 text-sm text-white outline-none placeholder:text-white/45 focus:border-[#ff9db0]/60" />
+                    <button type="button" disabled={saving || !normalizeToken(draft)} onClick={() => { void commitDraft(); }} className="min-h-11 rounded-md bg-[#e94560] px-4 text-xs font-medium text-white disabled:opacity-35">{saving ? 'Looking up…' : 'Add'}</button>
                 </div>
-            )}
-
-            {unselectedPeers.length > 0 && (
-                <div className="space-y-1.5">
-                    <button
-                        type="button"
-                        onClick={() => setContactTagsOpen(open => !open)}
-                        aria-expanded={contactTagsOpen}
-                        aria-controls={contactTagsId}
-                        className="flex items-center gap-1 text-[10px] text-white/28 transition-colors hover:text-white/48"
-                    >
-                        <ChevronDown className={`h-3 w-3 transition-transform ${contactTagsOpen ? '' : '-rotate-90'}`} />
-                        <span>{contactTagsOpen ? 'Hide contact tags' : contactTagsToggleLabel}</span>
-                    </button>
-
-                    {contactTagsOpen && (
-                        <div id={contactTagsId} className="flex flex-wrap gap-1">
-                            {suggestedPeers.map(peer => (
-                                <button
-                                    key={peer.personId}
-                                    type="button"
-                                    disabled={saving}
-                                    onClick={() => {
-                                        void applyChange([...value, peer.personId]);
-                                    }}
-                                    className={`rounded-full border px-2 py-0.5 text-[10px] transition-colors ${
-                                        peer.online
-                                            ? 'border-white/10 bg-white/5 text-white/40 hover:bg-white/10 hover:text-white/68'
-                                            : 'border-white/8 bg-black/20 text-white/25 hover:text-white/45'
-                                    }`}
-                                >
-                                    {peer.displayName ?? `${peer.personId.slice(0, 12)}…`}
-                                </button>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            )}
+                {errorMessage ? <div role="status" className={`px-3 pb-3 text-xs ${errorMessage.startsWith('Looking up') ? 'text-white/60' : 'text-[#ff9db0]'}`}>{errorMessage}</div> : null}
+            </details>
         </div>
     );
 }

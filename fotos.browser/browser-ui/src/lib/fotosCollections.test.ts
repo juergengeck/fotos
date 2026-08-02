@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { PhotoEntry } from '@/types/fotos';
 
 import {
+    addSelectionToFotosCollection,
     buildFotosCollectionFromSelection,
     buildFotosCollectionSummary,
     collectionMatchesPhoto,
@@ -193,5 +194,32 @@ describe('buildFotosCollectionFromSelection', () => {
         expect(collection.photoHashes).toEqual(['photo-1', 'photo-2']);
         expect(collection.clusterIds).toEqual(['cluster-a', 'cluster-b']);
         expect(collection.personIds).toEqual(['alice']);
+    });
+});
+
+describe('addSelectionToFotosCollection', () => {
+    it('adds selected domains without replacing existing membership', () => {
+        const updated = addSelectionToFotosCollection({
+            id: 'collection-1',
+            name: 'Family',
+            photoHashes: ['photo-1'],
+            clusterIds: ['cluster-a'],
+            personIds: [],
+            createdAt: '2024-01-01T00:00:00.000Z',
+            updatedAt: '2024-01-01T00:00:00.000Z',
+        }, [createPhoto({hash: 'photo-2'})], [{
+            clusterId: 'person:alice',
+            personId: 'alice',
+            personName: 'Alice',
+            label: 'Alice',
+            faceCount: 2,
+            photoCount: 2,
+            photoHashes: ['photo-2'],
+            memberClusterIds: ['cluster-b'],
+        }]);
+
+        expect(updated.photoHashes).toEqual(['photo-1', 'photo-2']);
+        expect(updated.clusterIds).toEqual(['cluster-a', 'cluster-b']);
+        expect(updated.personIds).toEqual(['alice']);
     });
 });

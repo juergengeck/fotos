@@ -276,3 +276,28 @@ export function buildFotosCollectionFromSelection(
         updatedAt: now,
     };
 }
+
+export function addSelectionToFotosCollection(
+    collection: FotosCollectionDefinition,
+    selectedPhotos: readonly PhotoEntry[],
+    selectedClusters: readonly FaceClusterSummary[],
+): FotosCollectionDefinition {
+    return {
+        ...collection,
+        photoHashes: uniqueStrings([
+            ...collection.photoHashes,
+            ...selectedPhotos.map(photo => photo.hash),
+        ]),
+        clusterIds: uniqueStrings([
+            ...collection.clusterIds,
+            ...selectedClusters.flatMap(cluster => cluster.memberClusterIds),
+        ]),
+        personIds: uniqueStrings([
+            ...collection.personIds,
+            ...selectedClusters
+                .map(cluster => cluster.personId)
+                .filter((personId): personId is string => Boolean(personId?.trim())),
+        ]),
+        updatedAt: new Date().toISOString(),
+    };
+}

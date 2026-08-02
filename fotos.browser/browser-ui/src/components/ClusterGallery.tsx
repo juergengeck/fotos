@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import type { FaceClusterSummary } from '@/lib/cluster-gallery';
 import { InlineRenameField } from './InlineRenameField';
 
@@ -8,8 +8,8 @@ interface ClusterGalleryProps {
     onSelectCluster: (clusterId: string) => void;
     getFileUrl: (relativePath: string) => Promise<string>;
     onRenameCluster?: (clusterId: string, name: string) => Promise<void> | void;
-    /** Existing named people, used to power the "this is …" suggestions. */
-    people?: FaceClusterSummary[];
+    selectedClusterIds: ReadonlySet<string>;
+    onToggleClusterSelection: (clusterId: string, index: number, options?: {range?: boolean}) => void;
     /**
      * Name (and, for multi-selections, group) the given member clusters under a
      * single identity. If the name matches an existing person, the caller is
@@ -18,76 +18,17 @@ interface ClusterGalleryProps {
     onNameClusters?: (memberClusterIds: string[], name: string) => void | Promise<void>;
 }
 
-function personDisplayName(cluster: FaceClusterSummary): string {
-    return (cluster.personName ?? cluster.label).trim();
-}
-
 export function ClusterGallery({
     clusters,
     activeClusterId,
     onSelectCluster,
     getFileUrl,
     onRenameCluster,
-    people,
+    selectedClusterIds,
+    onToggleClusterSelection,
     onNameClusters,
 }: ClusterGalleryProps) {
-    const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
-    const [nameDraft, setNameDraft] = useState('');
-    const selectionActive = selectedIds.size > 0;
-    const canName = Boolean(onNameClusters);
-
-    // Drop selections that no longer exist after the cluster list changes.
-    useEffect(() => {
-        setSelectedIds(prev => {
-            if (prev.size === 0) return prev;
-            const present = new Set(clusters.map(cluster => cluster.clusterId));
-            let changed = false;
-            const next = new Set<string>();
-            prev.forEach(id => {
-                if (present.has(id)) {
-                    next.add(id);
-                } else {
-                    changed = true;
-                }
-            });
-            return changed ? next : prev;
-        });
-    }, [clusters]);
-
-    const clearSelection = useCallback(() => {
-        setSelectedIds(new Set());
-        setNameDraft('');
-    }, []);
-
-    const toggleSelection = useCallback((clusterId: string) => {
-        setSelectedIds(prev => {
-            const next = new Set(prev);
-            if (next.has(clusterId)) {
-                next.delete(clusterId);
-            } else {
-                next.add(clusterId);
-            }
-            return next;
-        });
-    }, []);
-
-    // Escape clears an active selection.
-    useEffect(() => {
-        if (!selectionActive) return;
-        const handler = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') {
-                event.preventDefault();
-                clearSelection();
-            }
-        };
-        window.addEventListener('keydown', handler);
-        return () => window.removeEventListener('keydown', handler);
-    }, [selectionActive, clearSelection]);
-
-    const peopleNames = useMemo(
-        () => Array.from(new Set((people ?? []).map(personDisplayName).filter(Boolean))),
-        [people],
-    );
+    const selectionActive = selectedClusterIds.size > 0;
 
     // Renaming a name-grouped card should rename the whole identity, not just one
     // member cluster — route through onNameClusters when available.
@@ -97,23 +38,6 @@ export function ClusterGallery({
         }
         return onRenameCluster?.(cluster.memberClusterIds[0] ?? cluster.clusterId, name);
     }, [onNameClusters, onRenameCluster]);
-
-    const applyName = useCallback(() => {
-        const trimmed = nameDraft.trim();
-        if (!trimmed || !onNameClusters) return;
-
-        const selected = clusters.filter(cluster => selectedIds.has(cluster.clusterId));
-        const memberIds = selected.flatMap(cluster => cluster.memberClusterIds);
-
-        // Naming with an existing person's name merges the selection into them.
-        const match = (people ?? []).find(
-            person => personDisplayName(person).toLowerCase() === trimmed.toLowerCase(),
-        );
-        const allIds = match ? [...match.memberClusterIds, ...memberIds] : memberIds;
-
-        void onNameClusters(allIds, trimmed);
-        clearSelection();
-    }, [nameDraft, onNameClusters, clusters, selectedIds, people, clearSelection]);
 
     if (clusters.length === 0) {
         return (
@@ -131,63 +55,15 @@ export function ClusterGallery({
 
     return (
         <div className="p-3">
-            {selectionActive && canName && (
-                <div className="sticky top-2 z-30 mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-black/80 px-3 py-2 shadow-2xl backdrop-blur-md view-enter">
-                    <span className="text-xs font-medium text-white/80 tabular-nums whitespace-nowrap">
-                        {selectedIds.size} selected
-                    </span>
-                    <div className="h-4 w-px bg-white/10" />
-                    <form
-                        className="flex min-w-0 flex-1 items-center gap-2"
-                        onSubmit={event => {
-                            event.preventDefault();
-                            applyName();
-                        }}
-                    >
-                        <input
-                            type="text"
-                            list="cluster-people-names"
-                            value={nameDraft}
-                            onChange={event => setNameDraft(event.target.value)}
-                            placeholder={selectedIds.size > 1 ? 'Name these people…' : 'Name this person…'}
-                            aria-label="Name selected faces"
-                            className="min-w-0 flex-1 rounded-md border border-[#e94560]/35 bg-[#1a1115] px-2.5 py-1.5 text-[11px] text-white placeholder:text-white/25 focus:border-[#ff9db0]/60 focus:outline-none"
-                        />
-                        <datalist id="cluster-people-names">
-                            {peopleNames.map(name => (
-                                <option key={name} value={name} />
-                            ))}
-                        </datalist>
-                        <button
-                            type="submit"
-                            disabled={nameDraft.trim().length === 0}
-                            className={`rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
-                                nameDraft.trim().length === 0
-                                    ? 'bg-white/5 text-white/25 cursor-not-allowed'
-                                    : 'bg-[#e94560]/90 text-white hover:bg-[#e94560]'
-                            }`}
-                        >
-                            {selectedIds.size > 1 ? 'Name & group' : 'Name'}
-                        </button>
-                    </form>
-                    <button
-                        type="button"
-                        onClick={clearSelection}
-                        className="rounded-md px-2 py-1 text-[11px] text-white/45 transition-colors hover:bg-white/10 hover:text-white/75"
-                    >
-                        Clear
-                    </button>
-                </div>
-            )}
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {clusters.map(cluster => (
+                {clusters.map((cluster, index) => (
                     <ClusterCard
                         key={cluster.clusterId}
                         cluster={cluster}
                         active={cluster.clusterId === activeClusterId}
-                        selected={selectedIds.has(cluster.clusterId)}
+                        selected={selectedClusterIds.has(cluster.clusterId)}
                         selectionActive={selectionActive}
-                        onToggleSelect={canName ? () => toggleSelection(cluster.clusterId) : undefined}
+                        onToggleSelect={options => onToggleClusterSelection(cluster.clusterId, index, options)}
                         onClick={() => onSelectCluster(cluster.clusterId)}
                         getFileUrl={getFileUrl}
                         onRename={
@@ -217,7 +93,7 @@ export function ClusterCard({
     active: boolean;
     selected?: boolean;
     selectionActive?: boolean;
-    onToggleSelect?: () => void;
+    onToggleSelect?: (options?: {range?: boolean}) => void;
     onClick: () => void;
     getFileUrl: (relativePath: string) => Promise<string>;
     onRename?: (name: string) => Promise<void> | void;
@@ -290,7 +166,7 @@ export function ClusterCard({
         // of opening the cluster.
         if (onToggleSelect && (selectionActive || e.metaKey || e.ctrlKey || e.shiftKey)) {
             e.preventDefault();
-            onToggleSelect();
+            onToggleSelect({range: e.shiftKey});
             return;
         }
         onClick();

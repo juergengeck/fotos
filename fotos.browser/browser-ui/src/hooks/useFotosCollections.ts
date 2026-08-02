@@ -6,6 +6,7 @@ import {
     EMPTY_FOTOS_LIBRARY_STATE,
     FOTOS_LIBRARY_STATE_FIELD,
     FOTOS_LIBRARY_STATE_STORAGE_KEY,
+    addSelectionToFotosCollection,
     buildFotosCollectionFromSelection,
     deserializeFotosLibraryState,
     isFotosLibraryStateEmpty,
@@ -150,6 +151,21 @@ export function useFotosCollections(
         }));
     }, [persist]);
 
+    const addSelectionToCollection = useCallback((
+        collectionId: string,
+        selectedPhotos: readonly PhotoEntry[],
+        selectedClusters: readonly FaceClusterSummary[],
+    ) => {
+        persist(currentState => ({
+            ...currentState,
+            collections: currentState.collections.map(collection => (
+                collection.id === collectionId
+                    ? addSelectionToFotosCollection(collection, selectedPhotos, selectedClusters)
+                    : collection
+            )),
+        }));
+    }, [persist]);
+
     const deleteCollection = useCallback((collectionId: string) => {
         persist(currentState => {
             const nextCollectionShares = { ...currentState.sharing.collectionPersonIds };
@@ -207,6 +223,7 @@ export function useFotosCollections(
         collections: libraryState.collections,
         sharing: libraryState.sharing,
         createCollection,
+        addSelectionToCollection,
         renameCollection,
         deleteCollection,
         setGallerySharePersonIds,
