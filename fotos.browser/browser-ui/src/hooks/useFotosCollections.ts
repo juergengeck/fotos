@@ -166,6 +166,16 @@ export function useFotosCollections(
         }));
     }, [persist]);
 
+    const restoreCollection = useCallback((collection: FotosCollectionDefinition) => {
+        persist(currentState => ({
+            ...currentState,
+            collections: [
+                collection,
+                ...currentState.collections.filter(candidate => candidate.id !== collection.id),
+            ],
+        }));
+    }, [persist]);
+
     const deleteCollection = useCallback((collectionId: string) => {
         persist(currentState => {
             const nextCollectionShares = { ...currentState.sharing.collectionPersonIds };
@@ -224,6 +234,7 @@ export function useFotosCollections(
         sharing: libraryState.sharing,
         createCollection,
         addSelectionToCollection,
+        restoreCollection,
         renameCollection,
         deleteCollection,
         setGallerySharePersonIds,

@@ -84,7 +84,7 @@ invite links as an explicit secondary path rather than a public-link default.
 
 - D-03 is decided. Fotos now owns a signed, versioned, scope-specific certificate and
   manifest model supporting independent gallery, collection, and person/cluster
-  revocation; recipient-side certificate projection remains protocol work.
+  revocation and recipient-side current-version projection.
 - Unified Selection supplies a typed, reviewable scope; it must not pass a silently
   filtered subset.
 - App Shell supplies the Sharing view and persistent header/row indicators.
@@ -116,15 +116,23 @@ Implemented in the browser and shared core:
   `PairingManager.invalidateInvitation()`.
 - People-scope sharing is collapsed by default, searchable, and capped at 50 rendered
   matches instead of instantiating every recipient picker in a large library.
+- The unified action bar can hand an exact photo/people selection to Sharing by
+  materializing it as a named collection scope before any recipient is staged.
+- Committed gallery access is visible in the persistent header, and committed
+  collection/person access is visible on the corresponding Browse rows; each indicator
+  opens the centralized Sharing destination.
+- Recipients project only current certificate versions addressed to their local
+  identities, verify detached signatures through trusted issuer keys, bind active
+  certificates to the exact current manifest, and surface active/revoked/invalid state.
+- Fotos configures the ONE reverse maps needed for signature and subject-driven
+  certificate discovery; late stale active versions cannot replace a current revocation.
+- The centralized Sharing view summarizes outgoing and received scopes and renders
+  certificate-backed Received state.
 
 Still required before this epic is complete:
 
-- Recipient-side signature verification and projection of the causally current
-  certificate version, including stale-version replay handling.
 - Protocol/E2E coverage proving that an offline removed recipient receives revocation
   evidence but no later scope or content versions.
-- Selection-driven sharing, recipient-side received-share projection, and a complete
-  centralized scope/status summary across outgoing and received shares.
 
 ## Acceptance Criteria
 

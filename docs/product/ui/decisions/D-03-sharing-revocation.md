@@ -108,7 +108,10 @@ Relevant shared-repository history:
 ## Implementation Status
 
 Issuer-side certificate publication and scope-access replacement are implemented.
-Unit tests enforce revocation-before-access-removal ordering and stable certificate
-identity across active and revoked versions. Recipient-side signature verification,
-causal-current projection, and a multi-instance test proving stopped future deltas are
-still required before the full decision is protocol-verified.
+Recipient projection queries only the current version for each stable certificate ID,
+verifies its detached signature with trusted issuer keys, validates subject/scope
+identity, and binds active state to the exact current scope manifest. Unit tests enforce
+revocation-before-access-removal ordering, stable identity, signature refusal, and stale
+active replay handling. A multi-instance offline-recipient test proving delivery of the
+revocation and exclusion of future deltas is still required before the full decision is
+protocol-verified.

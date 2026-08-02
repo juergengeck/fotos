@@ -10,7 +10,7 @@ import {
  * longer owns the app shell.
  */
 
-export function UpdatePrompt() {
+export function UpdatePrompt({lane = 0}: {lane?: 0 | 1 | 2 | 3}) {
     const [updating, setUpdating] = useState(false);
     const [statusMessage, setStatusMessage] = useState<string | null>(null);
     const { hasDeployedBuildUpdate } = useServiceWorkerUpdates();
@@ -39,7 +39,7 @@ export function UpdatePrompt() {
     if (!showPrompt) return null;
 
     return (
-        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[9999] pointer-events-auto flex items-center gap-3 px-5 py-3 rounded-xl bg-black/80 backdrop-blur-md text-white text-sm shadow-lg border border-white/10 max-w-[calc(100vw-2rem)]">
+        <div className={`fixed ${lane === 3 ? 'bottom-80' : lane === 2 ? 'bottom-60' : lane === 1 ? 'bottom-40' : 'bottom-20'} left-1/2 -translate-x-1/2 z-[9999] pointer-events-auto flex items-center gap-3 px-5 py-3 rounded-xl bg-black/80 backdrop-blur-md text-white text-sm shadow-lg border border-white/10 max-w-[calc(100vw-2rem)]`}>
             <span className="flex-1">{statusMessage ?? 'New version available'}</span>
             <button
                 type="button"

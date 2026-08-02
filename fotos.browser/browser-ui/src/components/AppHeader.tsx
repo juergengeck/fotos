@@ -9,6 +9,7 @@ interface AppHeaderProps {
     identityReady: boolean;
     identityLabel?: string | null;
     backgroundStatus?: string | null;
+    galleryShareCount?: number;
     facetsOpen: boolean;
     onModeChange: (mode: 'images' | 'clusters') => void;
     onQueryChange: (query: string) => void;
@@ -26,6 +27,7 @@ export function AppHeader({
     identityReady,
     identityLabel,
     backgroundStatus,
+    galleryShareCount = 0,
     facetsOpen,
     onModeChange,
     onQueryChange,
@@ -48,7 +50,7 @@ export function AppHeader({
                 </div>
 
                 <label className="order-3 flex min-h-11 min-w-[min(100%,18rem)] flex-1 items-center gap-2 rounded-lg border border-white/12 bg-black/30 px-3 focus-within:border-[#ff9db0]/70 sm:order-none">
-                    <Search className="h-4 w-4 shrink-0 text-white/45" />
+                    <Search className="h-4 w-4 shrink-0 text-white/55" />
                     <span className="rounded bg-white/8 px-1.5 py-1 text-[12px] text-white/55">{searchScope}</span>
                     <input
                         type="search"
@@ -56,7 +58,7 @@ export function AppHeader({
                         onChange={event => onQueryChange(event.target.value)}
                         placeholder={`Search ${searchScope.toLowerCase()}…`}
                         aria-label={`Search ${searchScope.toLowerCase()}`}
-                        className="min-w-0 flex-1 bg-transparent py-2 text-sm text-white outline-none placeholder:text-white/40"
+                        className="min-w-0 flex-1 bg-transparent py-2 text-sm text-white outline-none placeholder:text-white/55"
                     />
                     <span className="whitespace-nowrap text-[12px] tabular-nums text-white/50" aria-live="polite">{resultCount}/{totalCount}</span>
                 </label>
@@ -65,7 +67,10 @@ export function AppHeader({
                     <span className={`hidden min-h-9 items-center rounded-full border px-2.5 text-[12px] sm:flex ${identityReady ? 'border-emerald-400/25 bg-emerald-400/8 text-emerald-100' : 'border-white/10 bg-white/5 text-white/55'}`} title={identityLabel ?? undefined}>
                         {identityReady ? 'Sync ready' : 'Local only'}
                     </span>
-                    <button type="button" onClick={onOpenSharing} className="flex h-11 w-11 items-center justify-center rounded-lg text-white/60 hover:bg-white/10 hover:text-white" aria-label="Open sharing"><Share2 className="h-4 w-4" /></button>
+                    <button type="button" onClick={onOpenSharing} className={`relative flex h-11 min-w-11 items-center justify-center rounded-lg px-2 hover:bg-white/10 ${galleryShareCount > 0 ? 'text-emerald-200' : 'text-white/60 hover:text-white'}`} aria-label={galleryShareCount > 0 ? `Open sharing, gallery shared with ${galleryShareCount} ${galleryShareCount === 1 ? 'person' : 'people'}` : 'Open sharing'}>
+                        <Share2 className="h-4 w-4" />
+                        {galleryShareCount > 0 ? <span className="ml-1 text-xs tabular-nums">{galleryShareCount}</span> : null}
+                    </button>
                     <button type="button" onClick={onOpenSettings} className="flex h-11 w-11 items-center justify-center rounded-lg text-white/60 hover:bg-white/10 hover:text-white" aria-label="Open settings"><Settings className="h-4 w-4" /></button>
                     <button type="button" onClick={onToggleFacets} className="flex h-11 w-11 items-center justify-center rounded-lg text-white/60 hover:bg-white/10 hover:text-white" aria-label={`${facetsOpen ? 'Hide' : 'Show'} filters`} aria-expanded={facetsOpen}><PanelRight className="h-4 w-4" /></button>
                 </div>

@@ -204,8 +204,11 @@ async function prepareIdentity(page, displayName, timeoutMs = READY_TIMEOUT_MS) 
 }
 
 async function registerPreparedIdentity(page, displayName, timeoutMs = READY_TIMEOUT_MS) {
-  return await evaluateWithDebugApi(page, async targetDisplayName => {
-    return await window.__fotosDebug.registerPreparedIdentity(targetDisplayName);
+  return await evaluateWithDebugApi(page, targetDisplayName => {
+    void window.__fotosDebug.registerPreparedIdentity(targetDisplayName).catch(error => {
+      console.warn('[fotos-id-share] registration aftercare failed', error);
+    });
+    return { started: true };
   }, displayName, timeoutMs);
 }
 
@@ -235,6 +238,25 @@ async function resolveShareToken(page, token, timeoutMs = READY_TIMEOUT_MS) {
 
     return await window.__fotosDebug.resolveShareToken(targetToken);
   }, token, timeoutMs);
+}
+
+async function createGalleryShareInvite(page, timeoutMs = READY_TIMEOUT_MS) {
+  return await evaluateWithDebugApi(page, async () => {
+    return await window.__fotosDebug.createGalleryShareInvite();
+  }, undefined, timeoutMs);
+}
+
+async function acceptGalleryShareInvite(page, pin, timeoutMs = READY_TIMEOUT_MS) {
+  return await evaluateWithDebugApi(page, async targetPin => {
+    return await window.__fotosDebug.acceptGalleryShareInvite(targetPin);
+  }, pin, timeoutMs);
+}
+
+function buildRecipientInviteUrl(inviteUrl, pageLabel) {
+  const url = new URL(inviteUrl);
+  url.searchParams.set('fotosDebug', '1');
+  url.searchParams.set('page', pageLabel);
+  return url.toString();
 }
 
 async function getWantedPeerIds(page, timeoutMs = READY_TIMEOUT_MS) {
@@ -429,6 +451,14 @@ async function getFotosSyncState(page, timeoutMs = READY_TIMEOUT_MS) {
 
 async function getShareState(page, timeoutMs = READY_TIMEOUT_MS) {
   return await getFotosSyncState(page, timeoutMs);
+}
+
+async function getReceivedShareScopes(page, timeoutMs = READY_TIMEOUT_MS) {
+  return await evaluateWithDebugApi(page, () => (
+    typeof window.__fotosDebug.getReceivedShareScopes === 'function'
+      ? window.__fotosDebug.getReceivedShareScopes()
+      : []
+  ), undefined, timeoutMs);
 }
 
 async function getGalleryState(page, timeoutMs = READY_TIMEOUT_MS) {
@@ -698,21 +728,27 @@ function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-async function findVisibleButton(page, pattern) {
-  const buttons = page.locator('button');
-  const count = await buttons.count();
+async function findVisibleButton(page, pattern, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const buttons = page.locator('button');
+    const count = await buttons.count();
 
-  for (let index = 0; index < count; index += 1) {
-    const candidate = buttons.nth(index);
-    const visible = await candidate.isVisible().catch(() => false);
-    if (!visible) {
-      continue;
+    for (let index = 0; index < count; index += 1) {
+      const candidate = buttons.nth(index);
+      const visible = await candidate.isVisible().catch(() => false);
+      if (!visible) {
+        continue;
+      }
+
+      const text = (await candidate.innerText().catch(() => '')).trim();
+      pattern.lastIndex = 0;
+      if (pattern.test(text)) {
+        return candidate;
+      }
     }
 
-    const text = (await candidate.innerText().catch(() => '')).trim();
-    if (pattern.test(text)) {
-      return candidate;
-    }
+    await sleep(50);
   }
 
   throw new Error(`Could not find visible button matching ${pattern}`);
@@ -815,7 +851,7 @@ async function ensureGalleryOpenWithFixture(page, label, fixturePath, fileName) 
   );
 }
 
-async function prepareAndRegisterIdentity(page, label, displayName, apiBase) {
+async function prepareIdentityForSharing(page, label, displayName, apiBase) {
   const prepared = await prepareIdentity(page, displayName);
   if (prepared.reloadRequired) {
     await page.reload({ waitUntil: 'domcontentloaded' });
@@ -850,12 +886,16 @@ async function prepareAndRegisterIdentity(page, label, displayName, apiBase) {
 async function appendSharedFixtureAndRescan(page, label, fixturePath, fileName) {
   await ensureSeededFolderPicker(page, label);
   await appendFixtureToSeededGallery(page, fixturePath, fileName);
-  await openSidebarTab(page, 'Manage');
+  await openSidebarTab(page, 'Settings');
   await clickVisibleButton(page, RESCAN_BUTTON_PATTERN);
 }
 
-async function addGalleryShareByName(page, targetDisplayName, expectedPersonId, stageName) {
-  await openSidebarTab(page, 'Manage');
+async function addGalleryShare(page, targetToken, expectedPersonId, stageName) {
+  await openSidebarTab(page, 'Sharing');
+  const identityDetails = page.getByText('Invite by identity or ID', { exact: true }).first();
+  if (await identityDetails.isVisible().catch(() => false)) {
+    await identityDetails.click();
+  }
   const input = page.getByPlaceholder('Add glue contact, name, @identity, or person id').first();
   const addButton = input.locator('xpath=following-sibling::button[1]');
   await input.waitFor({ state: 'visible', timeout: READY_TIMEOUT_MS });
@@ -865,16 +905,16 @@ async function addGalleryShareByName(page, targetDisplayName, expectedPersonId, 
     `${stageName}-token-resolves`,
     10_000,
     async () => {
-      const resolution = await resolveShareToken(page, targetDisplayName, 5_000).catch(() => null);
+      const resolution = await resolveShareToken(page, targetToken, 5_000).catch(() => null);
       return resolution?.personId === expectedPersonId ? resolution : false;
     },
     async () => ({
       shareFieldState: await captureShareFieldState(page),
-      resolution: await resolveShareToken(page, targetDisplayName, 5_000).catch(() => null),
+      resolution: await resolveShareToken(page, targetToken, 5_000).catch(() => null),
     }),
   );
 
-  await input.fill(targetDisplayName);
+  await input.fill(targetToken);
 
   await waitForStage(
     `${stageName}-draft-ready`,
@@ -884,7 +924,7 @@ async function addGalleryShareByName(page, targetDisplayName, expectedPersonId, 
         input.inputValue(),
         addButton.isDisabled(),
       ]);
-      return draft === targetDisplayName && !addDisabled
+      return draft === targetToken && !addDisabled
         ? { draft, addDisabled }
         : false;
     },
@@ -892,6 +932,7 @@ async function addGalleryShareByName(page, targetDisplayName, expectedPersonId, 
   );
 
   await addButton.click();
+  await clickVisibleButton(page, /^Apply sharing$/i);
 
   await waitForStage(
     stageName,
@@ -902,6 +943,26 @@ async function addGalleryShareByName(page, targetDisplayName, expectedPersonId, 
     },
     async () => await captureShareFieldState(page),
   );
+}
+
+async function removeGalleryShare(page, expectedPersonId) {
+  await openSidebarTab(page, 'Sharing');
+  const removeButton = page.locator(`button[aria-label="Remove ${expectedPersonId}"]`).first();
+  await removeButton.waitFor({state: 'visible', timeout: READY_TIMEOUT_MS});
+  await removeButton.click();
+  await clickVisibleButton(page, /^Apply sharing$/i);
+}
+
+async function assertPhotoRemainsUnavailable(page, fileName, durationMs = 15_000) {
+  const deadline = Date.now() + durationMs;
+  while (Date.now() < deadline) {
+    const syncState = await getFotosSyncState(page, 5_000);
+    if (shareStateHasImportedEntry(syncState, fileName)) {
+      throw new Error(`Revoked recipient imported later photo ${fileName}`);
+    }
+    await sleep(Math.min(POLL_INTERVAL_MS, Math.max(100, deadline - Date.now())));
+  }
+  return true;
 }
 
 async function main() {
@@ -925,6 +986,7 @@ async function main() {
   const sharedFixtures = {
     aToB: materializeUniqueFixtureVariant(FIXTURE_A, derivedFixtureDir, `share-a-${suffix}`),
     bToA: materializeUniqueFixtureVariant(FIXTURE_B, derivedFixtureDir, `share-b-${suffix}`),
+    afterRevoke: materializeUniqueFixtureVariant(FIXTURE_B, derivedFixtureDir, `after-revoke-${suffix}`),
   };
   const initialFileNames = {
     page1: `seed-a-${suffix}${extname(seedFixtures.page1)}`,
@@ -933,6 +995,7 @@ async function main() {
   const sharedFileNames = {
     aToB: `share-a-${suffix}${extname(sharedFixtures.aToB)}`,
     bToA: `share-b-${suffix}${extname(sharedFixtures.bToA)}`,
+    afterRevoke: `after-revoke-${suffix}${extname(sharedFixtures.afterRevoke)}`,
   };
   const displayNames = {
     a: `Fotos Alice ${suffix}`,
@@ -948,6 +1011,7 @@ async function main() {
       seedPage2: seedFixtures.page2,
       aToB: sharedFixtures.aToB,
       bToA: sharedFixtures.bToA,
+      afterRevoke: sharedFixtures.afterRevoke,
     },
     gallerySeeds: initialFileNames,
     sharedFileNames,
@@ -1025,6 +1089,7 @@ async function main() {
       pages.map(page => getPeerConnectionCoordinatorDebug(page).catch(() => [])),
     );
     const shareStates = await Promise.all(pages.map(page => getShareState(page).catch(() => null)));
+    const receivedShareScopes = await Promise.all(pages.map(page => getReceivedShareScopes(page).catch(() => [])));
     const galleryStates = await Promise.all(pages.map(page => getGalleryState(page).catch(() => null)));
     const peerIdA = identities[0]?.publicationIdentity ?? null;
     const peerIdB = identities[1]?.publicationIdentity ?? null;
@@ -1049,6 +1114,7 @@ async function main() {
       connectablePeerIds,
       coordinatorDebug,
       shareStates,
+      receivedShareScopes,
       galleryStates,
       connectionInfo,
       logs: report.logs,
@@ -1090,8 +1156,8 @@ async function main() {
     ]);
 
     await Promise.all([
-      prepareAndRegisterIdentity(pages[0], 'page1', displayNames.a, apiBase),
-      prepareAndRegisterIdentity(pages[1], 'page2', displayNames.b, apiBase),
+      prepareIdentityForSharing(pages[0], 'page1', displayNames.a, apiBase),
+      prepareIdentityForSharing(pages[1], 'page2', displayNames.b, apiBase),
     ]);
 
     await Promise.all([
@@ -1100,13 +1166,13 @@ async function main() {
     ]);
 
     await waitForStage(
-      'sync-ready',
+      'registered-gallery-ready',
       READY_TIMEOUT_MS,
       async () => {
         const identities = await Promise.all(pages.map(page => getLocalIdentitySnapshot(page, 5_000)));
         const statuses = await Promise.all(pages.map(page => getStatus(page, 5_000)));
         return identities.every(identity => Boolean(identity?.publicationIdentity))
-          && statuses.every(status => Boolean(status?.headlessConnected))
+          && statuses.every(status => Boolean(status?.initialized && status?.isOpen))
           ? { identities, statuses }
           : false;
       },
@@ -1132,8 +1198,25 @@ async function main() {
     report.shareTargetIds.page1 = page1ShareTargetId;
     report.shareTargetIds.page2 = page2ShareTargetId;
 
-    await addGalleryShareByName(pages[0], displayNames.b, page1ShareTargetId, 'page1-share-by-name');
-    await addGalleryShareByName(pages[1], displayNames.a, page2ShareTargetId, 'page2-share-by-name');
+    const bootstrapInvite = await createGalleryShareInvite(pages[0]);
+    await pages[1].goto(buildRecipientInviteUrl(bootstrapInvite.url, 'b'), {
+      waitUntil: 'domcontentloaded',
+    });
+    await waitForDebugApi(pages[1], READY_TIMEOUT_MS);
+    await acceptGalleryShareInvite(pages[1], bootstrapInvite.pin);
+    await ensureGalleryOpenWithFixture(pages[1], 'page2', seedFixtures.page2, initialFileNames.page2);
+
+    await waitForStage(
+      'page1-bootstrap-invite-share',
+      SHARE_TIMEOUT_MS,
+      async () => {
+        const shareState = await getShareState(pages[0], 5_000);
+        return shareStateHasGrantedPeer(shareState, page1ShareTargetId) ? shareState : false;
+      },
+      captureSnapshot,
+    );
+
+    await addGalleryShare(pages[1], displayNames.a, page2ShareTargetId, 'page2-share-by-name');
 
     await waitForStage(
       'share-demand-ready',
@@ -1310,6 +1393,45 @@ async function main() {
       captureSnapshot,
       refreshPeerConnections,
     );
+
+    await waitForStage(
+      'certificate-projection-active',
+      SHARE_TIMEOUT_MS,
+      async () => {
+        const [page1Scopes, page2Scopes] = await Promise.all(pages.map(page => getReceivedShareScopes(page, 5_000)));
+        const page1Active = page1Scopes.some(scope => scope.issuer === page2PeerId && scope.scope?.kind === 'gallery' && scope.status === 'active' && scope.verified === true);
+        const page2Active = page2Scopes.some(scope => scope.issuer === page1PeerId && scope.scope?.kind === 'gallery' && scope.status === 'active' && scope.verified === true);
+        return page1Active && page2Active ? {page1Scopes, page2Scopes} : false;
+      },
+      captureSnapshot,
+      refreshPeerConnections,
+    );
+
+    await removeGalleryShare(pages[0], page1ShareTargetId);
+    await waitForStage(
+      'certificate-projection-revoked',
+      SHARE_TIMEOUT_MS,
+      async () => {
+        const scopes = await getReceivedShareScopes(pages[1], 5_000);
+        const revokedScope = scopes.find(scope => scope.issuer === page1PeerId && scope.scope?.kind === 'gallery');
+        return revokedScope?.status === 'revoked' && revokedScope.verified === true ? revokedScope : false;
+      },
+      captureSnapshot,
+      refreshPeerConnections,
+    );
+
+    await appendSharedFixtureAndRescan(pages[0], 'page1', sharedFixtures.afterRevoke, sharedFileNames.afterRevoke);
+    await waitForStage(
+      'post-revocation-photo-local',
+      SHARE_TIMEOUT_MS,
+      async () => {
+        const syncState = await getFotosSyncState(pages[0], 5_000);
+        return syncStateHasManifestEntry(syncState, sharedFileNames.afterRevoke) ? syncState : false;
+      },
+      captureSnapshot,
+    );
+    await refreshPeerConnections({force: true, label: 'post-revocation-refresh'});
+    await assertPhotoRemainsUnavailable(pages[1], sharedFileNames.afterRevoke);
 
     report.finalState = await captureSnapshot();
     await writeReportArtifact(artifactDir, report);

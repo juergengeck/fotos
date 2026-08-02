@@ -15,12 +15,12 @@ export function GalleryBreadcrumbs({ items, summary }: GalleryBreadcrumbsProps) 
             <div className="flex min-h-11 items-center gap-3 px-3 py-2">
                 <nav
                     aria-label="Breadcrumb"
-                    className="hide-scrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto text-[11px] uppercase tracking-[0.18em]"
+                    className="hide-scrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto text-xs uppercase tracking-[0.18em]"
                 >
                     {items.map((item, index) => {
                         const isCurrent = index === items.length - 1;
                         const content = (
-                            <span className={`block max-w-[14rem] truncate ${isCurrent ? 'text-white/82' : 'text-white/42'}`}>
+                            <span className={`block max-w-[14rem] truncate ${isCurrent ? 'text-white/82' : 'text-white/55'}`}>
                                 {item.label}
                             </span>
                         );
@@ -28,7 +28,7 @@ export function GalleryBreadcrumbs({ items, summary }: GalleryBreadcrumbsProps) 
                         return (
                             <div key={item.key} className="flex items-center gap-1 shrink-0">
                                 {index > 0 && (
-                                    <span className="text-white/18" aria-hidden="true">
+                                    <span className="text-white/55" aria-hidden="true">
                                         /
                                     </span>
                                 )}
@@ -48,7 +48,7 @@ export function GalleryBreadcrumbs({ items, summary }: GalleryBreadcrumbsProps) 
                     })}
                 </nav>
                 {summary ? (
-                    <div className="shrink-0 text-[10px] uppercase tracking-[0.18em] text-white/30">
+                    <div className="shrink-0 text-xs uppercase tracking-[0.18em] text-white/55">
                         {summary}
                     </div>
                 ) : null}

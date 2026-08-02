@@ -1,5 +1,5 @@
 import {useState} from 'react';
-import {Download, FolderPlus, Users, X} from 'lucide-react';
+import {Download, FolderPlus, Share2, Users, X} from 'lucide-react';
 
 interface SelectionActionBarProps {
     photoCount: number;
@@ -14,6 +14,7 @@ interface SelectionActionBarProps {
     onSelectAllVisible: () => void;
     onCreateCollection: (name: string) => boolean;
     onAddToCollection: (collectionId: string) => void;
+    onShareSelection: () => void;
     onExportPhotos?: () => Promise<void> | void;
     onNamePeople: (name: string) => Promise<void> | void;
     onGroupPeople: () => void;
@@ -34,6 +35,7 @@ export function SelectionActionBar({
     onSelectAllVisible,
     onCreateCollection,
     onAddToCollection,
+    onShareSelection,
     onExportPhotos,
     onNamePeople,
     onGroupPeople,
@@ -84,6 +86,9 @@ export function SelectionActionBar({
             </div>
 
             <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-white/10 pt-2">
+                <button type="button" onClick={onShareSelection} className="flex min-h-11 items-center gap-2 rounded-md bg-[#e94560] px-3 text-xs font-medium text-white hover:bg-[#d13354]">
+                    <Share2 className="h-4 w-4" /> Share selection…
+                </button>
                 <button type="button" onClick={() => { setPanel(panel === 'collection' ? null : 'collection'); setDraft(''); }} className="flex min-h-11 items-center gap-2 rounded-md bg-white/10 px-3 text-xs text-white/85 hover:bg-white/15">
                     <FolderPlus className="h-4 w-4" /> Add to collection
                 </button>
@@ -140,7 +145,7 @@ export function SelectionActionBar({
                         onChange={event => setDraft(event.target.value)}
                         placeholder={panel === 'collection' ? 'New collection name' : peopleCount > 1 ? 'Name selected people' : 'Name selected person'}
                         aria-label={panel === 'collection' ? 'New collection name' : 'Name selected people'}
-                        className="min-h-11 min-w-48 flex-1 rounded-md border border-white/15 bg-black/35 px-3 text-sm text-white placeholder:text-white/45 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ff9db0]"
+                        className="min-h-11 min-w-48 flex-1 rounded-md border border-white/15 bg-black/35 px-3 text-sm text-white placeholder:text-white/55 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ff9db0]"
                     />
                     <button type="submit" disabled={!draft.trim()} className="min-h-11 rounded-md bg-[#e94560] px-4 text-xs font-medium text-white disabled:opacity-35">
                         {panel === 'collection' ? 'Create' : 'Apply name'}

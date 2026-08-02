@@ -212,7 +212,7 @@ export function TimelineScrubber({ scrollRef, dayGroups }: TimelineScrubberProps
                         return (
                             <div
                                 key={span.year}
-                                className="absolute right-7 text-[10px] text-white/40 font-medium pointer-events-none whitespace-nowrap"
+                                className="absolute right-7 text-xs text-white/55 font-medium pointer-events-none whitespace-nowrap"
                                 style={{
                                     top: `calc(${PADDING}px + ${midPos * 100}% * (1 - ${2 * PADDING}px / 100%))`,
                                     transform: 'translateY(-50%)',

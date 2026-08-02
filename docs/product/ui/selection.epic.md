@@ -99,9 +99,12 @@ Implemented:
 - Filters preserve hidden selections and the action bar discloses their count.
 - Unsupported mixed export is disabled with an explicit explanation rather than
   silently exporting only the photo subset.
+- Share selection materializes the exact mixed selection as a named collection scope
+  before opening Sharing, so later recipient review cannot silently broaden or filter it.
+- Creating a collection, adding selection membership, deleting an unshared collection,
+  and materializing a share selection expose an eight-second undo boundary.
 
-Still required for completion: selection-driven sharing scope, populated-gallery
-screen-reader/mobile task validation, and an undo boundary for collection membership.
+Still required for completion: populated-gallery screen-reader/mobile task validation.
 
 ## Acceptance Criteria
 

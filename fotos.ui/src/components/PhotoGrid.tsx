@@ -167,7 +167,7 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
         return (
             <div className="p-1">
                 <div className="sticky top-0 z-10 px-3 py-1.5 bg-black/70 backdrop-blur-sm">
-                    <span className="text-[11px] text-white/50 font-medium">{loadingLabel}</span>
+                    <span className="text-xs text-white/50 font-medium">{loadingLabel}</span>
                 </div>
                 <div className="grid gap-1 px-1 pb-1" style={{gridTemplateColumns: `repeat(auto-fill, minmax(${thumbScale}px, 1fr))`}}>
                     {Array.from({length: 12}, (_, i) => (
@@ -180,7 +180,7 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
 
     if (photos.length === 0) {
         return (
-            <div className="flex items-center justify-center h-full text-white/30">
+            <div className="flex items-center justify-center h-full text-white/55">
                 <div className="text-center">
                     <p className="text-lg mb-2">{emptyTitle}</p>
                     <p className="text-sm">{emptyHint}</p>
@@ -230,8 +230,8 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
                 return (
                     <section key={group.date} data-date={group.date}>
                         <div className="sticky top-0 z-10 px-3 py-1.5 bg-black/70 backdrop-blur-sm">
-                            <span className="text-[11px] text-white/50 font-medium">{formatDate(group.date)}</span>
-                            <span className="text-[10px] text-white/20 ml-2">{group.photos.length}</span>
+                            <span className="text-xs text-white/50 font-medium">{formatDate(group.date)}</span>
+                            <span className="text-xs text-white/55 ml-2">{group.photos.length}</span>
                         </div>
                         <div className="grid gap-1 px-1 pb-1" data-photo-grid style={{gridTemplateColumns: colStyle}}>
                             {group.photos.map((photo, index) => {
@@ -361,7 +361,7 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
             className={`group relative aspect-square overflow-hidden cursor-pointer touch-manipulation ${
                 focused ? 'ring-2 ring-[#e94560] ring-offset-1 ring-offset-black' : ''
             } ${
-                selected ? 'ring-2 ring-[#ff9db0] ring-inset' : ''
+                selected ? 'ring-2 ring-sky-400 ring-inset' : ''
             }`}
             style={{background: hashColor(photo.hash)}}
         >
@@ -407,7 +407,7 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
                 >
                     <span className={`flex h-6 w-6 items-center justify-center rounded-full border text-xs font-semibold shadow-[0_6px_18px_rgba(0,0,0,0.28)] backdrop-blur-sm ${
                         selected
-                            ? 'border-[#ff9db0]/80 bg-[#e94560]/90 text-white'
+                            ? 'border-sky-200/80 bg-sky-600 text-white'
                             : 'border-white/30 bg-black/45 text-white/60 hover:border-white/60'
                     }`} aria-hidden="true">
                         {selected ? '✓' : ''}
@@ -420,7 +420,7 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
             )}
 
             {faceCount > 0 && !namedFaces && (
-                <div className="absolute top-1.5 right-1.5 rounded-full border border-white/15 bg-[#e94560]/85 px-2 py-0.5 text-[10px] font-medium text-white shadow-[0_6px_18px_rgba(233,69,96,0.35)] backdrop-blur-sm">
+                <div className="absolute top-1.5 right-1.5 rounded-full border border-white/15 bg-[#e94560]/85 px-2 py-0.5 text-xs font-medium text-white shadow-[0_6px_18px_rgba(233,69,96,0.35)] backdrop-blur-sm">
                     {faceCount} {faceCount === 1 ? 'face' : 'faces'}
                 </div>
             )}
@@ -428,7 +428,7 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
             {namedFaces && (
                 <div className="pointer-events-none absolute inset-x-0 bottom-0 px-2 pb-1.5 pt-6 bg-gradient-to-t from-black/70 via-black/20 to-transparent">
                     <p
-                        className="truncate text-[10px] font-medium tracking-[0.01em] text-white/70 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
+                        className="truncate text-xs font-medium tracking-[0.01em] text-white/70 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
                         title={namedFaces.fullLabel}
                     >
                         {namedFaces.label}
@@ -439,7 +439,7 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
             <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/35 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
                 <p className="text-xs truncate text-white/90">{photo.name}</p>
                 {namedFaces && (
-                    <p className="mt-0.5 truncate text-[10px] text-white/55">{namedFaces.fullLabel}</p>
+                    <p className="mt-0.5 truncate text-xs text-white/55">{namedFaces.fullLabel}</p>
                 )}
             </div>
         </div>

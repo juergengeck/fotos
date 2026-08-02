@@ -15,6 +15,13 @@
     --accent-primary: #e94560;
     --accent-primary-hover: #d13354;
 
+    /* selection is intentionally distinct from primary/destructive coral */
+    --selected: #38bdf8;
+    --selected-strong: #0284c7;
+    --success: #34d399;
+    --warning: #fbbf24;
+    --info: #60a5fa;
+
     /* secondary accent — for input focus, links */
     --accent: #55a;
     --accent-fg: #aaf;
@@ -45,6 +52,32 @@ body {
     margin: 0;
 }
 
+/* Product controls use a minimum 44px activation box. Icon glyphs and checkmarks
+   may remain smaller inside that box. */
+button,
+[role="button"],
+summary {
+    min-height: var(--touch-target-min);
+    min-width: var(--touch-target-min);
+}
+
+select,
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
+    min-height: var(--touch-target-min);
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+    width: 20px;
+    height: 20px;
+}
+
+label:has(input[type="checkbox"]),
+label:has(input[type="radio"]),
+input[type="range"] {
+    min-height: var(--touch-target-min);
+}
+
 /* --- Component classes --- */
 
 .input {
@@ -62,7 +95,7 @@ select.input {
 }
 
 .sidebar-input {
-    @apply w-full bg-white/5 border border-white/10 text-white/60 text-[11px] px-2.5 py-1.5 rounded-md;
+    @apply w-full bg-white/5 border border-white/10 text-white/60 text-xs px-2.5 py-1.5 rounded-md;
     @apply focus:outline-none focus:border-white/20;
 }
 

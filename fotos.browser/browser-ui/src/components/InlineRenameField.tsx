@@ -24,9 +24,9 @@ export function InlineRenameField({
     fallback,
     placeholder = 'Name this person',
     onSubmit,
-    labelClassName = 'truncate text-[11px] text-white/75',
-    inputClassName = 'min-w-0 flex-1 rounded-md border border-[#e94560]/35 bg-[#1a1115] px-2 py-1 text-[11px] text-white placeholder:text-white/20 focus:border-[#ff9db0]/60 focus:outline-none',
-    actionClassName = 'shrink-0 rounded-md p-1 text-white/28 transition-colors hover:text-white/70 focus:outline-none focus-visible:text-white/80',
+    labelClassName = 'truncate text-xs text-white/75',
+    inputClassName = 'min-w-0 flex-1 rounded-md border border-[#e94560]/35 bg-[#1a1115] px-2 py-1 text-xs text-white placeholder:text-white/55 focus:border-[#ff9db0]/60 focus:outline-none',
+    actionClassName = 'shrink-0 rounded-md p-1 text-white/55 transition-colors hover:text-white/70 focus:outline-none focus-visible:text-white/80',
 }: InlineRenameFieldProps) {
     const inputRef = useRef<HTMLInputElement>(null);
     const [editing, setEditing] = useState(false);

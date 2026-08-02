@@ -38,7 +38,7 @@ export function Impressum() {
 
     return (
         <>
-            <footer className="w-full py-4 px-6 flex items-center justify-center gap-4 text-xs text-white/40 border-t border-white/5">
+            <footer className="w-full py-4 px-6 flex items-center justify-center gap-4 text-xs text-white/55 border-t border-white/5">
                 <span className="inline-flex items-center gap-1.5">
                     powered by{' '}
                     <a href="https://refinio.net" target="_blank" rel="noopener" className="flex min-h-11 items-center rounded-md px-2 hover:bg-white/5 hover:text-white/60 transition-colors">

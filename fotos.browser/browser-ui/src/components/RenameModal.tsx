@@ -112,7 +112,7 @@ export function RenameModal({
                             id={inputId}
                             value={value}
                             onChange={event => setValue(event.target.value)}
-                            className="min-h-11 w-full rounded-md border border-white/15 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-white/35 focus:border-[var(--accent-primary,#e94560)]"
+                            className="min-h-11 w-full rounded-md border border-white/15 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-white/55 focus:border-[var(--accent-primary,#e94560)]"
                         />
                     </div>
                     <div className="flex justify-end gap-2">

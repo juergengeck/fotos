@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
     arePersistentPhotoRouteTargetsEqual,
+    buildPersistentAppTaskPath,
     buildPersistentPhotoPath,
+    parsePersistentAppTask,
     parsePersistentPhotoRouteTarget,
 } from './photoRoute';
 
@@ -38,5 +40,19 @@ describe('photoRoute', () => {
                 { photoHash: 'hash-3' },
             ),
         ).toBe(true);
+    });
+});
+
+describe('persistent app task routes', () => {
+    it('preserves photo and invite parameters while opening and closing tasks', () => {
+        const opened = buildPersistentAppTaskPath('/gallery', '?photo=abc&fotosShare=invite', 'sharing');
+        expect(opened).toContain('photo=abc');
+        expect(opened).toContain('fotosShare=invite');
+        expect(parsePersistentAppTask(opened.split('?')[1] ?? '')).toBe('sharing');
+        expect(buildPersistentAppTaskPath('/gallery', opened.split('?')[1] ?? '', null)).not.toContain('task=');
+    });
+
+    it('ignores unsupported task values', () => {
+        expect(parsePersistentAppTask('?task=advanced')).toBeNull();
     });
 });

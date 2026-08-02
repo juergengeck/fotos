@@ -2,6 +2,7 @@
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { createSocket } from 'node:dgram';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path, { dirname, resolve } from 'node:path';
@@ -11,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BROWSER_UI_ROOT = resolve(__dirname, '../..');
 const REPO_ROOT = resolve(BROWSER_UI_ROOT, '../..');
-const VGER_ROOT = resolve(REPO_ROOT, 'vger');
+const VGER_ROOT = resolve(REPO_ROOT, '../vger');
 const ONE_ROOT = resolve(REPO_ROOT, '../one');
 const HEADLESS_ROOT = resolve(VGER_ROOT, 'packages/vger.headless');
 const HEADLESS_CLI = 'src/cli.ts';
@@ -87,6 +88,27 @@ function getFreePort() {
       });
     });
     server.on('error', rejectPromise);
+  });
+}
+
+function getFreeUdpPort() {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const socket = createSocket('udp4');
+    socket.bind(0, '127.0.0.1', () => {
+      const address = socket.address();
+      if (typeof address === 'string') {
+        socket.close();
+        rejectPromise(new Error('Failed to allocate a free UDP port'));
+        return;
+      }
+
+      const { port } = address;
+      socket.close(() => resolvePromise(port));
+    });
+    socket.on('error', error => {
+      socket.close();
+      rejectPromise(error);
+    });
   });
 }
 
@@ -234,9 +256,10 @@ async function ensureBuiltPrerequisites() {
 }
 
 async function buildBrowserUi(env, outDir) {
+  const viteBin = resolve(VGER_ROOT, 'node_modules/.bin/vite');
   await runCheckedCommand(
     '/bin/bash',
-    ['-lc', `npm exec vite build -- --outDir "${outDir}" --emptyOutDir`],
+    ['-lc', `"${viteBin}" build --outDir "${outDir}" --emptyOutDir`],
     {
       cwd: BROWSER_UI_ROOT,
       env,
@@ -248,7 +271,10 @@ async function buildBrowserUi(env, outDir) {
 async function main() {
   const commPort = Number(process.env.FOTOS_INTEGRATION_COMM_PORT || await getFreePort());
   const headlessPort = Number(process.env.FOTOS_INTEGRATION_HEADLESS_PORT || await getFreePort());
-  const browserPort = Number(process.env.FOTOS_INTEGRATION_BROWSER_PORT || 5518);
+  const headlessQuicVCPort = Number(
+    process.env.FOTOS_INTEGRATION_HEADLESS_QUICVC_PORT || await getFreeUdpPort(),
+  );
+  const browserPort = Number(process.env.FOTOS_INTEGRATION_BROWSER_PORT || await getFreePort());
   const commUrl = `ws://localhost:${commPort}`;
   const headlessUrl = `http://localhost:${headlessPort}`;
   const browserUrl = `http://localhost:${browserPort}/`;
@@ -277,6 +303,7 @@ async function main() {
       'tsx',
       HEADLESS_CLI,
       '--port', String(headlessPort),
+      '--quicvc-port', String(headlessQuicVCPort),
       '--host', 'localhost',
       '--storage', storageDir,
       '--comm-server', commUrl,
@@ -326,7 +353,6 @@ async function main() {
       VITE_HEADLESS_URL: headlessUrl,
       VITE_API_URL: headlessUrl,
       VITE_COMM_SERVER_URL: commUrl,
-      VITE_GLUE_DEBUG_REGISTRATION_TOKEN: debugRegistrationToken,
       VITE_GLUE_DEBUG_REGISTRATION_TTL_MS: debugRegistrationTtlMs,
       ...(trustedSystemKeys ? { VITE_TRUSTED_SYSTEM_KEYS: trustedSystemKeys } : {}),
     };

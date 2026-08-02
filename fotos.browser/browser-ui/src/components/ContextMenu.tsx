@@ -153,7 +153,7 @@ export function ContextMenu({
                 {/* Mobile Header */}
                 {mobile && (
                     <div className="flex items-center justify-between border-b border-white/5 pb-2.5 mb-2.5">
-                        <span className="text-[10px] font-bold tracking-wider text-white/30 uppercase">
+                        <span className="text-xs font-bold tracking-wider text-white/55 uppercase">
                             {type === 'photo' ? 'Photo Options' : type === 'cluster' ? 'Face Cluster Options' : 'Collection Actions'}
                         </span>
                         <button

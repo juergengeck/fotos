@@ -565,7 +565,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
                     }}
                 />
             ) : (
-                <div className="absolute inset-0 flex items-center justify-center text-white/30" style={{ zIndex: 1 }}>
+                <div className="absolute inset-0 flex items-center justify-center text-white/55" style={{ zIndex: 1 }}>
                     {photo.sourcePath ? (
                         /* Loading spinner */
                         <div className="flex flex-col items-center gap-3">
@@ -600,7 +600,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
             >
                 {viewport}
 
-                <div className={`absolute top-4 left-1/2 -translate-x-1/2 text-white/20 text-xs tabular-nums transition-opacity duration-500 ${chevronVisible ? 'opacity-100' : 'opacity-0'}`}>
+                <div className={`absolute top-4 left-1/2 -translate-x-1/2 text-white/55 text-xs tabular-nums transition-opacity duration-500 ${chevronVisible ? 'opacity-100' : 'opacity-0'}`}>
                     {index + 1} / {photos.length}
                 </div>
 
@@ -687,8 +687,8 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
                             </button>
                         )}
                         <div className="flex-1 px-3 py-2 min-w-0">
-                            <div className="text-[11px] font-medium tracking-wide uppercase text-white/90 truncate">{photo.name}</div>
-                            <div className="text-[11px] text-white/25 tabular-nums mt-0.5">{index + 1} of {photos.length}</div>
+                            <div className="text-xs font-medium tracking-wide uppercase text-white/90 truncate">{photo.name}</div>
+                            <div className="text-xs text-white/55 tabular-nums mt-0.5">{index + 1} of {photos.length}</div>
                         </div>
                     </div>
 
@@ -712,7 +712,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
                         <Section label="Tags">
                             <div className="flex flex-wrap gap-1">
                                 {photo.tags.map(t => (
-                                    <span key={t} className="bg-white/5 text-[11px] text-white/50 px-2 py-0.5 rounded-full border border-white/10">{t}</span>
+                                    <span key={t} className="bg-white/5 text-xs text-white/50 px-2 py-0.5 rounded-full border border-white/10">{t}</span>
                                 ))}
                             </div>
                         </Section>
@@ -729,11 +729,11 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
                     <Section label="View">
                         <div className="grid grid-cols-4 gap-1">
                             <CtrlBtn onClick={zoomFit} active={isFit} title="Fit (F)"><Maximize className="w-3.5 h-3.5" /></CtrlBtn>
-                            <CtrlBtn onClick={zoom1to1} active={scale === 1} title="1:1"><span className="text-[11px] font-mono">1:1</span></CtrlBtn>
+                            <CtrlBtn onClick={zoom1to1} active={scale === 1} title="1:1"><span className="text-xs font-mono">1:1</span></CtrlBtn>
                             <CtrlBtn onClick={() => zoomBy(0.8)} title="Zoom out (-)"><ZoomOut className="w-3.5 h-3.5" /></CtrlBtn>
                             <CtrlBtn onClick={() => zoomBy(1.25)} title="Zoom in (+)"><ZoomIn className="w-3.5 h-3.5" /></CtrlBtn>
                         </div>
-                        <p className="text-[11px] text-white/20 text-center tabular-nums mt-1">{Math.round(effectiveScale * 100)}%</p>
+                        <p className="text-xs text-white/55 text-center tabular-nums mt-1">{Math.round(effectiveScale * 100)}%</p>
                         <div className="grid grid-cols-4 gap-1 mt-1">
                             <CtrlBtn onClick={() => rotate90(-90)} title="Rotate left (L)"><RotateCcw className="w-3.5 h-3.5" /></CtrlBtn>
                             <CtrlBtn onClick={() => rotate90(90)} title="Rotate right (R)"><RotateCw className="w-3.5 h-3.5" /></CtrlBtn>
@@ -749,7 +749,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
                                 {onExport && (
                                     <button
                                         onClick={() => { void onExport(photo); }}
-                                        className="flex items-center gap-2 text-[11px] text-emerald-300/70 hover:text-emerald-200 transition-colors"
+                                        className="flex items-center gap-2 text-xs text-emerald-300/70 hover:text-emerald-200 transition-colors"
                                     >
                                         <Download className="w-3.5 h-3.5" />
                                         Export to Photos
@@ -758,7 +758,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
                                 {onDelete && (
                                     <button
                                         onClick={() => onDelete(photo.hash)}
-                                        className="flex items-center gap-2 text-[11px] text-red-400/60 hover:text-red-400 transition-colors"
+                                        className="flex items-center gap-2 text-xs text-red-400/60 hover:text-red-400 transition-colors"
                                     >
                                         <Trash2 className="w-3.5 h-3.5" />
                                         Delete photo
@@ -788,7 +788,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
     return (
         <div>
-            <div className="text-[11px] text-white/25 uppercase tracking-wider font-medium mb-1.5">{label}</div>
+            <div className="text-xs text-white/55 uppercase tracking-wider font-medium mb-1.5">{label}</div>
             {children}
         </div>
     );
@@ -796,8 +796,8 @@ function Section({ label, children }: { label: string; children: React.ReactNode
 
 function DetailRow({ label, value }: { label: string; value: string }) {
     return (
-        <div className="flex justify-between text-[11px]">
-            <span className="text-white/30">{label}</span>
+        <div className="flex justify-between text-xs">
+            <span className="text-white/55">{label}</span>
             <span className="text-white/60">{value}</span>
         </div>
     );
@@ -813,7 +813,7 @@ function CtrlBtn({ onClick, active, title, children }: {
             className={`flex items-center justify-center p-2 rounded text-sm transition-colors ${
                 active
                     ? 'bg-white/10 text-white/70 border border-white/20'
-                    : 'text-white/30 border border-transparent hover:text-white/60 hover:bg-white/5'
+                    : 'text-white/55 border border-transparent hover:text-white/60 hover:bg-white/5'
             }`}
         >
             {children}
@@ -899,7 +899,7 @@ function FaceCropRow({ cropPath, index, score, name, clusterId, embeddings, getF
                 {src ? (
                     <img src={src} alt={`Face ${index + 1}`} className="w-full h-full object-cover" />
                 ) : (
-                    <div className="w-full h-full bg-white/10 flex items-center justify-center text-[11px] text-white/40">
+                    <div className="w-full h-full bg-white/10 flex items-center justify-center text-xs text-white/55">
                         {index + 1}
                     </div>
                 )}
@@ -912,9 +912,9 @@ function FaceCropRow({ cropPath, index, score, name, clusterId, embeddings, getF
                         onSubmit={nextName => onRename(clusterId, nextName)}
                     />
                 ) : (
-                    <div className="truncate text-[11px] text-white/75">{name && name !== 'Unknown' ? name : `Face ${index + 1}`}</div>
+                    <div className="truncate text-xs text-white/75">{name && name !== 'Unknown' ? name : `Face ${index + 1}`}</div>
                 )}
-                <div className="text-[11px] text-white/25">{(score * 100).toFixed(0)}% confidence</div>
+                <div className="text-xs text-white/55">{(score * 100).toFixed(0)}% confidence</div>
                 {onAssociate && people && people.length > 0 && (
                     <select
                         value=""
@@ -927,7 +927,7 @@ function FaceCropRow({ cropPath, index, score, name, clusterId, embeddings, getF
                             }
                             event.target.value = '';
                         }}
-                        className="mt-1 w-full rounded-md border border-white/10 bg-[#1a1115] px-1.5 py-1 text-[11px] text-white/55 focus:border-[#ff9db0]/60 focus:outline-none"
+                        className="mt-1 w-full rounded-md border border-white/10 bg-[#1a1115] px-1.5 py-1 text-xs text-white/55 focus:border-[#ff9db0]/60 focus:outline-none"
                     >
                         <option value="">This is…</option>
                         {people.map(person => {
@@ -948,7 +948,7 @@ function FaceCropRow({ cropPath, index, score, name, clusterId, embeddings, getF
                         onDelete(clusterId);
                     }}
                     onKeyDown={event => event.stopPropagation()}
-                    className="text-white/20 hover:text-red-400 transition-colors"
+                    className="text-white/55 hover:text-red-400 transition-colors"
                     title="Delete face"
                 >
                     <Trash2 className="h-3 w-3" />

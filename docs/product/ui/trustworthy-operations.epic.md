@@ -96,11 +96,18 @@ Implemented in the first slice:
 - D-07 discovery: no pause/cancel/resume control is exposed before engine support exists.
 - first-run controls, legal-notice controls/dialog, selection actions, header actions,
   invite results, and the contact picker use the touched 44px, focus, and dialog gates.
+- collection creation, membership additions, unshared collection deletion, and
+  selection-scope materialization have a time-bounded undo toast in a lane that moves
+  above the selection action bar.
+- product text below 12px was removed, low-contrast muted text was raised to a readable
+  floor, product controls receive a 44px activation box, and selection now uses sky blue
+  rather than the coral primary/destructive family.
 
 Still required before this epic is complete:
 
 - durable failed/cancelled/resumable operation states after the engine lifecycle work in D-07;
-- an undo policy and commit boundary for reversible operations;
+- undo coverage for remaining reversible history/folder/people operations where the
+  underlying owner can expose a real restoration transaction;
 - automated destructive-routing coverage and the full desktop/mobile/manual validation matrix.
 
 ## Acceptance Criteria

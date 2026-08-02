@@ -41,11 +41,11 @@ export function ClusterGallery({
 
     if (clusters.length === 0) {
         return (
-            <div className="h-full flex items-center justify-center text-white/30 view-enter">
+            <div className="h-full flex items-center justify-center text-white/55 view-enter">
                 <div className="text-center max-w-xs space-y-3">
                     <div className="text-4xl opacity-40">👤</div>
                     <p className="text-base font-medium text-white/50">No face clusters yet</p>
-                    <p className="text-sm text-white/30 leading-relaxed">
+                    <p className="text-sm text-white/55 leading-relaxed">
                         Enable face analytics in Settings and scan your gallery to discover people in your photos.
                     </p>
                 </div>
@@ -182,7 +182,7 @@ export function ClusterCard({
         <div
             className={`group relative flex flex-col gap-3 rounded-2xl border p-4 text-left transition-colors ${
                 selected
-                    ? 'border-[#ff9db0] bg-[#1f1015] ring-2 ring-[#e94560]/70'
+                    ? 'border-sky-400 bg-sky-950/55 ring-2 ring-sky-500/70'
                     : active
                         ? 'border-[#e94560]/70 bg-[#1f1015]'
                         : 'border-white/10 bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.05]'
@@ -202,7 +202,7 @@ export function ClusterCard({
                 >
                     <span className={`flex h-6 w-6 items-center justify-center rounded-full border text-xs font-semibold backdrop-blur-sm ${
                         selected
-                            ? 'border-[#ff9db0]/80 bg-[#e94560]/90 text-white'
+                            ? 'border-sky-200/80 bg-sky-600 text-white'
                             : 'border-white/30 bg-black/45 text-white/60 hover:border-white/60'
                     }`} aria-hidden="true">
                         {selected ? '✓' : ''}
@@ -217,7 +217,7 @@ export function ClusterCard({
                         className="h-16 w-16 rounded-full object-cover border border-white/10"
                     />
                 ) : (
-                    <div className="h-16 w-16 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-white/25 text-[11px] uppercase tracking-[0.2em]">
+                    <div className="h-16 w-16 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-white/55 text-xs uppercase tracking-[0.2em]">
                         AI
                     </div>
                 )}
@@ -229,12 +229,12 @@ export function ClusterCard({
                             placeholder="Name this cluster"
                             onSubmit={name => onRename(name)}
                             labelClassName="truncate text-sm font-medium text-white/85"
-                            inputClassName="min-w-0 flex-1 rounded-md border border-[#e94560]/35 bg-[#1a1115] px-2 py-1.5 text-sm text-white placeholder:text-white/20 focus:border-[#ff9db0]/60 focus:outline-none"
+                            inputClassName="min-w-0 flex-1 rounded-md border border-[#e94560]/35 bg-[#1a1115] px-2 py-1.5 text-sm text-white placeholder:text-white/55 focus:border-[#ff9db0]/60 focus:outline-none"
                         />
                     ) : (
                         <div className="text-sm font-medium text-white/85 truncate">{cluster.label}</div>
                     )}
-                    <div className="text-[11px] text-white/35">
+                    <div className="text-xs text-white/55">
                         {cluster.memberClusterIds.length > 1
                             ? `Person · ${cluster.memberClusterIds.length} clusters`
                             : cluster.personName
@@ -243,7 +243,7 @@ export function ClusterCard({
                     </div>
                 </div>
             </div>
-            <div className="flex items-center gap-3 text-[11px] text-white/40">
+            <div className="flex items-center gap-3 text-xs text-white/55">
                 <span>{cluster.faceCount} faces</span>
                 <span>{cluster.photoCount} photos</span>
             </div>

@@ -463,8 +463,8 @@ export function ShareWithField({
             </div>
 
             <label className="flex min-h-11 items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 focus-within:border-[#ff9db0]/60">
-                <Search className="h-4 w-4 text-white/45" />
-                <input type="search" value={contactQuery} onChange={event => setContactQuery(event.target.value)} placeholder="Search trusted contacts" className="min-w-0 flex-1 bg-transparent py-2 text-sm text-white outline-none placeholder:text-white/45" />
+                <Search className="h-4 w-4 text-white/55" />
+                <input type="search" value={contactQuery} onChange={event => setContactQuery(event.target.value)} placeholder="Search trusted contacts" className="min-w-0 flex-1 bg-transparent py-2 text-sm text-white outline-none placeholder:text-white/55" />
             </label>
 
             <div className="max-h-72 space-y-1 overflow-y-auto" aria-label="Trusted contacts">
@@ -481,7 +481,7 @@ export function ShareWithField({
             <details className="rounded-md border border-white/8 bg-black/15">
                 <summary className="flex min-h-11 cursor-pointer items-center px-3 text-xs text-white/65 hover:text-white">Invite by identity or ID</summary>
                 <div className="flex gap-2 border-t border-white/8 p-2">
-                    <input type="text" value={draft} disabled={saving} placeholder={placeholder} onChange={event => { setDraft(event.target.value); setErrorMessage(null); }} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); void commitDraft(); } }} className="min-h-11 min-w-0 flex-1 rounded-md border border-white/10 bg-white/5 px-3 text-sm text-white outline-none placeholder:text-white/45 focus:border-[#ff9db0]/60" />
+                    <input type="text" value={draft} disabled={saving} placeholder={placeholder} onChange={event => { setDraft(event.target.value); setErrorMessage(null); }} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); void commitDraft(); } }} className="min-h-11 min-w-0 flex-1 rounded-md border border-white/10 bg-white/5 px-3 text-sm text-white outline-none placeholder:text-white/55 focus:border-[#ff9db0]/60" />
                     <button type="button" disabled={saving || !normalizeToken(draft)} onClick={() => { void commitDraft(); }} className="min-h-11 rounded-md bg-[#e94560] px-4 text-xs font-medium text-white disabled:opacity-35">{saving ? 'Looking up…' : 'Add'}</button>
                 </div>
                 {errorMessage ? <div role="status" className={`px-3 pb-3 text-xs ${errorMessage.startsWith('Looking up') ? 'text-white/60' : 'text-[#ff9db0]'}`}>{errorMessage}</div> : null}

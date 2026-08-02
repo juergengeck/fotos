@@ -11,6 +11,7 @@ import { RenameModal } from '@/components/RenameModal';
 import { TimelineScrubber } from '@/components/TimelineScrubber';
 import { ClusterGallery } from '@/components/ClusterGallery';
 import { SelectionActionBar } from '@/components/SelectionActionBar';
+import { UndoToast } from '@/components/UndoToast';
 import { useGallery } from '@/hooks/useGallery';
 import { useHeadlessSource } from '@/hooks/useHeadlessSource';
 import { useBreadcrumbHistory } from '@/hooks/useBreadcrumbHistory';
@@ -47,7 +48,9 @@ import {
     publishLocalGlueProfileCredential,
 } from '@/lib/glueIdentity';
 import {
+    buildPersistentAppTaskPath,
     buildPersistentPhotoPath,
+    parsePersistentAppTask,
     parsePersistentPhotoRouteTarget,
 } from '@/lib/photoRoute';
 import { resolveGlueIdentityState } from '@/lib/glueIdentityState';
@@ -63,7 +66,12 @@ import { DEBUG_REGISTRATION_TOKEN, DEBUG_REGISTRATION_TTL_MS } from './config';
 import { setFotosRuntimeSnapshot, setFotosRuntimeVisiblePhotos } from './lib/runtimeDiagnostics';
 import { determineAccessibleHashes } from '@refinio/one.core/lib/util/determine-accessible-hashes.js';
 import { commitFotosShareScope } from '@/lib/fotosShareCertificates';
+import {
+    projectReceivedFotosShares,
+    type ReceivedFotosShareScope,
+} from '@/lib/fotosReceivedShareProjection';
 import type { FotosShareScope } from '@refinio/fotos.core';
+import {onVersionedObj} from '@refinio/one.core/lib/storage-versioned-objects.js';
 import {
     EMPTY_SELECTION_STATE,
     countHiddenSelection,
@@ -241,6 +249,7 @@ interface FotosDebugApi {
     }>>;
     getFotosSyncState: () => Promise<FotosShareSnapshot>;
     getShareState: () => Promise<FotosShareSnapshot>;
+    getReceivedShareScopes: () => ReceivedFotosShareScope[];
     getGalleryState: () => {
         isOpen: boolean;
         folderName: string | null;
@@ -311,6 +320,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
     const [incomingShareStatus, setIncomingShareStatus] = useState<IncomingShareInviteStatus>('idle');
     const [incomingShareError, setIncomingShareError] = useState<string | null>(null);
     const [shareSnapshot, setShareSnapshot] = useState<FotosShareSnapshot | null>(null);
+    const [receivedShareScopes, setReceivedShareScopes] = useState<ReceivedFotosShareScope[]>([]);
     const [confirmState, setConfirmState] = useState<{
         open: boolean;
         title: string;
@@ -318,6 +328,11 @@ export function App({ fotosModel: initialModel }: AppProps) {
         confirmLabel?: string;
         isDestructive?: boolean;
         onConfirm: () => void | Promise<void>;
+    } | null>(null);
+    const [undoState, setUndoState] = useState<{
+        id: number;
+        message: string;
+        onUndo: () => void;
     } | null>(null);
     const [renameState, setRenameState] = useState<{
         kind: 'cluster' | 'collection';
@@ -335,6 +350,10 @@ export function App({ fotosModel: initialModel }: AppProps) {
     }) => {
         setConfirmState({ open: true, ...opts });
     }, []);
+    const showUndo = useCallback((message: string, onUndo: () => void) => {
+        setUndoState({id: Date.now(), message, onUndo});
+    }, []);
+    const dismissUndo = useCallback(() => setUndoState(null), []);
 
     // Wire up model updater so async state changes (e.g. headlessConnected) trigger re-renders
     useEffect(() => {
@@ -378,6 +397,53 @@ export function App({ fotosModel: initialModel }: AppProps) {
         ),
         [fotosModel?.ownerId, fotosModel?.publicationIdentity],
     );
+
+    useEffect(() => {
+        if (!fotosModel || ownKnownPersonIds.size === 0) {
+            setReceivedShareScopes([]);
+            return;
+        }
+        let cancelled = false;
+        let refreshRunning = false;
+        let refreshQueued = false;
+        const refresh = async () => {
+            if (refreshRunning) {
+                refreshQueued = true;
+                return;
+            }
+            refreshRunning = true;
+            try {
+                const projected = (await Promise.all(Array.from(ownKnownPersonIds).map(subject => (
+                    projectReceivedFotosShares(subject, async signature => {
+                        try {
+                            return await fotosModel.leuteModel.trust.verifySignatureWithTrustedKeys(signature as any);
+                        } catch {
+                            return false;
+                        }
+                    })
+                )))).flat();
+                const unique = Array.from(new Map(projected.map(scope => [scope.certificateIdHash, scope])).values());
+                if (!cancelled) setReceivedShareScopes(unique);
+            } catch (error) {
+                console.warn('[fotos.sharing] Failed to project received certificates:', error);
+            } finally {
+                refreshRunning = false;
+                if (refreshQueued && !cancelled) {
+                    refreshQueued = false;
+                    void refresh();
+                }
+            }
+        };
+        void refresh();
+        const unsubscribe = onVersionedObj.addListener(result => {
+            const type = (result as {obj?: {$type$?: string}}).obj?.$type$;
+            if (type === 'FotosShareCertificate' || type === 'FotosShareManifest') void refresh();
+        });
+        return () => {
+            cancelled = true;
+            unsubscribe();
+        };
+    }, [fotosModel, ownKnownPersonIds]);
     const collectionSummaries = useMemo(
         () => buildFotosCollectionSummaries(fotosCollections.collections, gallery.folder.entries),
         [fotosCollections.collections, gallery.folder.entries],
@@ -623,14 +689,13 @@ export function App({ fotosModel: initialModel }: AppProps) {
             });
             return;
         }
-        showConfirm({
-            title: 'Delete collection',
-            message: `Delete “${collectionName}”? Its photos remain in the library. This cannot be undone.`,
-            confirmLabel: 'Delete collection',
-            isDestructive: true,
-            onConfirm: () => fotosCollections.deleteCollection(collectionId),
+        const deletedCollection = fotosCollections.libraryState.collections.find(collection => collection.id === collectionId);
+        if (!deletedCollection) return;
+        fotosCollections.deleteCollection(collectionId);
+        showUndo(`Collection “${collectionName}” deleted. Photos remain in the library.`, () => {
+            fotosCollections.restoreCollection(deletedCollection);
         });
-    }, [collectionSummaries, fotosCollections, showConfirm]);
+    }, [collectionSummaries, fotosCollections, showConfirm, showUndo]);
 
     const handleRemoveFolder = useCallback((folderId: string) => {
         const folderName = gallery.folder.folders.find(folder => folder.id === folderId)?.name ?? 'this folder';
@@ -940,26 +1005,36 @@ export function App({ fotosModel: initialModel }: AppProps) {
         );
         clearCollectionSelection();
         handleCollectionSelect(nextCollection.id);
+        showUndo(`Collection “${nextCollection.name}” created.`, () => {
+            fotosCollections.deleteCollection(nextCollection.id);
+        });
         return true;
     }, [
         clearCollectionSelection,
         fotosCollections,
         handleCollectionSelect,
+        showUndo,
         selectedClustersForCollections,
         selectedPhotosForCollections,
     ]);
 
     const handleAddSelectionToCollection = useCallback((collectionId: string) => {
         if (selectedPhotosForCollections.length === 0 && selectedClustersForCollections.length === 0) return;
+        const previousCollection = fotosCollections.libraryState.collections.find(collection => collection.id === collectionId);
+        if (!previousCollection) return;
         fotosCollections.addSelectionToCollection(
             collectionId,
             selectedPhotosForCollections,
             selectedClustersForCollections,
         );
         clearCollectionSelection();
+        showUndo(`Selection added to “${previousCollection.name}”.`, () => {
+            fotosCollections.restoreCollection(previousCollection);
+        });
     }, [
         clearCollectionSelection,
         fotosCollections,
+        showUndo,
         selectedClustersForCollections,
         selectedPhotosForCollections,
     ]);
@@ -1365,6 +1440,18 @@ export function App({ fotosModel: initialModel }: AppProps) {
         () => parsePersistentPhotoRouteTarget(routeLocation.search),
         [routeLocation.search],
     );
+    const taskRouteTarget = useMemo(
+        () => parsePersistentAppTask(routeLocation.search),
+        [routeLocation.search],
+    );
+    useEffect(() => {
+        if (taskRouteTarget) {
+            setSidebarTab(taskRouteTarget);
+            setSidebarVisible(true);
+        } else {
+            setSidebarTab('browse');
+        }
+    }, [taskRouteTarget]);
     const buildPhotoRoutePath = useCallback(
         (photoHash?: string | null) => buildPersistentPhotoPath(
             routeLocation.pathname,
@@ -1394,6 +1481,19 @@ export function App({ fotosModel: initialModel }: AppProps) {
             hash: nextUrl.hash,
         });
     }, [buildPhotoRoutePath, routeLocation.hash, routeLocation.pathname, routeLocation.search]);
+    const navigateAppTask = useCallback((tab: SidebarTab) => {
+        const task = tab === 'sharing' || tab === 'settings' ? tab : null;
+        const nextPath = buildPersistentAppTaskPath(routeLocation.pathname, routeLocation.search, task);
+        const nextUrl = new URL(window.location.href);
+        const [nextPathname, nextSearch = ''] = nextPath.split('?');
+        nextUrl.pathname = nextPathname;
+        nextUrl.search = nextSearch ? `?${nextSearch}` : '';
+        const currentRoute = `${routeLocation.pathname}${routeLocation.search}${routeLocation.hash}`;
+        const nextRoute = `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`;
+        if (currentRoute === nextRoute) return;
+        window.history.pushState({}, '', nextUrl.toString());
+        setRouteLocation({pathname: nextUrl.pathname, search: nextUrl.search, hash: nextUrl.hash});
+    }, [routeLocation.hash, routeLocation.pathname, routeLocation.search]);
     const openPhotoRoute = useCallback((photoHash: string, options?: { replace?: boolean }) => {
         const nextIndex = visiblePhotos.findIndex((photo) => photo.hash === photoHash);
         if (nextIndex >= 0) {
@@ -1537,7 +1637,32 @@ export function App({ fotosModel: initialModel }: AppProps) {
         setSidebarTab(tab);
         setSidebarVisible(true);
         setSidebarOpenRequest(request => request + 1);
-    }, []);
+        navigateAppTask(tab);
+    }, [navigateAppTask]);
+    const handleShareSelection = useCallback(() => {
+        if (selectedPhotosForCollections.length === 0 && selectedClustersForCollections.length === 0) return;
+        const timestamp = new Intl.DateTimeFormat(undefined, {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+        }).format(new Date());
+        const sharedSelection = fotosCollections.createCollection(
+            `Shared selection · ${timestamp}`,
+            selectedPhotosForCollections,
+            selectedClustersForCollections,
+        );
+        clearCollectionSelection();
+        openSidebarTab('sharing');
+        showUndo(`Selection scope “${sharedSelection.name}” created.`, () => {
+            fotosCollections.deleteCollection(sharedSelection.id);
+        });
+    }, [
+        clearCollectionSelection,
+        fotosCollections,
+        openSidebarTab,
+        showUndo,
+        selectedClustersForCollections,
+        selectedPhotosForCollections,
+    ]);
     const breadcrumbItems = useMemo(() => {
         const items: Array<{ key: string; label: string; onClick?: () => void }> = [];
 
@@ -1827,6 +1952,9 @@ export function App({ fotosModel: initialModel }: AppProps) {
         visiblePhotos,
         entries: gallery.folder.entries,
         sharePeerOptions,
+        receivedShareScopes,
+        createGalleryShareInvite,
+        acceptIncomingGalleryShareInvite,
     });
     debugRuntimeRef.current = {
         model: fotosModel,
@@ -1834,6 +1962,9 @@ export function App({ fotosModel: initialModel }: AppProps) {
         visiblePhotos,
         entries: gallery.folder.entries,
         sharePeerOptions,
+        receivedShareScopes,
+        createGalleryShareInvite,
+        acceptIncomingGalleryShareInvite,
     };
 
     useEffect(() => {
@@ -2358,14 +2489,16 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 };
             },
             createGalleryShareInvite: async () => {
-                const invite = await createGalleryShareInvite();
+                const invite = await debugRuntimeRef.current.createGalleryShareInvite();
                 return {
                     url: invite.url,
                     pin: invite.pin,
                     expiresAt: invite.payload.expiresAt,
                 };
             },
-            acceptGalleryShareInvite: async () => await acceptIncomingGalleryShareInvite({ requireDestination: false }),
+            acceptGalleryShareInvite: async () => (
+                await debugRuntimeRef.current.acceptIncomingGalleryShareInvite({ requireDestination: false })
+            ),
             forceRouteKeyConnect: async (personId: string, keySource: 'advertised' | 'certified' = 'advertised') => {
                 const activeModel = debugRuntimeRef.current.model;
                 if (
@@ -2450,6 +2583,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 await fotosShareController.refreshManifest();
                 return fotosShareController.getSnapshot();
             },
+            getReceivedShareScopes: () => debugRuntimeRef.current.receivedShareScopes,
             getGalleryState: () => {
                 const { folder, visiblePhotos: activeVisiblePhotos, entries: activeEntries } = debugRuntimeRef.current;
                 return {
@@ -2536,7 +2670,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                             {progressDisplay.label}{progressDisplay.countLabel ? ` ${progressDisplay.countLabel}` : ''}
                         </p>
                         {progressDetail && (
-                            <p aria-hidden="true" className="truncate text-xs text-white/45">{progressDetail}</p>
+                            <p aria-hidden="true" className="truncate text-xs text-white/55">{progressDetail}</p>
                         )}
                     </div>
                 </div>
@@ -2551,7 +2685,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         <img src="/cam.svg" className="h-40 w-40 invert opacity-15" style={{ objectFit: 'contain' }} />
                         <div className="space-y-2">
                             <div className="text-lg font-medium text-white/82">Downloading shared gallery</div>
-                            <p className="max-w-md text-sm leading-relaxed text-white/42">
+                            <p className="max-w-md text-sm leading-relaxed text-white/55">
                                 Photos will appear here as soon as they arrive. No local upload or folder selection is needed.
                             </p>
                         </div>
@@ -2607,7 +2741,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                         }
                                     }}
                                     placeholder="http://192.168.1.100:3000"
-                                    className="flex-1 px-3 py-2 rounded-lg border border-white/15 bg-black/30 text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-white/30"
+                                    className="flex-1 px-3 py-2 rounded-lg border border-white/15 bg-black/30 text-white text-sm placeholder:text-white/55 focus:outline-none focus:border-white/30"
                                     autoFocus
                                 />
                                 <button
@@ -2624,7 +2758,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                             </div>
                         ))}
 
-                        <p className="max-w-md text-center text-xs text-white/45">
+                        <p className="max-w-md text-center text-xs text-white/55">
                             {primaryIntakeSummary}
                         </p>
                     </div>
@@ -2645,6 +2779,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         identityReady={Boolean(fotosModel?.publicationIdentity)}
                         identityLabel={fotosModel?.publicationIdentity ? String(fotosModel.publicationIdentity) : null}
                         backgroundStatus={headerBackgroundStatus}
+                        galleryShareCount={fotosCollections.sharing.galleryPersonIds.length}
                         facetsOpen={sidebarVisible}
                         onModeChange={handleGalleryModeChange}
                         onQueryChange={gallery.setSearchQuery}
@@ -2741,7 +2876,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                         <div className="flex items-start justify-between gap-2">
                                             <div>
                                                 <p className="font-semibold text-xs mb-0.5">📅 Timeline Scrubber</p>
-                                                <p className="text-[11px] text-white/95 leading-tight">Drag this scrubber to jump to different dates in your library.</p>
+                                                <p className="text-xs text-white/95 leading-tight">Drag this scrubber to jump to different dates in your library.</p>
                                             </div>
                                             <button type="button" onClick={handleDismissOnboarding} className="text-white/60 hover:text-white text-xs font-bold shrink-0">✕</button>
                                         </div>
@@ -2766,6 +2901,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                             onSelectAllVisible={selectAllVisible}
                             onCreateCollection={handleCreateCollection}
                             onAddToCollection={handleAddSelectionToCollection}
+                            onShareSelection={handleShareSelection}
                             onExportPhotos={handleExportSelectedPhotos}
                             onNamePeople={handleNameSelectedPeople}
                             onGroupPeople={handleGroupSelectedPeople}
@@ -2779,7 +2915,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                     {/* Sidebar/task panel */}
                     {sidebarVisible && <Sidebar
                         activeTab={sidebarTab}
-                        onTabChange={setSidebarTab}
+                        onTabChange={openSidebarTab}
                         openRequest={sidebarOpenRequest}
                         tags={gallery.tags}
                         activeTag={gallery.activeTag}
@@ -2858,6 +2994,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         gallerySharePersonIds={fotosCollections.sharing.galleryPersonIds}
                         collectionSharePersonIds={fotosCollections.sharing.collectionPersonIds}
                         clusterSharePersonIds={fotosCollections.sharing.clusterPersonIds}
+                        receivedShareScopes={receivedShareScopes}
                         onGalleryShareChange={handleGalleryShareChange}
                         onCollectionShareChange={handleCollectionShareChange}
                         onClusterShareChange={handleClusterShareChange}
@@ -2894,17 +3031,31 @@ export function App({ fotosModel: initialModel }: AppProps) {
     return (
         <>
             {appContent}
+            {undoState ? (
+                <UndoToast
+                    key={undoState.id}
+                    message={undoState.message}
+                    elevated={selectedPhotoHashes.length + selectedClusterIds.length > 0}
+                    veryElevated={incomingShareStatus === 'accepted' && Boolean(incomingShareInvite)}
+                    onDismiss={dismissUndo}
+                    onUndo={() => {
+                        const undo = undoState.onUndo;
+                        dismissUndo();
+                        undo();
+                    }}
+                />
+            ) : null}
             {incomingShareInvite && incomingShareStatus !== 'accepted' && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
                     <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#141414] p-4 shadow-2xl">
                         <div className="space-y-1">
                             <div className="text-sm font-medium text-white/85">Open shared gallery</div>
-                            <div className="text-xs leading-relaxed text-white/38">
+                            <div className="text-xs leading-relaxed text-white/55">
                                 {incomingShareInvite.galleryName ?? 'Shared gallery'} from {incomingShareInvite.senderPersonId.slice(0, 12)}
                             </div>
                         </div>
                         <div className="mt-4 space-y-3">
-                            <div className="rounded-md border border-white/10 bg-black/25 px-3 py-2 text-xs leading-relaxed text-white/45">
+                            <div className="rounded-md border border-white/10 bg-black/25 px-3 py-2 text-xs leading-relaxed text-white/55">
                                 Choose a local folder for this shared gallery. fotos will use it as the destination while shared photos sync.
                             </div>
                             {incomingShareError && (
@@ -2920,7 +3071,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                 }}
                                 className={`w-full rounded-md px-3 py-2 text-xs font-medium transition-colors ${
                                     incomingShareBusy
-                                        ? 'bg-white/5 text-white/22 cursor-wait'
+                                        ? 'bg-white/5 text-white/55 cursor-wait'
                                         : 'bg-[#e94560] text-white hover:bg-[#d13354]'
                                 }`}
                             >
@@ -2931,7 +3082,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                     <div className="h-1.5 overflow-hidden rounded-full bg-white/8">
                                         <div className="fotos-progress-indeterminate h-full w-[35%] rounded-full bg-[#e94560]" />
                                     </div>
-                                    <div className="text-center text-[11px] text-white/35">
+                                    <div className="text-center text-xs text-white/55">
                                         {incomingShareStatusLabel}
                                     </div>
                                 </div>
@@ -2939,7 +3090,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                             <button
                                 type="button"
                                 onClick={() => setIncomingShareInvite(null)}
-                                className="w-full rounded-md px-3 py-1.5 text-xs text-white/30 transition-colors hover:text-white/55"
+                                className="w-full rounded-md px-3 py-1.5 text-xs text-white/55 transition-colors hover:text-white/55"
                             >
                                 Cancel
                             </button>
@@ -2948,11 +3099,11 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 </div>
             )}
             {incomingShareInvite && incomingShareStatus === 'accepted' && (
-                <div className="fixed bottom-4 left-1/2 z-40 w-[min(92vw,520px)] -translate-x-1/2 rounded-xl border border-white/10 bg-[#141414]/95 p-3 shadow-2xl backdrop-blur">
+                <div className={`fixed ${selectedPhotoHashes.length + selectedClusterIds.length > 0 ? 'bottom-40' : 'bottom-4'} left-1/2 z-40 w-[min(92vw,520px)] -translate-x-1/2 rounded-xl border border-white/10 bg-[#141414]/95 p-3 shadow-2xl backdrop-blur`}>
                     <div className="flex flex-col gap-3">
                         <div className="min-w-0 flex-1">
                             <div className="text-xs font-medium text-white/80">Shared gallery is syncing</div>
-                            <div className="text-[11px] text-white/35">{incomingShareProgressLabel}</div>
+                            <div className="text-xs text-white/55">{incomingShareProgressLabel}</div>
                             <div
                                 className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/8"
                                 role="progressbar"
@@ -2973,7 +3124,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                             <button
                                 type="button"
                                 onClick={() => setIncomingShareInvite(null)}
-                                className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] text-white/55 transition-colors hover:bg-white/10 hover:text-white/75"
+                                className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-white/55 transition-colors hover:bg-white/10 hover:text-white/75"
                             >
                                 Later
                             </button>
@@ -2983,7 +3134,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                     writeStoredSidebarTab('settings');
                                     setIncomingShareInvite(null);
                                 }}
-                                className="rounded-md bg-[#e94560] px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-[#d13354]"
+                                className="rounded-md bg-[#e94560] px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#d13354]"
                             >
                                 Use my ID
                             </button>
@@ -2991,7 +3142,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                     </div>
                 </div>
             )}
-            <UpdatePrompt />
+            <UpdatePrompt lane={undoState && incomingShareInvite && incomingShareStatus === 'accepted' ? 3 : undoState || (incomingShareInvite && incomingShareStatus === 'accepted') ? 2 : selectedPhotoHashes.length + selectedClusterIds.length > 0 ? 1 : 0} />
             <ContextMenu
                 x={contextMenu?.x ?? 0}
                 y={contextMenu?.y ?? 0}

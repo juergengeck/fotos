@@ -30,6 +30,7 @@ describe('AppHeader', () => {
             totalCount={12}
             identityReady
             backgroundStatus="Analyzing faces · 2/12"
+            galleryShareCount={2}
             facetsOpen={false}
             onModeChange={onModeChange}
             onQueryChange={vi.fn()}
@@ -42,6 +43,7 @@ describe('AppHeader', () => {
         expect(container.textContent).toContain('3/12');
         expect(container.textContent).toContain('Sync ready');
         expect(container.querySelector('[role="status"]')?.textContent).toContain('2/12');
+        expect(container.querySelector('[aria-label*="gallery shared with 2 people"]')).not.toBeNull();
         const people = Array.from(container.querySelectorAll('button')).find(button => button.textContent === 'People');
         act(() => people?.click());
         expect(onModeChange).toHaveBeenCalledWith('clusters');

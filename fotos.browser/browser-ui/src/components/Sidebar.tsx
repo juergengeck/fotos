@@ -13,6 +13,7 @@ import { LLMComparisonPanel } from './LLMComparisonPanel';
 import { ShareWithField, type SharePeerOption } from './ShareWithField';
 import type { ManagedFolder } from '@/hooks/useFolderAccess';
 import { ShareInviteCard } from './ShareInviteCard';
+import type {ReceivedFotosShareScope} from '@/lib/fotosReceivedShareProjection';
 
 export type SidebarTab = 'browse' | 'sharing' | 'settings';
 
@@ -95,6 +96,7 @@ interface SidebarProps {
     gallerySharePersonIds: string[];
     collectionSharePersonIds: Record<string, string[]>;
     clusterSharePersonIds: Record<string, string[]>;
+    receivedShareScopes: ReceivedFotosShareScope[];
     onGalleryShareChange: (personIds: string[]) => Promise<void> | void;
     onCollectionShareChange: (collectionId: string, personIds: string[]) => Promise<void> | void;
     onClusterShareChange: (clusterId: string, personIds: string[]) => Promise<void> | void;
@@ -147,6 +149,7 @@ export function Sidebar({
     gallerySharePersonIds,
     collectionSharePersonIds,
     clusterSharePersonIds,
+    receivedShareScopes,
     onGalleryShareChange,
     onCollectionShareChange,
     onClusterShareChange,
@@ -229,7 +232,7 @@ export function Sidebar({
                         <div className="flex items-start justify-between gap-2">
                             <div>
                                 <p className="font-semibold text-xs mb-0.5">📂 Mobile Navigation</p>
-                                <p className="text-[11px] text-white/95 leading-tight">Tap Browse or Settings at the bottom to explore features.</p>
+                                <p className="text-xs text-white/95 leading-tight">Tap Browse or Settings at the bottom to explore features.</p>
                             </div>
                             <button type="button" onClick={onDismissOnboarding} className="text-white/60 hover:text-white text-xs font-bold shrink-0">✕</button>
                         </div>
@@ -262,7 +265,7 @@ export function Sidebar({
                         onTouchEnd={handleTouchEnd}
                     >
                         <div className="w-12 h-1 rounded-full bg-white/20 mb-2" />
-                        <div className="text-[10px] font-semibold text-white/30 uppercase tracking-wider">
+                        <div className="text-xs font-semibold text-white/55 uppercase tracking-wider">
                             {tab}
                         </div>
                     </div>
@@ -274,9 +277,9 @@ export function Sidebar({
 
                 {faceSearchActive && (
                     <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
-                        <span className="text-[11px] text-blue-400/80 flex-1">Showing similar faces</span>
+                        <span className="text-xs text-blue-400/80 flex-1">Showing similar faces</span>
                         {onClearFaceSearch && (
-                            <button onClick={onClearFaceSearch} className="text-[11px] text-white/30 hover:text-white/60">clear</button>
+                            <button onClick={onClearFaceSearch} className="text-xs text-white/55 hover:text-white/60">clear</button>
                         )}
                     </div>
                 )}
@@ -301,6 +304,9 @@ export function Sidebar({
                             onToggleSelectedCluster={onToggleSelectedCluster}
                             onRenameCollection={onRenameCollection}
                             onDeleteCollection={onDeleteCollection}
+                            collectionSharePersonIds={collectionSharePersonIds}
+                            clusterSharePersonIds={clusterSharePersonIds}
+                            onOpenSharing={() => setTab('sharing')}
                             clusters={clusters}
                             people={people}
                             groups={groups}
@@ -334,6 +340,7 @@ export function Sidebar({
                             gallerySharePersonIds={gallerySharePersonIds}
                             collectionSharePersonIds={collectionSharePersonIds}
                             clusterSharePersonIds={clusterSharePersonIds}
+                            receivedShareScopes={receivedShareScopes}
                             onGalleryShareChange={onGalleryShareChange}
                             onCollectionShareChange={onCollectionShareChange}
                             onClusterShareChange={onClusterShareChange}
@@ -403,9 +410,9 @@ export function Sidebar({
             {/* Face search indicator */}
             {faceSearchActive && (
                 <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
-                    <span className="text-[11px] text-blue-400/80 flex-1">Showing similar faces</span>
+                    <span className="text-xs text-blue-400/80 flex-1">Showing similar faces</span>
                     {onClearFaceSearch && (
-                        <button onClick={onClearFaceSearch} className="text-[11px] text-white/30 hover:text-white/60">clear</button>
+                        <button onClick={onClearFaceSearch} className="text-xs text-white/55 hover:text-white/60">clear</button>
                     )}
                 </div>
             )}
@@ -435,6 +442,9 @@ export function Sidebar({
                         onToggleSelectedCluster={onToggleSelectedCluster}
                         onRenameCollection={onRenameCollection}
                         onDeleteCollection={onDeleteCollection}
+                        collectionSharePersonIds={collectionSharePersonIds}
+                        clusterSharePersonIds={clusterSharePersonIds}
+                        onOpenSharing={() => setTab('sharing')}
                         clusters={clusters}
                         people={people}
                         groups={groups}
@@ -468,6 +478,7 @@ export function Sidebar({
                         gallerySharePersonIds={gallerySharePersonIds}
                         collectionSharePersonIds={collectionSharePersonIds}
                         clusterSharePersonIds={clusterSharePersonIds}
+                        receivedShareScopes={receivedShareScopes}
                         onGalleryShareChange={onGalleryShareChange}
                         onCollectionShareChange={onCollectionShareChange}
                         onClusterShareChange={onClusterShareChange}
@@ -554,7 +565,7 @@ function TabBtnIcon({
             type="button"
             onClick={onClick}
             className={`flex flex-col items-center justify-center flex-1 h-full py-1 text-xs font-semibold transition-colors ${
-                active ? 'text-[#e94560]' : 'text-white/40 hover:text-white/60'
+                active ? 'text-[#e94560]' : 'text-white/55 hover:text-white/60'
             }`}
         >
             <Icon className="w-5 h-5 mb-0.5" />
@@ -584,7 +595,7 @@ function CollapsibleSection({
             <div className="flex items-center justify-between gap-2">
                 <button
                     onClick={() => setOpen(o => !o)}
-                    className="flex min-w-0 flex-1 items-center gap-1 text-[11px] text-white/25 uppercase tracking-wider font-medium hover:text-white/40 transition-colors"
+                    className="flex min-w-0 flex-1 items-center gap-1 text-xs text-white/55 uppercase tracking-wider font-medium hover:text-white/55 transition-colors"
                 >
                     <ChevronDown className={`w-3 h-3 transition-transform ${open ? '' : '-rotate-90'}`} />
                     {label}
@@ -619,7 +630,7 @@ function SizeSlider({ value, onChange }: { value: number; onChange: (value: numb
 
     return (
         <div className="flex items-center gap-2 mt-1.5">
-            <SlidersHorizontal className="w-3 h-3 text-white/25 shrink-0" />
+            <SlidersHorizontal className="w-3 h-3 text-white/55 shrink-0" />
             <input
                 type="range"
                 min={60}
@@ -632,7 +643,7 @@ function SizeSlider({ value, onChange }: { value: number; onChange: (value: numb
                 onBlur={e => commit(parseInt(e.target.value))}
                 className="flex-1 accent-white/50 h-1"
             />
-            <span className="text-[11px] text-white/30 w-8 text-right tabular-nums">{draft}</span>
+            <span className="text-xs text-white/55 w-8 text-right tabular-nums">{draft}</span>
         </div>
     );
 }
@@ -647,6 +658,7 @@ function BrowseTab({
     galleryMode,
     collections, activeCollectionId, onCollectionSelect,
     selectedClusterIds, onToggleSelectedCluster, onRenameCollection, onDeleteCollection,
+    collectionSharePersonIds, clusterSharePersonIds, onOpenSharing,
     clusters, people, groups,
     similarFaces, searchClusters,
     activeClusterId, onClusterSelect,
@@ -679,6 +691,9 @@ function BrowseTab({
     onToggleSelectedCluster: (clusterId: string) => void;
     onRenameCollection: (collectionId: string, name: string) => void;
     onDeleteCollection: (collectionId: string) => void;
+    collectionSharePersonIds: Record<string, string[]>;
+    clusterSharePersonIds: Record<string, string[]>;
+    onOpenSharing: () => void;
     clusters: FaceClusterSummary[];
     people: FaceClusterSummary[];
     groups: FaceClusterSummary[];
@@ -715,7 +730,7 @@ function BrowseTab({
                     <div className="flex items-start justify-between gap-2">
                         <div>
                             <p className="font-semibold text-xs mb-0.5">📂 Sidebar Navigation</p>
-                            <p className="text-[11px] text-white/95 leading-tight">Switch between Browse and Settings sections here.</p>
+                            <p className="text-xs text-white/95 leading-tight">Switch between Browse and Settings sections here.</p>
                         </div>
                         <button type="button" onClick={onDismissOnboarding} className="text-white/60 hover:text-white text-xs font-bold shrink-0">✕</button>
                     </div>
@@ -723,7 +738,7 @@ function BrowseTab({
             )}
 
             {/* Stats */}
-            <div className="text-xs text-white/35">
+            <div className="text-xs text-white/55">
                 {browseSummary}
             </div>
 
@@ -732,7 +747,7 @@ function BrowseTab({
                 defaultOpen={collections.length > 0}
             >
                 {collections.length === 0 ? (
-                    <div className="rounded-md border border-dashed border-white/10 px-2.5 py-2 text-[11px] text-white/24">
+                    <div className="rounded-md border border-dashed border-white/10 px-2.5 py-2 text-xs text-white/55">
                         Select photos or people, then use the selection action bar to create a collection.
                     </div>
                 ) : (
@@ -745,6 +760,8 @@ function BrowseTab({
                                 onClick={() => onCollectionSelect(collection.id === activeCollectionId ? null : collection.id)}
                                 onRename={onRenameCollection}
                                 onDelete={onDeleteCollection}
+                                sharedCount={collectionSharePersonIds[collection.id]?.length ?? 0}
+                                onOpenSharing={onOpenSharing}
                                 onContextMenu={(e) => onCollectionContextMenu?.(collection, e)}
                             />
                         ))}
@@ -768,15 +785,15 @@ function BrowseTab({
                                     disabled={!settings.analysis.faceAnalyticsEnabled}
                                     className="flex-1 accent-[#e94560] h-1"
                                 />
-                                <span className="w-8 text-right text-[11px] text-white/35 tabular-nums">
+                                <span className="w-8 text-right text-xs text-white/55 tabular-nums">
                                     {settings.analysis.clusterSensitivity}
                                 </span>
                             </div>
-                            <div className="flex items-center justify-between text-[11px] text-white/25">
+                            <div className="flex items-center justify-between text-xs text-white/55">
                                 <span>Merge more</span>
                                 <span>Split more</span>
                             </div>
-                            <div className="text-[11px] text-white/30">
+                            <div className="text-xs text-white/55">
                                 {clusters.length} clusters at this setting
                             </div>
                         </div>
@@ -785,7 +802,7 @@ function BrowseTab({
                     {activeClusterId && (
                         <button
                             onClick={() => onClusterSelect(null)}
-                            className="w-full text-left text-[11px] text-white/45 hover:text-white/65"
+                            className="w-full text-left text-xs text-white/55 hover:text-white/65"
                         >
                             ← Back to all clusters
                         </button>
@@ -793,12 +810,12 @@ function BrowseTab({
 
                     {activePersonGroupId && (
                         <div className="rounded-md border border-white/10 bg-white/5 px-2.5 py-2">
-                            <div className="text-[11px] text-white/45">
+                            <div className="text-xs text-white/55">
                                 This person is an explicit collapse of {activeCluster?.memberClusterIds.length ?? 0} clusters.
                             </div>
                             <button
                                 onClick={() => onSeparatePersonGroup(activePersonGroupId)}
-                                className="mt-2 rounded-md border border-white/10 bg-black/20 px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-white/55 transition-colors hover:bg-black/30 hover:text-white/75"
+                                className="mt-2 rounded-md border border-white/10 bg-black/20 px-2 py-1 text-xs uppercase tracking-[0.16em] text-white/55 transition-colors hover:bg-black/30 hover:text-white/75"
                             >
                                 Separate Clusters
                             </button>
@@ -822,6 +839,8 @@ function BrowseTab({
                                         onToggleSelection={() => onToggleSelectedCluster(cluster.clusterId)}
                                         onRename={onRenameFace}
                                         onDelete={cluster.memberClusterIds.length === 1 ? onDeleteFace : undefined}
+                                        sharedCount={clusterSharePersonIds[cluster.clusterId]?.length ?? 0}
+                                        onOpenSharing={onOpenSharing}
                                     />
                                 ))}
                             </div>
@@ -845,6 +864,8 @@ function BrowseTab({
                                         onToggleSelection={() => onToggleSelectedCluster(cluster.clusterId)}
                                         onRename={onRenameFace}
                                         onDelete={cluster.memberClusterIds.length === 1 ? onDeleteFace : undefined}
+                                        sharedCount={clusterSharePersonIds[cluster.clusterId]?.length ?? 0}
+                                        onOpenSharing={onOpenSharing}
                                     />
                                 ))}
                             </div>
@@ -872,6 +893,8 @@ function BrowseTab({
                                         onToggleSelection={() => onToggleSelectedCluster(cluster.clusterId)}
                                         onRename={onRenameFace}
                                         onDelete={cluster.memberClusterIds.length === 1 ? onDeleteFace : undefined}
+                                        sharedCount={clusterSharePersonIds[cluster.clusterId]?.length ?? 0}
+                                        onOpenSharing={onOpenSharing}
                                     />
                                 ))}
                             </div>
@@ -881,7 +904,7 @@ function BrowseTab({
                     <div>
                             <SectionLabel>Similar Faces</SectionLabel>
                             {selectedAssociationClusterId ? (
-                                <div className="mt-1 text-[11px] text-white/30">
+                                <div className="mt-1 text-xs text-white/55">
                                     Check faces to add them to the selected cluster.
                                 </div>
                             ) : null}
@@ -924,7 +947,7 @@ function BrowseTab({
                             <select
                                 value={sortBy}
                                 onChange={e => onSortByChange(e.target.value as 'date' | 'name' | 'added')}
-                                className="flex-1 bg-white/5 border border-white/10 text-[11px] text-white/60 px-2 py-1 rounded-md focus:outline-none cursor-pointer"
+                                className="flex-1 bg-white/5 border border-white/10 text-xs text-white/60 px-2 py-1 rounded-md focus:outline-none cursor-pointer"
                             >
                                 <option value="date">Date</option>
                                 <option value="name">Name</option>
@@ -932,7 +955,7 @@ function BrowseTab({
                             </select>
                             <button
                                 onClick={() => onSortOrderChange(sortOrder === 'asc' ? 'desc' : 'asc')}
-                                className="text-[11px] text-white/35 hover:text-white/60 px-2 py-1 bg-white/5 rounded-md border border-white/10"
+                                className="text-xs text-white/55 hover:text-white/60 px-2 py-1 bg-white/5 rounded-md border border-white/10"
                             >
                                 {sortOrder === 'desc' ? 'Newest' : 'Oldest'}
                             </button>
@@ -976,6 +999,8 @@ function BrowseTab({
                                         onToggleSelection={() => onToggleSelectedCluster(cluster.clusterId)}
                                         onRename={onRenameFace}
                                         onDelete={cluster.memberClusterIds.length === 1 ? onDeleteFace : undefined}
+                                        sharedCount={clusterSharePersonIds[cluster.clusterId]?.length ?? 0}
+                                        onOpenSharing={onOpenSharing}
                                     />
                                 ))}
                             </div>
@@ -991,10 +1016,10 @@ function TagPill({ active, onClick, label }: { active: boolean; onClick: () => v
     return (
         <button
             onClick={onClick}
-            className={`px-2 py-0.5 rounded-full text-[11px] border transition-colors ${
+            className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${
                 active
                     ? 'bg-white/10 text-white/80 border-white/20'
-                    : 'bg-white/5 text-white/35 border-transparent hover:text-white/55'
+                    : 'bg-white/5 text-white/55 border-transparent hover:text-white/55'
             }`}
         >
             {label}
@@ -1008,6 +1033,8 @@ function CollectionRow({
     onClick,
     onRename,
     onDelete,
+    sharedCount,
+    onOpenSharing,
     onContextMenu,
 }: {
     collection: FotosCollectionSummary;
@@ -1015,6 +1042,8 @@ function CollectionRow({
     onClick: () => void;
     onRename: (collectionId: string, name: string) => void;
     onDelete: (collectionId: string) => void;
+    sharedCount: number;
+    onOpenSharing: () => void;
     onContextMenu?: (e: React.MouseEvent | React.TouchEvent) => void;
 }) {
     const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -1069,7 +1098,7 @@ function CollectionRow({
             <button
                 type="button"
                 onClick={onClick}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-white/10 bg-black/20 text-[11px] font-semibold text-white/45 transition-colors hover:bg-white/10 hover:text-white/70"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-white/10 bg-black/20 text-xs font-semibold text-white/55 transition-colors hover:bg-white/10 hover:text-white/70"
                 aria-label={`Open collection ${collection.name}`}
             >
                 {collection.photoCount}
@@ -1081,10 +1110,15 @@ function CollectionRow({
                     placeholder="Name this collection"
                     onSubmit={name => onRename(collection.id, name)}
                 />
-                <div className="text-[11px] text-white/25">
+                <div className="text-xs text-white/55">
                     {collection.photoCount} photo{collection.photoCount === 1 ? '' : 's'} · {collection.faceCount} face{collection.faceCount === 1 ? '' : 's'}
                 </div>
             </div>
+            {sharedCount > 0 ? (
+                <button type="button" onClick={onOpenSharing} className="flex min-h-11 items-center gap-1.5 rounded-md px-2 text-xs text-emerald-200 hover:bg-emerald-500/10" aria-label={`${collection.name} shared with ${sharedCount} ${sharedCount === 1 ? 'person' : 'people'}`} title="Open sharing">
+                    <Link className="h-3.5 w-3.5" /> {sharedCount}
+                </button>
+            ) : null}
             <button
                 type="button"
                 onClick={event => {
@@ -1092,7 +1126,7 @@ function CollectionRow({
                     onDelete(collection.id);
                 }}
                 onKeyDown={event => event.stopPropagation()}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-white/45 transition-colors hover:bg-red-500/10 hover:text-red-300"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-white/55 transition-colors hover:bg-red-500/10 hover:text-red-300"
                 aria-label={`Delete collection ${collection.name}`}
                 title="Delete collection"
             >
@@ -1113,6 +1147,8 @@ function ClusterBrowseRow({
     onToggleSelection,
     onRename,
     onDelete,
+    sharedCount = 0,
+    onOpenSharing,
 }: {
     cluster: FaceClusterSummary;
     active: boolean;
@@ -1124,6 +1160,8 @@ function ClusterBrowseRow({
     onToggleSelection?: () => void;
     onRename?: (clusterId: string, name: string) => Promise<void> | void;
     onDelete?: (clusterId: string) => void;
+    sharedCount?: number;
+    onOpenSharing?: () => void;
 }) {
     const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
@@ -1155,7 +1193,7 @@ function ClusterBrowseRow({
         <div
             className={`group flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left transition-colors ${
                 selectionChecked
-                    ? 'border-[#ff9db0] bg-[#1f1015] ring-1 ring-[#e94560]/70'
+                    ? 'border-sky-400 bg-sky-950/55 ring-1 ring-sky-500/70'
                     : active
                     ? 'border-[#e94560]/50 bg-[#e94560]/10'
                     : 'border-white/10 bg-white/5 hover:bg-white/10'
@@ -1188,13 +1226,18 @@ function ClusterBrowseRow({
                         onSubmit={name => onRename(cluster.memberClusterIds[0] ?? cluster.clusterId, name)}
                     />
                 ) : (
-                    <div className="truncate text-[11px] text-white/75">{cluster.label}</div>
+                    <div className="truncate text-xs text-white/75">{cluster.label}</div>
                 )}
-                <div className="text-[11px] text-white/25">
+                <div className="text-xs text-white/55">
                     {cluster.faceCount} faces · {cluster.photoCount} photos
                     {cluster.memberClusterIds.length > 1 ? ` · ${cluster.memberClusterIds.length} clusters` : ''}
                 </div>
             </div>
+            {sharedCount > 0 && onOpenSharing ? (
+                <button type="button" onClick={onOpenSharing} className="flex min-h-11 items-center gap-1.5 rounded-md px-2 text-xs text-emerald-200 hover:bg-emerald-500/10" aria-label={`${cluster.label} shared with ${sharedCount} ${sharedCount === 1 ? 'person' : 'people'}`} title="Open sharing">
+                    <Link className="h-3.5 w-3.5" /> {sharedCount}
+                </button>
+            ) : null}
             {(showSelectionCheckbox || onDelete) && (
                 <div className="flex shrink-0 items-center gap-1.5">
                     {onDelete && (
@@ -1205,7 +1248,7 @@ function ClusterBrowseRow({
                                 onDelete(cluster.memberClusterIds[0] ?? cluster.clusterId);
                             }}
                             onKeyDown={event => event.stopPropagation()}
-                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-white/45 transition-colors hover:bg-red-500/10 hover:text-red-300"
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-white/55 transition-colors hover:bg-red-500/10 hover:text-red-300"
                             aria-label={`Delete face cluster ${cluster.label}`}
                             title="Delete cluster"
                         >
@@ -1221,7 +1264,7 @@ function ClusterBrowseRow({
                                 type="checkbox"
                                 checked={Boolean(selectionChecked)}
                                 onChange={() => onToggleSelection?.()}
-                                className="h-4 w-4 rounded-sm border border-white/20 bg-black/20 accent-[#e94560]"
+                                className="h-5 w-5 rounded-sm border border-white/20 bg-black/20 accent-sky-500"
                                 aria-label={selectionChecked ? `Remove ${cluster.label} from collection selection` : `Add ${cluster.label} to collection selection`}
                             />
                         </label>
@@ -1294,27 +1337,27 @@ function SimilarFaceRow({
                 )}
             </button>
             <div className="min-w-0 flex-1" title={`Open ${match.photo.name}`}>
-                <div className="truncate text-[11px] text-white/75">{match.photo.name}</div>
-                <div className="text-[11px] text-white/25">{(match.similarity * 100).toFixed(0)}% match</div>
+                <div className="truncate text-xs text-white/75">{match.photo.name}</div>
+                <div className="text-xs text-white/55">{(match.similarity * 100).toFixed(0)}% match</div>
                 {match.clusterId && onRename ? (
                     <div className="mt-1">
                         <InlineRenameField
                             value={match.personName}
                             fallback={match.personName?.trim() || 'Unknown'}
                             onSubmit={onRename}
-                            labelClassName="truncate text-[11px] text-white/38"
-                            inputClassName="min-w-0 flex-1 rounded-md border border-[#e94560]/35 bg-[#1a1115] px-2 py-1 text-[11px] text-white placeholder:text-white/20 focus:border-[#ff9db0]/60 focus:outline-none"
+                            labelClassName="truncate text-xs text-white/55"
+                            inputClassName="min-w-0 flex-1 rounded-md border border-[#e94560]/35 bg-[#1a1115] px-2 py-1 text-xs text-white placeholder:text-white/55 focus:border-[#ff9db0]/60 focus:outline-none"
                         />
                     </div>
                 ) : (
-                    <div className="text-[11px] text-white/25">{match.personName?.trim() || 'Unknown'}</div>
+                    <div className="text-xs text-white/55">{match.personName?.trim() || 'Unknown'}</div>
                 )}
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
                 <button
                     type="button"
                     onClick={onDelete}
-                    className="flex h-11 w-11 items-center justify-center rounded-md text-white/35 transition-colors hover:bg-red-500/10 hover:text-red-300"
+                    className="flex h-11 w-11 items-center justify-center rounded-md text-white/55 transition-colors hover:bg-red-500/10 hover:text-red-300"
                     aria-label={`Delete ${match.photo.name}`}
                     title={`Delete ${match.photo.name}`}
                 >
@@ -1328,7 +1371,7 @@ function SimilarFaceRow({
                         associated
                             ? 'border-[#e94560]/70 bg-[#e94560] text-white'
                             : canAssociate
-                                ? 'border-white/20 bg-black/20 text-white/20 hover:border-[#ff9db0]/60 hover:bg-[#e94560]/12 hover:text-[#ff9db0]'
+                                ? 'border-white/20 bg-black/20 text-white/55 hover:border-[#ff9db0]/60 hover:bg-[#e94560]/12 hover:text-[#ff9db0]'
                                 : 'border-white/10 bg-black/10 text-transparent opacity-45 cursor-not-allowed'
                     }`}
                     title={
@@ -1388,19 +1431,19 @@ function FolderManagementPanel({
                             {managedFolders.map(folder => (
                                 <div key={folder.id} className={`flex min-h-11 items-center gap-1.5 rounded-md border px-2 text-xs ${folder.isCurrent ? 'border-white/15 bg-white/8 text-white/75' : 'border-white/8 bg-white/[0.025] text-white/55'}`}>
                                     <button type="button" onClick={() => onSelectFolder?.(folder.id)} className="flex min-h-11 min-w-0 flex-1 items-center gap-2 text-left" title={folder.name} aria-current={folder.isCurrent ? 'true' : undefined}>
-                                        <FolderOpen className="h-4 w-4 shrink-0 text-white/45" />
+                                        <FolderOpen className="h-4 w-4 shrink-0 text-white/55" />
                                         <span className="min-w-0 flex-1 truncate">{folder.name}</span>
                                     </button>
-                                    {folder.entryCount > 0 ? <span className="tabular-nums text-white/45">{folder.entryCount}</span> : null}
-                                    {folder.isCurrent ? <span className="uppercase tracking-wider text-white/45">current</span> : null}
+                                    {folder.entryCount > 0 ? <span className="tabular-nums text-white/55">{folder.entryCount}</span> : null}
+                                    {folder.isCurrent ? <span className="uppercase tracking-wider text-white/55">current</span> : null}
                                     {onRemoveFolder ? (
-                                        <button type="button" onClick={() => onRemoveFolder(folder.id)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-white/45 hover:bg-red-500/10 hover:text-red-300" aria-label={`Remove ${folder.name}`} title={`Remove ${folder.name}`}><Trash2 className="h-4 w-4" /></button>
+                                        <button type="button" onClick={() => onRemoveFolder(folder.id)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-white/55 hover:bg-red-500/10 hover:text-red-300" aria-label={`Remove ${folder.name}`} title={`Remove ${folder.name}`}><Trash2 className="h-4 w-4" /></button>
                                     ) : null}
                                 </div>
                             ))}
                         </div>
                     ) : folderName ? (
-                        <div className="flex min-h-11 items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 text-xs text-white/65"><FolderOpen className="h-4 w-4 shrink-0 text-white/45" /><span className="min-w-0 flex-1 truncate">{folderName}</span><span className="uppercase tracking-wider text-white/45">current</span></div>
+                        <div className="flex min-h-11 items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 text-xs text-white/65"><FolderOpen className="h-4 w-4 shrink-0 text-white/55" /><span className="min-w-0 flex-1 truncate">{folderName}</span><span className="uppercase tracking-wider text-white/55">current</span></div>
                     ) : (
                         <div className="rounded-md border border-dashed border-white/10 bg-white/[0.03] px-3 py-3 text-xs text-white/55">No folder selected</div>
                     )}
@@ -1427,6 +1470,7 @@ function LibrarySharingPanel({
     gallerySharePersonIds,
     collectionSharePersonIds,
     clusterSharePersonIds,
+    receivedShareScopes,
     onGalleryShareChange,
     onCollectionShareChange,
     onClusterShareChange,
@@ -1450,6 +1494,7 @@ function LibrarySharingPanel({
     gallerySharePersonIds: string[];
     collectionSharePersonIds: Record<string, string[]>;
     clusterSharePersonIds: Record<string, string[]>;
+    receivedShareScopes: ReceivedFotosShareScope[];
     onGalleryShareChange: (personIds: string[]) => Promise<void> | void;
     onCollectionShareChange: (collectionId: string, personIds: string[]) => Promise<void> | void;
     onClusterShareChange: (clusterId: string, personIds: string[]) => Promise<void> | void;
@@ -1460,10 +1505,18 @@ function LibrarySharingPanel({
         ? clusters.filter(cluster => cluster.label.toLocaleLowerCase().includes(normalizedClusterShareQuery))
         : clusters;
     const visibleSharingClusters = matchingSharingClusters.slice(0, 50);
+    const outgoingScopeCount = Number(gallerySharePersonIds.length > 0)
+        + Object.values(collectionSharePersonIds).filter(personIds => personIds.length > 0).length
+        + Object.values(clusterSharePersonIds).filter(personIds => personIds.length > 0).length;
+    const activeReceivedCount = receivedShareScopes.filter(scope => scope.status === 'active').length;
 
     return (
         <>
             <SectionLabel>Sharing</SectionLabel>
+            <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg border border-white/10 bg-white/[0.035] p-3"><div className="text-lg font-semibold text-white">{outgoingScopeCount}</div><div className="text-xs text-white/55">outgoing scopes</div></div>
+                <div className="rounded-lg border border-white/10 bg-white/[0.035] p-3"><div className="text-lg font-semibold text-white">{activeReceivedCount}</div><div className="text-xs text-white/55">received scopes</div></div>
+            </div>
             <CollapsibleSection label="Share gallery">
                 <div className="space-y-2">
                     {onCreateGalleryShareInvite && (
@@ -1473,9 +1526,9 @@ function LibrarySharingPanel({
                             onClick={() => {
                                 void onCreateGalleryShareInvite();
                             }}
-                            className={`flex w-full items-center justify-center gap-2 rounded-md border px-2.5 py-1.5 text-[11px] uppercase tracking-[0.16em] transition-colors ${
+                            className={`flex w-full items-center justify-center gap-2 rounded-md border px-2.5 py-1.5 text-xs uppercase tracking-[0.16em] transition-colors ${
                                 creatingGalleryShareInvite
-                                    ? 'border-white/10 bg-white/5 text-white/20 cursor-wait'
+                                    ? 'border-white/10 bg-white/5 text-white/55 cursor-wait'
                                     : 'border-[#e94560]/25 bg-[#e94560]/10 text-[#ff9db0] hover:bg-[#e94560]/16'
                             }`}
                         >
@@ -1487,7 +1540,7 @@ function LibrarySharingPanel({
                         <ShareInviteCard invite={galleryShareInvite} onRevoke={onRevokeGalleryShareInvite} />
                     ) : null}
                     <div className="pt-1">
-                        <div className="mb-1 text-[11px] uppercase tracking-[0.16em] text-white/22">Existing people</div>
+                        <div className="mb-1 text-xs uppercase tracking-[0.16em] text-white/55">Existing people</div>
                         <ShareWithField
                             value={gallerySharePersonIds}
                             peers={sharePeerOptions}
@@ -1500,7 +1553,7 @@ function LibrarySharingPanel({
 
             <CollapsibleSection label="Collection Sharing" defaultOpen={collections.length > 0}>
                 {collections.length === 0 ? (
-                    <div className="rounded-md border border-dashed border-white/10 px-2.5 py-2 text-[11px] text-white/24">
+                    <div className="rounded-md border border-dashed border-white/10 px-2.5 py-2 text-xs text-white/55">
                         Create collections in Browse to manage sharing here.
                     </div>
                 ) : (
@@ -1529,7 +1582,7 @@ function LibrarySharingPanel({
                     <div className="space-y-3">
                         <label className="block">
                             <span className="sr-only">Search people sharing scopes</span>
-                            <input type="search" value={clusterShareQuery} onChange={event => setClusterShareQuery(event.target.value)} placeholder="Search people…" className="min-h-11 w-full rounded-md border border-white/12 bg-black/25 px-3 text-xs text-white outline-none placeholder:text-white/40 focus:border-[#ff9db0]/60" />
+                            <input type="search" value={clusterShareQuery} onChange={event => setClusterShareQuery(event.target.value)} placeholder="Search people…" className="min-h-11 w-full rounded-md border border-white/12 bg-black/25 px-3 text-xs text-white outline-none placeholder:text-white/55 focus:border-[#ff9db0]/60" />
                         </label>
                         <div className="text-xs text-white/55">Showing {visibleSharingClusters.length} of {matchingSharingClusters.length} matching people</div>
                         {visibleSharingClusters.map(cluster => (
@@ -1542,6 +1595,25 @@ function LibrarySharingPanel({
                             />
                         ))}
                         {visibleSharingClusters.length === 0 ? <div className="rounded-md border border-dashed border-white/10 px-3 py-3 text-xs text-white/55">No people match this search.</div> : null}
+                    </div>
+                )}
+            </CollapsibleSection>
+
+            <CollapsibleSection label="Received" defaultOpen={receivedShareScopes.length > 0}>
+                {receivedShareScopes.length === 0 ? (
+                    <div className="rounded-md border border-dashed border-white/10 px-3 py-3 text-xs text-white/55">No certificate-backed shares received.</div>
+                ) : (
+                    <div className="space-y-2">
+                        {receivedShareScopes.map(scope => (
+                            <div key={scope.certificateIdHash} className="rounded-md border border-white/10 bg-white/[0.035] p-3 text-xs">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0"><div className="truncate font-medium text-white/85">{scope.scope.kind} · {scope.scope.id}</div><div className="truncate text-white/50">from {scope.issuer.slice(0, 16)}…{scope.photoCount !== null ? ` · ${scope.photoCount} photos` : ''}</div></div>
+                                    <span className={`rounded-full px-2 py-1 ${scope.status === 'active' ? 'bg-emerald-500/12 text-emerald-200' : scope.status === 'revoked' ? 'bg-white/8 text-white/60' : 'bg-amber-500/12 text-amber-100'}`}>{scope.status === 'active' ? 'Verified' : scope.status === 'revoked' ? 'Revoked' : 'Invalid'}</span>
+                                </div>
+                                {scope.status === 'revoked' ? <p className="mt-2 text-white/55">Future updates stopped. Photos already stored locally remain.</p> : null}
+                                {scope.invalidReason ? <p className="mt-2 text-amber-100/80">{scope.invalidReason}</p> : null}
+                            </div>
+                        ))}
                     </div>
                 )}
             </CollapsibleSection>
@@ -1579,8 +1651,8 @@ function LibraryConfigPanel({
                         className="mt-0.5 h-3.5 w-3.5 accent-[#e94560]"
                     />
                     <div className="space-y-1">
-                        <div className="text-[11px] text-white/72">Claim authorship on ingest</div>
-                        <p className="text-[11px] leading-relaxed text-white/30">
+                        <div className="text-xs text-white/72">Claim authorship on ingest</div>
+                        <p className="text-xs leading-relaxed text-white/55">
                             Sign each imported image hash with this fotos identity so authenticity proof ships with shared photos.
                         </p>
                     </div>
@@ -1588,11 +1660,11 @@ function LibraryConfigPanel({
             )}
 
             <div>
-                <label className="text-[11px] text-white/40 mb-1 block">Default mode</label>
+                <label className="text-xs text-white/55 mb-1 block">Default mode</label>
                 <select
                     value={settings.storage.defaultMode}
                     onChange={e => onUpdateStorage({ defaultMode: e.target.value as StorageMode })}
-                    className="w-full bg-white/5 border border-white/10 text-[11px] text-white/60 px-2.5 py-1.5 rounded-md focus:outline-none cursor-pointer"
+                    className="w-full bg-white/5 border border-white/10 text-xs text-white/60 px-2.5 py-1.5 rounded-md focus:outline-none cursor-pointer"
                 >
                     <option value="reference">Reference</option>
                     <option value="metadata">Metadata</option>
@@ -1600,7 +1672,7 @@ function LibraryConfigPanel({
                 </select>
             </div>
 
-            <div className="p-2.5 bg-white/5 rounded-md text-[11px] text-white/35 space-y-0.5">
+            <div className="p-2.5 bg-white/5 rounded-md text-xs text-white/55 space-y-0.5">
                 <p><span className="text-yellow-400/60 font-mono">R</span> Reference — pointer to file</p>
                 <p><span className="text-blue-400/60 font-mono">M</span> Metadata — EXIF + thumbnail</p>
                 <p><span className="text-green-400/60 font-mono">I</span> Ingest — full blob copy</p>
@@ -1635,7 +1707,7 @@ function ManageOptionButton({
             className={`min-h-11 w-full rounded-md border px-3 py-2 text-left text-xs transition-colors ${
                 accent
                     ? 'border-[#e94560]/25 bg-[#e94560]/8 text-[#ff9db0]/75 hover:bg-[#e94560]/14 hover:text-[#ffc3cf]'
-                    : 'border-white/10 bg-white/5 text-white/45 hover:bg-white/10 hover:text-white/68'
+                    : 'border-white/10 bg-white/5 text-white/55 hover:bg-white/10 hover:text-white/68'
             }`}
         >
             {children}
@@ -1661,7 +1733,7 @@ function ManageCollectionShareRow({
     return (
         <div className="space-y-2 rounded-md border border-white/10 bg-white/[0.035] px-2.5 py-2">
             <div className="flex items-start gap-2">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-white/10 bg-black/20 text-[11px] font-semibold text-white/45">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-white/10 bg-black/20 text-xs font-semibold text-white/55">
                     {collection.photoCount}
                 </div>
                 <div className="min-w-0 flex-1">
@@ -1670,16 +1742,16 @@ function ManageCollectionShareRow({
                         fallback={collection.name}
                         placeholder="Name this collection"
                         onSubmit={name => onRename(collection.id, name)}
-                        labelClassName="truncate text-[11px] text-white/75"
+                        labelClassName="truncate text-xs text-white/75"
                     />
-                    <div className="text-[11px] text-white/25">
+                    <div className="text-xs text-white/55">
                         {collection.photoCount} photo{collection.photoCount === 1 ? '' : 's'} · {collection.faceCount} face{collection.faceCount === 1 ? '' : 's'}
                     </div>
                 </div>
                 <button
                     type="button"
                     onClick={() => onDelete(collection.id)}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-white/45 transition-colors hover:bg-red-500/10 hover:text-red-300"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-white/55 transition-colors hover:bg-red-500/10 hover:text-red-300"
                     aria-label={`Delete collection ${collection.name}`}
                     title="Delete collection"
                 >
@@ -1710,8 +1782,8 @@ function ManageClusterShareRow({
     return (
         <div className="space-y-2 rounded-md border border-white/10 bg-white/[0.035] px-2.5 py-2">
             <div className="space-y-0.5">
-                <div className="truncate text-[11px] text-white/72">{cluster.label}</div>
-                <div className="text-[11px] text-white/25">
+                <div className="truncate text-xs text-white/72">{cluster.label}</div>
+                <div className="text-xs text-white/55">
                     {cluster.photoCount} photo{cluster.photoCount === 1 ? '' : 's'} · {cluster.faceCount} face{cluster.faceCount === 1 ? '' : 's'}
                     {cluster.memberClusterIds.length > 1 ? ` · ${cluster.memberClusterIds.length} clusters` : ''}
                 </div>
@@ -1840,10 +1912,10 @@ function SettingsTab({
                         <button
                             key={section.id}
                             onClick={() => scrollToSection(section.id)}
-                            className={`shrink-0 text-[11px] font-medium px-2.5 py-1 rounded-full transition-colors ${
+                            className={`shrink-0 text-xs font-medium px-2.5 py-1 rounded-full transition-colors ${
                                 activeSection === section.id
                                     ? 'bg-white/10 text-white/80'
-                                    : 'text-white/35 hover:text-white/55'
+                                    : 'text-white/55 hover:text-white/55'
                             }`}
                         >
                             {section.label}
@@ -1926,8 +1998,8 @@ function SettingsTab({
                                 className="mt-0.5 h-3.5 w-3.5 accent-[#e94560]"
                             />
                             <div className="space-y-1">
-                                <div className="text-[11px] text-white/72">Enable face analytics</div>
-                                <p className="text-[11px] leading-relaxed text-white/30">
+                                <div className="text-xs text-white/72">Enable face analytics</div>
+                                <p className="text-xs leading-relaxed text-white/55">
                                     Download face models only when you choose to use people clustering and similar-face search.
                                 </p>
                             </div>
@@ -1938,7 +2010,7 @@ function SettingsTab({
                                 <div className="flex items-start justify-between gap-2">
                                     <div>
                                         <p className="font-semibold text-xs mb-0.5">👤 Face & AI Analytics</p>
-                                        <p className="text-[11px] text-white/95 leading-tight">Enable face analytics here to cluster people and enable facial search.</p>
+                                        <p className="text-xs text-white/95 leading-tight">Enable face analytics here to cluster people and enable facial search.</p>
                                     </div>
                                     <button type="button" onClick={onDismissOnboarding} className="text-white/60 hover:text-white text-xs font-bold shrink-0">✕</button>
                                 </div>
@@ -1953,8 +2025,8 @@ function SettingsTab({
                                 className="mt-0.5 h-3.5 w-3.5 accent-[#e94560]"
                             />
                             <div className="space-y-1">
-                                <div className="text-[11px] text-white/72">Enable semantic search</div>
-                                <p className="text-[11px] leading-relaxed text-white/30">
+                                <div className="text-xs text-white/72">Enable semantic search</div>
+                                <p className="text-xs leading-relaxed text-white/55">
                                     Download the multimodal search model only when you want meaning-based search.
                                 </p>
                             </div>
@@ -1973,27 +2045,27 @@ function SettingsTab({
                                 className="mt-0.5 h-3.5 w-3.5 accent-[#e94560]"
                             />
                             <div className="space-y-1">
-                                <div className="text-[11px] text-white/72">Remember places as you browse</div>
-                                <p className="text-[11px] leading-relaxed text-white/30">
+                                <div className="text-xs text-white/72">Remember places as you browse</div>
+                                <p className="text-xs leading-relaxed text-white/55">
                                     Save gallery locations in synced settings so your trusted devices can resume where you left off.
                                 </p>
                             </div>
                         </label>
 
-                        <div className="rounded-md bg-white/[0.035] px-2.5 py-2 text-[11px] text-white/30">
+                        <div className="rounded-md bg-white/[0.035] px-2.5 py-2 text-xs text-white/55">
                             {historyReady
                                 ? `${historyVisibleEntryCount} saved place${historyVisibleEntryCount === 1 ? '' : 's'} across ${historyBranchCount} branch${historyBranchCount === 1 ? '' : 'es'}`
                                 : 'Loading synced history...'}
                         </div>
 
                         {!historyEnabled && historyVisibleEntryCount > 0 && (
-                            <div className="text-[11px] leading-relaxed text-white/24">
+                            <div className="text-xs leading-relaxed text-white/55">
                                 Recording is paused. Existing branches stay available until you delete them.
                             </div>
                         )}
 
                         {historyVisibleEntryCount === 0 ? (
-                            <div className="rounded-md border border-dashed border-white/10 px-2.5 py-2 text-[11px] text-white/24">
+                            <div className="rounded-md border border-dashed border-white/10 px-2.5 py-2 text-xs text-white/55">
                                 {historyEnabled ? 'Open folders and follow breadcrumbs to start a shared history.' : 'Enable recording to save breadcrumb branches here.'}
                             </div>
                         ) : (
@@ -2156,8 +2228,8 @@ function SettingsCheckbox({
                 className="mt-0.5 h-3.5 w-3.5 accent-[#e94560]"
             />
             <div className="space-y-1">
-                <div className="text-[11px] text-white/72">{label}</div>
-                <p className="text-[11px] leading-relaxed text-white/30">{detail}</p>
+                <div className="text-xs text-white/72">{label}</div>
+                <p className="text-xs leading-relaxed text-white/55">{detail}</p>
             </div>
         </label>
     );
@@ -2166,7 +2238,7 @@ function SettingsCheckbox({
 function SmallField({ label, children }: { label: string; children: React.ReactNode }) {
     return (
         <label className="block">
-            <span className="text-[11px] text-white/30 mb-0.5 block">{label}</span>
+            <span className="text-xs text-white/55 mb-0.5 block">{label}</span>
             {children}
         </label>
     );
@@ -2206,17 +2278,17 @@ function HistoryBranchRow({
             >
                 <div className="flex items-start gap-2">
                     <div className="min-w-0 flex-1 space-y-1">
-                        <div className="truncate text-[11px] text-white/72">
+                        <div className="truncate text-xs text-white/72">
                             {label}
                         </div>
-                        <div className="truncate text-[11px] text-white/25">
+                        <div className="truncate text-xs text-white/55">
                             {trail || folderName || 'Library'}
                         </div>
-                        <div className="text-[11px] text-white/18">
+                        <div className="text-xs text-white/55">
                             {new Date(node.entry.createdAt).toLocaleString()}
                         </div>
                         {!canNavigate && (
-                            <div className="text-[11px] leading-relaxed text-white/18">
+                            <div className="text-xs leading-relaxed text-white/55">
                                 Open {folderName || 'this folder'} to restore this branch.
                             </div>
                         )}
@@ -2226,12 +2298,12 @@ function HistoryBranchRow({
                             type="button"
                             onClick={() => onNavigate(node.entry.eventId)}
                             disabled={!canNavigate || isCurrent}
-                            className={`rounded-md px-2 py-1 text-[11px] transition-colors ${
+                            className={`rounded-md px-2 py-1 text-xs transition-colors ${
                                 isCurrent
                                     ? 'bg-[#e94560]/15 text-[#ff9db0]'
                                     : canNavigate
                                         ? 'bg-white/6 text-white/55 hover:bg-white/10 hover:text-white/72'
-                                        : 'bg-white/4 text-white/20 cursor-not-allowed'
+                                        : 'bg-white/4 text-white/55 cursor-not-allowed'
                             }`}
                         >
                             {isCurrent ? 'Current' : 'Open'}
@@ -2239,7 +2311,7 @@ function HistoryBranchRow({
                         <button
                             type="button"
                             onClick={() => onDelete(node.entry.eventId)}
-                            className="flex h-11 w-11 items-center justify-center rounded-md text-white/45 transition-colors hover:bg-red-500/10 hover:text-red-300"
+                            className="flex h-11 w-11 items-center justify-center rounded-md text-white/55 transition-colors hover:bg-red-500/10 hover:text-red-300"
                             aria-label={`Delete history entry ${label}`}
                         >
                             <Trash2 className="w-3 h-3" />

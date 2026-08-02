@@ -100,11 +100,12 @@ Implemented:
   development-only Advanced UI.
 - A failed literal search offers semantic search enablement at the moment it is useful,
   rather than making model configuration a first-run requirement.
+- Sharing and Settings write a persistent `task` route while preserving photo and
+  invite parameters; browser back/forward restores the task destination.
 - The legal notice remains reachable after a library opens and its dialog/targets meet
   the touched accessibility contract.
 
-Still required for completion: finish route-backed full-pane task history and run the
-populated-library responsive navigation matrix.
+Still required for completion: run the populated-library responsive navigation matrix.
 
 ## Dependencies and Decisions
 

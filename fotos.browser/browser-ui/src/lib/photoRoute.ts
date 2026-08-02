@@ -3,6 +3,8 @@ export interface PersistentPhotoRouteTarget {
 }
 
 const PHOTO_QUERY_KEY = 'photo';
+const TASK_QUERY_KEY = 'task';
+export type PersistentAppTask = 'sharing' | 'settings';
 
 type QueryLike = URLSearchParams | string | Record<string, string>;
 
@@ -64,4 +66,21 @@ export function arePersistentPhotoRouteTargetsEqual(
     right?: PersistentPhotoRouteTarget | null,
 ): boolean {
     return normalizeValue(left?.photoHash) === normalizeValue(right?.photoHash);
+}
+
+export function parsePersistentAppTask(query: QueryLike): PersistentAppTask | null {
+    const task = normalizeValue(toSearchParams(query).get(TASK_QUERY_KEY));
+    return task === 'sharing' || task === 'settings' ? task : null;
+}
+
+export function buildPersistentAppTaskPath(
+    pathname: string,
+    query: QueryLike,
+    task?: PersistentAppTask | null,
+): string {
+    const params = toSearchParams(query);
+    if (task) params.set(TASK_QUERY_KEY, task);
+    else params.delete(TASK_QUERY_KEY);
+    const search = params.toString();
+    return search ? `${pathname}?${search}` : pathname;
 }
