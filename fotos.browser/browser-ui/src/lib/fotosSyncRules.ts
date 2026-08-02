@@ -1,5 +1,9 @@
 import { contentRules } from '@refinio/sync.core/rules/default-rules.js';
 import type { TrustLevel } from '@refinio/trust.core/types/trust-types.js';
+import {
+    buildFotosShareCertificateId,
+    buildFotosShareManifestId,
+} from '@refinio/fotos.core';
 
 type SyncRule = typeof contentRules extends Map<string, infer Value> ? Value : never;
 
@@ -23,6 +27,7 @@ const MAX_MEDIA_LOCATOR_VALUE_LENGTH = 4_096;
 const MAX_MEDIA_LOCATOR_KIND_LENGTH = 64;
 const MAX_MEDIA_LOCATOR_SCOPE_LENGTH = 64;
 const MAX_MEDIA_LOCATOR_PLATFORM_LENGTH = 64;
+const FOTOS_SHARE_SCOPE_KINDS = new Set(['gallery', 'collection', 'person']);
 
 interface SyncContextLike {
     peerTrustLevel: TrustLevel;
@@ -157,6 +162,54 @@ export function canImportFotosEntry(context: SyncContextLike, obj?: object): boo
         && isOptionalReference(entry.faceCrops);
 }
 
+export function canImportFotosShareManifest(context: SyncContextLike, obj?: object): boolean {
+    if (!allowsExplicitFotosShare(context) || !obj) return false;
+    const manifest = obj as ImportedObject;
+    if (isIdOnlyObject(manifest, new Set(['$type$', 'id']), 'id', MAX_PATH_LENGTH)) {
+        return String(manifest.id).startsWith('fotos-share-manifest:v1:');
+    }
+    const structurallyValid = isStringWithinBounds(manifest.id, MAX_PATH_LENGTH)
+        && String(manifest.id).startsWith('fotos-share-manifest:v1:')
+        && isStringWithinBounds(manifest.issuer, MAX_REFERENCE_LENGTH)
+        && typeof manifest.scopeKind === 'string'
+        && FOTOS_SHARE_SCOPE_KINDS.has(manifest.scopeKind)
+        && isStringWithinBounds(manifest.scopeId, MAX_PATH_LENGTH)
+        && isStringSetWithinBounds(manifest.entries, MAX_FOTOS_MANIFEST_ENTRIES, MAX_REFERENCE_LENGTH);
+    return structurallyValid && manifest.id === buildFotosShareManifestId(
+        String(manifest.issuer),
+        {kind: manifest.scopeKind as 'gallery' | 'collection' | 'person', id: String(manifest.scopeId)},
+    );
+}
+
+export function canImportFotosShareCertificate(context: SyncContextLike, obj?: object): boolean {
+    if (!allowsExplicitFotosShare(context) || !obj) return false;
+    const certificate = obj as ImportedObject;
+    if (isIdOnlyObject(certificate, new Set(['$type$', 'id']), 'id', MAX_PATH_LENGTH)) {
+        return String(certificate.id).startsWith('fotos-share-certificate:v1:');
+    }
+    const statusIsValid = certificate.status === 'active' || certificate.status === 'revoked';
+    const lifecycleIsConsistent = certificate.status === 'revoked'
+        ? isStringWithinBounds(certificate.revokedAt, MAX_TIMESTAMP_LENGTH)
+            && isStringWithinBounds(certificate.revocationReason, MAX_PATH_LENGTH)
+        : certificate.revokedAt === undefined && certificate.revocationReason === undefined;
+    const structurallyValid = certificate.$version$ === 'v1'
+        && isStringWithinBounds(certificate.id, MAX_PATH_LENGTH)
+        && String(certificate.id).startsWith('fotos-share-certificate:v1:')
+        && isStringWithinBounds(certificate.issuer, MAX_REFERENCE_LENGTH)
+        && isStringWithinBounds(certificate.subject, MAX_REFERENCE_LENGTH)
+        && typeof certificate.scopeKind === 'string'
+        && FOTOS_SHARE_SCOPE_KINDS.has(certificate.scopeKind)
+        && isStringWithinBounds(certificate.scopeId, MAX_PATH_LENGTH)
+        && statusIsValid
+        && isStringWithinBounds(certificate.issuedAt, MAX_TIMESTAMP_LENGTH)
+        && lifecycleIsConsistent;
+    return structurallyValid && certificate.id === buildFotosShareCertificateId(
+        String(certificate.issuer),
+        String(certificate.subject),
+        {kind: certificate.scopeKind as 'gallery' | 'collection' | 'person', id: String(certificate.scopeId)},
+    );
+}
+
 export function canImportFotosMediaVariant(context: SyncContextLike, obj?: object): boolean {
     if (!allowsExplicitFotosShare(context) || !obj) {
         return false;
@@ -270,6 +323,14 @@ const fotosEntryRule: SyncRule = {
     canImport: canImportFotosEntry,
 };
 
+const fotosShareManifestRule: SyncRule = {
+    canImport: canImportFotosShareManifest,
+};
+
+const fotosShareCertificateRule: SyncRule = {
+    canImport: canImportFotosShareCertificate,
+};
+
 const fotosMediaVariantRule: SyncRule = {
     canImport: canImportFotosMediaVariant,
 };
@@ -289,6 +350,8 @@ const fotosMediaLocatorRule: SyncRule = {
 export const fotosContentRules = new Map(contentRules);
 fotosContentRules.set('FotosManifest', fotosManifestRule);
 fotosContentRules.set('FotosEntry', fotosEntryRule);
+fotosContentRules.set('FotosShareManifest', fotosShareManifestRule);
+fotosContentRules.set('FotosShareCertificate', fotosShareCertificateRule);
 fotosContentRules.set('FotosMediaVariant', fotosMediaVariantRule);
 fotosContentRules.set('FotosMediaLocator', fotosMediaLocatorRule);
 fotosContentRules.set('FotosAuthenticityAttestation', fotosAuthenticityAttestationRule);

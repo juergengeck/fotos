@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 export interface ConfirmModalProps {
     open: boolean;
@@ -7,7 +7,7 @@ export interface ConfirmModalProps {
     confirmLabel?: string;
     cancelLabel?: string;
     isDestructive?: boolean;
-    onConfirm: () => void;
+    onConfirm: () => void | Promise<void>;
     onCancel: () => void;
 }
 
@@ -27,10 +27,14 @@ export function ConfirmModal({
     const previouslyFocusedRef = useRef<HTMLElement | null>(null);
     const titleId = useId();
     const descriptionId = useId();
+    const [pending, setPending] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     // Preserve the invoking control and focus the safer action on open.
     useEffect(() => {
         if (!open) return;
+        setPending(false);
+        setError(null);
         previouslyFocusedRef.current = document.activeElement instanceof HTMLElement
             ? document.activeElement
             : null;
@@ -43,18 +47,31 @@ export function ConfirmModal({
         };
     }, [open]);
 
+    const handleConfirm = useCallback(async () => {
+        if (pending) return;
+        setPending(true);
+        setError(null);
+        try {
+            await onConfirm();
+        } catch (confirmError) {
+            setError(confirmError instanceof Error ? confirmError.message : String(confirmError));
+            setPending(false);
+        }
+    }, [onConfirm, pending]);
+
     // Close on Escape
     useEffect(() => {
         if (!open) return;
         const handler = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
+                if (pending) return;
                 e.stopPropagation();
                 onCancel();
             }
         };
         window.addEventListener('keydown', handler, true);
         return () => window.removeEventListener('keydown', handler, true);
-    }, [open, onCancel]);
+    }, [open, onCancel, pending]);
 
     // Trap focus within the modal
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -85,7 +102,7 @@ export function ConfirmModal({
     return (
         <div
             className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm animate-[fadeIn_150ms_ease]"
-            onClick={onCancel}
+            onClick={pending ? undefined : onCancel}
             role="presentation"
         >
             {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
@@ -108,12 +125,18 @@ export function ConfirmModal({
                 <p id={descriptionId} className="mt-2 text-xs leading-relaxed text-white/60">
                     {message}
                 </p>
+                {error && (
+                    <p role="alert" className="mt-3 rounded-md border border-red-400/25 bg-red-500/10 px-3 py-2 text-xs leading-relaxed text-red-200">
+                        {error}
+                    </p>
+                )}
 
                 <div className="mt-5 flex items-center justify-end gap-2">
                     <button
                         ref={cancelRef}
                         type="button"
                         onClick={onCancel}
+                        disabled={pending}
                         className="min-h-11 rounded-md border border-white/10 bg-white/5 px-4 py-2 text-xs text-white/65 transition-colors hover:bg-white/10 hover:text-white/85"
                     >
                         {cancelLabel}
@@ -121,14 +144,15 @@ export function ConfirmModal({
                     <button
                         ref={confirmRef}
                         type="button"
-                        onClick={onConfirm}
+                        onClick={() => { void handleConfirm(); }}
+                        disabled={pending}
                         className={`min-h-11 rounded-md px-4 py-2 text-xs font-medium transition-colors ${
                             isDestructive
                                 ? 'bg-[var(--danger,#a44)] text-[var(--danger-fg,#faa)] hover:bg-[#c55]'
                                 : 'bg-[var(--accent-primary,#e94560)] text-white hover:bg-[var(--accent-primary-hover,#d13354)]'
                         }`}
                     >
-                        {confirmLabel}
+                        {pending ? 'Applying…' : confirmLabel}
                     </button>
                 </div>
             </div>

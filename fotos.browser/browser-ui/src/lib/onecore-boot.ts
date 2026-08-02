@@ -60,7 +60,6 @@ import { getLocalInstanceOfPerson } from '@refinio/one.models/lib/misc/instance.
 
 import { registerFotosHistorySettings } from './fotosHistorySettings.js';
 import { registerFotosSettings } from './fotosSettings.js';
-import { grantFotosAccess } from './fotos-manifest.js';
 import { fotosContentRules } from './fotosSyncRules.js';
 import { API_BASE, COMM_SERVER_URL } from '../config.js';
 import { resolveFotosBootCreds } from './fotosBootCreds.js';
@@ -239,7 +238,6 @@ async function initModules(
   let connectionModule: ConnectionModuleType | null = null;
   let connectionModuleWithFotos: (ConnectionModuleType & {
     connectToGlueServer?: (personId: SHA256IdHash<Person>) => Promise<void>;
-    fotosAccessGranter?: (remotePersonId: SHA256IdHash<Person>) => Promise<void>;
     fotosTrustFilter?: (remotePersonId: SHA256IdHash<Person>) => Promise<boolean>;
   }) | null = null;
 
@@ -279,11 +277,7 @@ async function initModules(
     connectionModule = nextConnectionModule;
     connectionModuleWithFotos = nextConnectionModule as ConnectionModuleType & {
       connectToGlueServer?: (personId: SHA256IdHash<Person>) => Promise<void>;
-      fotosAccessGranter?: (remotePersonId: SHA256IdHash<Person>) => Promise<void>;
       fotosTrustFilter?: (remotePersonId: SHA256IdHash<Person>) => Promise<boolean>;
-    };
-    connectionModuleWithFotos.fotosAccessGranter = async (remotePersonId: SHA256IdHash<Person>) => {
-      await grantFotosAccess(remotePersonId);
     };
     connectionModuleWithFotos.fotosTrustFilter = async (remotePersonId: SHA256IdHash<Person>) => {
       const trustLevel = (await trustModule.trustModel.getTrustLevel(remotePersonId) ?? 'unknown') as TrustLevel;

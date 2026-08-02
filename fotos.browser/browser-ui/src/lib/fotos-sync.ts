@@ -52,9 +52,6 @@ import {
     createMediaSource,
     createMediaSourceEntry,
 } from '@refinio/source.media/services';
-import {
-    notifyGrantedFotosPeersAboutDeviceBookUpdate,
-} from './fotos-manifest.js';
 
 export interface SyncPhotosToOneCoreOptions {
     claimAuthorship?: boolean;
@@ -205,10 +202,6 @@ async function storeBrowserSourceState(photo: PhotoEntry): Promise<{
         title: photo.name,
         summary: photo.folderPath?.trim() ? `Imported from ${photo.folderPath}` : 'Imported from browser gallery',
         contentHash: photo.hash,
-        metadata: {
-            sourcePath: photo.sourcePath ?? null,
-            folderPath: photo.folderPath ?? null,
-        },
     });
     const storedEntry = await storeVersionedObject(entry as any);
 
@@ -577,7 +570,6 @@ export async function syncPhotoToOneCore(
             ...(authenticityIdHash ? [String(authenticityIdHash)] : []),
         ],
     });
-    await notifyGrantedFotosPeersAboutDeviceBookUpdate(deviceId);
 }
 
 /**

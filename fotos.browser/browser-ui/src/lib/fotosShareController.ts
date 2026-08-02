@@ -322,6 +322,13 @@ export class FotosShareController {
         this.emit();
     }
 
+    replaceGrants(personIds: readonly string[]): void {
+        this.grantedPeerIds = new Set(
+            personIds.map(personId => personId.trim()).filter(Boolean),
+        );
+        this.emit();
+    }
+
     private emit(): void {
         for (const listener of this.listeners) {
             listener();

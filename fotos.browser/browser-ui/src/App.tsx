@@ -34,7 +34,11 @@ import {
     shouldAdvertiseSharingIdentity,
 } from '@/lib/fotosSharingPolicy';
 import { isSnapshotEqual, type FotosBreadcrumbSnapshot } from '@/lib/fotosHistorySettings';
-import { grantFotosAccess, retainFotosManifestConvergence } from '@/lib/fotos-manifest';
+import {
+    grantFotosAccess,
+    retainFotosManifestConvergence,
+    revokeLegacyFotosManifestAccess,
+} from '@/lib/fotos-manifest';
 import { resolveShareGrantPersonIds } from '@/lib/shareGrantTargets';
 import {
     ensureConfiguredGlueIdentity,
@@ -56,6 +60,8 @@ import {
 import { DEBUG_REGISTRATION_TOKEN, DEBUG_REGISTRATION_TTL_MS } from './config';
 import { setFotosRuntimeSnapshot, setFotosRuntimeVisiblePhotos } from './lib/runtimeDiagnostics';
 import { determineAccessibleHashes } from '@refinio/one.core/lib/util/determine-accessible-hashes.js';
+import { commitFotosShareScope } from '@/lib/fotosShareCertificates';
+import type { FotosShareScope } from '@refinio/fotos.core';
 
 interface AppProps {
     fotosModel?: FotosModel;
@@ -303,7 +309,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
         message: string;
         confirmLabel?: string;
         isDestructive?: boolean;
-        onConfirm: () => void;
+        onConfirm: () => void | Promise<void>;
     } | null>(null);
     const [renameState, setRenameState] = useState<{
         kind: 'cluster' | 'collection';
@@ -317,7 +323,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
         message: string;
         confirmLabel?: string;
         isDestructive?: boolean;
-        onConfirm: () => void;
+        onConfirm: () => void | Promise<void>;
     }) => {
         setConfirmState({ open: true, ...opts });
     }, []);
@@ -347,6 +353,8 @@ export function App({ fotosModel: initialModel }: AppProps) {
     });
     const scrollRef = useRef<HTMLDivElement>(null);
     const pendingGalleryInviteTokensRef = useRef(new Set<string>());
+    const certificateBackfilledScopesRef = useRef(new Set<string>());
+    const legacyFotosAccessRetiredRef = useRef(false);
     const [routeLocation, setRouteLocation] = useState<RouteLocationSnapshot>(getCurrentRouteLocation);
     const selectedPhotoHashSet = useMemo(() => new Set(selectedPhotoHashes), [selectedPhotoHashes]);
     // Selection is implicit: the grid is "selecting" whenever anything is selected.
@@ -526,6 +534,15 @@ export function App({ fotosModel: initialModel }: AppProps) {
     );
 
     const handleDeleteFace = useCallback((clusterId: string) => {
+        if ((fotosCollections.sharing.clusterPersonIds[clusterId]?.length ?? 0) > 0) {
+            showConfirm({
+                title: 'Stop sharing first',
+                message: 'This person scope is still shared. Remove every recipient in Sharing before deleting the face cluster so revocation can be published.',
+                confirmLabel: 'Okay',
+                onConfirm: () => {},
+            });
+            return;
+        }
         showConfirm({
             title: 'Delete face cluster',
             message: 'This will permanently remove the face cluster and all its associations. This cannot be undone.',
@@ -534,7 +551,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 void gallery.folder.deleteFace(clusterId);
             },
         });
-    }, [gallery.folder, showConfirm]);
+    }, [fotosCollections.sharing.clusterPersonIds, gallery.folder, showConfirm]);
 
     const handleRenameCluster = useCallback((clusterId: string) => {
         const currentName = gallery.allClusters.find(c => c.clusterId === clusterId)?.label || '';
@@ -561,6 +578,15 @@ export function App({ fotosModel: initialModel }: AppProps) {
     const handleDeleteCollection = useCallback((collectionId: string) => {
         const collectionName = collectionSummaries.find(collection => collection.id === collectionId)?.name
             ?? 'this collection';
+        if ((fotosCollections.sharing.collectionPersonIds[collectionId]?.length ?? 0) > 0) {
+            showConfirm({
+                title: 'Stop sharing first',
+                message: `“${collectionName}” is still shared. Remove every recipient in Sharing before deleting it so revocation can be published.`,
+                confirmLabel: 'Okay',
+                onConfirm: () => {},
+            });
+            return;
+        }
         showConfirm({
             title: 'Delete collection',
             message: `Delete “${collectionName}”? Its photos remain in the library. This cannot be undone.`,
@@ -783,40 +809,6 @@ export function App({ fotosModel: initialModel }: AppProps) {
     ]);
 
     useEffect(() => {
-        if (sharedPersonIds.length === 0 || sharePeerOptions.length === 0) {
-            return;
-        }
-
-        let cancelled = false;
-        void (async () => {
-            const knownGrantedPeerIds = new Set(fotosShareController.getSnapshot().grantedPeerIds);
-            for (const sharedPersonId of sharedPersonIds) {
-                const grantPersonIds = resolveShareGrantPersonIds(sharedPersonId, sharePeerOptions);
-                for (const grantPersonId of grantPersonIds) {
-                    if (knownGrantedPeerIds.has(grantPersonId)) {
-                        continue;
-                    }
-
-                    await grantFotosAccess(grantPersonId as any);
-                    if (cancelled) {
-                        return;
-                    }
-                    fotosShareController.recordGrant(grantPersonId);
-                    knownGrantedPeerIds.add(grantPersonId);
-                }
-            }
-        })().catch(error => {
-            if (!cancelled) {
-                console.warn('[fotos.share] Failed to backfill equivalent share grants:', error);
-            }
-        });
-
-        return () => {
-            cancelled = true;
-        };
-    }, [sharePeerOptions, sharedPersonIds]);
-
-    useEffect(() => {
         const availableHashes = new Set(gallery.folder.entries.map(photo => photo.hash));
         setSelectedPhotoHashes(currentHashes => (
             currentHashes.filter(hash => availableHashes.has(hash))
@@ -904,43 +896,127 @@ export function App({ fotosModel: initialModel }: AppProps) {
         selectedPhotosForCollections,
     ]);
 
-    const grantPhotosAccessToPeer = useCallback(async (personId: string) => {
-        const grantPersonIds = resolveShareGrantPersonIds(personId, sharePeerOptions);
-        for (const grantPersonId of grantPersonIds) {
-            await grantFotosAccess(grantPersonId as any);
-            fotosShareController.recordGrant(grantPersonId);
-        }
-    }, [sharePeerOptions]);
+    const expandSharePersonIds = useCallback((personIds: readonly string[]) => (
+        Array.from(new Set(personIds.flatMap(personId =>
+            resolveShareGrantPersonIds(personId, sharePeerOptions)
+        )))
+    ), [sharePeerOptions]);
 
-    const grantNewPeers = useCallback(async (previousIds: readonly string[], nextIds: readonly string[]) => {
-        const previousSet = new Set(previousIds);
-        const addedIds = nextIds.filter(personId => !previousSet.has(personId));
-        for (const personId of addedIds) {
-            try {
-                await grantPhotosAccessToPeer(personId);
-            } catch (error) {
-                console.warn('[fotos.share] Failed to grant access to peer:', personId, error);
-            }
+    const commitShareAssignment = useCallback(async (params: {
+        scope: FotosShareScope;
+        previousPersonIds: readonly string[];
+        nextPersonIds: readonly string[];
+        contentHashes: readonly string[];
+        persist: () => void;
+    }) => {
+        const issuer = fotosModel?.publicationIdentity;
+        if (!issuer) {
+            throw new Error('Prepare your fotos identity before changing sharing.');
         }
-    }, [grantPhotosAccessToPeer]);
+        if (params.contentHashes.length === 0) {
+            throw new Error('This scope has no photos to share.');
+        }
+
+        await gallery.folder.ensureSyncedToOneCore();
+        const snapshot = await fotosShareController.refreshManifest();
+        const entryHashByContentHash = new Map(
+            (snapshot?.resolvedEntries ?? []).map(entry => [entry.contentHash, entry.entryHash]),
+        );
+        const missingHashes = params.contentHashes.filter(hash => !entryHashByContentHash.has(hash));
+        if (missingHashes.length > 0) {
+            throw new Error(`${missingHashes.length} photo${missingHashes.length === 1 ? '' : 's'} could not be prepared for sharing.`);
+        }
+
+        const result = await commitFotosShareScope({
+            issuer: issuer as any,
+            scope: params.scope,
+            previousPersonIds: expandSharePersonIds(params.previousPersonIds),
+            nextPersonIds: expandSharePersonIds(params.nextPersonIds),
+            entryHashes: params.contentHashes.map(hash => entryHashByContentHash.get(hash) as any),
+        });
+        certificateBackfilledScopesRef.current.add(`${params.scope.kind}:${params.scope.id}`);
+        params.persist();
+        for (const transition of result.transitions) {
+            if (transition.status === 'active') fotosShareController.recordGrant(transition.personId);
+        }
+    }, [expandSharePersonIds, fotosModel?.publicationIdentity, gallery.folder.ensureSyncedToOneCore]);
+
+    const requestShareAssignment = useCallback((params: {
+        scope: FotosShareScope;
+        scopeLabel: string;
+        previousPersonIds: readonly string[];
+        nextPersonIds: readonly string[];
+        contentHashes: readonly string[];
+        persist: () => void;
+    }) => {
+        const previousSet = new Set(params.previousPersonIds);
+        const nextSet = new Set(params.nextPersonIds);
+        const added = params.nextPersonIds.filter(personId => !previousSet.has(personId));
+        const removed = params.previousPersonIds.filter(personId => !nextSet.has(personId));
+        if (added.length === 0 && removed.length === 0) return;
+        const peerLabel = (personId: string) => {
+            const peer = sharePeerOptions.find(option => option.personId === personId);
+            return peer?.displayName?.trim() || peer?.glueIdentity?.trim() || `${personId.slice(0, 10)}…`;
+        };
+        const changes = [
+            added.length > 0 ? `Share with ${added.map(peerLabel).join(', ')}.` : null,
+            removed.length > 0
+                ? `Stop sharing with ${removed.map(peerLabel).join(', ')}. They will no longer receive new photos or updates. Photos already stored on their device are not deleted.`
+                : null,
+        ].filter(Boolean).join(' ');
+        showConfirm({
+            title: `Review ${params.scopeLabel} sharing`,
+            message: `${params.contentHashes.length} photo${params.contentHashes.length === 1 ? '' : 's'} in scope. ${changes}`,
+            confirmLabel: 'Apply sharing',
+            isDestructive: removed.length > 0,
+            onConfirm: () => commitShareAssignment(params),
+        });
+    }, [commitShareAssignment, sharePeerOptions, showConfirm]);
 
     const handleGalleryShareChange = useCallback(async (nextPersonIds: string[]) => {
         const previousIds = fotosCollections.sharing.galleryPersonIds;
-        fotosCollections.setGallerySharePersonIds(nextPersonIds);
-        await grantNewPeers(previousIds, nextPersonIds);
-    }, [fotosCollections, grantNewPeers]);
+        requestShareAssignment({
+            scope: {kind: 'gallery', id: 'main'},
+            scopeLabel: 'gallery',
+            previousPersonIds: previousIds,
+            nextPersonIds,
+            contentHashes: gallery.folder.entries.map(photo => photo.hash),
+            persist: () => fotosCollections.setGallerySharePersonIds(nextPersonIds),
+        });
+    }, [fotosCollections, gallery.folder.entries, requestShareAssignment]);
 
     const handleCollectionShareChange = useCallback(async (collectionId: string, nextPersonIds: string[]) => {
         const previousIds = fotosCollections.sharing.collectionPersonIds[collectionId] ?? [];
-        fotosCollections.setCollectionSharePersonIds(collectionId, nextPersonIds);
-        await grantNewPeers(previousIds, nextPersonIds);
-    }, [fotosCollections, grantNewPeers]);
+        const collection = collectionSummaries.find(candidate => candidate.id === collectionId);
+        requestShareAssignment({
+            scope: {kind: 'collection', id: collectionId},
+            scopeLabel: collection?.name ?? 'collection',
+            previousPersonIds: previousIds,
+            nextPersonIds,
+            contentHashes: collection?.matchedPhotoHashes ?? [],
+            persist: () => fotosCollections.setCollectionSharePersonIds(collectionId, nextPersonIds),
+        });
+    }, [collectionSummaries, fotosCollections, requestShareAssignment]);
 
     const handleClusterShareChange = useCallback(async (clusterId: string, nextPersonIds: string[]) => {
         const previousIds = fotosCollections.sharing.clusterPersonIds[clusterId] ?? [];
-        fotosCollections.setClusterSharePersonIds(clusterId, nextPersonIds);
-        await grantNewPeers(previousIds, nextPersonIds);
-    }, [fotosCollections, grantNewPeers]);
+        const cluster = gallery.allClusters.find(candidate => candidate.clusterId === clusterId);
+        const memberIds = new Set(cluster?.memberClusterIds ?? [clusterId]);
+        const contentHashes = gallery.folder.entries
+            .filter(photo => (
+                photo.faces?.clusterIds?.some(memberId => memberIds.has(memberId))
+                || (cluster?.personId && photo.faces?.personIds?.includes(cluster.personId))
+            ))
+            .map(photo => photo.hash);
+        requestShareAssignment({
+            scope: {kind: 'person', id: clusterId},
+            scopeLabel: cluster?.label ?? 'person',
+            previousPersonIds: previousIds,
+            nextPersonIds,
+            contentHashes,
+            persist: () => fotosCollections.setClusterSharePersonIds(clusterId, nextPersonIds),
+        });
+    }, [fotosCollections, gallery.allClusters, gallery.folder.entries, requestShareAssignment]);
 
     useEffect(() => {
         const pairing = fotosModel?.connectionsModel?.pairing;
@@ -963,10 +1039,16 @@ export function App({ fotosModel: initialModel }: AppProps) {
             const normalizedRemotePersonId = String(remotePersonId);
             pendingGalleryInviteTokensRef.current.delete(token);
             const previousIds = fotosCollections.sharing.galleryPersonIds;
-            if (!previousIds.includes(normalizedRemotePersonId)) {
-                fotosCollections.setGallerySharePersonIds([...previousIds, normalizedRemotePersonId]);
-            }
-            await grantPhotosAccessToPeer(normalizedRemotePersonId);
+            const nextPersonIds = previousIds.includes(normalizedRemotePersonId)
+                ? previousIds
+                : [...previousIds, normalizedRemotePersonId];
+            await commitShareAssignment({
+                scope: {kind: 'gallery', id: 'main'},
+                previousPersonIds: previousIds,
+                nextPersonIds,
+                contentHashes: gallery.folder.entries.map(photo => photo.hash),
+                persist: () => fotosCollections.setGallerySharePersonIds(nextPersonIds),
+            });
             (fotosModel.glueModule as { requestPeerConnection?: (targetPersonId: string) => boolean } | null)
                 ?.requestPeerConnection?.(normalizedRemotePersonId);
         });
@@ -978,7 +1060,8 @@ export function App({ fotosModel: initialModel }: AppProps) {
         fotosCollections,
         fotosModel?.connectionsModel?.pairing,
         fotosModel?.glueModule,
-        grantPhotosAccessToPeer,
+        commitShareAssignment,
+        gallery.folder.entries,
     ]);
 
     const createGalleryShareInvite = useCallback(async (): Promise<CreatedGalleryShareInvite> => {
@@ -1839,35 +1922,74 @@ export function App({ fotosModel: initialModel }: AppProps) {
     ]);
 
     useEffect(() => {
-        if (!fotosModel?.initialized || !shareManifestHash || sharedPersonIds.length === 0) {
-            return;
-        }
-
+        if (!fotosModel?.initialized || !shareManifestHash) return;
         let cancelled = false;
 
         void (async () => {
-            for (const personId of sharedPersonIds) {
-                if (cancelled) {
-                    return;
-                }
-
-                try {
-                    // CHUM accessible roots are derived from the current
-                    // manifest version, so re-grant whenever that version
-                    // changes to keep newly added photos exportable.
-                    await grantPhotosAccessToPeer(personId);
-                } catch (error) {
-                    console.warn('[fotos.share] Failed to refresh access for peer:', personId, error);
-                }
+            const refreshScope = async (params: Parameters<typeof commitShareAssignment>[0]) => {
+                if (cancelled || params.nextPersonIds.length === 0 || params.contentHashes.length === 0) return;
+                const scopeKey = `${params.scope.kind}:${params.scope.id}`;
+                await commitShareAssignment({
+                    ...params,
+                    previousPersonIds: certificateBackfilledScopesRef.current.has(scopeKey)
+                        ? params.previousPersonIds
+                        : [],
+                });
+            };
+            await refreshScope({
+                scope: {kind: 'gallery', id: 'main'},
+                previousPersonIds: fotosCollections.sharing.galleryPersonIds,
+                nextPersonIds: fotosCollections.sharing.galleryPersonIds,
+                contentHashes: gallery.folder.entries.map(photo => photo.hash),
+                persist: () => {},
+            });
+            for (const collection of collectionSummaries) {
+                const personIds = fotosCollections.sharing.collectionPersonIds[collection.id] ?? [];
+                await refreshScope({
+                    scope: {kind: 'collection', id: collection.id},
+                    previousPersonIds: personIds,
+                    nextPersonIds: personIds,
+                    contentHashes: collection.matchedPhotoHashes,
+                    persist: () => {},
+                });
             }
-        })();
+            for (const cluster of gallery.allClusters) {
+                const personIds = fotosCollections.sharing.clusterPersonIds[cluster.clusterId] ?? [];
+                const memberIds = new Set(cluster.memberClusterIds);
+                const contentHashes = gallery.folder.entries
+                    .filter(photo => (
+                        photo.faces?.clusterIds?.some(memberId => memberIds.has(memberId))
+                        || (cluster.personId && photo.faces?.personIds?.includes(cluster.personId))
+                    ))
+                    .map(photo => photo.hash);
+                await refreshScope({
+                    scope: {kind: 'person', id: cluster.clusterId},
+                    previousPersonIds: personIds,
+                    nextPersonIds: personIds,
+                    contentHashes,
+                    persist: () => {},
+                });
+            }
+            if (!cancelled && !legacyFotosAccessRetiredRef.current) {
+                await revokeLegacyFotosManifestAccess();
+                legacyFotosAccessRetiredRef.current = true;
+            }
+            if (!cancelled) {
+                fotosShareController.replaceGrants(expandSharePersonIds(sharedPersonIds));
+            }
+        })().catch(error => {
+            if (!cancelled) console.warn('[fotos.share] Failed to refresh certificate-backed scope:', error);
+        });
 
-        return () => {
-            cancelled = true;
-        };
+        return () => { cancelled = true; };
     }, [
+        collectionSummaries,
+        commitShareAssignment,
+        expandSharePersonIds,
+        fotosCollections.sharing,
         fotosModel?.initialized,
-        grantPhotosAccessToPeer,
+        gallery.allClusters,
+        gallery.folder.entries,
         shareManifestHash,
         sharedPersonIds,
     ]);
@@ -2794,9 +2916,11 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 message={confirmState?.message ?? ''}
                 isDestructive={confirmState?.isDestructive}
                 confirmLabel={confirmState?.confirmLabel ?? (confirmState?.isDestructive ? 'Delete' : 'Confirm')}
-                onConfirm={() => {
-                    confirmState?.onConfirm();
-                    setConfirmState(null);
+                onConfirm={async () => {
+                    const pendingConfirmation = confirmState;
+                    if (!pendingConfirmation) return;
+                    await pendingConfirmation.onConfirm();
+                    setConfirmState(current => current === pendingConfirmation ? null : current);
                 }}
                 onCancel={() => setConfirmState(null)}
             />

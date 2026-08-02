@@ -1,6 +1,6 @@
 # Epic: Explicit Sharing
 
-Status: Proposed
+Status: In progress
 Owner: fotos product and engineering
 Last updated: 2026-08-02
 Evidence: [UX-03 and UX-19](../ui.prd.md#ux-03--sharing-grants-are-silent-immediate-and-unreviewable)
@@ -82,14 +82,41 @@ invite links as an explicit secondary path rather than a public-link default.
 
 ## Dependencies and Decisions
 
-- D-03 is decided. Engineering discovery must select or extend the current signed,
-  versioned certificate type so its stable identity and scope representation support
-  independent gallery, collection, and person/cluster revocation.
+- D-03 is decided. Fotos now owns a signed, versioned, scope-specific certificate and
+  manifest model supporting independent gallery, collection, and person/cluster
+  revocation; recipient-side certificate projection remains protocol work.
 - Unified Selection supplies a typed, reviewable scope; it must not pass a silently
   filtered subset.
 - App Shell supplies the Sharing view and persistent header/row indicators.
 - Protocol owners must confirm PIN use, expiry, link revocation, and whether recipients
   can download originals for each scope.
+
+## Implementation Status
+
+Implemented in the browser and shared core:
+
+- Gallery, collection, and person/cluster assignments are staged and require an
+  explicit review commit before access changes.
+- Each issuer-recipient-scope relation has a signed, versioned
+  `FotosShareCertificate` with a deterministic stable identity and `active` or
+  `revoked` lifecycle state.
+- Each scope has an independent `FotosShareManifest`; access replacement is limited
+  to that scope's exact `FotosEntry` roots.
+- Revocation evidence is stored, signed, and published through its retained control
+  path before the removed recipient is excluded from the scope root.
+- Existing global `FotosManifest` grants are retired after persisted assignments are
+  migrated to certificate-backed scopes.
+- Removal copy states that future updates stop and already stored photos are not
+  deleted.
+
+Still required before this epic is complete:
+
+- Recipient-side signature verification and projection of the causally current
+  certificate version, including stale-version replay handling.
+- Protocol/E2E coverage proving that an offline removed recipient receives revocation
+  evidence but no later scope or content versions.
+- The centralized Sharing view, selection-driven sharing, invite-link lifecycle, and
+  typed recipient-resolution states described above.
 
 ## Acceptance Criteria
 

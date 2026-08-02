@@ -6,6 +6,8 @@ import {
     canImportFotosDeviceBook,
     canImportFotosEntry,
     canImportFotosManifest,
+    canImportFotosShareCertificate,
+    canImportFotosShareManifest,
     canImportFotosMediaLocator,
     canImportFotosMediaVariant,
     fotosContentRules,
@@ -189,10 +191,58 @@ describe('fotosSyncRules', () => {
         })).toBe(false);
     });
 
+    it('accepts consistent share lifecycle objects and rejects malformed revocations', () => {
+        expect(canImportFotosShareManifest(LOW_TRUST_CONTEXT, {
+            $type$: 'FotosShareManifest',
+            id: 'fotos-share-manifest:v1:issuer:collection:summer',
+            issuer: 'issuer',
+            scopeKind: 'collection',
+            scopeId: 'summer',
+            entries: new Set(['entry-hash']),
+        })).toBe(true);
+        expect(canImportFotosShareCertificate(LOW_TRUST_CONTEXT, {
+            $type$: 'FotosShareCertificate',
+            $version$: 'v1',
+            id: 'fotos-share-certificate:v1:issuer:anna:collection:summer',
+            issuer: 'issuer',
+            subject: 'anna',
+            scopeKind: 'collection',
+            scopeId: 'summer',
+            status: 'revoked',
+            issuedAt: '2026-08-02T11:00:00.000Z',
+            revokedAt: '2026-08-02T11:00:00.000Z',
+            revocationReason: 'Recipient removed',
+        })).toBe(true);
+        expect(canImportFotosShareCertificate(LOW_TRUST_CONTEXT, {
+            $type$: 'FotosShareCertificate',
+            $version$: 'v1',
+            id: 'fotos-share-certificate:v1:issuer:anna:collection:summer',
+            issuer: 'issuer',
+            subject: 'anna',
+            scopeKind: 'collection',
+            scopeId: 'summer',
+            status: 'revoked',
+            issuedAt: '2026-08-02T11:00:00.000Z',
+        })).toBe(false);
+        expect(canImportFotosShareCertificate(LOW_TRUST_CONTEXT, {
+            $type$: 'FotosShareCertificate',
+            $version$: 'v1',
+            id: 'fotos-share-certificate:v1:different:anna:collection:summer',
+            issuer: 'issuer',
+            subject: 'anna',
+            scopeKind: 'collection',
+            scopeId: 'summer',
+            status: 'active',
+            issuedAt: '2026-08-02T11:00:00.000Z',
+        })).toBe(false);
+    });
+
     it('extends the shared content rules with fotos-specific types', () => {
         expect(fotosContentRules.has('GlueShareManifest')).toBe(true);
         expect(fotosContentRules.has('FotosManifest')).toBe(true);
         expect(fotosContentRules.has('FotosEntry')).toBe(true);
+        expect(fotosContentRules.has('FotosShareManifest')).toBe(true);
+        expect(fotosContentRules.has('FotosShareCertificate')).toBe(true);
         expect(fotosContentRules.has('FotosMediaVariant')).toBe(true);
         expect(fotosContentRules.has('FotosMediaLocator')).toBe(true);
         expect(fotosContentRules.has('FotosAuthenticityAttestation')).toBe(true);

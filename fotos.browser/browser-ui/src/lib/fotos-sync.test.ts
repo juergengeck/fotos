@@ -5,7 +5,6 @@ const {
     getObjectByIdHashMock,
     addEntryToManifestMock,
     addAuthenticityAttestationToManifestMock,
-    notifyGrantedFotosPeersAboutDeviceBookUpdateMock,
     resolveFotosAuthenticityContextMock,
     createFotosAuthenticityAttestationMock,
     calculateIdHashOfObjMock,
@@ -24,7 +23,6 @@ const {
     }),
     addEntryToManifestMock: vi.fn(async () => undefined),
     addAuthenticityAttestationToManifestMock: vi.fn(async () => undefined),
-    notifyGrantedFotosPeersAboutDeviceBookUpdateMock: vi.fn(async () => undefined),
     resolveFotosAuthenticityContextMock: vi.fn(),
     createFotosAuthenticityAttestationMock: vi.fn(() => ({
         $type$: 'FotosAuthenticityAttestation',
@@ -65,12 +63,26 @@ vi.mock('@refinio/one.core/lib/util/object.js', () => ({
 vi.mock('./fotos-manifest.js', () => ({
     addEntryToManifest: addEntryToManifestMock,
     addAuthenticityAttestationToManifest: addAuthenticityAttestationToManifestMock,
-    notifyGrantedFotosPeersAboutDeviceBookUpdate: notifyGrantedFotosPeersAboutDeviceBookUpdateMock,
 }));
 
 vi.mock('@refinio/fotos.core', () => ({
     EMBEDDING_DIM: 512,
     facesToDataAttrs: vi.fn(() => ({})),
+}));
+
+vi.mock('@refinio/source.media/services', () => ({
+    createMediaSource: vi.fn((params: any) => ({
+        $type$: 'Source',
+        id: `source:${params.deviceId}:${params.locator}`,
+        ...params,
+    })),
+    createMediaSourceEntry: vi.fn((params: any) => ({
+        $type$: 'SourceEntry',
+        id: `entry:${params.sourceId}:${params.locator}`,
+        sourceRef: params.sourceIdHash,
+        ...params,
+    })),
+    appendMediaBookContent: vi.fn(async () => undefined),
 }));
 
 vi.mock('./fotos-authenticity.js', () => ({
@@ -86,7 +98,6 @@ describe('fotos sync authorship toggle', () => {
         getObjectByIdHashMock.mockClear();
         addEntryToManifestMock.mockClear();
         addAuthenticityAttestationToManifestMock.mockClear();
-        notifyGrantedFotosPeersAboutDeviceBookUpdateMock.mockClear();
         resolveFotosAuthenticityContextMock.mockReset().mockResolvedValue({
             signerPersonId: 'person-1',
             signerPublicKey: 'public-key',
@@ -120,8 +131,7 @@ describe('fotos sync authorship toggle', () => {
         expect(resolveFotosAuthenticityContextMock).not.toHaveBeenCalled();
         expect(createFotosAuthenticityAttestationMock).not.toHaveBeenCalled();
         expect(addAuthenticityAttestationToManifestMock).not.toHaveBeenCalled();
-        expect(storeVersionedObjectMock).toHaveBeenCalledTimes(6);
-        expect(notifyGrantedFotosPeersAboutDeviceBookUpdateMock).toHaveBeenCalledTimes(1);
+        expect(storeVersionedObjectMock).toHaveBeenCalledTimes(5);
     });
 
     it('still resolves authenticity context when claiming authorship', async () => {
@@ -141,7 +151,6 @@ describe('fotos sync authorship toggle', () => {
         expect(resolveFotosAuthenticityContextMock).toHaveBeenCalledTimes(1);
         expect(createFotosAuthenticityAttestationMock).toHaveBeenCalledWith('photo-hash', expect.any(Object));
         expect(addAuthenticityAttestationToManifestMock).toHaveBeenCalledTimes(1);
-        expect(storeVersionedObjectMock).toHaveBeenCalledTimes(7);
-        expect(notifyGrantedFotosPeersAboutDeviceBookUpdateMock).toHaveBeenCalledTimes(1);
+        expect(storeVersionedObjectMock).toHaveBeenCalledTimes(6);
     });
 });

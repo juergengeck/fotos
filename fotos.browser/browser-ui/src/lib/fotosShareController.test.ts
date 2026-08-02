@@ -4,6 +4,7 @@ import type { PhotoEntry } from '@/types/fotos';
 
 import {
     buildFotosShareSnapshot,
+    FotosShareController,
     toFotosImportedEntry,
     toFotosShareItem,
 } from './fotosShareController.js';
@@ -179,6 +180,18 @@ describe('buildFotosShareSnapshot', () => {
             pendingCount: 1,
             sharedCount: 2,
         });
+    });
+});
+
+describe('FotosShareController grants', () => {
+    it('replaces the diagnostic grant projection after revocation', () => {
+        const controller = new FotosShareController();
+        controller.recordGrant('peer-a');
+        controller.recordGrant('peer-b');
+
+        controller.replaceGrants(['peer-b', ' peer-c ', '']);
+
+        expect(controller.getSnapshot().grantedPeerIds).toEqual(['peer-b', 'peer-c']);
     });
 });
 

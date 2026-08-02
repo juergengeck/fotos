@@ -41,15 +41,10 @@ export function buildFaceClusterSummaries(photos: PhotoEntry[]): FaceClusterSumm
             const personId = faces.personIds?.[index]?.trim() || undefined;
             const rawName = faces.names?.[index]?.trim();
             const personName = rawName && rawName !== 'Unknown' ? rawName : undefined;
-            // Group by name first so each named person appears exactly once, even
-            // when their faces span multiple raw clusters or personIds. Selecting
-            // the summary then surfaces every photo across all member clusters.
-            // Fall back to personId, then the raw cluster id, for unnamed faces.
-            const summaryId = personName
-                ? `name:${personName.toLowerCase()}`
-                : personId
-                    ? `person:${personId}`
-                    : clusterId;
+            // A display name is not identity. Only an explicit person id groups
+            // raw clusters; same-name clusters remain independent until the user
+            // deliberately groups them.
+            const summaryId = personId ? `person:${personId}` : clusterId;
             const existing = clusters.get(summaryId);
 
             if (!existing) {

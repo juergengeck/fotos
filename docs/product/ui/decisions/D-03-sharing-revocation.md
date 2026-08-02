@@ -95,10 +95,20 @@ Relevant shared-repository history:
 
 ## Consequences
 
-- Fotos needs a certificate-backed share controller; directly mutating UI share arrays
-  and calling `createAccess()` is not sufficient authority or audit state.
-- Existing `grantFotosAccess()` and in-memory remembered-peer state remain migration
-  inputs until certificate projection owns grants and revocations.
+- Fotos uses `FotosShareCertificate` and `FotosShareManifest` as its
+  issuer-recipient-scope lifecycle evidence and scope-specific data root; directly
+  mutating UI share arrays is not sufficient authority or audit state.
+- Existing global `FotosManifest` grants are migration inputs only. They are replaced
+  with certificate-backed scope roots and then retired so they cannot leak later
+  gallery versions to a removed recipient.
 - Revocation tests must cover stale replay, offline recipients, re-sharing, independent
   scopes, application reload, and proof that future root versions are not exported.
 - Remote deletion is intentionally outside the security promise.
+
+## Implementation Status
+
+Issuer-side certificate publication and scope-access replacement are implemented.
+Unit tests enforce revocation-before-access-removal ordering and stable certificate
+identity across active and revoked versions. Recipient-side signature verification,
+causal-current projection, and a multi-instance test proving stopped future deltas are
+still required before the full decision is protocol-verified.

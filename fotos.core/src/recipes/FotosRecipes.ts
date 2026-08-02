@@ -72,17 +72,53 @@ export interface FotosManifest {
     authenticityAttestations?: Set<SHA256Hash<FotosAuthenticityAttestation>>;
 }
 
+export type FotosShareScopeKind = 'gallery' | 'collection' | 'person';
+export type FotosShareCertificateStatus = 'active' | 'revoked';
+
+/** A scope-specific root whose versions define the photos currently shared. */
+export interface FotosShareManifest {
+    $type$: 'FotosShareManifest';
+    id: string;
+    issuer: SHA256IdHash<Person>;
+    scopeKind: FotosShareScopeKind;
+    scopeId: string;
+    entries: Set<SHA256Hash<FotosEntry>>;
+}
+
+/**
+ * Signed lifecycle evidence for one issuer/recipient/scope relationship.
+ * The certificate intentionally carries no reference to the share manifest: the
+ * retained certificate delivery path must not make revoked photo roots reachable.
+ */
+export interface FotosShareCertificate {
+    $type$: 'FotosShareCertificate';
+    $version$: 'v1';
+    id: string;
+    issuer: SHA256IdHash<Person>;
+    subject: SHA256IdHash<Person>;
+    scopeKind: FotosShareScopeKind;
+    scopeId: string;
+    status: FotosShareCertificateStatus;
+    issuedAt: string;
+    revokedAt?: string;
+    revocationReason?: string;
+}
+
 declare module '@OneObjectInterfaces' {
     export interface OneIdObjectInterfaces {
         FotosEntry: Pick<FotosEntry, '$type$' | 'contentHash'>;
         FotosManifest: Pick<FotosManifest, '$type$' | 'id'>;
         FotosAuthenticityAttestation: Pick<FotosAuthenticityAttestation, '$type$' | 'id'>;
+        FotosShareManifest: Pick<FotosShareManifest, '$type$' | 'id'>;
+        FotosShareCertificate: Pick<FotosShareCertificate, '$type$' | 'id'>;
     }
 
     export interface OneVersionedObjectInterfaces {
         FotosEntry: FotosEntry;
         FotosManifest: FotosManifest;
         FotosAuthenticityAttestation: FotosAuthenticityAttestation;
+        FotosShareManifest: FotosShareManifest;
+        FotosShareCertificate: FotosShareCertificate;
     }
 }
 
@@ -176,10 +212,47 @@ export const FotosAuthenticityAttestationRecipe: Recipe = {
     ],
 };
 
+export const FotosShareManifestRecipe: Recipe = {
+    $type$: 'Recipe',
+    name: 'FotosShareManifest',
+    rule: [
+        {itemprop: 'id', isId: true, itemtype: {type: 'string'}},
+        {itemprop: 'issuer', itemtype: {type: 'referenceToId', allowedTypes: new Set(['Person'])}},
+        {itemprop: 'scopeKind', itemtype: {type: 'string', regexp: /^(gallery|collection|person)$/}},
+        {itemprop: 'scopeId', itemtype: {type: 'string'}},
+        {
+            itemprop: 'entries',
+            itemtype: {
+                type: 'set',
+                item: {type: 'referenceToObj', allowedTypes: new Set(['FotosEntry'])},
+            },
+        },
+    ],
+};
+
+export const FotosShareCertificateRecipe: Recipe = {
+    $type$: 'Recipe',
+    name: 'FotosShareCertificate',
+    rule: [
+        {itemprop: '$version$', itemtype: {type: 'string', regexp: /^v1$/}},
+        {itemprop: 'id', isId: true, itemtype: {type: 'string'}},
+        {itemprop: 'issuer', itemtype: {type: 'referenceToId', allowedTypes: new Set(['Person'])}},
+        {itemprop: 'subject', itemtype: {type: 'referenceToId', allowedTypes: new Set(['Person'])}},
+        {itemprop: 'scopeKind', itemtype: {type: 'string', regexp: /^(gallery|collection|person)$/}},
+        {itemprop: 'scopeId', itemtype: {type: 'string'}},
+        {itemprop: 'status', itemtype: {type: 'string', regexp: /^(active|revoked)$/}},
+        {itemprop: 'issuedAt', itemtype: {type: 'string'}},
+        {itemprop: 'revokedAt', optional: true, itemtype: {type: 'string'}},
+        {itemprop: 'revocationReason', optional: true, itemtype: {type: 'string'}},
+    ],
+};
+
 export const FotosRecipes: Recipe[] = [
     FotosEntryRecipe,
     FotosManifestRecipe,
     FotosAuthenticityAttestationRecipe,
+    FotosShareManifestRecipe,
+    FotosShareCertificateRecipe,
     ...FotosMediaRecipes,
     ...FotosDeviceBookRecipes,
     ...GalleryTrieRecipes,

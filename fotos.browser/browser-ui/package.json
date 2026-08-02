@@ -29,6 +29,7 @@
     "@refinio/one.core": "workspace:*",
     "@refinio/one.models": "workspace:*",
     "@refinio/settings.core": "workspace:*",
+    "@refinio/source.media": "workspace:*",
     "@refinio/trust.core": "workspace:*",
     "@simplewebauthn/browser": "^11.0.0",
     "base64-js": "^1.5.1",

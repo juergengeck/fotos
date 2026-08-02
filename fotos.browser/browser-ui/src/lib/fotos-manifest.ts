@@ -17,18 +17,12 @@ import type {
 import type { FotosDeviceBookRole } from '../../../../fotos.core/src/recipes/FotosDeviceBookRecipes.js';
 import {
     ensureFotosDeviceBook,
-    getFotosDeviceBookIdHash,
 } from '../../../../fotos.core/src/fotos-device-book.js';
 import {
     ensureMediaBook,
-    getMediaBookIdHash,
 } from '@refinio/source.media/services';
 import { ensureVersionedIdObject } from '@refinio/connection.core/helpers/ensure-versioned-id-object.js';
 import { createAccess } from '@refinio/one.core/lib/access.js';
-import {
-    notifyAllActiveExportersAboutNewAccessibleRoots,
-    notifyRemotePeerAboutNewAccessibleRoots,
-} from '@refinio/one.core/lib/chum-sync.js';
 import { SET_ACCESS_MODE } from '@refinio/one.core/lib/storage-base-common.js';
 import {
     getObjectByIdHash,
@@ -122,22 +116,6 @@ function rememberGrantedFotosPeer(rootIdHash: string, remotePersonId: string): v
     const peers = grantedFotosPeersByRootIdHash.get(rootIdHash) ?? new Set<string>();
     peers.add(remotePersonId);
     grantedFotosPeersByRootIdHash.set(rootIdHash, peers);
-}
-
-function notifyGrantedFotosPeersAboutRootUpdate(rootIdHash: string): void {
-    const grantedFotosPeerIds = grantedFotosPeersByRootIdHash.get(rootIdHash);
-    if (!grantedFotosPeerIds || grantedFotosPeerIds.size === 0) {
-        return;
-    }
-
-    let notified = 0;
-    for (const remotePersonId of grantedFotosPeerIds) {
-        notified += notifyRemotePeerAboutNewAccessibleRoots(remotePersonId as SHA256IdHash<Person>);
-    }
-
-    if (notified === 0) {
-        notifyAllActiveExportersAboutNewAccessibleRoots();
-    }
 }
 
 async function buildGrantedRootAccessEntries(
@@ -502,7 +480,6 @@ export async function addEntryToManifest(entryHash: SHA256Hash<FotosEntry>): Pro
         String(storedManifest.hash),
         String(entryHash),
     ]);
-    notifyGrantedFotosPeersAboutRootUpdate(String(manifestIdHash));
 
     console.log(`[fotos-manifest] Added entry ${(entryHash as string).substring(0, 12)}, total: ${entries.size}`);
 }
@@ -533,7 +510,6 @@ export async function addAuthenticityAttestationToManifest(
         String(storedManifest.hash),
         String(attestationHash),
     ]);
-    notifyGrantedFotosPeersAboutRootUpdate(String(manifestIdHash));
 
     console.log(
         `[fotos-manifest] Added authenticity ${(attestationHash as string).substring(0, 12)}, total: ${authenticityAttestations.size}`,
@@ -564,11 +540,29 @@ export async function grantFotosAccess(remotePersonId: SHA256IdHash<Person>): Pr
     const contentGrantCount = await grantManifestContentAccess(remotePersonId, manifest);
 
     rememberGrantedFotosPeer(String(manifestIdHash), String(remotePersonId));
-    if (notifyRemotePeerAboutNewAccessibleRoots(remotePersonId) === 0) {
-        notifyAllActiveExportersAboutNewAccessibleRoots();
-    }
 
     console.log(`[fotos-manifest] IdAccess granted, contentRoots=${contentGrantCount}`);
+}
+
+/** Retire pre-certificate gallery grants while leaving already exported copies intact. */
+export async function revokeLegacyFotosManifestAccess(): Promise<void> {
+    const manifestIdHash = await ensureFotosManifest();
+    const currentManifestVersion = await getObjectByIdHash(manifestIdHash);
+    await createAccess([
+        {
+            id: manifestIdHash,
+            person: [],
+            hashGroup: [],
+            mode: SET_ACCESS_MODE.REPLACE,
+        },
+        {
+            object: currentManifestVersion.hash,
+            person: [],
+            hashGroup: [],
+            mode: SET_ACCESS_MODE.REPLACE,
+        },
+    ] as any);
+    grantedFotosPeersByRootIdHash.delete(String(manifestIdHash));
 }
 
 export interface GrantFotosDeviceBookAccessOptions {
@@ -607,16 +601,6 @@ export async function grantFotosDeviceBookAccess(
 
     rememberGrantedFotosPeer(deviceBookIdHash, String(remotePersonId));
     rememberGrantedFotosPeer(mediaBookIdHash, String(remotePersonId));
-    if (notifyRemotePeerAboutNewAccessibleRoots(remotePersonId) === 0) {
-        notifyAllActiveExportersAboutNewAccessibleRoots();
-    }
 
     return { deviceBookIdHash, mediaBookIdHash };
-}
-
-export async function notifyGrantedFotosPeersAboutDeviceBookUpdate(deviceId: string): Promise<void> {
-    const deviceBookIdHash = await getFotosDeviceBookIdHash({ calculateIdHashOfObj }, deviceId);
-    const mediaBookIdHash = await getMediaBookIdHash({ calculateIdHashOfObj }, deviceId);
-    notifyGrantedFotosPeersAboutRootUpdate(String(deviceBookIdHash));
-    notifyGrantedFotosPeersAboutRootUpdate(String(mediaBookIdHash));
 }
