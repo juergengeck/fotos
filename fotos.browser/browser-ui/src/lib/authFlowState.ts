@@ -1,4 +1,4 @@
-export type SidebarTabState = 'browse' | 'manage' | 'settings';
+export type SidebarTabState = 'browse' | 'settings';
 
 interface StorageLike {
     getItem(key: string): string | null;
@@ -18,7 +18,9 @@ function getSessionStorage(): StorageLike | null {
 }
 
 function isSidebarTabState(value: string | null): value is SidebarTabState {
-    return value === 'browse' || value === 'manage' || value === 'settings';
+    // 'manage' is intentionally omitted: the Manage tab was merged into Browse +
+    // Settings, so any persisted 'manage' value falls through to the default.
+    return value === 'browse' || value === 'settings';
 }
 
 export function readStoredSidebarTab(storage: StorageLike | null = getSessionStorage()): SidebarTabState | null {

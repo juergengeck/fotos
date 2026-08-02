@@ -242,9 +242,9 @@ export function TimelineScrubber({ scrollRef, dayGroups }: TimelineScrubberProps
                 <div
                     className="absolute flex items-center justify-center rounded-full bg-black/70 backdrop-blur-sm border border-white/15 transition-all duration-200"
                     style={{
-                        width: 40,
-                        height: 40,
-                        right: -10,
+                        width: 44,
+                        height: 44,
+                        right: -12,
                         top: `calc(${PADDING}px + ${(viewTop + viewHeight / 2) * 100}%)`,
                         transform: 'translateY(-50%)',
                         transition: scrubbingRef.current ? 'none' : 'top 0.15s ease-out',
@@ -333,8 +333,8 @@ export function TimelineScrubber({ scrollRef, dayGroups }: TimelineScrubberProps
             style={{
                 bottom: 16,
                 right: 16,
-                width: 40,
-                height: 40,
+                width: 44,
+                height: 44,
                 cursor: 'pointer',
                 touchAction: 'none',
                 userSelect: 'none',

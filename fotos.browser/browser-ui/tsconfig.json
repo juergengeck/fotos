@@ -19,6 +19,12 @@
     "paths": {
       "@/*": ["./src/*"],
       "@refinio/fotos.ui": ["../../fotos.ui/src/index.ts"],
+      "@refinio/source.media": ["../../../one/packages/source.media/dist/index.d.ts"],
+      "@refinio/source.media/*": ["../../../one/packages/source.media/dist/*"],
+      "@refinio/source.core": ["../../../one/packages/source.core/dist/index.d.ts"],
+      "@refinio/source.core/*": ["../../../one/packages/source.core/dist/*"],
+      "@refinio/media.core": ["../../../one/packages/media.core/dist/index.d.ts"],
+      "@refinio/media.core/*": ["../../../one/packages/media.core/dist/*"],
       "@refinio/recovery.core": ["../../../vger/packages/recovery.core/dist/index.d.ts"],
       "@refinio/trust.core/*": ["../../../one/packages/trust.core/dist/*"],
       "@refinio/trust.core/recipes": ["../../../one/packages/trust.core/dist/recipes/index.d.ts"]

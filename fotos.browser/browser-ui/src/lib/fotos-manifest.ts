@@ -22,7 +22,7 @@ import {
 import {
     ensureMediaBook,
     getMediaBookIdHash,
-} from '../../../../vger/packages/source.media/src/services/MediaSourceService.js';
+} from '@refinio/source.media/services';
 import { ensureVersionedIdObject } from '@refinio/connection.core/helpers/ensure-versioned-id-object.js';
 import { createAccess } from '@refinio/one.core/lib/access.js';
 import {
@@ -492,13 +492,16 @@ export async function addEntryToManifest(entryHash: SHA256Hash<FotosEntry>): Pro
 
     entries.add(entryHash);
 
-    await storeVersionedObject({
+    const storedManifest = await storeVersionedObject({
         $type$: 'FotosManifest',
         id: 'fotos',
         entries,
         authenticityAttestations,
     } as any);
-    await grantObjectAccessToRememberedPeers(String(manifestIdHash), [String(entryHash)]);
+    await grantObjectAccessToRememberedPeers(String(manifestIdHash), [
+        String(storedManifest.hash),
+        String(entryHash),
+    ]);
     notifyGrantedFotosPeersAboutRootUpdate(String(manifestIdHash));
 
     console.log(`[fotos-manifest] Added entry ${(entryHash as string).substring(0, 12)}, total: ${entries.size}`);
@@ -520,13 +523,16 @@ export async function addAuthenticityAttestationToManifest(
 
     authenticityAttestations.add(attestationHash);
 
-    await storeVersionedObject({
+    const storedManifest = await storeVersionedObject({
         $type$: 'FotosManifest',
         id: 'fotos',
         entries,
         authenticityAttestations,
     } as any);
-    await grantObjectAccessToRememberedPeers(String(manifestIdHash), [String(attestationHash)]);
+    await grantObjectAccessToRememberedPeers(String(manifestIdHash), [
+        String(storedManifest.hash),
+        String(attestationHash),
+    ]);
     notifyGrantedFotosPeersAboutRootUpdate(String(manifestIdHash));
 
     console.log(

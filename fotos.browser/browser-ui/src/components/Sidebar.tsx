@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Search, FolderOpen, Download, SlidersHorizontal, ChevronLeft, ChevronRight, ChevronDown, Trash2, Check, Plus, Link } from 'lucide-react';
+import { useEffect, useState, useRef, useCallback } from 'react';
+import { Search, FolderOpen, Download, SlidersHorizontal, ChevronLeft, ChevronRight, ChevronDown, Trash2, Check, Plus, Link, Compass, Settings, Layers } from 'lucide-react';
 import type { FotosSettings, StorageMode, DisplaySettings, PhotoEntry } from '@/types/fotos';
 import type { FotosModel } from '@/lib/onecore-boot';
 import type { FaceClusterSummary, SimilarFaceMatch } from '@/lib/cluster-gallery';
@@ -8,13 +8,12 @@ import type { FotosHistoryBranchNode } from '@/lib/fotosHistorySettings';
 import { useDeviceSettings, type FotosDeviceSettings } from '@/hooks/useDeviceSettings';
 import { readStoredSidebarTab, writeStoredSidebarTab } from '@/lib/authFlowState';
 import { FotosSettings as FotosSettingsPanel } from './FotosSettings';
-import { ClusterCard } from './ClusterGallery';
 import { InlineRenameField } from './InlineRenameField';
 import { LLMComparisonPanel } from './LLMComparisonPanel';
 import { ShareWithField, type SharePeerOption } from './ShareWithField';
 import type { ManagedFolder } from '@/hooks/useFolderAccess';
 
-type Tab = 'browse' | 'manage' | 'settings';
+type Tab = 'browse' | 'settings';
 
 interface SidebarProps {
     tags: [string, number][];
@@ -69,8 +68,6 @@ interface SidebarProps {
     collections: FotosCollectionSummary[];
     activeCollectionId: string | null;
     onCollectionSelect: (collectionId: string | null) => void;
-    photoSelectionEnabled: boolean;
-    onPhotoSelectionModeChange: (enabled: boolean) => void;
     selectedPhotoCount: number;
     onSelectAllVisiblePhotos: () => void;
     onExportSelectedPhotos?: () => Promise<void> | void;
@@ -118,6 +115,10 @@ interface SidebarProps {
     onGalleryShareChange: (personIds: string[]) => Promise<void> | void;
     onCollectionShareChange: (collectionId: string, personIds: string[]) => Promise<void> | void;
     onClusterShareChange: (clusterId: string, personIds: string[]) => Promise<void> | void;
+    onClusterContextMenu?: (cluster: FaceClusterSummary, event: React.MouseEvent | React.TouchEvent) => void;
+    onCollectionContextMenu?: (collection: FotosCollectionSummary, event: React.MouseEvent | React.TouchEvent) => void;
+    showOnboarding?: boolean;
+    onDismissOnboarding?: () => void;
 }
 
 export function Sidebar({
@@ -140,8 +141,6 @@ export function Sidebar({
     collections,
     activeCollectionId,
     onCollectionSelect,
-    photoSelectionEnabled,
-    onPhotoSelectionModeChange,
     selectedPhotoCount,
     onSelectAllVisiblePhotos,
     onExportSelectedPhotos,
@@ -179,9 +178,57 @@ export function Sidebar({
     onCollectionShareChange,
     onClusterShareChange,
     onAcceptSharingChange,
+    onCollectionContextMenu,
+    showOnboarding,
+    onDismissOnboarding,
 }: SidebarProps) {
     const [tab, setTab] = useState<Tab>(() => readStoredSidebarTab() ?? 'browse');
     const [collapsed, setCollapsed] = useState(false);
+    const [mobileSheetState, setMobileSheetState] = useState<'collapsed' | 'half' | 'full'>('collapsed');
+
+    const startYRef = useRef(0);
+    const startStateRef = useRef<'collapsed' | 'half' | 'full'>('collapsed');
+
+    const handleTouchStart = useCallback((e: React.TouchEvent) => {
+        const touch = e.touches[0];
+        if (!touch) return;
+        startYRef.current = touch.clientY;
+        startStateRef.current = mobileSheetState;
+    }, [mobileSheetState]);
+
+    const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+        const touch = e.changedTouches[0];
+        if (!touch) return;
+        const deltaY = touch.clientY - startYRef.current;
+        const threshold = 50; // 50px threshold
+
+        if (deltaY < -threshold) {
+            // Dragged up
+            if (startStateRef.current === 'collapsed') {
+                setMobileSheetState('half');
+            } else if (startStateRef.current === 'half') {
+                setMobileSheetState('full');
+            }
+        } else if (deltaY > threshold) {
+            // Dragged down
+            if (startStateRef.current === 'full') {
+                setMobileSheetState('half');
+            } else if (startStateRef.current === 'half') {
+                setMobileSheetState('collapsed');
+            }
+        }
+    }, []);
+
+    const handleTabClick = useCallback((t: Tab) => {
+        if (mobileSheetState === 'collapsed') {
+            setTab(t);
+            setMobileSheetState('half');
+        } else if (tab === t) {
+            setMobileSheetState('collapsed');
+        } else {
+            setTab(t);
+        }
+    }, [tab, mobileSheetState]);
 
     useEffect(() => {
         writeStoredSidebarTab(tab);
@@ -190,14 +237,62 @@ export function Sidebar({
     // Mobile: inline panel, no overlay/drawer
     if (mobile) {
         return (
-            <aside className="shrink-0 min-h-0 overflow-hidden bg-[#0d0d0d] border-t landscape:border-t-0 landscape:border-l border-white/10 flex flex-col landscape:w-64 landscape:h-full">
-                <div className="flex items-center border-b border-white/10">
-                    <div className="flex flex-1">
-                        <TabBtn active={tab === 'browse'} onClick={() => setTab('browse')}>Browse</TabBtn>
-                        <TabBtn active={tab === 'manage'} onClick={() => setTab('manage')}>Manage</TabBtn>
-                        <TabBtn active={tab === 'settings'} onClick={() => setTab('settings')}>Settings</TabBtn>
+            <>
+                {/* Backdrop for mobile bottom sheet */}
+                {mobileSheetState !== 'collapsed' && (
+                    <div 
+                        className="fixed inset-0 z-45 bg-black/50 backdrop-blur-sm transition-opacity duration-300 landscape:hidden"
+                        onClick={() => setMobileSheetState('collapsed')}
+                    />
+                )}
+
+                {/* Floating Onboarding Tooltip for mobile portrait tabs */}
+                {showOnboarding && mobileSheetState === 'collapsed' && (
+                    <div className="fixed bottom-16 left-4 right-4 bg-[#e94560] text-white p-3 rounded-lg shadow-xl z-50 landscape:hidden animate-[viewFadeIn_300ms_ease]">
+                        <div className="flex items-start justify-between gap-2">
+                            <div>
+                                <p className="font-semibold text-xs mb-0.5">📂 Mobile Navigation</p>
+                                <p className="text-[11px] text-white/95 leading-tight">Tap Browse or Settings at the bottom to explore features.</p>
+                            </div>
+                            <button type="button" onClick={onDismissOnboarding} className="text-white/60 hover:text-white text-xs font-bold shrink-0">✕</button>
+                        </div>
                     </div>
+                )}
+
+                {/* Floating bottom tab bar (mobile portrait only) */}
+                <div className="fixed bottom-0 left-0 right-0 h-14 bg-[#0d0d0d]/95 backdrop-blur-md border-t border-white/10 z-50 flex justify-around items-center px-4 landscape:hidden">
+                    <TabBtnIcon active={tab === 'browse' && mobileSheetState !== 'collapsed'} onClick={() => handleTabClick('browse')} label="Browse" icon="browse" />
+                    <TabBtnIcon active={tab === 'settings' && mobileSheetState !== 'collapsed'} onClick={() => handleTabClick('settings')} label="Settings" icon="settings" />
                 </div>
+
+                <aside 
+                    className={`
+                        fixed bottom-14 left-0 right-0 bg-[#0d0d0d] border-t border-white/10 rounded-t-2xl z-40 transition-all duration-300 ease-out flex flex-col
+                        landscape:static landscape:w-64 landscape:h-full landscape:border-t-0 landscape:border-l landscape:rounded-none landscape:translate-y-0 landscape:opacity-100 landscape:pointer-events-auto
+                        ${mobileSheetState === 'collapsed'
+                            ? 'h-0 border-t-0 opacity-0 pointer-events-none translate-y-10'
+                            : mobileSheetState === 'half'
+                                ? 'h-[50vh] opacity-100 translate-y-0'
+                                : 'h-[85vh] opacity-100 translate-y-0'
+                        }
+                    `}
+                >
+                    {/* Pull/Drag Handle (Mobile Portrait Only) */}
+                    <div 
+                        className="flex flex-col items-center py-2 shrink-0 cursor-row-resize select-none landscape:hidden border-b border-white/5"
+                        onTouchStart={handleTouchStart}
+                        onTouchEnd={handleTouchEnd}
+                    >
+                        <div className="w-12 h-1 rounded-full bg-white/20 mb-2" />
+                        <div className="text-[10px] font-semibold text-white/30 uppercase tracking-wider">
+                            {tab}
+                        </div>
+                    </div>
+
+                    {/* Top Tab Headers (Landscape/Desktop Only) */}
+                    <div className="hidden landscape:flex items-center border-b border-white/10 shrink-0">
+                        <SidebarTabHeader tab={tab} setTab={setTab} />
+                    </div>
 
                 <div className="px-3 py-2 border-b border-white/10">
                     <FolderHeader folderName={folderName} onOpenFolder={onOpenFolder} />
@@ -207,7 +302,7 @@ export function Sidebar({
                     <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
                         <span className="text-[11px] text-blue-400/80 flex-1">Showing similar faces</span>
                         {onClearFaceSearch && (
-                            <button onClick={onClearFaceSearch} className="text-[10px] text-white/30 hover:text-white/60">clear</button>
+                            <button onClick={onClearFaceSearch} className="text-[11px] text-white/30 hover:text-white/60">clear</button>
                         )}
                     </div>
                 )}
@@ -233,8 +328,6 @@ export function Sidebar({
                             collections={collections}
                             activeCollectionId={activeCollectionId}
                             onCollectionSelect={onCollectionSelect}
-                            photoSelectionEnabled={photoSelectionEnabled}
-                            onPhotoSelectionModeChange={onPhotoSelectionModeChange}
                             selectedPhotoCount={selectedPhotoCount}
                             onSelectAllVisiblePhotos={onSelectAllVisiblePhotos}
                             onExportSelectedPhotos={onExportSelectedPhotos}
@@ -264,12 +357,13 @@ export function Sidebar({
                             onDeletePhoto={onDeletePhoto}
                             onRenameFace={onRenameFace}
                             onDeleteFace={onDeleteFace}
+                            onCollectionContextMenu={onCollectionContextMenu}
+                            showOnboarding={showOnboarding}
+                            onDismissOnboarding={onDismissOnboarding}
                         />
                     )}
-                    {tab === 'manage' && (
-                        <ManageTab
-                            settings={settings}
-                            onUpdateStorage={onUpdateStorage}
+                    {tab === 'browse' && (
+                        <LibrarySharingPanel
                             folderName={folderName}
                             folders={folders}
                             onOpenFolder={onOpenFolder}
@@ -277,11 +371,6 @@ export function Sidebar({
                             onRemoveFolder={onRemoveFolder}
                             onRescan={onRescan}
                             onReanalyze={onReanalyze}
-                            canClaimAuthorshipOnIngest={canClaimAuthorshipOnIngest}
-                            claimAuthorshipOnIngest={claimAuthorshipOnIngest}
-                            onClaimAuthorshipOnIngestChange={onClaimAuthorshipOnIngestChange}
-                            llmComparisonPhoto={llmComparisonPhoto ?? null}
-                            llmComparisonPhotoLabel={llmComparisonPhotoLabel ?? 'photo'}
                             collections={collections}
                             onRenameCollection={onRenameCollection}
                             onDeleteCollection={onDeleteCollection}
@@ -296,9 +385,6 @@ export function Sidebar({
                             onGalleryShareChange={onGalleryShareChange}
                             onCollectionShareChange={onCollectionShareChange}
                             onClusterShareChange={onClusterShareChange}
-                            getFileUrl={getFileUrl}
-                            onClusterSelect={id => onClusterSelect(id)}
-                            onRenameFace={onRenameFace}
                         />
                     )}
                     {tab === 'settings' && (
@@ -319,13 +405,27 @@ export function Sidebar({
                             onHistoryDelete={onHistoryDelete}
                             currentFolderName={currentFolderName}
                             fotosModel={fotosModel ?? null}
+                            showOnboarding={showOnboarding}
+                            onDismissOnboarding={onDismissOnboarding}
+                        />
+                    )}
+                    {tab === 'settings' && (
+                        <LibraryConfigPanel
+                            settings={settings}
+                            onUpdateStorage={onUpdateStorage}
+                            canClaimAuthorshipOnIngest={canClaimAuthorshipOnIngest}
+                            claimAuthorshipOnIngest={claimAuthorshipOnIngest}
+                            onClaimAuthorshipOnIngestChange={onClaimAuthorshipOnIngestChange}
+                            llmComparisonPhoto={llmComparisonPhoto ?? null}
+                            llmComparisonPhotoLabel={llmComparisonPhotoLabel ?? 'photo'}
                         />
                     )}
                 </div>
                 {footerMarquee && <SidebarMarquee text={footerMarquee} />}
             </aside>
-        );
-    }
+        </>
+    );
+}
 
     // Desktop: fixed-width sidebar with collapse/expand
     return (
@@ -347,11 +447,7 @@ export function Sidebar({
         `}>
             {/* Tabs */}
             <div className="flex items-center border-b border-white/10">
-                <div className="flex flex-1">
-                    <TabBtn active={tab === 'browse'} onClick={() => setTab('browse')}>Browse</TabBtn>
-                    <TabBtn active={tab === 'manage'} onClick={() => setTab('manage')}>Manage</TabBtn>
-                    <TabBtn active={tab === 'settings'} onClick={() => setTab('settings')}>Settings</TabBtn>
-                </div>
+                <SidebarTabHeader tab={tab} setTab={setTab} />
             </div>
 
             {/* Folder controls */}
@@ -364,7 +460,7 @@ export function Sidebar({
                 <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
                     <span className="text-[11px] text-blue-400/80 flex-1">Showing similar faces</span>
                     {onClearFaceSearch && (
-                        <button onClick={onClearFaceSearch} className="text-[10px] text-white/30 hover:text-white/60">clear</button>
+                        <button onClick={onClearFaceSearch} className="text-[11px] text-white/30 hover:text-white/60">clear</button>
                     )}
                 </div>
             )}
@@ -396,8 +492,6 @@ export function Sidebar({
                         collections={collections}
                         activeCollectionId={activeCollectionId}
                         onCollectionSelect={onCollectionSelect}
-                        photoSelectionEnabled={photoSelectionEnabled}
-                        onPhotoSelectionModeChange={onPhotoSelectionModeChange}
                         selectedPhotoCount={selectedPhotoCount}
                         onSelectAllVisiblePhotos={onSelectAllVisiblePhotos}
                         onExportSelectedPhotos={onExportSelectedPhotos}
@@ -427,12 +521,13 @@ export function Sidebar({
                         onDeletePhoto={onDeletePhoto}
                         onRenameFace={onRenameFace}
                         onDeleteFace={onDeleteFace}
+                        onCollectionContextMenu={onCollectionContextMenu}
+                        showOnboarding={showOnboarding}
+                        onDismissOnboarding={onDismissOnboarding}
                     />
                 )}
-                {tab === 'manage' && (
-                    <ManageTab
-                        settings={settings}
-                        onUpdateStorage={onUpdateStorage}
+                {tab === 'browse' && (
+                    <LibrarySharingPanel
                         folderName={folderName}
                         folders={folders}
                         onOpenFolder={onOpenFolder}
@@ -440,11 +535,6 @@ export function Sidebar({
                         onRemoveFolder={onRemoveFolder}
                         onRescan={onRescan}
                         onReanalyze={onReanalyze}
-                        canClaimAuthorshipOnIngest={canClaimAuthorshipOnIngest}
-                        claimAuthorshipOnIngest={claimAuthorshipOnIngest}
-                        onClaimAuthorshipOnIngestChange={onClaimAuthorshipOnIngestChange}
-                        llmComparisonPhoto={llmComparisonPhoto ?? null}
-                        llmComparisonPhotoLabel={llmComparisonPhotoLabel ?? 'photo'}
                         collections={collections}
                         onRenameCollection={onRenameCollection}
                         onDeleteCollection={onDeleteCollection}
@@ -459,9 +549,6 @@ export function Sidebar({
                         onGalleryShareChange={onGalleryShareChange}
                         onCollectionShareChange={onCollectionShareChange}
                         onClusterShareChange={onClusterShareChange}
-                        getFileUrl={getFileUrl}
-                        onClusterSelect={id => onClusterSelect(id)}
-                        onRenameFace={onRenameFace}
                     />
                 )}
                 {tab === 'settings' && (
@@ -483,6 +570,19 @@ export function Sidebar({
                         onHistoryDelete={onHistoryDelete}
                         currentFolderName={currentFolderName}
                         fotosModel={fotosModel ?? null}
+                        showOnboarding={showOnboarding}
+                        onDismissOnboarding={onDismissOnboarding}
+                    />
+                )}
+                {tab === 'settings' && (
+                    <LibraryConfigPanel
+                        settings={settings}
+                        onUpdateStorage={onUpdateStorage}
+                        canClaimAuthorshipOnIngest={canClaimAuthorshipOnIngest}
+                        claimAuthorshipOnIngest={claimAuthorshipOnIngest}
+                        onClaimAuthorshipOnIngestChange={onClaimAuthorshipOnIngestChange}
+                        llmComparisonPhoto={llmComparisonPhoto ?? null}
+                        llmComparisonPhotoLabel={llmComparisonPhotoLabel ?? 'photo'}
                     />
                 )}
             </div>
@@ -553,12 +653,12 @@ function SidebarProgress({ progress }: {
                         style={{ width: `${percent}%` }}
                     />
                 </div>
-                <span className="text-[10px] text-white/40 whitespace-nowrap">
+                <span className="text-[11px] text-white/40 whitespace-nowrap">
                     {label} {progress.current}/{progress.total}
                 </span>
             </div>
             {(progress.statusLabel || progress.fileName) && (
-                <div className="mt-1 truncate text-[10px] text-white/25">
+                <div className="mt-1 truncate text-[11px] text-white/25">
                     {progress.statusLabel ?? progress.fileName}
                 </div>
             )}
@@ -566,17 +666,60 @@ function SidebarProgress({ progress }: {
     );
 }
 
-function TabBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+function SidebarTabHeader({ tab, setTab }: { tab: Tab; setTab: (tab: Tab) => void }) {
+    return (
+        <div className="flex flex-1 items-center px-2 py-1.5">
+            {tab === 'settings' && (
+                <button
+                    type="button"
+                    onClick={() => setTab('browse')}
+                    className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium uppercase tracking-wide text-white/55 transition-colors hover:bg-white/5 hover:text-white/85"
+                    aria-label="Back to browse"
+                >
+                    <ChevronLeft className="h-4 w-4" />
+                    Back
+                </button>
+            )}
+            <div className="flex-1" />
+            <button
+                type="button"
+                onClick={() => setTab('settings')}
+                className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+                    tab === 'settings'
+                        ? 'bg-[#e94560]/10 text-[#ff9db0]'
+                        : 'text-white/45 hover:bg-white/5 hover:text-white/75'
+                }`}
+                aria-label="Settings"
+                title="Settings"
+            >
+                <Settings className="h-4 w-4" />
+            </button>
+        </div>
+    );
+}
+
+function TabBtnIcon({
+    active,
+    onClick,
+    label,
+    icon,
+}: {
+    active: boolean;
+    onClick: () => void;
+    label: string;
+    icon: 'browse' | 'manage' | 'settings';
+}) {
+    const Icon = icon === 'browse' ? Compass : icon === 'manage' ? Layers : Settings;
     return (
         <button
+            type="button"
             onClick={onClick}
-            className={`flex-1 px-2 py-2 text-[11px] font-medium tracking-wide uppercase transition-colors ${
-                active
-                    ? 'text-white/90 border-b-2 border-white/40'
-                    : 'text-white/30 hover:text-white/50 border-b-2 border-transparent'
+            className={`flex flex-col items-center justify-center flex-1 h-full py-1 text-[10px] font-semibold transition-colors ${
+                active ? 'text-[#e94560]' : 'text-white/40 hover:text-white/60'
             }`}
         >
-            {children}
+            <Icon className="w-5 h-5 mb-0.5" />
+            <span>{label}</span>
         </button>
     );
 }
@@ -610,7 +753,7 @@ function FolderHeader({
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
-    return <div className="text-[10px] text-white/25 uppercase tracking-wider font-medium">{children}</div>;
+    return <div className="text-[11px] text-white/25 uppercase tracking-wider font-medium">{children}</div>;
 }
 
 function CollapsibleSection({
@@ -630,7 +773,7 @@ function CollapsibleSection({
             <div className="flex items-center justify-between gap-2">
                 <button
                     onClick={() => setOpen(o => !o)}
-                    className="flex min-w-0 flex-1 items-center gap-1 text-[10px] text-white/25 uppercase tracking-wider font-medium hover:text-white/40 transition-colors"
+                    className="flex min-w-0 flex-1 items-center gap-1 text-[11px] text-white/25 uppercase tracking-wider font-medium hover:text-white/40 transition-colors"
                 >
                     <ChevronDown className={`w-3 h-3 transition-transform ${open ? '' : '-rotate-90'}`} />
                     {label}
@@ -638,6 +781,47 @@ function CollapsibleSection({
                 {actions ? <div className="flex shrink-0 items-center">{actions}</div> : null}
             </div>
             {open && <div className="mt-1.5 space-y-2">{children}</div>}
+        </div>
+    );
+}
+
+function SizeSlider({ value, onChange }: { value: number; onChange: (value: number) => void }) {
+    // Track the value locally while dragging so the slider and label stay smooth,
+    // and only commit to settings on release. Committing on every tick triggers a
+    // synchronous localStorage write plus an async settings persist, which re-renders
+    // the gallery mid-drag and makes the thumbnails flicker.
+    const [draft, setDraft] = useState(value);
+    const dragging = useRef(false);
+
+    useEffect(() => {
+        if (!dragging.current) {
+            setDraft(value);
+        }
+    }, [value]);
+
+    const commit = useCallback((next: number) => {
+        dragging.current = false;
+        if (next !== value) {
+            onChange(next);
+        }
+    }, [onChange, value]);
+
+    return (
+        <div className="flex items-center gap-2 mt-1.5">
+            <SlidersHorizontal className="w-3 h-3 text-white/25 shrink-0" />
+            <input
+                type="range"
+                min={60}
+                max={400}
+                step={10}
+                value={draft}
+                onChange={e => { dragging.current = true; setDraft(parseInt(e.target.value)); }}
+                onPointerUp={e => commit(parseInt((e.target as HTMLInputElement).value))}
+                onKeyUp={e => commit(parseInt((e.target as HTMLInputElement).value))}
+                onBlur={e => commit(parseInt(e.target.value))}
+                className="flex-1 accent-white/50 h-1"
+            />
+            <span className="text-[11px] text-white/30 w-8 text-right tabular-nums">{draft}</span>
         </div>
     );
 }
@@ -652,7 +836,7 @@ function BrowseTab({
     sortOrder, onSortOrderChange,
     galleryMode, onGalleryModeChange,
     collections, activeCollectionId, onCollectionSelect,
-    photoSelectionEnabled, onPhotoSelectionModeChange, selectedPhotoCount, onSelectAllVisiblePhotos,
+    selectedPhotoCount, onSelectAllVisiblePhotos,
     onExportSelectedPhotos, exportSelectedPhotosDisabled,
     clusterSelectionEnabled, onClusterSelectionModeChange, selectedClusterIds, selectedClusterCount,
     onToggleSelectedCluster, onClearCollectionSelection, onCreateCollection, onRenameCollection, onDeleteCollection,
@@ -666,6 +850,9 @@ function BrowseTab({
     onSeparatePersonGroup,
     onOpenSimilarFace, onDeletePhoto,
     onRenameFace, onDeleteFace,
+    onCollectionContextMenu,
+    showOnboarding,
+    onDismissOnboarding,
 }: {
     tags: [string, number][];
     activeTag: string | null;
@@ -686,8 +873,6 @@ function BrowseTab({
     collections: FotosCollectionSummary[];
     activeCollectionId: string | null;
     onCollectionSelect: (collectionId: string | null) => void;
-    photoSelectionEnabled: boolean;
-    onPhotoSelectionModeChange: (enabled: boolean) => void;
     selectedPhotoCount: number;
     onSelectAllVisiblePhotos: () => void;
     onExportSelectedPhotos?: () => Promise<void> | void;
@@ -717,6 +902,9 @@ function BrowseTab({
     onDeletePhoto: (hash: string) => void;
     onRenameFace: (clusterId: string, name: string) => Promise<void> | void;
     onDeleteFace: (clusterId: string) => void;
+    onCollectionContextMenu?: (collection: FotosCollectionSummary, event: React.MouseEvent | React.TouchEvent) => void;
+    showOnboarding?: boolean;
+    onDismissOnboarding?: () => void;
 }) {
     const activeCluster = clusters.find(cluster => cluster.clusterId === activeClusterId) ?? null;
     const selectedAssociationClusterId = activeCluster
@@ -768,6 +956,18 @@ function BrowseTab({
 
     return (
         <>
+            {showOnboarding && (
+                <div className="relative bg-[#e94560] text-white p-3 rounded-lg shadow-xl mb-3 animate-[viewFadeIn_300ms_ease] z-50">
+                    <div className="flex items-start justify-between gap-2">
+                        <div>
+                            <p className="font-semibold text-xs mb-0.5">📂 Sidebar Navigation</p>
+                            <p className="text-[11px] text-white/95 leading-tight">Switch between Browse and Settings sections here.</p>
+                        </div>
+                        <button type="button" onClick={onDismissOnboarding} className="text-white/60 hover:text-white text-xs font-bold shrink-0">✕</button>
+                    </div>
+                </div>
+            )}
+
             {/* Stats */}
             <div className="text-xs text-white/35">
                 {browseSummary}
@@ -794,25 +994,14 @@ function BrowseTab({
                 defaultOpen={collections.length > 0 || selectedPhotoCount > 0 || selectedClusterCount > 0}
             >
                 <div className="rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-2 space-y-2">
-                    <div className="text-[10px] leading-relaxed text-white/35">
+                    <div className="text-[11px] leading-relaxed text-white/35">
                         Build reusable groups from selected images and named people or clusters.
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                         <button
                             type="button"
-                            onClick={() => onPhotoSelectionModeChange(!photoSelectionEnabled)}
-                            className={`rounded-md border px-2 py-1 text-[10px] uppercase tracking-[0.16em] transition-colors ${
-                                photoSelectionEnabled
-                                    ? 'border-[#e94560]/35 bg-[#e94560]/10 text-[#ff9db0]'
-                                    : 'border-white/10 bg-white/5 text-white/38 hover:text-white/60'
-                            }`}
-                        >
-                            {photoSelectionEnabled ? 'Done Images' : 'Select Images'}
-                        </button>
-                        <button
-                            type="button"
                             onClick={() => onClusterSelectionModeChange(!clusterSelectionEnabled)}
-                            className={`rounded-md border px-2 py-1 text-[10px] uppercase tracking-[0.16em] transition-colors ${
+                            className={`rounded-md border px-2 py-1 text-[11px] uppercase tracking-[0.16em] transition-colors ${
                                 clusterSelectionEnabled
                                     ? 'border-[#e94560]/35 bg-[#e94560]/10 text-[#ff9db0]'
                                     : 'border-white/10 bg-white/5 text-white/38 hover:text-white/60'
@@ -823,7 +1012,7 @@ function BrowseTab({
                         <button
                             type="button"
                             onClick={onSelectAllVisiblePhotos}
-                            className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-white/38 transition-colors hover:text-white/60"
+                            className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-white/38 transition-colors hover:text-white/60"
                         >
                             Select Visible
                         </button>
@@ -832,7 +1021,7 @@ function BrowseTab({
                                 type="button"
                                 onClick={() => { void onExportSelectedPhotos(); }}
                                 disabled={selectedPhotoCount === 0 || exportSelectedPhotosDisabled}
-                                className={`rounded-md border px-2 py-1 text-[10px] uppercase tracking-[0.16em] transition-colors ${
+                                className={`rounded-md border px-2 py-1 text-[11px] uppercase tracking-[0.16em] transition-colors ${
                                     selectedPhotoCount === 0 || exportSelectedPhotosDisabled
                                         ? 'border-white/10 bg-white/5 text-white/20 cursor-not-allowed'
                                         : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/16'
@@ -848,13 +1037,13 @@ function BrowseTab({
                             <button
                                 type="button"
                                 onClick={onClearCollectionSelection}
-                                className="rounded-md border border-white/10 bg-black/20 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-white/32 transition-colors hover:text-white/58"
+                                className="rounded-md border border-white/10 bg-black/20 px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-white/32 transition-colors hover:text-white/58"
                             >
                                 Clear
                             </button>
                         )}
                     </div>
-                    <div className="text-[10px] text-white/28">
+                    <div className="text-[11px] text-white/28">
                         {selectedPhotoCount} selected image{selectedPhotoCount === 1 ? '' : 's'} · {selectedClusterCount} selected people/cluster{selectedClusterCount === 1 ? '' : 's'}
                     </div>
                     <div className="flex items-center gap-2">
@@ -875,7 +1064,7 @@ function BrowseTab({
                             type="button"
                             onClick={submitCollection}
                             disabled={selectedPhotoCount === 0 && selectedClusterCount === 0}
-                            className={`rounded-md border px-2.5 py-1.5 text-[10px] uppercase tracking-[0.16em] transition-colors ${
+                            className={`rounded-md border px-2.5 py-1.5 text-[11px] uppercase tracking-[0.16em] transition-colors ${
                                 selectedPhotoCount === 0 && selectedClusterCount === 0
                                     ? 'border-white/10 bg-white/5 text-white/20 cursor-not-allowed'
                                     : 'border-[#e94560]/25 bg-[#e94560]/10 text-[#ff9db0] hover:bg-[#e94560]/16'
@@ -890,7 +1079,7 @@ function BrowseTab({
                 </div>
 
                 {collections.length === 0 ? (
-                    <div className="rounded-md border border-dashed border-white/10 px-2.5 py-2 text-[10px] text-white/24">
+                    <div className="rounded-md border border-dashed border-white/10 px-2.5 py-2 text-[11px] text-white/24">
                         Select images or people, then create your first collection here.
                     </div>
                 ) : (
@@ -903,6 +1092,7 @@ function BrowseTab({
                                 onClick={() => onCollectionSelect(collection.id === activeCollectionId ? null : collection.id)}
                                 onRename={onRenameCollection}
                                 onDelete={onDeleteCollection}
+                                onContextMenu={(e) => onCollectionContextMenu?.(collection, e)}
                             />
                         ))}
                     </div>
@@ -937,15 +1127,15 @@ function BrowseTab({
                                     disabled={!settings.analysis.faceAnalyticsEnabled}
                                     className="flex-1 accent-[#e94560] h-1"
                                 />
-                                <span className="w-8 text-right text-[10px] text-white/35 tabular-nums">
+                                <span className="w-8 text-right text-[11px] text-white/35 tabular-nums">
                                     {settings.analysis.clusterSensitivity}
                                 </span>
                             </div>
-                            <div className="flex items-center justify-between text-[10px] text-white/25">
+                            <div className="flex items-center justify-between text-[11px] text-white/25">
                                 <span>Merge more</span>
                                 <span>Split more</span>
                             </div>
-                            <div className="text-[10px] text-white/30">
+                            <div className="text-[11px] text-white/30">
                                 {clusters.length} clusters at this setting
                             </div>
                         </div>
@@ -962,14 +1152,14 @@ function BrowseTab({
 
                     {selectedAssociationClusterId && (
                         <div className="rounded-md border border-[#e94560]/25 bg-[#1a1115] px-2.5 py-2">
-                            <div className="text-[10px] text-white/50">
+                            <div className="text-[11px] text-white/50">
                                 Check thumbnails on the right, then either merge them into this cluster or manage them as one person.
                             </div>
                             <div className="mt-2 flex items-center gap-1.5">
                                 <button
                                     onClick={applyClusterMerges}
                                     disabled={selectedClusterCandidateIds.length === 0}
-                                    className={`rounded-md px-2 py-1 text-[10px] uppercase tracking-[0.16em] transition-colors ${
+                                    className={`rounded-md px-2 py-1 text-[11px] uppercase tracking-[0.16em] transition-colors ${
                                         selectedClusterCandidateIds.length > 0
                                             ? 'bg-[#e94560] text-white hover:bg-[#d73b56]'
                                             : 'bg-white/5 text-white/25 cursor-not-allowed'
@@ -980,7 +1170,7 @@ function BrowseTab({
                                 <button
                                     onClick={collapseClustersAsPerson}
                                     disabled={selectedClusterCandidateIds.length === 0}
-                                    className={`rounded-md px-2 py-1 text-[10px] uppercase tracking-[0.16em] transition-colors ${
+                                    className={`rounded-md px-2 py-1 text-[11px] uppercase tracking-[0.16em] transition-colors ${
                                         selectedClusterCandidateIds.length > 0
                                             ? 'bg-white/10 text-[#ff9db0] hover:bg-white/15'
                                             : 'bg-white/5 text-white/25 cursor-not-allowed'
@@ -991,7 +1181,7 @@ function BrowseTab({
                                 {selectedClusterCandidateIds.length > 0 && (
                                     <button
                                         onClick={() => setSelectedClusterCandidateIds([])}
-                                        className="text-[10px] text-white/35 hover:text-white/60"
+                                        className="text-[11px] text-white/35 hover:text-white/60"
                                     >
                                         clear
                                     </button>
@@ -1002,12 +1192,12 @@ function BrowseTab({
 
                     {activePersonGroupId && (
                         <div className="rounded-md border border-white/10 bg-white/5 px-2.5 py-2">
-                            <div className="text-[10px] text-white/45">
+                            <div className="text-[11px] text-white/45">
                                 This person is an explicit collapse of {activeCluster?.memberClusterIds.length ?? 0} clusters.
                             </div>
                             <button
                                 onClick={() => onSeparatePersonGroup(activePersonGroupId)}
-                                className="mt-2 rounded-md border border-white/10 bg-black/20 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-white/55 transition-colors hover:bg-black/30 hover:text-white/75"
+                                className="mt-2 rounded-md border border-white/10 bg-black/20 px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-white/55 transition-colors hover:bg-black/30 hover:text-white/75"
                             >
                                 Separate Clusters
                             </button>
@@ -1093,7 +1283,7 @@ function BrowseTab({
                     <div>
                             <SectionLabel>Similar Faces</SectionLabel>
                             {selectedAssociationClusterId ? (
-                                <div className="mt-1 text-[10px] text-white/30">
+                                <div className="mt-1 text-[11px] text-white/30">
                                     Check faces to add them to the selected cluster.
                                 </div>
                             ) : null}
@@ -1126,19 +1316,7 @@ function BrowseTab({
                     {/* Size slider */}
                     <div>
                         <SectionLabel>Size</SectionLabel>
-                        <div className="flex items-center gap-2 mt-1.5">
-                            <SlidersHorizontal className="w-3 h-3 text-white/25 shrink-0" />
-                            <input
-                                type="range"
-                                min={60}
-                                max={400}
-                                step={10}
-                                value={thumbScale}
-                                onChange={e => onThumbScaleChange(parseInt(e.target.value))}
-                                className="flex-1 accent-white/50 h-1"
-                            />
-                            <span className="text-[10px] text-white/30 w-8 text-right tabular-nums">{thumbScale}</span>
-                        </div>
+                        <SizeSlider value={thumbScale} onChange={onThumbScaleChange} />
                     </div>
 
                     {/* Sort */}
@@ -1183,9 +1361,8 @@ function BrowseTab({
 
                     {/* Detected faces */}
                     {clusters.length > 0 && (
-                        <div>
-                            <SectionLabel>Faces</SectionLabel>
-                            <div className="mt-1.5 space-y-1">
+                        <CollapsibleSection label="Faces" defaultOpen={false}>
+                            <div className="space-y-1">
                                 {clusters.map(cluster => (
                                     <ClusterBrowseRow
                                         key={cluster.clusterId}
@@ -1204,7 +1381,7 @@ function BrowseTab({
                                     />
                                 ))}
                             </div>
-                        </div>
+                        </CollapsibleSection>
                     )}
                 </>
             )}
@@ -1216,7 +1393,7 @@ function TagPill({ active, onClick, label }: { active: boolean; onClick: () => v
     return (
         <button
             onClick={onClick}
-            className={`px-2 py-0.5 rounded-full text-[10px] border transition-colors ${
+            className={`px-2 py-0.5 rounded-full text-[11px] border transition-colors ${
                 active
                     ? 'bg-white/10 text-white/80 border-white/20'
                     : 'bg-white/5 text-white/35 border-transparent hover:text-white/55'
@@ -1231,7 +1408,7 @@ function TogglePill({ active, onClick, label }: { active: boolean; onClick: () =
     return (
         <button
             onClick={onClick}
-            className={`rounded-md border px-2 py-1 text-[10px] uppercase tracking-[0.18em] transition-colors ${
+            className={`rounded-md border px-2 py-1 text-[11px] uppercase tracking-[0.18em] transition-colors ${
                 active
                     ? 'border-[#e94560]/50 bg-[#e94560]/12 text-[#ff9db0]'
                     : 'border-white/10 bg-white/5 text-white/35 hover:text-white/55'
@@ -1248,18 +1425,61 @@ function CollectionRow({
     onClick,
     onRename,
     onDelete,
+    onContextMenu,
 }: {
     collection: FotosCollectionSummary;
     active: boolean;
     onClick: () => void;
     onRename: (collectionId: string, name: string) => void;
     onDelete: (collectionId: string) => void;
+    onContextMenu?: (e: React.MouseEvent | React.TouchEvent) => void;
 }) {
+    const timerRef = useRef<NodeJS.Timeout | null>(null);
+    const hasLongPressed = useRef(false);
+
+    const handleTouchStart = useCallback((e: React.TouchEvent) => {
+        hasLongPressed.current = false;
+        timerRef.current = setTimeout(() => {
+            hasLongPressed.current = true;
+            if (onContextMenu) {
+                onContextMenu(e);
+            }
+        }, 600);
+    }, [onContextMenu]);
+
+    const handleTouchMove = useCallback(() => {
+        if (timerRef.current) {
+            clearTimeout(timerRef.current);
+            timerRef.current = null;
+        }
+    }, []);
+
+    const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+        if (timerRef.current) {
+            clearTimeout(timerRef.current);
+            timerRef.current = null;
+        }
+        if (hasLongPressed.current) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    }, []);
+
     return (
         <div
             role="button"
             tabIndex={0}
             onClick={onClick}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (onContextMenu) {
+                    onContextMenu(e);
+                }
+            }}
             onKeyDown={event => handleButtonLikeKeyDown(event, onClick)}
             className={`group flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left transition-colors ${
                 active
@@ -1267,7 +1487,7 @@ function CollectionRow({
                     : 'border-white/10 bg-white/5 hover:bg-white/10'
             }`}
         >
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-black/20 text-[10px] font-semibold text-white/45">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-black/20 text-[11px] font-semibold text-white/45">
                 {collection.photoCount}
             </div>
             <div className="min-w-0 flex-1">
@@ -1277,7 +1497,7 @@ function CollectionRow({
                     placeholder="Name this collection"
                     onSubmit={name => onRename(collection.id, name)}
                 />
-                <div className="text-[10px] text-white/25">
+                <div className="text-[11px] text-white/25">
                     {collection.photoCount} photo{collection.photoCount === 1 ? '' : 's'} · {collection.faceCount} face{collection.faceCount === 1 ? '' : 's'}
                 </div>
             </div>
@@ -1384,7 +1604,7 @@ function ClusterBrowseRow({
                 ) : (
                     <div className="truncate text-[11px] text-white/75">{cluster.label}</div>
                 )}
-                <div className="text-[10px] text-white/25">
+                <div className="text-[11px] text-white/25">
                     {cluster.faceCount} faces · {cluster.photoCount} photos
                     {cluster.memberClusterIds.length > 1 ? ` · ${cluster.memberClusterIds.length} clusters` : ''}
                 </div>
@@ -1498,19 +1718,19 @@ function SimilarFaceRow({
             )}
             <div className="min-w-0 flex-1" title={`Open ${match.photo.name}`}>
                 <div className="truncate text-[11px] text-white/75">{match.photo.name}</div>
-                <div className="text-[10px] text-white/25">{(match.similarity * 100).toFixed(0)}% match</div>
+                <div className="text-[11px] text-white/25">{(match.similarity * 100).toFixed(0)}% match</div>
                 {match.clusterId && onRename ? (
                     <div className="mt-1">
                         <InlineRenameField
                             value={match.personName}
                             fallback={match.personName?.trim() || 'Unknown'}
                             onSubmit={onRename}
-                            labelClassName="truncate text-[10px] text-white/38"
-                            inputClassName="min-w-0 flex-1 rounded-md border border-[#e94560]/35 bg-[#1a1115] px-2 py-1 text-[10px] text-white placeholder:text-white/20 focus:border-[#ff9db0]/60 focus:outline-none"
+                            labelClassName="truncate text-[11px] text-white/38"
+                            inputClassName="min-w-0 flex-1 rounded-md border border-[#e94560]/35 bg-[#1a1115] px-2 py-1 text-[11px] text-white placeholder:text-white/20 focus:border-[#ff9db0]/60 focus:outline-none"
                         />
                     </div>
                 ) : (
-                    <div className="text-[10px] text-white/25">{match.personName?.trim() || 'Unknown'}</div>
+                    <div className="text-[11px] text-white/25">{match.personName?.trim() || 'Unknown'}</div>
                 )}
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
@@ -1555,9 +1775,7 @@ function SimilarFaceRow({
     );
 }
 
-function ManageTab({
-    settings,
-    onUpdateStorage,
+function LibrarySharingPanel({
     folderName,
     folders,
     onOpenFolder,
@@ -1565,11 +1783,6 @@ function ManageTab({
     onRemoveFolder,
     onRescan,
     onReanalyze,
-    canClaimAuthorshipOnIngest,
-    claimAuthorshipOnIngest,
-    onClaimAuthorshipOnIngestChange,
-    llmComparisonPhoto,
-    llmComparisonPhotoLabel,
     collections,
     onRenameCollection,
     onDeleteCollection,
@@ -1584,12 +1797,7 @@ function ManageTab({
     onGalleryShareChange,
     onCollectionShareChange,
     onClusterShareChange,
-    getFileUrl,
-    onClusterSelect,
-    onRenameFace,
 }: {
-    settings: FotosSettings;
-    onUpdateStorage: (updates: Partial<FotosSettings['storage']>) => void;
     folderName?: string | null;
     folders?: ManagedFolder[];
     onOpenFolder?: () => void;
@@ -1597,11 +1805,6 @@ function ManageTab({
     onRemoveFolder?: (folderId: string) => void;
     onRescan?: () => void;
     onReanalyze?: () => void;
-    canClaimAuthorshipOnIngest: boolean;
-    claimAuthorshipOnIngest: boolean;
-    onClaimAuthorshipOnIngestChange: (enabled: boolean) => void;
-    llmComparisonPhoto?: PhotoEntry | null;
-    llmComparisonPhotoLabel?: string;
     collections: FotosCollectionSummary[];
     onRenameCollection: (collectionId: string, name: string) => void;
     onDeleteCollection: (collectionId: string) => void;
@@ -1623,68 +1826,11 @@ function ManageTab({
     onGalleryShareChange: (personIds: string[]) => Promise<void> | void;
     onCollectionShareChange: (collectionId: string, personIds: string[]) => Promise<void> | void;
     onClusterShareChange: (clusterId: string, personIds: string[]) => Promise<void> | void;
-    getFileUrl: (relativePath: string) => Promise<string>;
-    onClusterSelect: (clusterId: string) => void;
-    onRenameFace: (clusterId: string, name: string) => Promise<void> | void;
 }) {
     const managedFolders = folders ?? [];
 
     return (
         <>
-            <SectionLabel>Sharing</SectionLabel>
-            <CollapsibleSection label="Share gallery">
-                <div className="space-y-2">
-                    {onCreateGalleryShareInvite && (
-                        <button
-                            type="button"
-                            disabled={creatingGalleryShareInvite}
-                            onClick={() => {
-                                void onCreateGalleryShareInvite();
-                            }}
-                            className={`flex w-full items-center justify-center gap-2 rounded-md border px-2.5 py-1.5 text-[10px] uppercase tracking-[0.16em] transition-colors ${
-                                creatingGalleryShareInvite
-                                    ? 'border-white/10 bg-white/5 text-white/20 cursor-wait'
-                                    : 'border-[#e94560]/25 bg-[#e94560]/10 text-[#ff9db0] hover:bg-[#e94560]/16'
-                            }`}
-                        >
-                            <Link className="h-3 w-3" />
-                            {creatingGalleryShareInvite ? 'Creating link' : 'Create share link'}
-                        </button>
-                    )}
-                    {galleryShareInvite && (
-                        <div className="space-y-1.5 rounded-md border border-white/10 bg-black/20 p-2">
-                            <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[10px]">
-                                {typeof galleryShareInvite.sharedCount === 'number' && (
-                                    <>
-                                        <span className="text-white/25">Photos</span>
-                                        <span className="text-white/55">{galleryShareInvite.sharedCount}</span>
-                                    </>
-                                )}
-                                <span className="text-white/25">Expires</span>
-                                <span className="text-white/45">
-                                    {new Date(galleryShareInvite.payload.expiresAt).toLocaleString()}
-                                </span>
-                            </div>
-                            <input
-                                readOnly
-                                value={galleryShareInvite.url}
-                                onFocus={event => event.currentTarget.select()}
-                                className="w-full rounded-sm border border-white/10 bg-white/5 px-2 py-1 font-mono text-[9px] text-white/45"
-                            />
-                        </div>
-                    )}
-                    <div className="pt-1">
-                        <div className="mb-1 text-[10px] uppercase tracking-[0.16em] text-white/22">Existing people</div>
-                        <ShareWithField
-                            value={gallerySharePersonIds}
-                            peers={sharePeerOptions}
-                            onChange={onGalleryShareChange}
-                            emptyLabel="No gallery peers selected"
-                        />
-                    </div>
-                </div>
-            </CollapsibleSection>
-
             {(managedFolders.length > 0 || folderName || onOpenFolder || onRescan || onReanalyze) && (
                 <CollapsibleSection
                     label="Folders"
@@ -1722,10 +1868,10 @@ function ManageTab({
                                             <span className="min-w-0 flex-1 truncate">{folder.name}</span>
                                         </button>
                                         {folder.entryCount > 0 && (
-                                            <span className="text-[9px] tabular-nums text-white/20">{folder.entryCount}</span>
+                                            <span className="text-[11px] tabular-nums text-white/20">{folder.entryCount}</span>
                                         )}
                                         {folder.isCurrent && (
-                                            <span className="text-[9px] uppercase tracking-[0.16em] text-white/18">current</span>
+                                            <span className="text-[11px] uppercase tracking-[0.16em] text-white/18">current</span>
                                         )}
                                         {onRemoveFolder && (
                                             <button
@@ -1745,7 +1891,7 @@ function ManageTab({
                             <div className="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-2 text-[11px] text-white/55">
                                 <FolderOpen className="h-3 w-3 shrink-0 text-white/35" />
                                 <span className="min-w-0 flex-1 truncate">{folderName}</span>
-                                <span className="text-[9px] uppercase tracking-[0.18em] text-white/18">current</span>
+                                <span className="text-[11px] uppercase tracking-[0.18em] text-white/18">current</span>
                             </div>
                         ) : (
                             <div className="rounded-md border border-dashed border-white/10 bg-white/[0.03] px-2.5 py-2 text-[11px] text-white/30">
@@ -1769,59 +1915,63 @@ function ManageTab({
                 </CollapsibleSection>
             )}
 
-            <SectionLabel>Ingestion</SectionLabel>
-
-            {canClaimAuthorshipOnIngest && (
-                <label className="flex items-start gap-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-2">
-                    <input
-                        type="checkbox"
-                        checked={claimAuthorshipOnIngest}
-                        onChange={event => onClaimAuthorshipOnIngestChange(event.target.checked)}
-                        className="mt-0.5 h-3.5 w-3.5 accent-[#e94560]"
-                    />
-                    <div className="space-y-1">
-                        <div className="text-[11px] text-white/72">Claim authorship on ingest</div>
-                        <p className="text-[10px] leading-relaxed text-white/30">
-                            Sign each imported image hash with this fotos identity so authenticity proof ships with shared photos.
-                        </p>
+            <SectionLabel>Sharing</SectionLabel>
+            <CollapsibleSection label="Share gallery">
+                <div className="space-y-2">
+                    {onCreateGalleryShareInvite && (
+                        <button
+                            type="button"
+                            disabled={creatingGalleryShareInvite}
+                            onClick={() => {
+                                void onCreateGalleryShareInvite();
+                            }}
+                            className={`flex w-full items-center justify-center gap-2 rounded-md border px-2.5 py-1.5 text-[11px] uppercase tracking-[0.16em] transition-colors ${
+                                creatingGalleryShareInvite
+                                    ? 'border-white/10 bg-white/5 text-white/20 cursor-wait'
+                                    : 'border-[#e94560]/25 bg-[#e94560]/10 text-[#ff9db0] hover:bg-[#e94560]/16'
+                            }`}
+                        >
+                            <Link className="h-3 w-3" />
+                            {creatingGalleryShareInvite ? 'Creating link' : 'Create share link'}
+                        </button>
+                    )}
+                    {galleryShareInvite && (
+                        <div className="space-y-1.5 rounded-md border border-white/10 bg-black/20 p-2">
+                            <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[11px]">
+                                {typeof galleryShareInvite.sharedCount === 'number' && (
+                                    <>
+                                        <span className="text-white/25">Photos</span>
+                                        <span className="text-white/55">{galleryShareInvite.sharedCount}</span>
+                                    </>
+                                )}
+                                <span className="text-white/25">Expires</span>
+                                <span className="text-white/45">
+                                    {new Date(galleryShareInvite.payload.expiresAt).toLocaleString()}
+                                </span>
+                            </div>
+                            <input
+                                readOnly
+                                value={galleryShareInvite.url}
+                                onFocus={event => event.currentTarget.select()}
+                                className="w-full rounded-sm border border-white/10 bg-white/5 px-2 py-1 font-mono text-[11px] text-white/45"
+                            />
+                        </div>
+                    )}
+                    <div className="pt-1">
+                        <div className="mb-1 text-[11px] uppercase tracking-[0.16em] text-white/22">Existing people</div>
+                        <ShareWithField
+                            value={gallerySharePersonIds}
+                            peers={sharePeerOptions}
+                            onChange={onGalleryShareChange}
+                            emptyLabel="No gallery peers selected"
+                        />
                     </div>
-                </label>
-            )}
-
-            <div>
-                <label className="text-[11px] text-white/40 mb-1 block">Default mode</label>
-                <select
-                    value={settings.storage.defaultMode}
-                    onChange={e => onUpdateStorage({ defaultMode: e.target.value as StorageMode })}
-                    className="w-full bg-white/5 border border-white/10 text-[11px] text-white/60 px-2.5 py-1.5 rounded-md focus:outline-none cursor-pointer"
-                >
-                    <option value="reference">Reference</option>
-                    <option value="metadata">Metadata</option>
-                    <option value="ingest">Ingest</option>
-                </select>
-            </div>
-
-            <div className="p-2.5 bg-white/5 rounded-md text-[10px] text-white/35 space-y-0.5">
-                <p><span className="text-yellow-400/60 font-mono">R</span> Reference — pointer to file</p>
-                <p><span className="text-blue-400/60 font-mono">M</span> Metadata — EXIF + thumbnail</p>
-                <p><span className="text-green-400/60 font-mono">I</span> Ingest — full blob copy</p>
-            </div>
-
-            <SectionLabel>Sources</SectionLabel>
-            <div className="space-y-1">
-                <SourceRow icon={<FolderOpen className="w-3 h-3" />} label="~/Downloads" />
-                <SourceRow icon={<FolderOpen className="w-3 h-3" />} label="~/Pictures" />
-            </div>
-
-            <SectionLabel>Export</SectionLabel>
-            <button className="w-full flex items-center gap-2 px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-md text-[11px] text-white/40 hover:text-white/60 hover:bg-white/10 transition-colors">
-                <Download className="w-3 h-3" />
-                Export as HTML
-            </button>
+                </div>
+            </CollapsibleSection>
 
             <CollapsibleSection label="Collection Sharing" defaultOpen={collections.length > 0}>
                 {collections.length === 0 ? (
-                    <div className="rounded-md border border-dashed border-white/10 px-2.5 py-2 text-[10px] text-white/24">
+                    <div className="rounded-md border border-dashed border-white/10 px-2.5 py-2 text-[11px] text-white/24">
                         Create collections in Browse to manage sharing here.
                     </div>
                 ) : (
@@ -1843,7 +1993,7 @@ function ManageTab({
 
             <CollapsibleSection label="Cluster Sharing" defaultOpen={clusters.length > 0}>
                 {clusters.length === 0 ? (
-                    <div className="rounded-md border border-dashed border-white/10 px-2.5 py-2 text-[10px] text-white/24">
+                    <div className="rounded-md border border-dashed border-white/10 px-2.5 py-2 text-[11px] text-white/24">
                         No face clusters yet.
                     </div>
                 ) : (
@@ -1860,21 +2010,78 @@ function ManageTab({
                     </div>
                 )}
             </CollapsibleSection>
+        </>
+    );
+}
 
-            {clusters.length > 0 && (
-                <CollapsibleSection label="Detected Faces">
-                    {clusters.map(cluster => (
-                        <ClusterCard
-                            key={cluster.clusterId}
-                            cluster={cluster}
-                            active={false}
-                            onClick={() => onClusterSelect(cluster.clusterId)}
-                            getFileUrl={getFileUrl}
-                            onRename={onRenameFace}
-                        />
-                    ))}
-                </CollapsibleSection>
+function LibraryConfigPanel({
+    settings,
+    onUpdateStorage,
+    canClaimAuthorshipOnIngest,
+    claimAuthorshipOnIngest,
+    onClaimAuthorshipOnIngestChange,
+    llmComparisonPhoto,
+    llmComparisonPhotoLabel,
+}: {
+    settings: FotosSettings;
+    onUpdateStorage: (updates: Partial<FotosSettings['storage']>) => void;
+    canClaimAuthorshipOnIngest: boolean;
+    claimAuthorshipOnIngest: boolean;
+    onClaimAuthorshipOnIngestChange: (enabled: boolean) => void;
+    llmComparisonPhoto?: PhotoEntry | null;
+    llmComparisonPhotoLabel?: string;
+}) {
+    return (
+        <>
+            <SectionLabel>Ingestion</SectionLabel>
+
+            {canClaimAuthorshipOnIngest && (
+                <label className="flex items-start gap-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-2">
+                    <input
+                        type="checkbox"
+                        checked={claimAuthorshipOnIngest}
+                        onChange={event => onClaimAuthorshipOnIngestChange(event.target.checked)}
+                        className="mt-0.5 h-3.5 w-3.5 accent-[#e94560]"
+                    />
+                    <div className="space-y-1">
+                        <div className="text-[11px] text-white/72">Claim authorship on ingest</div>
+                        <p className="text-[11px] leading-relaxed text-white/30">
+                            Sign each imported image hash with this fotos identity so authenticity proof ships with shared photos.
+                        </p>
+                    </div>
+                </label>
             )}
+
+            <div>
+                <label className="text-[11px] text-white/40 mb-1 block">Default mode</label>
+                <select
+                    value={settings.storage.defaultMode}
+                    onChange={e => onUpdateStorage({ defaultMode: e.target.value as StorageMode })}
+                    className="w-full bg-white/5 border border-white/10 text-[11px] text-white/60 px-2.5 py-1.5 rounded-md focus:outline-none cursor-pointer"
+                >
+                    <option value="reference">Reference</option>
+                    <option value="metadata">Metadata</option>
+                    <option value="ingest">Ingest</option>
+                </select>
+            </div>
+
+            <div className="p-2.5 bg-white/5 rounded-md text-[11px] text-white/35 space-y-0.5">
+                <p><span className="text-yellow-400/60 font-mono">R</span> Reference — pointer to file</p>
+                <p><span className="text-blue-400/60 font-mono">M</span> Metadata — EXIF + thumbnail</p>
+                <p><span className="text-green-400/60 font-mono">I</span> Ingest — full blob copy</p>
+            </div>
+
+            <SectionLabel>Sources</SectionLabel>
+            <div className="space-y-1">
+                <SourceRow icon={<FolderOpen className="w-3 h-3" />} label="~/Downloads" />
+                <SourceRow icon={<FolderOpen className="w-3 h-3" />} label="~/Pictures" />
+            </div>
+
+            <SectionLabel>Export</SectionLabel>
+            <button className="w-full flex items-center gap-2 px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-md text-[11px] text-white/40 hover:text-white/60 hover:bg-white/10 transition-colors">
+                <Download className="w-3 h-3" />
+                Export as HTML
+            </button>
 
             <SectionLabel>AI Audit</SectionLabel>
             <LLMComparisonPanel
@@ -1927,7 +2134,7 @@ function ManageCollectionShareRow({
     return (
         <div className="space-y-2 rounded-md border border-white/10 bg-white/[0.035] px-2.5 py-2">
             <div className="flex items-start gap-2">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-white/10 bg-black/20 text-[10px] font-semibold text-white/45">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-white/10 bg-black/20 text-[11px] font-semibold text-white/45">
                     {collection.photoCount}
                 </div>
                 <div className="min-w-0 flex-1">
@@ -1938,7 +2145,7 @@ function ManageCollectionShareRow({
                         onSubmit={name => onRename(collection.id, name)}
                         labelClassName="truncate text-[11px] text-white/75"
                     />
-                    <div className="text-[10px] text-white/25">
+                    <div className="text-[11px] text-white/25">
                         {collection.photoCount} photo{collection.photoCount === 1 ? '' : 's'} · {collection.faceCount} face{collection.faceCount === 1 ? '' : 's'}
                     </div>
                 </div>
@@ -1976,7 +2183,7 @@ function ManageClusterShareRow({
         <div className="space-y-2 rounded-md border border-white/10 bg-white/[0.035] px-2.5 py-2">
             <div className="space-y-0.5">
                 <div className="truncate text-[11px] text-white/72">{cluster.label}</div>
-                <div className="text-[10px] text-white/25">
+                <div className="text-[11px] text-white/25">
                     {cluster.photoCount} photo{cluster.photoCount === 1 ? '' : 's'} · {cluster.faceCount} face{cluster.faceCount === 1 ? '' : 's'}
                     {cluster.memberClusterIds.length > 1 ? ` · ${cluster.memberClusterIds.length} clusters` : ''}
                 </div>
@@ -1995,8 +2202,8 @@ function SourceRow({ icon, label }: { icon: React.ReactNode; label: string }) {
     return (
         <div className="flex items-center gap-2 px-2.5 py-1.5 bg-white/5 rounded-md text-[11px] text-white/40">
             {icon}
-            <span className="flex-1 font-mono text-[10px]">{label}</span>
-            <span className="text-white/15 text-[9px]">active</span>
+            <span className="flex-1 font-mono text-[11px]">{label}</span>
+            <span className="text-white/15 text-[11px]">active</span>
         </div>
     );
 }
@@ -2019,6 +2226,8 @@ function SettingsTab({
     onHistoryDelete,
     currentFolderName,
     fotosModel,
+    showOnboarding,
+    onDismissOnboarding,
 }: {
     settings: FotosSettings;
     onUpdateStorage: (updates: Partial<FotosSettings['storage']>) => void;
@@ -2037,158 +2246,266 @@ function SettingsTab({
     onHistoryDelete: (eventId: string) => void;
     currentFolderName?: string | null;
     fotosModel: FotosModel | null;
+    showOnboarding?: boolean;
+    onDismissOnboarding?: () => void;
 }) {
     const { deviceSettings, updateDeviceSettings } = useDeviceSettings(fotosModel);
 
+    const settingsSections = [
+        { id: 'settings-identity', label: 'Identity' },
+        { id: 'settings-storage', label: 'Storage' },
+        { id: 'settings-imageai', label: 'Image AI' },
+        { id: 'settings-history', label: 'History' },
+        { id: 'settings-devices', label: 'Devices' },
+    ] as const;
+
+    const [activeSection, setActiveSection] = useState<string>(settingsSections[0].id);
+    const sectionRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+    const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+    const isScrollingRef = useRef(false);
+
+    const setSectionRef = useCallback((id: string, el: HTMLDivElement | null) => {
+        if (el) {
+            sectionRefs.current.set(id, el);
+        } else {
+            sectionRefs.current.delete(id);
+        }
+    }, []);
+
+    // IntersectionObserver to track which section is in view
+    useEffect(() => {
+        const container = scrollContainerRef.current;
+        if (!container) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (isScrollingRef.current) return;
+                // Find the topmost visible section
+                const visible = entries
+                    .filter(e => e.isIntersecting)
+                    .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+                if (visible.length > 0) {
+                    const id = visible[0].target.getAttribute('id');
+                    if (id) setActiveSection(id);
+                }
+            },
+            {
+                root: container,
+                rootMargin: '-8px 0px -60% 0px',
+                threshold: 0,
+            },
+        );
+
+        for (const [, el] of sectionRefs.current) {
+            observer.observe(el);
+        }
+
+        return () => observer.disconnect();
+    }, []);
+
+    const scrollToSection = useCallback((sectionId: string) => {
+        const el = sectionRefs.current.get(sectionId);
+        if (!el) return;
+        setActiveSection(sectionId);
+        isScrollingRef.current = true;
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Reset scrolling flag after animation completes
+        setTimeout(() => { isScrollingRef.current = false; }, 500);
+    }, []);
+
     return (
-        <>
-            <FotosSettingsPanel
-                model={fotosModel}
-                acceptSharing={acceptSharing}
-                onAcceptSharingChange={onAcceptSharingChange}
-            />
+        <div className="flex flex-col -m-3 min-h-0">
+            {/* Sticky pill navigation */}
+            <div className="sticky top-0 z-10 bg-[#0d0d0d] border-b border-white/8 px-3 py-2">
+                <div className="flex gap-1 overflow-x-auto scrollbar-none">
+                    {settingsSections.map(section => (
+                        <button
+                            key={section.id}
+                            onClick={() => scrollToSection(section.id)}
+                            className={`shrink-0 text-[11px] font-medium px-2.5 py-1 rounded-full transition-colors ${
+                                activeSection === section.id
+                                    ? 'bg-white/10 text-white/80'
+                                    : 'text-white/35 hover:text-white/55'
+                            }`}
+                        >
+                            {section.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
 
-            <div className="border-t border-white/10 pt-4 mt-2" />
-
-            <CollapsibleSection label="Storage" defaultOpen={false}>
-                <SmallField label="Blob directory">
-                    <input
-                        type="text"
-                        value={settings.storage.blobDir}
-                        onChange={e => onUpdateStorage({ blobDir: e.target.value })}
-                        className="sidebar-input"
+            {/* Scrollable settings content */}
+            <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-3 space-y-4">
+                <div id="settings-identity" ref={el => setSectionRef('settings-identity', el)}>
+                    <FotosSettingsPanel
+                        model={fotosModel}
+                        acceptSharing={acceptSharing}
+                        onAcceptSharingChange={onAcceptSharingChange}
                     />
-                </SmallField>
-
-                <SmallField label="Thumbnail directory">
-                    <input
-                        type="text"
-                        value={settings.storage.thumbDir}
-                        onChange={e => onUpdateStorage({ thumbDir: e.target.value })}
-                        className="sidebar-input"
-                    />
-                </SmallField>
-
-                <SmallField label="Thumb size (px)">
-                    <input
-                        type="number"
-                        value={settings.storage.thumbSize}
-                        onChange={e => onUpdateStorage({ thumbSize: parseInt(e.target.value) || 400 })}
-                        className="sidebar-input w-20"
-                        min={100} max={1200} step={100}
-                    />
-                </SmallField>
-
-                <SmallField label="Quota (MB, 0 = unlimited)">
-                    <input
-                        type="number"
-                        value={settings.storage.quotaMb}
-                        onChange={e => onUpdateStorage({ quotaMb: parseInt(e.target.value) || 0 })}
-                        className="sidebar-input w-20"
-                        min={0} step={100}
-                    />
-                </SmallField>
-
-                <SmallField label="Min copies before drop">
-                    <input
-                        type="number"
-                        value={settings.storage.minCopies}
-                        onChange={e => onUpdateStorage({ minCopies: parseInt(e.target.value) || 1 })}
-                        className="sidebar-input w-16"
-                        min={1} max={10}
-                    />
-                </SmallField>
-            </CollapsibleSection>
-
-            <CollapsibleSection label="Image AI">
-                <label className="flex items-start gap-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-2">
-                    <input
-                        type="checkbox"
-                        checked={settings.analysis.faceAnalyticsEnabled}
-                        onChange={event => onUpdateAnalysis({ faceAnalyticsEnabled: event.target.checked })}
-                        className="mt-0.5 h-3.5 w-3.5 accent-[#e94560]"
-                    />
-                    <div className="space-y-1">
-                        <div className="text-[11px] text-white/72">Enable face analytics</div>
-                        <p className="text-[10px] leading-relaxed text-white/30">
-                            Download face models only when you choose to use people clustering and similar-face search.
-                        </p>
-                    </div>
-                </label>
-
-                <label className="flex items-start gap-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-2">
-                    <input
-                        type="checkbox"
-                        checked={settings.analysis.semanticSearchEnabled}
-                        onChange={event => onUpdateAnalysis({ semanticSearchEnabled: event.target.checked })}
-                        className="mt-0.5 h-3.5 w-3.5 accent-[#e94560]"
-                    />
-                    <div className="space-y-1">
-                        <div className="text-[11px] text-white/72">Enable semantic search</div>
-                        <p className="text-[10px] leading-relaxed text-white/30">
-                            Download the multimodal search model only when you want meaning-based search.
-                        </p>
-                    </div>
-                </label>
-
-            </CollapsibleSection>
-
-            <CollapsibleSection label="Breadcrumb History" defaultOpen={historyEnabled || historyVisibleEntryCount > 0}>
-                <label className="flex items-start gap-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-2">
-                    <input
-                        type="checkbox"
-                        checked={historyEnabled}
-                        onChange={event => onHistoryEnabledChange(event.target.checked)}
-                        className="mt-0.5 h-3.5 w-3.5 accent-[#e94560]"
-                    />
-                    <div className="space-y-1">
-                        <div className="text-[11px] text-white/72">Record breadcrumb history</div>
-                        <p className="text-[10px] leading-relaxed text-white/30">
-                            Keep branchable gallery places in synced settings so trusted instances can resume where you left off.
-                        </p>
-                    </div>
-                </label>
-
-                <div className="rounded-md bg-white/[0.035] px-2.5 py-2 text-[10px] text-white/30">
-                    {historyReady
-                        ? `${historyVisibleEntryCount} saved place${historyVisibleEntryCount === 1 ? '' : 's'} across ${historyBranchCount} branch${historyBranchCount === 1 ? '' : 'es'}`
-                        : 'Loading synced history...'}
                 </div>
 
-                {!historyEnabled && historyVisibleEntryCount > 0 && (
-                    <div className="text-[10px] leading-relaxed text-white/24">
-                        Recording is paused. Existing branches stay available until you delete them.
-                    </div>
-                )}
+                <div className="border-t border-white/10 pt-4 mt-2" />
 
-                {historyVisibleEntryCount === 0 ? (
-                    <div className="rounded-md border border-dashed border-white/10 px-2.5 py-2 text-[10px] text-white/24">
-                        {historyEnabled ? 'Open folders and follow breadcrumbs to start a shared history.' : 'Enable recording to save breadcrumb branches here.'}
-                    </div>
-                ) : (
-                    <div className="space-y-1.5">
-                        {historyBranchTree.map(node => (
-                            <HistoryBranchRow
-                                key={node.entry.eventId}
-                                node={node}
-                                depth={0}
-                                currentEventId={historyCurrentEventId}
-                                currentFolderName={currentFolderName ?? null}
-                                onNavigate={onHistoryNavigate}
-                                onDelete={onHistoryDelete}
+                <div id="settings-storage" ref={el => setSectionRef('settings-storage', el)}>
+                    <CollapsibleSection label="Storage" defaultOpen={false}>
+                        <SmallField label="Blob directory">
+                            <input
+                                type="text"
+                                value={settings.storage.blobDir}
+                                onChange={e => onUpdateStorage({ blobDir: e.target.value })}
+                                className="sidebar-input"
                             />
-                        ))}
-                    </div>
-                )}
-            </CollapsibleSection>
+                        </SmallField>
 
-            <DevicesSettingsSection
-                name={settings.device.name}
-                settings={deviceSettings}
-                onUpdateName={onUpdateDeviceName}
-                onUpdateSettings={updateDeviceSettings}
-            />
-        </>
+                        <SmallField label="Thumbnail directory">
+                            <input
+                                type="text"
+                                value={settings.storage.thumbDir}
+                                onChange={e => onUpdateStorage({ thumbDir: e.target.value })}
+                                className="sidebar-input"
+                            />
+                        </SmallField>
+
+                        <SmallField label="Thumb size (px)">
+                            <input
+                                type="number"
+                                value={settings.storage.thumbSize}
+                                onChange={e => onUpdateStorage({ thumbSize: parseInt(e.target.value) || 400 })}
+                                className="sidebar-input w-20"
+                                min={100} max={1200} step={100}
+                            />
+                        </SmallField>
+
+                        <SmallField label="Quota (MB, 0 = unlimited)">
+                            <input
+                                type="number"
+                                value={settings.storage.quotaMb}
+                                onChange={e => onUpdateStorage({ quotaMb: parseInt(e.target.value) || 0 })}
+                                className="sidebar-input w-20"
+                                min={0} step={100}
+                            />
+                        </SmallField>
+
+                        <SmallField label="Min copies before drop">
+                            <input
+                                type="number"
+                                value={settings.storage.minCopies}
+                                onChange={e => onUpdateStorage({ minCopies: parseInt(e.target.value) || 1 })}
+                                className="sidebar-input w-16"
+                                min={1} max={10}
+                            />
+                        </SmallField>
+                    </CollapsibleSection>
+                </div>
+
+                <div id="settings-imageai" ref={el => setSectionRef('settings-imageai', el)}>
+                    <CollapsibleSection label="Image AI">
+                        <label className="flex items-start gap-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-2">
+                            <input
+                                type="checkbox"
+                                checked={settings.analysis.faceAnalyticsEnabled}
+                                onChange={event => onUpdateAnalysis({ faceAnalyticsEnabled: event.target.checked })}
+                                className="mt-0.5 h-3.5 w-3.5 accent-[#e94560]"
+                            />
+                            <div className="space-y-1">
+                                <div className="text-[11px] text-white/72">Enable face analytics</div>
+                                <p className="text-[11px] leading-relaxed text-white/30">
+                                    Download face models only when you choose to use people clustering and similar-face search.
+                                </p>
+                            </div>
+                        </label>
+
+                        {showOnboarding && (
+                            <div className="relative bg-[#e94560] text-white p-3 rounded-lg shadow-xl mt-2 animate-[viewFadeIn_300ms_ease] z-50">
+                                <div className="flex items-start justify-between gap-2">
+                                    <div>
+                                        <p className="font-semibold text-xs mb-0.5">👤 Face & AI Analytics</p>
+                                        <p className="text-[11px] text-white/95 leading-tight">Enable face analytics here to cluster people and enable facial search.</p>
+                                    </div>
+                                    <button type="button" onClick={onDismissOnboarding} className="text-white/60 hover:text-white text-xs font-bold shrink-0">✕</button>
+                                </div>
+                            </div>
+                        )}
+
+                        <label className="flex items-start gap-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-2">
+                            <input
+                                type="checkbox"
+                                checked={settings.analysis.semanticSearchEnabled}
+                                onChange={event => onUpdateAnalysis({ semanticSearchEnabled: event.target.checked })}
+                                className="mt-0.5 h-3.5 w-3.5 accent-[#e94560]"
+                            />
+                            <div className="space-y-1">
+                                <div className="text-[11px] text-white/72">Enable semantic search</div>
+                                <p className="text-[11px] leading-relaxed text-white/30">
+                                    Download the multimodal search model only when you want meaning-based search.
+                                </p>
+                            </div>
+                        </label>
+
+                    </CollapsibleSection>
+                </div>
+
+                <div id="settings-history" ref={el => setSectionRef('settings-history', el)}>
+                    <CollapsibleSection label="Breadcrumb History" defaultOpen={historyEnabled || historyVisibleEntryCount > 0}>
+                        <label className="flex items-start gap-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-2">
+                            <input
+                                type="checkbox"
+                                checked={historyEnabled}
+                                onChange={event => onHistoryEnabledChange(event.target.checked)}
+                                className="mt-0.5 h-3.5 w-3.5 accent-[#e94560]"
+                            />
+                            <div className="space-y-1">
+                                <div className="text-[11px] text-white/72">Record breadcrumb history</div>
+                                <p className="text-[11px] leading-relaxed text-white/30">
+                                    Keep branchable gallery places in synced settings so trusted instances can resume where you left off.
+                                </p>
+                            </div>
+                        </label>
+
+                        <div className="rounded-md bg-white/[0.035] px-2.5 py-2 text-[11px] text-white/30">
+                            {historyReady
+                                ? `${historyVisibleEntryCount} saved place${historyVisibleEntryCount === 1 ? '' : 's'} across ${historyBranchCount} branch${historyBranchCount === 1 ? '' : 'es'}`
+                                : 'Loading synced history...'}
+                        </div>
+
+                        {!historyEnabled && historyVisibleEntryCount > 0 && (
+                            <div className="text-[11px] leading-relaxed text-white/24">
+                                Recording is paused. Existing branches stay available until you delete them.
+                            </div>
+                        )}
+
+                        {historyVisibleEntryCount === 0 ? (
+                            <div className="rounded-md border border-dashed border-white/10 px-2.5 py-2 text-[11px] text-white/24">
+                                {historyEnabled ? 'Open folders and follow breadcrumbs to start a shared history.' : 'Enable recording to save breadcrumb branches here.'}
+                            </div>
+                        ) : (
+                            <div className="space-y-1.5">
+                                {historyBranchTree.map(node => (
+                                    <HistoryBranchRow
+                                        key={node.entry.eventId}
+                                        node={node}
+                                        depth={0}
+                                        currentEventId={historyCurrentEventId}
+                                        currentFolderName={currentFolderName ?? null}
+                                        onNavigate={onHistoryNavigate}
+                                        onDelete={onHistoryDelete}
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </CollapsibleSection>
+                </div>
+
+                <div id="settings-devices" ref={el => setSectionRef('settings-devices', el)}>
+                    <DevicesSettingsSection
+                        name={settings.device.name}
+                        settings={deviceSettings}
+                        onUpdateName={onUpdateDeviceName}
+                        onUpdateSettings={updateDeviceSettings}
+                    />
+                </div>
+            </div>
+        </div>
     );
 }
 
@@ -2322,7 +2639,7 @@ function SettingsCheckbox({
             />
             <div className="space-y-1">
                 <div className="text-[11px] text-white/72">{label}</div>
-                <p className="text-[10px] leading-relaxed text-white/30">{detail}</p>
+                <p className="text-[11px] leading-relaxed text-white/30">{detail}</p>
             </div>
         </label>
     );
@@ -2331,7 +2648,7 @@ function SettingsCheckbox({
 function SmallField({ label, children }: { label: string; children: React.ReactNode }) {
     return (
         <label className="block">
-            <span className="text-[10px] text-white/30 mb-0.5 block">{label}</span>
+            <span className="text-[11px] text-white/30 mb-0.5 block">{label}</span>
             {children}
         </label>
     );
@@ -2374,14 +2691,14 @@ function HistoryBranchRow({
                         <div className="truncate text-[11px] text-white/72">
                             {label}
                         </div>
-                        <div className="truncate text-[9px] text-white/25">
+                        <div className="truncate text-[11px] text-white/25">
                             {trail || folderName || 'Library'}
                         </div>
-                        <div className="text-[9px] text-white/18">
+                        <div className="text-[11px] text-white/18">
                             {new Date(node.entry.createdAt).toLocaleString()}
                         </div>
                         {!canNavigate && (
-                            <div className="text-[9px] leading-relaxed text-white/18">
+                            <div className="text-[11px] leading-relaxed text-white/18">
                                 Open {folderName || 'this folder'} to restore this branch.
                             </div>
                         )}
@@ -2391,7 +2708,7 @@ function HistoryBranchRow({
                             type="button"
                             onClick={() => onNavigate(node.entry.eventId)}
                             disabled={!canNavigate || isCurrent}
-                            className={`rounded-md px-2 py-1 text-[10px] transition-colors ${
+                            className={`rounded-md px-2 py-1 text-[11px] transition-colors ${
                                 isCurrent
                                     ? 'bg-[#e94560]/15 text-[#ff9db0]'
                                     : canNavigate

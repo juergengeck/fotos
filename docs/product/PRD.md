@@ -167,7 +167,14 @@ Acceptance criteria:
 
 Acceptance criteria:
 - Users can share whole gallery, collection, or cluster scopes independently.
-- Revocation/removal updates local assignment state.
+- Share authority is represented by signed, versioned certificate state rather than
+  UI assignment state alone.
+- Revocation/removal publishes a causally newer certificate version under the same
+  stable identity and removes the recipient from derived access to the affected roots.
+- Revocation stops future synchronization but does not claim to delete content already
+  synchronized or saved on the recipient's device.
+- The trust/control relationship remains available to deliver revocation evidence;
+  revoking photo access must not first remove its only delivery path.
 - UI indicates when sharing is disabled because sync or identity is unavailable.
 
 ### 7.7 fotos id And Recovery

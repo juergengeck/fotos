@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, RotateCcw, FlipHorizontal, FlipVertical, Trash2, Maximize, Minimize, X, Download } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, RotateCcw, FlipHorizontal, FlipVertical, Trash2, Maximize, Minimize, X, Download, Info } from 'lucide-react';
 import type { PhotoEntry } from '@/types/fotos';
+import type { FaceClusterSummary } from '@/lib/cluster-gallery';
 import { EMBEDDING_DIM } from '@refinio/fotos.core';
 import { InlineRenameField } from './InlineRenameField';
 
@@ -18,7 +19,12 @@ interface LightboxProps {
     onFaceSearch?: (embedding: Float32Array) => void;
     onRenameFace?: (clusterId: string, name: string) => Promise<void> | void;
     onDeleteFace?: (clusterId: string) => void;
+    /** Existing named people, offered when assigning a face from a photo. */
+    people?: FaceClusterSummary[];
+    /** Assign the face at faceIndex in the photo to an existing person's identity. */
+    onAssociateFace?: (photoHash: string, faceIndex: number, targetClusterId: string) => void;
     getFileUrl: (relativePath: string) => Promise<string>;
+    mobile?: boolean;
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -50,11 +56,21 @@ function clampPan(
     };
 }
 
-export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onExport, onFaceSearch, onRenameFace, onDeleteFace, getFileUrl }: LightboxProps) {
+export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onExport, onFaceSearch, onRenameFace, onDeleteFace, people, onAssociateFace, getFileUrl, mobile }: LightboxProps) {
     const photo = photos[index];
     const [fullscreen, setFullscreen] = useState(false);
     const [chevronVisible, setChevronVisible] = useState(false);
     const chevronTimer = useRef<ReturnType<typeof setTimeout>>(null);
+
+    const [sidebarOpen, setSidebarOpen] = useState(!mobile);
+
+    // Crossfade transition state
+    const [previousImgSrc, setPreviousImgSrc] = useState<string | null>(null);
+    const [crossfadeKey, setCrossfadeKey] = useState(0);
+    const isInitialLoad = useRef(true);
+
+    // Preload cache: sourcePath → resolved URL
+    const preloadCache = useRef<Map<string, string>>(new Map());
 
     // Zoom/pan state
     const [scale, setScale] = useState<number | null>(null); // null = fit mode
@@ -154,6 +170,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
                 case 'l': case 'L': rotate90(-90); break;
                 case 'h': case 'H': setFlipH(p => !p); break;
                 case 'v': case 'V': setFlipV(p => !p); break;
+                case 'i': case 'I': setSidebarOpen(p => !p); break;
                 case 'Delete': case 'Backspace': if (onDelete) onDelete(photo.hash); break;
             }
         };
@@ -284,32 +301,146 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
         else if (x > third * 2) goNext();
     }, [fullscreen, showChevron, goPrev, goNext]);
 
-    // Touch swipe
-    const touchRef = useRef({ startX: 0, startY: 0 });
+    // Touch swipe / pan / pinch zoom
+    const touchStartRef = useRef({ x: 0, y: 0, time: 0 });
+    const pinchStartDist = useRef(0);
+    const pinchStartScale = useRef(1);
+    const isPinching = useRef(false);
+
     const onTouchStart = useCallback((e: React.TouchEvent) => {
-        const t = e.touches[0];
-        touchRef.current = { startX: t.clientX, startY: t.clientY };
-    }, []);
-    const onTouchEnd = useCallback((e: React.TouchEvent) => {
-        const t = e.changedTouches[0];
-        const dx = t.clientX - touchRef.current.startX;
-        const dy = t.clientY - touchRef.current.startY;
-        if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
-            if (dx < 0) goNext();
-            else goPrev();
-        } else if (fullscreen) {
-            showChevron();
+        if (e.touches.length === 1) {
+            const t = e.touches[0];
+            touchStartRef.current = { x: t.clientX, y: t.clientY, time: Date.now() };
+            
+            // Allow drag panning if zoomed in
+            if (scale !== null) {
+                dragRef.current = {
+                    active: true,
+                    startX: t.clientX,
+                    startY: t.clientY,
+                    startPanX: pan.x,
+                    startPanY: pan.y
+                };
+            }
+        } else if (e.touches.length === 2) {
+            // Cancel single touch drag
+            dragRef.current.active = false;
+            
+            // Calculate pinch distance
+            const t1 = e.touches[0];
+            const t2 = e.touches[1];
+            const dx = t1.clientX - t2.clientX;
+            const dy = t1.clientY - t2.clientY;
+            pinchStartDist.current = Math.sqrt(dx * dx + dy * dy);
+            pinchStartScale.current = scale ?? getFitScale();
+            isPinching.current = true;
         }
-    }, [goNext, goPrev, fullscreen, showChevron]);
+    }, [scale, pan, getFitScale]);
+
+    const onTouchMove = useCallback((e: React.TouchEvent) => {
+        if (e.touches.length === 1 && dragRef.current.active) {
+            const t = e.touches[0];
+            const dx = t.clientX - dragRef.current.startX;
+            const dy = t.clientY - dragRef.current.startY;
+            setPan({
+                x: dragRef.current.startPanX + dx,
+                y: dragRef.current.startPanY + dy
+            });
+            if (e.cancelable) e.preventDefault();
+        } else if (e.touches.length === 2 && isPinching.current && pinchStartDist.current > 0) {
+            const t1 = e.touches[0];
+            const t2 = e.touches[1];
+            const dx = t1.clientX - t2.clientX;
+            const dy = t1.clientY - t2.clientY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            
+            const factor = dist / pinchStartDist.current;
+            const nextScale = clamp(pinchStartScale.current * factor, MIN_SCALE, MAX_SCALE);
+            setScale(nextScale);
+            if (e.cancelable) e.preventDefault();
+        }
+    }, []);
+
+    const onTouchEnd = useCallback((e: React.TouchEvent) => {
+        if (isPinching.current) {
+            isPinching.current = false;
+            pinchStartDist.current = 0;
+            return;
+        }
+
+        if (dragRef.current.active) {
+            dragRef.current.active = false;
+            return;
+        }
+
+        if (scale === null && e.changedTouches.length > 0) {
+            const t = e.changedTouches[0];
+            const dx = t.clientX - touchStartRef.current.x;
+            const dy = t.clientY - touchStartRef.current.y;
+            const dt = Date.now() - touchStartRef.current.time;
+
+            if (dt < 400 && Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+                if (dx < 0) goNext();
+                else goPrev();
+            } else if (fullscreen) {
+                showChevron();
+            }
+        }
+    }, [scale, goNext, goPrev, fullscreen, showChevron]);
 
     // Load full-size image
     const [imgSrc, setImgSrc] = useState('');
+    const [imgLoaded, setImgLoaded] = useState(false);
     useEffect(() => {
-        setImgSrc('');
-        if (photo.sourcePath) {
-            getFileUrl(photo.sourcePath).then(setImgSrc).catch(() => {});
+        // Capture the old image for crossfade (skip on initial load)
+        if (!isInitialLoad.current) {
+            setImgSrc(prev => {
+                if (prev) setPreviousImgSrc(prev);
+                return '';
+            });
+            setCrossfadeKey(k => k + 1);
+        }
+        isInitialLoad.current = false;
+        setImgLoaded(false);
+
+        const sourcePath = photo.sourcePath;
+        if (sourcePath) {
+            // Check preload cache first
+            const cached = preloadCache.current.get(sourcePath);
+            if (cached) {
+                setImgSrc(cached);
+            } else {
+                getFileUrl(sourcePath).then(url => {
+                    preloadCache.current.set(sourcePath, url);
+                    setImgSrc(url);
+                }).catch(() => {});
+            }
         }
     }, [photo.sourcePath, getFileUrl]);
+
+    // Preload adjacent images
+    useEffect(() => {
+        const preloadIndex = (i: number) => {
+            const p = photos[i];
+            const sourcePath = p?.sourcePath;
+            if (!sourcePath || preloadCache.current.has(sourcePath)) return;
+            getFileUrl(sourcePath).then(url => {
+                preloadCache.current.set(sourcePath, url);
+                // Trigger browser image decode/cache
+                const img = new Image();
+                img.src = url;
+            }).catch(() => {});
+        };
+        preloadIndex(index - 1);
+        preloadIndex(index + 1);
+    }, [index, photos, getFileUrl]);
+
+    // Clear crossfade layer after transition completes
+    useEffect(() => {
+        if (!previousImgSrc) return;
+        const timer = setTimeout(() => setPreviousImgSrc(null), 350);
+        return () => clearTimeout(timer);
+    }, [previousImgSrc, crossfadeKey]);
 
     // Build image style
     const isFit = scale === null;
@@ -347,20 +478,71 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
             onDoubleClick={onDblClick}
             onClick={onViewportClick}
             onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
             onTouchEnd={onTouchEnd}
         >
+            {/* Crossfade: previous image fading out */}
+            {previousImgSrc && (
+                <img
+                    key={`prev-${crossfadeKey}`}
+                    src={previousImgSrc}
+                    alt=""
+                    className="select-none pointer-events-none"
+                    draggable={false}
+                    style={{
+                        ...imgStyle,
+                        opacity: 0,
+                        transition: 'opacity 300ms ease',
+                        zIndex: 0,
+                    }}
+                    // Start visible then animate to 0 via CSS
+                    ref={el => {
+                        if (el) {
+                            el.style.opacity = '1';
+                            requestAnimationFrame(() => { el.style.opacity = '0'; });
+                        }
+                    }}
+                />
+            )}
+
             {imgSrc ? (
                 <img
-                    ref={imgRef}
                     src={imgSrc}
                     alt={photo.name}
                     className="select-none"
                     draggable={false}
-                    style={imgStyle}
+                    onLoad={() => setImgLoaded(true)}
+                    style={{
+                        ...imgStyle,
+                        opacity: previousImgSrc ? 0 : 1,
+                        transition: previousImgSrc ? 'opacity 300ms ease' : undefined,
+                        zIndex: 1,
+                    }}
+                    ref={el => {
+                        (imgRef as React.MutableRefObject<HTMLImageElement | null>).current = el;
+                        if (el && previousImgSrc) {
+                            el.style.opacity = '0';
+                            requestAnimationFrame(() => { el.style.opacity = '1'; });
+                        }
+                    }}
                 />
             ) : (
-                <div className="absolute inset-0 flex items-center justify-center text-white/30">
-                    <p>No image data — photo is in reference mode</p>
+                <div className="absolute inset-0 flex items-center justify-center text-white/30" style={{ zIndex: 1 }}>
+                    {photo.sourcePath ? (
+                        /* Loading spinner */
+                        <div className="flex flex-col items-center gap-3">
+                            <div className="w-8 h-8 border-2 border-white/10 border-t-white/40 rounded-full animate-spin" />
+                        </div>
+                    ) : (
+                        <p>No image data — photo is in reference mode</p>
+                    )}
+                </div>
+            )}
+
+            {/* Spinner overlay while full image is decoding (src set but not yet loaded) */}
+            {imgSrc && !imgLoaded && (
+                <div className="absolute inset-0 flex items-center justify-center z-[2] pointer-events-none">
+                    <div className="w-8 h-8 border-2 border-white/10 border-t-white/40 rounded-full animate-spin" />
                 </div>
             )}
         </div>
@@ -369,7 +551,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
     // --- FULLSCREEN MODE ---
     if (fullscreen) {
         return (
-            <div className="fixed inset-0 z-[60] flex bg-black">
+            <div className="fixed inset-0 z-[60] flex bg-black animate-[fadeIn_200ms_ease]">
                 {viewport}
 
                 <div className={`absolute top-4 left-1/2 -translate-x-1/2 text-white/20 text-xs tabular-nums transition-opacity duration-500 ${chevronVisible ? 'opacity-100' : 'opacity-0'}`}>
@@ -399,9 +581,24 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
 
     // --- IMAGE VIEW MODE ---
     return (
-        <div className="fixed inset-0 z-[60] flex bg-black">
+        <div className="fixed inset-0 z-[60] flex bg-black animate-[fadeIn_200ms_ease]">
             <div className="flex-1 min-w-0 relative">
                 {viewport}
+                <button
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        setSidebarOpen(o => !o);
+                    }}
+                    className={`absolute top-4 right-16 z-30 flex h-10 w-10 items-center justify-center rounded-full border transition-colors bg-black/70 backdrop-blur-sm ${
+                        sidebarOpen
+                            ? 'border-[#e94560]/40 text-[#e94560]'
+                            : 'border-white/15 text-white/55 hover:text-white/80'
+                    }`}
+                    aria-label="Toggle details sidebar"
+                    title="Toggle details sidebar (I)"
+                >
+                    <Info className="w-4 h-4" />
+                </button>
                 <button
                     onClick={(event) => {
                         event.stopPropagation();
@@ -415,18 +612,31 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
                 </button>
             </div>
 
-            <aside
-                ref={sidebarRef}
-                className="w-72 h-full min-h-0 overflow-hidden flex flex-col bg-[#0d0d0d] border-l border-white/10 shrink-0 max-md:w-64"
-                style={frozenSidebarWidth !== null ? { width: `${frozenSidebarWidth}px` } : undefined}
-            >
-                {/* Header — matches gallery sidebar tab bar shape */}
-                <div className="flex items-center border-b border-white/10">
-                    <div className="flex-1 px-3 py-2">
-                        <div className="text-[11px] font-medium tracking-wide uppercase text-white/90">{photo.name}</div>
-                        <div className="text-[10px] text-white/25 tabular-nums mt-0.5">{index + 1} of {photos.length}</div>
+            {sidebarOpen && (
+                <aside
+                    ref={sidebarRef}
+                    className={mobile 
+                        ? "absolute inset-y-0 right-0 z-40 w-full h-full flex flex-col bg-[#0d0d0d]"
+                        : "w-72 h-full min-h-0 overflow-hidden flex flex-col bg-[#0d0d0d] border-l border-white/10 shrink-0 max-md:w-64"
+                    }
+                    style={!mobile && frozenSidebarWidth !== null ? { width: `${frozenSidebarWidth}px` } : undefined}
+                >
+                    {/* Header — matches gallery sidebar tab bar shape */}
+                    <div className="flex items-center border-b border-white/10">
+                        {mobile && (
+                            <button
+                                onClick={() => setSidebarOpen(false)}
+                                className="p-3 text-white/55 hover:text-white/80 shrink-0"
+                                aria-label="Back to image"
+                            >
+                                <ChevronLeft className="w-5 h-5" />
+                            </button>
+                        )}
+                        <div className="flex-1 px-3 py-2 min-w-0">
+                            <div className="text-[11px] font-medium tracking-wide uppercase text-white/90 truncate">{photo.name}</div>
+                            <div className="text-[11px] text-white/25 tabular-nums mt-0.5">{index + 1} of {photos.length}</div>
+                        </div>
                     </div>
-                </div>
 
                 {/* Scrollable content */}
                 <div className="min-h-0 flex-1 overflow-y-auto p-4 space-y-5">
@@ -457,7 +667,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
                     {/* Faces */}
                     {photo.faces && photo.faces.count > 0 && (
                         <Section label="Faces">
-                            <FaceCrops photo={photo} getFileUrl={getFileUrl} onFaceSearch={onFaceSearch} onRenameFace={onRenameFace} onDeleteFace={onDeleteFace} />
+                            <FaceCrops photo={photo} getFileUrl={getFileUrl} onFaceSearch={onFaceSearch} onRenameFace={onRenameFace} onDeleteFace={onDeleteFace} people={people} onAssociateFace={onAssociateFace} />
                         </Section>
                     )}
 
@@ -465,11 +675,11 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
                     <Section label="View">
                         <div className="grid grid-cols-4 gap-1">
                             <CtrlBtn onClick={zoomFit} active={isFit} title="Fit (F)"><Maximize className="w-3.5 h-3.5" /></CtrlBtn>
-                            <CtrlBtn onClick={zoom1to1} active={scale === 1} title="1:1"><span className="text-[10px] font-mono">1:1</span></CtrlBtn>
+                            <CtrlBtn onClick={zoom1to1} active={scale === 1} title="1:1"><span className="text-[11px] font-mono">1:1</span></CtrlBtn>
                             <CtrlBtn onClick={() => zoomBy(0.8)} title="Zoom out (-)"><ZoomOut className="w-3.5 h-3.5" /></CtrlBtn>
                             <CtrlBtn onClick={() => zoomBy(1.25)} title="Zoom in (+)"><ZoomIn className="w-3.5 h-3.5" /></CtrlBtn>
                         </div>
-                        <p className="text-[10px] text-white/20 text-center tabular-nums mt-1">{Math.round(effectiveScale * 100)}%</p>
+                        <p className="text-[11px] text-white/20 text-center tabular-nums mt-1">{Math.round(effectiveScale * 100)}%</p>
                         <div className="grid grid-cols-4 gap-1 mt-1">
                             <CtrlBtn onClick={() => rotate90(-90)} title="Rotate left (L)"><RotateCcw className="w-3.5 h-3.5" /></CtrlBtn>
                             <CtrlBtn onClick={() => rotate90(90)} title="Rotate right (R)"><RotateCw className="w-3.5 h-3.5" /></CtrlBtn>
@@ -506,11 +716,12 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
                 </div>
 
             </aside>
+            )}
 
             {/* Fullscreen — fixed circle, bottom-right */}
             <button
                 onClick={() => setFullscreen(true)}
-                className="fixed bottom-6 right-4 z-[70] w-10 h-10 flex items-center justify-center bg-black/70 backdrop-blur-sm rounded-full border border-white/15 text-white/50 hover:text-white/70 transition-colors"
+                className="fixed bottom-6 right-4 z-[70] w-10 h-10 flex items-center justify-center bg-black/70 backdrop-blur-sm rounded-full border border-white/15 text-white/55 hover:text-white/70 transition-colors"
                 aria-label="Fullscreen"
                 title="Fullscreen"
             >
@@ -523,7 +734,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
     return (
         <div>
-            <div className="text-[10px] text-white/25 uppercase tracking-wider font-medium mb-1.5">{label}</div>
+            <div className="text-[11px] text-white/25 uppercase tracking-wider font-medium mb-1.5">{label}</div>
             {children}
         </div>
     );
@@ -556,12 +767,14 @@ function CtrlBtn({ onClick, active, title, children }: {
     );
 }
 
-function FaceCrops({ photo, getFileUrl, onFaceSearch, onRenameFace, onDeleteFace }: {
+function FaceCrops({ photo, getFileUrl, onFaceSearch, onRenameFace, onDeleteFace, people, onAssociateFace }: {
     photo: PhotoEntry;
     getFileUrl: (path: string) => Promise<string>;
     onFaceSearch?: (embedding: Float32Array) => void;
     onRenameFace?: (clusterId: string, name: string) => Promise<void> | void;
     onDeleteFace?: (clusterId: string) => void;
+    people?: FaceClusterSummary[];
+    onAssociateFace?: (photoHash: string, faceIndex: number, targetClusterId: string) => void;
 }) {
     const faces = photo.faces!;
     return (
@@ -579,13 +792,19 @@ function FaceCrops({ photo, getFileUrl, onFaceSearch, onRenameFace, onDeleteFace
                     onFaceSearch={onFaceSearch}
                     onRename={onRenameFace}
                     onDelete={onDeleteFace}
+                    people={people}
+                    onAssociate={
+                        onAssociateFace
+                            ? (targetClusterId) => onAssociateFace(photo.hash, i, targetClusterId)
+                            : undefined
+                    }
                 />
             ))}
         </div>
     );
 }
 
-function FaceCropRow({ cropPath, index, score, name, clusterId, embeddings, getFileUrl, onFaceSearch, onRename, onDelete }: {
+function FaceCropRow({ cropPath, index, score, name, clusterId, embeddings, getFileUrl, onFaceSearch, onRename, onDelete, people, onAssociate }: {
     cropPath: string;
     index: number;
     score: number;
@@ -596,6 +815,8 @@ function FaceCropRow({ cropPath, index, score, name, clusterId, embeddings, getF
     onFaceSearch?: (embedding: Float32Array) => void;
     onRename?: (clusterId: string, name: string) => Promise<void> | void;
     onDelete?: (clusterId: string) => void;
+    people?: FaceClusterSummary[];
+    onAssociate?: (targetClusterId: string) => void;
 }) {
     const [src, setSrc] = useState('');
 
@@ -622,7 +843,7 @@ function FaceCropRow({ cropPath, index, score, name, clusterId, embeddings, getF
                 {src ? (
                     <img src={src} alt={`Face ${index + 1}`} className="w-full h-full object-cover" />
                 ) : (
-                    <div className="w-full h-full bg-white/10 flex items-center justify-center text-[9px] text-white/40">
+                    <div className="w-full h-full bg-white/10 flex items-center justify-center text-[11px] text-white/40">
                         {index + 1}
                     </div>
                 )}
@@ -637,7 +858,32 @@ function FaceCropRow({ cropPath, index, score, name, clusterId, embeddings, getF
                 ) : (
                     <div className="truncate text-[11px] text-white/75">{name && name !== 'Unknown' ? name : `Face ${index + 1}`}</div>
                 )}
-                <div className="text-[10px] text-white/25">{(score * 100).toFixed(0)}% confidence</div>
+                <div className="text-[11px] text-white/25">{(score * 100).toFixed(0)}% confidence</div>
+                {onAssociate && people && people.length > 0 && (
+                    <select
+                        value=""
+                        aria-label="Assign this face to an existing person"
+                        onClick={event => event.stopPropagation()}
+                        onChange={event => {
+                            const target = event.target.value;
+                            if (target) {
+                                onAssociate(target);
+                            }
+                            event.target.value = '';
+                        }}
+                        className="mt-1 w-full rounded-md border border-white/10 bg-[#1a1115] px-1.5 py-1 text-[11px] text-white/55 focus:border-[#ff9db0]/60 focus:outline-none"
+                    >
+                        <option value="">This is…</option>
+                        {people.map(person => {
+                            const target = person.memberClusterIds[0] ?? person.clusterId;
+                            return (
+                                <option key={person.clusterId} value={target}>
+                                    {(person.personName ?? person.label).trim() || 'Unnamed person'}
+                                </option>
+                            );
+                        })}
+                    </select>
+                )}
             </div>
             {onDelete && clusterId && (
                 <button

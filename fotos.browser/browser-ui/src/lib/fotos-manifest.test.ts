@@ -272,11 +272,16 @@ describe('grantFotosAccess', () => {
 
     it('re-notifies already granted peers when a new manifest entry is added later', async () => {
         await grantFotosAccess('remote-person-id' as any);
+        mocks.createAccess.mockClear();
         mocks.notifyRemotePeerAboutNewAccessibleRoots.mockClear().mockReturnValue(1);
         mocks.notifyAllActiveExportersAboutNewAccessibleRoots.mockClear().mockReturnValue(1);
 
         await addEntryToManifest('entry-hash' as any);
 
+        expect(mocks.createAccess).toHaveBeenCalledWith(expect.arrayContaining([
+            expect.objectContaining({ object: 'stored-manifest-hash' }),
+            expect.objectContaining({ object: 'entry-hash' }),
+        ]));
         expect(mocks.storeVersionedObject).toHaveBeenCalledWith(expect.objectContaining({
             $type$: 'FotosManifest',
             id: 'fotos',
@@ -288,11 +293,16 @@ describe('grantFotosAccess', () => {
 
     it('re-notifies already granted peers when a new authenticity attestation is added later', async () => {
         await grantFotosAccess('remote-person-id' as any);
+        mocks.createAccess.mockClear();
         mocks.notifyRemotePeerAboutNewAccessibleRoots.mockClear().mockReturnValue(1);
         mocks.notifyAllActiveExportersAboutNewAccessibleRoots.mockClear().mockReturnValue(1);
 
         await addAuthenticityAttestationToManifest('auth-hash' as any);
 
+        expect(mocks.createAccess).toHaveBeenCalledWith(expect.arrayContaining([
+            expect.objectContaining({ object: 'stored-manifest-hash' }),
+            expect.objectContaining({ object: 'auth-hash' }),
+        ]));
         expect(mocks.storeVersionedObject).toHaveBeenCalledWith(expect.objectContaining({
             $type$: 'FotosManifest',
             id: 'fotos',
