@@ -148,13 +148,31 @@ input[type="range"]::-webkit-slider-thumb:hover {
 
 /* --- Focus visibility --- */
 
-:focus-visible {
-    outline: 2px solid var(--accent-primary);
-    outline-offset: 2px;
+*:focus-visible {
+    outline: 2px solid var(--accent-primary) !important;
+    outline-offset: 2px !important;
 }
 
 :focus:not(:focus-visible) {
     outline: none;
+}
+
+/* --- Truthful indeterminate progress --- */
+
+@keyframes fotosProgressIndeterminate {
+    from { transform: translateX(-110%); }
+    to { transform: translateX(310%); }
+}
+
+.fotos-progress-indeterminate {
+    animation: fotosProgressIndeterminate 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .fotos-progress-indeterminate {
+        animation: none;
+        transform: translateX(90%);
+    }
 }
 
 /* --- Bottom Sheet slideUp --- */

@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { Search, FolderOpen, Download, SlidersHorizontal, ChevronLeft, ChevronRight, ChevronDown, Trash2, Check, Plus, Link, Compass, Settings, Layers } from 'lucide-react';
+import { Search, FolderOpen, Download, SlidersHorizontal, ChevronLeft, ChevronRight, ChevronDown, Trash2, Check, Plus, Link, Compass, Settings } from 'lucide-react';
 import type { FotosSettings, StorageMode, DisplaySettings, PhotoEntry } from '@/types/fotos';
 import type { FotosModel } from '@/lib/onecore-boot';
 import type { FaceClusterSummary, SimilarFaceMatch } from '@/lib/cluster-gallery';
@@ -55,14 +55,6 @@ interface SidebarProps {
     onClearFaceSearch?: () => void;
     fotosModel?: FotosModel | null;
     mobile?: boolean;
-    footerMarquee?: string | null;
-    analysisProgress?: {
-        phase?: string;
-        current: number;
-        total: number;
-        fileName?: string;
-        statusLabel?: string;
-    } | null;
     galleryMode: 'images' | 'clusters';
     onGalleryModeChange: (mode: 'images' | 'clusters') => void;
     collections: FotosCollectionSummary[];
@@ -135,8 +127,6 @@ export function Sidebar({
     faceSearchActive, onClearFaceSearch,
     fotosModel,
     mobile,
-    footerMarquee,
-    analysisProgress,
     galleryMode, onGalleryModeChange,
     collections,
     activeCollectionId,
@@ -307,9 +297,6 @@ export function Sidebar({
                     </div>
                 )}
 
-                {analysisProgress && analysisProgress.total > 0 && (
-                    <SidebarProgress progress={analysisProgress} />
-                )}
 
                 <div className="min-h-0 flex-1 overflow-y-auto p-3 space-y-4">
                     {tab === 'browse' && (
@@ -421,7 +408,6 @@ export function Sidebar({
                         />
                     )}
                 </div>
-                {footerMarquee && <SidebarMarquee text={footerMarquee} />}
             </aside>
         </>
     );
@@ -434,7 +420,7 @@ export function Sidebar({
         {collapsed && (
             <button
                 onClick={() => setCollapsed(false)}
-                className="fixed bottom-[4.5rem] right-4 z-50 w-10 h-10 flex items-center justify-center bg-black/70 backdrop-blur-sm rounded-full border border-white/15 text-white/50 hover:text-white/70 transition-colors"
+                className="fixed bottom-[4.75rem] right-4 z-50 flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/70 text-white/50 backdrop-blur-sm transition-colors hover:text-white/70"
                 aria-label="Expand sidebar"
             >
                 <ChevronLeft className="w-5 h-5" />
@@ -465,9 +451,6 @@ export function Sidebar({
                 </div>
             )}
 
-            {analysisProgress && analysisProgress.total > 0 && (
-                <SidebarProgress progress={analysisProgress} />
-            )}
 
             {/* Content */}
             <div className="min-h-0 flex-1 overflow-y-auto p-3 space-y-4">
@@ -586,83 +569,19 @@ export function Sidebar({
                     />
                 )}
             </div>
-            {footerMarquee && <SidebarMarquee text={footerMarquee} />}
-
         </aside>
 
         {/* Collapse — fixed circle, bottom-right */}
         {!collapsed && (
             <button
                 onClick={() => setCollapsed(true)}
-                className="fixed bottom-6 right-4 z-50 w-10 h-10 flex items-center justify-center bg-black/70 backdrop-blur-sm rounded-full border border-white/15 text-white/50 hover:text-white/70 transition-colors"
+                className="fixed bottom-6 right-4 z-50 flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/70 text-white/50 backdrop-blur-sm transition-colors hover:text-white/70"
                 aria-label="Collapse sidebar"
             >
                 <ChevronRight className="w-5 h-5" />
             </button>
         )}
         </>
-    );
-}
-
-function SidebarMarquee({ text }: { text: string }) {
-    return (
-        <div className="border-t border-[#e94560]/30 bg-gradient-to-r from-[#1c0b11] via-[#15181f] to-[#1c0b11] overflow-hidden shadow-[0_-1px_0_rgba(233,69,96,0.15)]">
-            <style>{`
-                @keyframes fotos-sidebar-marquee {
-                    from { transform: translateX(0); }
-                    to { transform: translateX(-33.333%); }
-                }
-            `}</style>
-            <div
-                className="flex min-w-max whitespace-nowrap py-2 text-[11px] font-medium tracking-[0.18em] text-[#ff9db0]"
-                style={{ animation: 'fotos-sidebar-marquee 18s linear infinite' }}
-            >
-                <span className="px-4">Image AI: {text}</span>
-                <span className="px-4">Image AI: {text}</span>
-                <span className="px-4">Image AI: {text}</span>
-            </div>
-        </div>
-    );
-}
-
-function SidebarProgress({ progress }: {
-    progress: NonNullable<SidebarProps['analysisProgress']>;
-}) {
-    const label = (() => {
-        switch (progress.phase) {
-            case 'preparing-faces':
-            case 'faces':
-                return 'Face analytics';
-            case 'preparing-semantic':
-            case 'semantic':
-                return 'Semantic indexing';
-            default:
-                return 'Analysis';
-        }
-    })();
-    const percent = progress.total > 0
-        ? Math.max(0, Math.min(100, Math.round((progress.current / progress.total) * 100)))
-        : 0;
-
-    return (
-        <div className="border-b border-white/10 px-3 py-2">
-            <div className="flex items-center gap-2">
-                <div className="flex-1 h-1 rounded-full bg-white/10 overflow-hidden">
-                    <div
-                        className="h-full rounded-full bg-[#e94560]/70 transition-all duration-500"
-                        style={{ width: `${percent}%` }}
-                    />
-                </div>
-                <span className="text-[11px] text-white/40 whitespace-nowrap">
-                    {label} {progress.current}/{progress.total}
-                </span>
-            </div>
-            {(progress.statusLabel || progress.fileName) && (
-                <div className="mt-1 truncate text-[11px] text-white/25">
-                    {progress.statusLabel ?? progress.fileName}
-                </div>
-            )}
-        </div>
     );
 }
 
@@ -707,9 +626,9 @@ function TabBtnIcon({
     active: boolean;
     onClick: () => void;
     label: string;
-    icon: 'browse' | 'manage' | 'settings';
+    icon: 'browse' | 'settings';
 }) {
-    const Icon = icon === 'browse' ? Compass : icon === 'manage' ? Layers : Settings;
+    const Icon = icon === 'browse' ? Compass : Settings;
     return (
         <button
             type="button"
@@ -742,7 +661,7 @@ function FolderHeader({
 
     if (onOpenFolder) {
         return (
-            <button onClick={onOpenFolder} className="flex items-center gap-2 text-xs text-white/40 hover:text-white/60">
+            <button type="button" onClick={onOpenFolder} className="flex min-h-11 items-center gap-2 rounded-md px-2 text-xs text-white/55 hover:bg-white/5 hover:text-white/75">
                 <FolderOpen className="w-3.5 h-3.5" />
                 Open folder...
             </button>
@@ -1467,9 +1386,6 @@ function CollectionRow({
 
     return (
         <div
-            role="button"
-            tabIndex={0}
-            onClick={onClick}
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
@@ -1480,16 +1396,20 @@ function CollectionRow({
                     onContextMenu(e);
                 }
             }}
-            onKeyDown={event => handleButtonLikeKeyDown(event, onClick)}
             className={`group flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left transition-colors ${
                 active
                     ? 'border-[#e94560]/50 bg-[#e94560]/10'
                     : 'border-white/10 bg-white/5 hover:bg-white/10'
             }`}
         >
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-black/20 text-[11px] font-semibold text-white/45">
+            <button
+                type="button"
+                onClick={onClick}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-white/10 bg-black/20 text-[11px] font-semibold text-white/45 transition-colors hover:bg-white/10 hover:text-white/70"
+                aria-label={`Open collection ${collection.name}`}
+            >
                 {collection.photoCount}
-            </div>
+            </button>
             <div className="min-w-0 flex-1">
                 <InlineRenameField
                     value={collection.name}
@@ -1502,25 +1422,20 @@ function CollectionRow({
                 </div>
             </div>
             <button
+                type="button"
                 onClick={event => {
                     event.stopPropagation();
                     onDelete(collection.id);
                 }}
                 onKeyDown={event => event.stopPropagation()}
-                className="text-white/20 hover:text-red-400 transition-colors"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-white/45 transition-colors hover:bg-red-500/10 hover:text-red-300"
+                aria-label={`Delete collection ${collection.name}`}
                 title="Delete collection"
             >
                 <Trash2 className="h-3 w-3" />
             </button>
         </div>
     );
-}
-
-function handleButtonLikeKeyDown(event: React.KeyboardEvent, onActivate: () => void) {
-    if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        onActivate();
-    }
 }
 
 function ClusterBrowseRow({
@@ -1578,21 +1493,24 @@ function ClusterBrowseRow({
 
     return (
         <div
-            role="button"
-            tabIndex={0}
-            onClick={onClick}
-            onKeyDown={event => handleButtonLikeKeyDown(event, onClick)}
             className={`group flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left transition-colors ${
                 active
                     ? 'border-[#e94560]/50 bg-[#e94560]/10'
                     : 'border-white/10 bg-white/5 hover:bg-white/10'
             }`}
         >
-            {avatarUrl ? (
-                <img src={avatarUrl} alt={cluster.label} className="h-7 w-7 rounded-full object-cover border border-white/10 shrink-0" />
-            ) : (
-                <div className="h-7 w-7 rounded-full bg-white/10 border border-white/10 shrink-0" />
-            )}
+            <button
+                type="button"
+                onClick={onClick}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80"
+                aria-label={`Open ${cluster.label}`}
+            >
+                {avatarUrl ? (
+                    <img src={avatarUrl} alt="" className="h-9 w-9 rounded-full object-cover border border-white/10" />
+                ) : (
+                    <span className="h-9 w-9 rounded-full bg-white/10 border border-white/10" />
+                )}
+            </button>
             <div className="min-w-0 flex-1">
                 {onRename ? (
                     <InlineRenameField
@@ -1613,44 +1531,46 @@ function ClusterBrowseRow({
                 <div className="flex shrink-0 items-center gap-1.5">
                     {onDelete && (
                         <button
+                            type="button"
                             onClick={event => {
                                 event.stopPropagation();
                                 onDelete(cluster.memberClusterIds[0] ?? cluster.clusterId);
                             }}
                             onKeyDown={event => event.stopPropagation()}
-                            className="text-white/20 hover:text-red-400 transition-colors"
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-white/45 transition-colors hover:bg-red-500/10 hover:text-red-300"
+                            aria-label={`Delete face cluster ${cluster.label}`}
                             title="Delete cluster"
                         >
                             <Trash2 className="h-3 w-3" />
                         </button>
                     )}
                     {showSelectionCheckbox ? (
-                        <input
-                            type="checkbox"
-                            checked={Boolean(selectionChecked)}
-                            onChange={event => {
-                                event.stopPropagation();
-                                onToggleSelection?.();
-                            }}
-                            onClick={event => event.stopPropagation()}
-                            onKeyDown={event => event.stopPropagation()}
-                            className="h-4 w-4 shrink-0 rounded-sm border border-white/20 bg-black/20 accent-[#e94560]"
+                        <label
+                            className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md hover:bg-white/8"
                             title={selectionChecked ? 'Remove from collection selection' : 'Add to collection selection'}
-                        />
+                        >
+                            <input
+                                type="checkbox"
+                                checked={Boolean(selectionChecked)}
+                                onChange={() => onToggleSelection?.()}
+                                className="h-4 w-4 rounded-sm border border-white/20 bg-black/20 accent-[#e94560]"
+                                aria-label={selectionChecked ? `Remove ${cluster.label} from collection selection` : `Add ${cluster.label} to collection selection`}
+                            />
+                        </label>
                     ) : null}
                     {showMergeCheckbox ? (
-                        <input
-                            type="checkbox"
-                            checked={Boolean(mergeSelected)}
-                            onChange={event => {
-                                event.stopPropagation();
-                                onToggleMergeSelected?.();
-                            }}
-                            onClick={event => event.stopPropagation()}
-                            onKeyDown={event => event.stopPropagation()}
-                            className="h-4 w-4 shrink-0 rounded-sm border border-white/20 bg-black/20 accent-[#e94560]"
+                        <label
+                            className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md hover:bg-white/8"
                             title={mergeSelected ? 'Marked for this cluster' : 'Mark for this cluster'}
-                        />
+                        >
+                            <input
+                                type="checkbox"
+                                checked={Boolean(mergeSelected)}
+                                onChange={() => onToggleMergeSelected?.()}
+                                className="h-4 w-4 rounded-sm border border-white/20 bg-black/20 accent-[#e94560]"
+                                aria-label={mergeSelected ? `Remove ${cluster.label} from merge` : `Add ${cluster.label} to merge`}
+                            />
+                        </label>
                     ) : null}
                 </div>
             )}
@@ -1705,17 +1625,20 @@ function SimilarFaceRow({
 
     return (
         <div
-            role="button"
-            tabIndex={0}
-            onClick={onOpen}
-            onKeyDown={event => handleButtonLikeKeyDown(event, onOpen)}
             className="group flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2 py-1.5 text-left transition-colors hover:bg-white/10"
         >
-            {src ? (
-                <img src={src} alt={match.photo.name} className="h-8 w-8 rounded-full object-cover border border-white/10 shrink-0" />
-            ) : (
-                <div className="h-8 w-8 rounded-full bg-white/10 border border-white/10 shrink-0" />
-            )}
+            <button
+                type="button"
+                onClick={onOpen}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80"
+                aria-label={`Open ${match.photo.name}`}
+            >
+                {src ? (
+                    <img src={src} alt="" className="h-9 w-9 rounded-full object-cover border border-white/10" />
+                ) : (
+                    <span className="h-9 w-9 rounded-full bg-white/10 border border-white/10" />
+                )}
+            </button>
             <div className="min-w-0 flex-1" title={`Open ${match.photo.name}`}>
                 <div className="truncate text-[11px] text-white/75">{match.photo.name}</div>
                 <div className="text-[11px] text-white/25">{(match.similarity * 100).toFixed(0)}% match</div>
@@ -1735,12 +1658,10 @@ function SimilarFaceRow({
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
                 <button
-                    onClick={event => {
-                        event.stopPropagation();
-                        onDelete();
-                    }}
-                    onKeyDown={event => event.stopPropagation()}
-                    className="text-white/25 hover:text-red-400 transition-colors"
+                    type="button"
+                    onClick={onDelete}
+                    className="flex h-11 w-11 items-center justify-center rounded-md text-white/35 transition-colors hover:bg-red-500/10 hover:text-red-300"
+                    aria-label={`Delete ${match.photo.name}`}
                     title={`Delete ${match.photo.name}`}
                 >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -1748,12 +1669,8 @@ function SimilarFaceRow({
                 <button
                     type="button"
                     disabled={!canAssociate || associated}
-                    onClick={event => {
-                        event.stopPropagation();
-                        onAssociate?.();
-                    }}
-                    onKeyDown={event => event.stopPropagation()}
-                    className={`flex h-4 w-4 items-center justify-center rounded-sm border transition-colors ${
+                    onClick={onAssociate}
+                    className={`flex h-11 w-11 items-center justify-center rounded-md border transition-colors ${
                         associated
                             ? 'border-[#e94560]/70 bg-[#e94560] text-white'
                             : canAssociate
@@ -1766,6 +1683,13 @@ function SimilarFaceRow({
                             : canAssociate
                                 ? 'Associate with the selected cluster'
                                 : 'Select a cluster first'
+                    }
+                    aria-label={
+                        associated
+                            ? `${match.photo.name} is associated with the selected cluster`
+                            : canAssociate
+                                ? `Associate ${match.photo.name} with the selected cluster`
+                                : 'Select a cluster before associating this face'
                     }
                 >
                     <Check className="h-3 w-3" />
@@ -1877,7 +1801,7 @@ function LibrarySharingPanel({
                                             <button
                                                 type="button"
                                                 onClick={() => onRemoveFolder(folder.id)}
-                                                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-white/25 transition-colors hover:bg-[#e94560]/12 hover:text-[#ff9db0]"
+                                                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-white/45 transition-colors hover:bg-red-500/10 hover:text-red-300"
                                                 aria-label={`Remove ${folder.name}`}
                                                 title={`Remove ${folder.name}`}
                                             >
@@ -2071,23 +1995,15 @@ function LibraryConfigPanel({
                 <p><span className="text-green-400/60 font-mono">I</span> Ingest — full blob copy</p>
             </div>
 
-            <SectionLabel>Sources</SectionLabel>
-            <div className="space-y-1">
-                <SourceRow icon={<FolderOpen className="w-3 h-3" />} label="~/Downloads" />
-                <SourceRow icon={<FolderOpen className="w-3 h-3" />} label="~/Pictures" />
-            </div>
-
-            <SectionLabel>Export</SectionLabel>
-            <button className="w-full flex items-center gap-2 px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-md text-[11px] text-white/40 hover:text-white/60 hover:bg-white/10 transition-colors">
-                <Download className="w-3 h-3" />
-                Export as HTML
-            </button>
-
-            <SectionLabel>AI Audit</SectionLabel>
-            <LLMComparisonPanel
-                photo={llmComparisonPhoto ?? null}
-                photoSourceLabel={llmComparisonPhotoLabel ?? 'photo'}
-            />
+            {import.meta.env.DEV && (
+                <>
+                    <SectionLabel>AI Audit</SectionLabel>
+                    <LLMComparisonPanel
+                        photo={llmComparisonPhoto ?? null}
+                        photoSourceLabel={llmComparisonPhotoLabel ?? 'photo'}
+                    />
+                </>
+            )}
         </>
     );
 }
@@ -2152,7 +2068,8 @@ function ManageCollectionShareRow({
                 <button
                     type="button"
                     onClick={() => onDelete(collection.id)}
-                    className="text-white/20 hover:text-red-400 transition-colors"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-white/45 transition-colors hover:bg-red-500/10 hover:text-red-300"
+                    aria-label={`Delete collection ${collection.name}`}
                     title="Delete collection"
                 >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -2194,16 +2111,6 @@ function ManageClusterShareRow({
                 onChange={onShareChange}
                 emptyLabel="No cluster peers selected"
             />
-        </div>
-    );
-}
-
-function SourceRow({ icon, label }: { icon: React.ReactNode; label: string }) {
-    return (
-        <div className="flex items-center gap-2 px-2.5 py-1.5 bg-white/5 rounded-md text-[11px] text-white/40">
-            {icon}
-            <span className="flex-1 font-mono text-[11px]">{label}</span>
-            <span className="text-white/15 text-[11px]">active</span>
         </div>
     );
 }
@@ -2721,7 +2628,7 @@ function HistoryBranchRow({
                         <button
                             type="button"
                             onClick={() => onDelete(node.entry.eventId)}
-                            className="rounded-md p-1.5 text-white/24 transition-colors hover:bg-white/8 hover:text-white/52"
+                            className="flex h-11 w-11 items-center justify-center rounded-md text-white/45 transition-colors hover:bg-red-500/10 hover:text-red-300"
                             aria-label={`Delete history entry ${label}`}
                         >
                             <Trash2 className="w-3 h-3" />

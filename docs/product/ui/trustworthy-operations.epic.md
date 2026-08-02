@@ -1,6 +1,6 @@
 # Epic: Trustworthy Operations
 
-Status: Proposed
+Status: In progress
 Owner: fotos product and engineering
 Last updated: 2026-08-02
 Evidence: [UX-04–08, UX-12–13](../ui.prd.md#4-ux-findings-and-proposals)
@@ -82,6 +82,24 @@ and overlays are operable with keyboard and assistive technology.
 - D-07: phase-specific pause/cancel/resume semantics.
 - Storage-mode behavior must be traced before delete copy is finalized.
 - Undo duration and persistence boundary require engineering/product agreement.
+
+## Implementation progress
+
+Implemented in the first slice:
+
+- one canonical, measured-or-indeterminate progress presentation;
+- removal of invented Sources, HTML Export, duplicate marquee, and production diagnostics;
+- explicit confirmations that name destructive scope and original-file effects;
+- app-styled rename dialogs in place of native prompts;
+- keyboard/focus semantics for dialogs, context menus, lightbox, photo cards, and
+  touched sidebar/cluster controls;
+- D-07 discovery: no pause/cancel/resume control is exposed before engine support exists.
+
+Still required before this epic is complete:
+
+- durable failed/cancelled/resumable operation states after the engine lifecycle work in D-07;
+- an undo policy and commit boundary for reversible operations;
+- automated destructive-routing coverage and the full desktop/mobile/manual validation matrix.
 
 ## Acceptance Criteria
 

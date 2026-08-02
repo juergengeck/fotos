@@ -6,6 +6,7 @@ import { Lightbox } from '@/components/Lightbox';
 import { Sidebar } from '@/components/Sidebar';
 import { ConfirmModal } from '@/components/ConfirmModal';
 import { ContextMenu } from '@/components/ContextMenu';
+import { RenameModal } from '@/components/RenameModal';
 import { TimelineScrubber } from '@/components/TimelineScrubber';
 import { ClusterGallery } from '@/components/ClusterGallery';
 import { useGallery } from '@/hooks/useGallery';
@@ -18,7 +19,7 @@ import { UpdatePrompt } from '@/components/UpdatePrompt';
 import {
     DEFAULT_GLUE_CONNECTION_BINDING_ID,
 } from '@glueone/glue.core';
-import { getFaceCount } from '@refinio/fotos.ui';
+import { getFaceCount, resolveProgressDisplay } from '@refinio/fotos.ui';
 import type { PhotoEntry } from '@refinio/fotos.ui';
 import type { FotosModel } from './lib/onecore-boot';
 import { setModelUpdater } from './lib/onecore-boot';
@@ -300,10 +301,24 @@ export function App({ fotosModel: initialModel }: AppProps) {
         open: boolean;
         title: string;
         message: string;
+        confirmLabel?: string;
         isDestructive?: boolean;
         onConfirm: () => void;
     } | null>(null);
-    const showConfirm = useCallback((opts: { title: string; message: string; isDestructive?: boolean; onConfirm: () => void }) => {
+    const [renameState, setRenameState] = useState<{
+        kind: 'cluster' | 'collection';
+        id: string;
+        title: string;
+        label: string;
+        initialValue: string;
+    } | null>(null);
+    const showConfirm = useCallback((opts: {
+        title: string;
+        message: string;
+        confirmLabel?: string;
+        isDestructive?: boolean;
+        onConfirm: () => void;
+    }) => {
         setConfirmState({ open: true, ...opts });
     }, []);
 
@@ -523,31 +538,79 @@ export function App({ fotosModel: initialModel }: AppProps) {
 
     const handleRenameCluster = useCallback((clusterId: string) => {
         const currentName = gallery.allClusters.find(c => c.clusterId === clusterId)?.label || '';
-        const name = prompt('Rename face cluster:', currentName);
-        if (name !== null) {
-            void handleRenameFace(clusterId, name);
-        }
-    }, [gallery.allClusters, handleRenameFace]);
+        setRenameState({
+            kind: 'cluster',
+            id: clusterId,
+            title: 'Rename face cluster',
+            label: 'Name',
+            initialValue: currentName,
+        });
+    }, [gallery.allClusters]);
 
     const handleRenameCollectionAction = useCallback((collectionId: string) => {
         const currentName = collectionSummaries.find(c => c.id === collectionId)?.name || '';
-        const name = prompt('Rename collection:', currentName);
-        if (name !== null && name.trim()) {
-            fotosCollections.renameCollection(collectionId, name.trim());
-        }
-    }, [collectionSummaries, fotosCollections]);
+        setRenameState({
+            kind: 'collection',
+            id: collectionId,
+            title: 'Rename collection',
+            label: 'Collection name',
+            initialValue: currentName,
+        });
+    }, [collectionSummaries]);
+
+    const handleDeleteCollection = useCallback((collectionId: string) => {
+        const collectionName = collectionSummaries.find(collection => collection.id === collectionId)?.name
+            ?? 'this collection';
+        showConfirm({
+            title: 'Delete collection',
+            message: `Delete “${collectionName}”? Its photos remain in the library. This cannot be undone.`,
+            confirmLabel: 'Delete collection',
+            isDestructive: true,
+            onConfirm: () => fotosCollections.deleteCollection(collectionId),
+        });
+    }, [collectionSummaries, fotosCollections, showConfirm]);
+
+    const handleRemoveFolder = useCallback((folderId: string) => {
+        const folderName = gallery.folder.folders.find(folder => folder.id === folderId)?.name ?? 'this folder';
+        showConfirm({
+            title: 'Remove folder',
+            message: `Remove “${folderName}” from fotos? Original files and the folder on disk are not deleted.`,
+            confirmLabel: 'Remove folder',
+            isDestructive: true,
+            onConfirm: () => gallery.folder.removeFolder(folderId),
+        });
+    }, [gallery.folder, showConfirm]);
 
     const handleAssociateFaceWithCluster = useCallback((photoHash: string, faceIndex: number, clusterId: string) => {
         void gallery.folder.associateFaceWithCluster(photoHash, faceIndex, clusterId);
     }, [gallery.folder]);
 
     const handleMergeFaceClusters = useCallback((targetClusterId: string, sourceClusterIds: string[]) => {
-        void gallery.folder.mergeFaceClusters(targetClusterId, sourceClusterIds);
-    }, [gallery.folder]);
+        const uniqueSourceIds = Array.from(new Set(sourceClusterIds.filter(id => id !== targetClusterId)));
+        if (uniqueSourceIds.length === 0) return;
+        showConfirm({
+            title: 'Merge face clusters',
+            message: `Merge ${uniqueSourceIds.length} face cluster${uniqueSourceIds.length === 1 ? '' : 's'} into the selected person? This changes face associations and cannot currently be undone.`,
+            confirmLabel: 'Merge clusters',
+            isDestructive: true,
+            onConfirm: () => {
+                void gallery.folder.mergeFaceClusters(targetClusterId, uniqueSourceIds);
+            },
+        });
+    }, [gallery.folder, showConfirm]);
 
     const handleGroupFaceClustersAsPerson = useCallback((clusterIds: string[]) => {
-        void gallery.folder.groupFaceClustersAsPerson(clusterIds);
-    }, [gallery.folder]);
+        const uniqueIds = Array.from(new Set(clusterIds));
+        if (uniqueIds.length < 2) return;
+        showConfirm({
+            title: 'Group as one person',
+            message: `Group ${uniqueIds.length} face clusters as one person? You can separate them again later.`,
+            confirmLabel: 'Group as one person',
+            onConfirm: () => {
+                void gallery.folder.groupFaceClustersAsPerson(uniqueIds);
+            },
+        });
+    }, [gallery.folder, showConfirm]);
 
     // Name (and, when more than one is involved, group) face clusters under a
     // single identity. Powers the implicit "select faces → name them" flow.
@@ -566,8 +629,16 @@ export function App({ fotosModel: initialModel }: AppProps) {
     }, [gallery.folder]);
 
     const handleSeparatePersonGroup = useCallback((personId: string) => {
-        void gallery.folder.separatePersonGroup(personId);
-    }, [gallery.folder]);
+        showConfirm({
+            title: 'Separate person group',
+            message: 'Separate this person back into individual face clusters? Existing person grouping will be removed.',
+            confirmLabel: 'Separate clusters',
+            isDestructive: true,
+            onConfirm: () => {
+                void gallery.folder.separatePersonGroup(personId);
+            },
+        });
+    }, [gallery.folder, showConfirm]);
 
     useEffect(() => {
         const activePresenceService = fotosModel?.glueModule?.presenceTrieService;
@@ -1142,9 +1213,19 @@ export function App({ fotosModel: initialModel }: AppProps) {
     }, [gallery, navigatePhotoRoute]);
 
     const handleDelete = useCallback((hash: string) => {
+        const targetPhoto = gallery.folder.entries.find(photo => photo.hash === hash)
+            ?? visiblePhotos.find(photo => photo.hash === hash)
+            ?? null;
+        const isRemotePhoto = targetPhoto?.sourcePath?.startsWith('remote:') === true
+            || targetPhoto?.thumb?.startsWith('remote:') === true;
+        const photoName = targetPhoto?.name ?? 'this photo';
+        const deleteMessage = isRemotePhoto || !targetPhoto?.sourcePath
+            ? `Remove “${photoName}” from this fotos library? The sender's original is not deleted. This cannot be undone on this device.`
+            : `Delete “${photoName}” from its folder and remove it from fotos? This deletes the original file on disk and cannot be undone.`;
         showConfirm({
             title: 'Delete photo',
-            message: 'This will permanently remove the photo from your gallery. This cannot be undone.',
+            message: deleteMessage,
+            confirmLabel: 'Delete photo',
             isDestructive: true,
             onConfirm: () => {
                 if (photoRouteTarget?.photoHash === hash) {
@@ -1247,35 +1328,6 @@ export function App({ fotosModel: initialModel }: AppProps) {
         )
         ? progress
         : null;
-    const configMarquee = (() => {
-        if (!analysisProgress) return null;
-        if (analysisProgress.phase === 'preparing-faces') {
-            const prefix = analysisProgress.statusLabel?.startsWith('Loading')
-                ? 'Downloading image AI...'
-                : 'Preparing image AI...';
-            return `${prefix} ${analysisProgress.statusLabel ?? ''}`.trim();
-        }
-        if (analysisProgress.phase === 'faces') {
-            const step = analysisProgress.total > 0
-                ? `Analyzing faces ${analysisProgress.current}/${analysisProgress.total}`
-                : 'Analyzing faces...';
-            return analysisProgress.fileName
-                ? `${step} ${analysisProgress.fileName}`.trim()
-                : step;
-        }
-        if (analysisProgress.phase === 'preparing-semantic') {
-            return analysisProgress.statusLabel ?? 'Loading semantic search model...';
-        }
-        if (analysisProgress.phase === 'semantic') {
-            const step = analysisProgress.total > 0
-                ? `Indexing semantic search ${analysisProgress.current}/${analysisProgress.total}`
-                : 'Indexing semantic search...';
-            return analysisProgress.fileName
-                ? `${step} ${analysisProgress.fileName}`.trim()
-                : step;
-        }
-        return null;
-    })();
     const breadcrumbItems = useMemo(() => {
         const items: Array<{ key: string; label: string; onClick?: () => void }> = [];
 
@@ -1448,6 +1500,15 @@ export function App({ fotosModel: initialModel }: AppProps) {
         snapshot: historySnapshot,
         breadcrumbs: historyBreadcrumbs,
     });
+    const handleDeleteHistoryEntry = useCallback((eventId: string) => {
+        showConfirm({
+            title: 'Delete saved history entry',
+            message: 'Delete this saved place from breadcrumb history? Photos, folders, and collections are not deleted.',
+            confirmLabel: 'Delete history entry',
+            isDestructive: true,
+            onConfirm: () => breadcrumbHistory.deleteEntry(eventId),
+        });
+    }, [breadcrumbHistory.deleteEntry, showConfirm]);
 
     useEffect(() => {
         const restoreEntry = breadcrumbHistory.restoreEntry;
@@ -2197,28 +2258,37 @@ export function App({ fotosModel: initialModel }: AppProps) {
             : 'Waiting for shared photos...';
 
     const appContent = (() => {
-        // Ingestion in progress — show progress overlay
-        if (progress && !analysisProgress) {
+        // Before the first library exists there is nothing to browse yet. Rescans and
+        // later phases stay in the gallery and use its canonical status strip.
+        if (progress && !analysisProgress && !gallery.folder.isOpen) {
+            const progressDisplay = resolveProgressDisplay(progress);
+            const progressDetail = progress.statusLabel ?? progress.fileName;
             return (
                 <div className="h-screen flex flex-col items-center justify-center bg-[#111] text-white/70 view-enter">
                     <div style={{ width: 'min(480px, 80vw)', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                        <div style={{ width: '100%', height: 6, borderRadius: 3, background: '#333', overflow: 'hidden' }}>
-                            <div style={{
-                                height: '100%', borderRadius: 3, background: '#e94560',
-                                width: progress.total > 0 ? `${Math.round((progress.current / progress.total) * 100)}%` : '0%',
-                                transition: 'width 0.3s ease',
-                            }} />
+                        <div
+                            role="progressbar"
+                            aria-label={progressDisplay.label}
+                            aria-valuemin={progressDisplay.measured ? 0 : undefined}
+                            aria-valuemax={progressDisplay.measured ? 100 : undefined}
+                            aria-valuenow={progressDisplay.percent ?? undefined}
+                            style={{ width: '100%', height: 6, borderRadius: 3, background: '#333', overflow: 'hidden' }}
+                        >
+                            <div
+                                className={progressDisplay.measured ? '' : 'fotos-progress-indeterminate'}
+                                style={{
+                                    height: '100%', borderRadius: 3, background: '#e94560',
+                                    width: progressDisplay.measured ? `${progressDisplay.percent}%` : '35%',
+                                    transition: progressDisplay.measured ? 'width 0.3s ease' : undefined,
+                                }}
+                            />
                         </div>
-                        <p style={{ fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {progress.phase === 'scanning' && 'Scanning for images...'}
-                            {progress.phase === 'processing' && `Processing ${progress.current}/${progress.total}${progress.fileName ? ` — ${progress.fileName}` : ''}`}
-                            {progress.phase === 'preparing-faces' && (progress.statusLabel ?? 'Preparing face analytics...')}
-                            {progress.phase === 'faces' && `Detecting faces ${progress.current}/${progress.total}${progress.fileName ? ` — ${progress.fileName}` : ''}`}
-                            {progress.phase === 'preparing-semantic' && (progress.statusLabel ?? 'Loading semantic search model...')}
-                            {progress.phase === 'semantic' && `Embedding images ${progress.current}/${progress.total}${progress.fileName ? ` — ${progress.fileName}` : ''}`}
-                            {progress.phase === 'writing' && 'Writing metadata...'}
-                            {progress.phase === 'done' && `Done — ${progress.total} images ingested`}
+                        <p role="status" aria-live="polite" style={{ fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {progressDisplay.label}{progressDisplay.countLabel ? ` ${progressDisplay.countLabel}` : ''}
                         </p>
+                        {progressDetail && (
+                            <p aria-hidden="true" className="truncate text-xs text-white/45">{progressDetail}</p>
+                        )}
                     </div>
                 </div>
             );
@@ -2236,8 +2306,8 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                 Photos will appear here as soon as they arrive. No local upload or folder selection is needed.
                             </p>
                         </div>
-                        <div className="w-full max-w-md overflow-hidden rounded-full bg-white/8">
-                            <div className="h-1.5 w-1/2 rounded-full bg-[#e94560] animate-pulse" />
+                        <div className="h-1.5 w-full max-w-md overflow-hidden rounded-full bg-white/8">
+                            <div className="fotos-progress-indeterminate h-full w-[35%] rounded-full bg-[#e94560]" />
                         </div>
                     </div>
                     <Impressum />
@@ -2396,7 +2466,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                     loading={gallery.loading}
                                     getThumbUrl={gallery.folder.getThumbUrl}
                                     mobile={mobile}
-                                    analysisProgress={analysisProgress}
+                                    analysisProgress={progress}
                                     emptyTitle={
                                         trimmedSearchQuery.length > 0
                                             ? 'No matching photos'
@@ -2509,13 +2579,13 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         historyBranchCount={breadcrumbHistory.branchCount}
                         onHistoryEnabledChange={breadcrumbHistory.setEnabled}
                         onHistoryNavigate={breadcrumbHistory.navigateTo}
-                        onHistoryDelete={breadcrumbHistory.deleteEntry}
+                        onHistoryDelete={handleDeleteHistoryEntry}
                         currentFolderName={gallery.folder.folderName}
                         folderName={gallery.folder.folderName}
                         folders={gallery.folder.folders}
                         onOpenFolder={gallery.folder.openFolder}
                         onSelectFolder={gallery.folder.selectFolder}
-                        onRemoveFolder={gallery.folder.removeFolder}
+                        onRemoveFolder={handleRemoveFolder}
                         onRescan={gallery.folder.rescan}
                         onReanalyze={canReanalyze ? gallery.folder.reanalyzeFaces : undefined}
                         canClaimAuthorshipOnIngest={gallery.folder.canClaimAuthorshipOnIngest}
@@ -2527,8 +2597,6 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         onClearFaceSearch={() => gallery.setSearchFace(null)}
                         fotosModel={fotosModel}
                         mobile={mobile}
-                        footerMarquee={configMarquee}
-                        analysisProgress={analysisProgress}
                         galleryMode={gallery.galleryMode}
                         onGalleryModeChange={handleGalleryModeChange}
                         collections={collectionSummaries}
@@ -2546,7 +2614,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         onClearCollectionSelection={clearCollectionSelection}
                         onCreateCollection={handleCreateCollection}
                         onRenameCollection={fotosCollections.renameCollection}
-                        onDeleteCollection={fotosCollections.deleteCollection}
+                        onDeleteCollection={handleDeleteCollection}
                         clusters={gallery.clusters}
                         allClusters={gallery.allClusters}
                         people={gallery.people}
@@ -2638,18 +2706,9 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                 {incomingShareBusy ? 'Opening gallery...' : 'Choose folder and open'}
                             </button>
                             {incomingShareStatusLabel && (
-                                <div className="space-y-1.5">
+                                <div className="space-y-1.5" role="status" aria-live="polite">
                                     <div className="h-1.5 overflow-hidden rounded-full bg-white/8">
-                                        <div
-                                            className="h-full rounded-full bg-[#e94560] transition-all"
-                                            style={{
-                                                width: incomingShareStatus === 'connecting'
-                                                    ? '70%'
-                                                    : incomingShareStatus === 'preparing'
-                                                        ? '42%'
-                                                        : '18%',
-                                            }}
-                                        />
+                                        <div className="fotos-progress-indeterminate h-full w-[35%] rounded-full bg-[#e94560]" />
                                     </div>
                                     <div className="text-center text-[11px] text-white/35">
                                         {incomingShareStatusLabel}
@@ -2673,12 +2732,19 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         <div className="min-w-0 flex-1">
                             <div className="text-xs font-medium text-white/80">Shared gallery is syncing</div>
                             <div className="text-[11px] text-white/35">{incomingShareProgressLabel}</div>
-                            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/8">
+                            <div
+                                className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/8"
+                                role="progressbar"
+                                aria-label="Incoming shared photos"
+                                aria-valuemin={incomingShareProgressPercent === null ? undefined : 0}
+                                aria-valuemax={incomingShareProgressPercent === null ? undefined : 100}
+                                aria-valuenow={incomingShareProgressPercent ?? undefined}
+                            >
                                 <div
-                                    className="h-full rounded-full bg-[#e94560] transition-all"
-                                    style={{
-                                        width: `${incomingShareProgressPercent ?? (incomingShareReceivedCount > 0 ? 45 : 12)}%`,
-                                    }}
+                                    className={`${incomingShareProgressPercent === null ? 'fotos-progress-indeterminate w-[35%]' : ''} h-full rounded-full bg-[#e94560] transition-all`}
+                                    style={incomingShareProgressPercent === null
+                                        ? undefined
+                                        : {width: `${incomingShareProgressPercent}%`}}
                                 />
                             </div>
                         </div>
@@ -2720,19 +2786,35 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 onRenameCluster={handleRenameCluster}
                 onDeleteCluster={handleDeleteFace}
                 onRenameCollection={handleRenameCollectionAction}
-                onDeleteCollection={fotosCollections.deleteCollection}
+                onDeleteCollection={handleDeleteCollection}
             />
             <ConfirmModal
                 open={confirmState?.open ?? false}
                 title={confirmState?.title ?? ''}
                 message={confirmState?.message ?? ''}
                 isDestructive={confirmState?.isDestructive}
-                confirmLabel={confirmState?.isDestructive ? 'Delete' : 'Confirm'}
+                confirmLabel={confirmState?.confirmLabel ?? (confirmState?.isDestructive ? 'Delete' : 'Confirm')}
                 onConfirm={() => {
                     confirmState?.onConfirm();
                     setConfirmState(null);
                 }}
                 onCancel={() => setConfirmState(null)}
+            />
+            <RenameModal
+                open={renameState !== null}
+                title={renameState?.title ?? ''}
+                label={renameState?.label ?? 'Name'}
+                initialValue={renameState?.initialValue ?? ''}
+                onSubmit={value => {
+                    if (!renameState) return;
+                    if (renameState.kind === 'cluster') {
+                        void handleRenameFace(renameState.id, value);
+                    } else {
+                        fotosCollections.renameCollection(renameState.id, value);
+                    }
+                    setRenameState(null);
+                }}
+                onCancel={() => setRenameState(null)}
             />
         </>
     );

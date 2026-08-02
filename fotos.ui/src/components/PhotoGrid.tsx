@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useRef, useState, type ReactNode} from 'react';
 import type {DayGroup} from '../lib/gallery.js';
 import {summarizeNamedFaces} from '../lib/faceLabels.js';
+import {resolveProgressDisplay, type ProgressState} from '../lib/progress.js';
 import {getFaceCount, type PhotoEntry} from '../types/fotos.js';
 
 export interface PhotoGridProps<TPhoto extends PhotoEntry = PhotoEntry> {
@@ -22,13 +23,7 @@ export interface PhotoGridProps<TPhoto extends PhotoEntry = PhotoEntry> {
     loading?: boolean;
     getThumbUrl: (entry: TPhoto) => Promise<string | null>;
     mobile?: boolean;
-    analysisProgress?: {
-        phase?: string;
-        current: number;
-        total: number;
-        fileName?: string;
-        statusLabel?: string;
-    } | null;
+    analysisProgress?: ProgressState | null;
     loadingLabel?: ReactNode;
     emptyTitle?: ReactNode;
     emptyHint?: ReactNode;
@@ -195,38 +190,35 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
     }
 
     const colStyle = `repeat(auto-fill, minmax(${thumbScale}px, 1fr))`;
-    const progressLabel = (() => {
-        switch (analysisProgress?.phase) {
-            case 'preparing-faces':
-            case 'faces':
-                return 'Face analytics';
-            case 'preparing-semantic':
-            case 'semantic':
-                return 'Semantic indexing';
-            default:
-                return 'Analysis';
-        }
-    })();
-    const progressPercent = analysisProgress && analysisProgress.total > 0
-        ? Math.max(0, Math.min(100, Math.round((analysisProgress.current / analysisProgress.total) * 100)))
-        : 0;
+    const progressDisplay = analysisProgress ? resolveProgressDisplay(analysisProgress) : null;
     let flatIndex = 0;
 
     return (
         <div ref={gridRef}>
-            {analysisProgress && analysisProgress.total > 0 && (
-                <div className="sticky top-0 z-20 px-3 py-1 bg-black/80 backdrop-blur-sm flex items-center gap-2">
-                    <div className="flex-1 h-1 rounded-full bg-white/10 overflow-hidden">
+            {analysisProgress && (
+                <div
+                    className="sticky top-0 z-20 flex items-center gap-2 bg-black/85 px-3 py-2 backdrop-blur-sm"
+                    role="status"
+                    aria-live="polite"
+                >
+                    <div
+                        className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10"
+                        role="progressbar"
+                        aria-label={progressDisplay?.label}
+                        aria-valuemin={progressDisplay?.measured ? 0 : undefined}
+                        aria-valuemax={progressDisplay?.measured ? 100 : undefined}
+                        aria-valuenow={progressDisplay?.percent ?? undefined}
+                    >
                         <div
-                            className="h-full rounded-full bg-[#e94560]/70 transition-all duration-500"
-                            style={{width: `${progressPercent}%`}}
+                            className={`${progressDisplay?.measured ? '' : 'fotos-progress-indeterminate w-[35%]'} h-full rounded-full bg-[#e94560]/80 transition-all duration-500`}
+                            style={progressDisplay?.measured ? {width: `${progressDisplay.percent}%`} : undefined}
                         />
                     </div>
-                    <span className="text-[10px] text-white/40 whitespace-nowrap">
-                        {progressLabel} {analysisProgress.current}/{analysisProgress.total}
+                    <span className="whitespace-nowrap text-xs text-white/65">
+                        {progressDisplay?.label}{progressDisplay?.countLabel ? ` ${progressDisplay.countLabel}` : ''}
                     </span>
                     {(analysisProgress?.statusLabel || analysisProgress?.fileName) && (
-                        <span className="max-w-[24ch] truncate text-[10px] text-white/25">
+                        <span className="max-w-[24ch] truncate text-xs text-white/50">
                             {analysisProgress?.statusLabel ?? analysisProgress?.fileName}
                         </span>
                     )}
@@ -365,27 +357,29 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
     }, [onToggleSelection]);
 
     return (
-        <button
-            type="button"
-            onClick={handleCardClick}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-            onContextMenu={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (onContextMenu) {
-                    onContextMenu(e);
-                }
-            }}
-            data-photo-index={flatIndex}
-            className={`group relative aspect-square overflow-hidden cursor-pointer touch-manipulation appearance-none p-0 text-left ${
-                focused ? 'ring-2 ring-[#e94560] ring-offset-1 ring-offset-black border-0' : 'border-0'
+        <div
+            className={`group relative aspect-square overflow-hidden cursor-pointer touch-manipulation ${
+                focused ? 'ring-2 ring-[#e94560] ring-offset-1 ring-offset-black' : ''
             } ${
                 selected ? 'ring-2 ring-[#ff9db0] ring-inset' : ''
             }`}
             style={{background: hashColor(photo.hash)}}
         >
+            <button
+                type="button"
+                onClick={handleCardClick}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+                onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onContextMenu?.(e);
+                }}
+                data-photo-index={flatIndex}
+                aria-label={selectionActive ? `${selected ? 'Deselect' : 'Select'} ${photo.name}` : `Open ${photo.name}`}
+                className="absolute inset-0 z-10 appearance-none border-0 bg-transparent p-0 text-left focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#e94560]"
+            />
             {!loaded && (
                 <div className="absolute inset-0 skeleton" />
             )}
@@ -400,26 +394,25 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
             )}
 
             {onToggleSelection && (
-                <span
-                    role="checkbox"
-                    aria-checked={selected}
+                <button
+                    type="button"
+                    aria-pressed={selected}
                     aria-label={selected ? 'Deselect photo' : 'Select photo'}
-                    tabIndex={-1}
                     onClick={handleCheckboxClick}
-                    className={`absolute left-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full border text-[11px] font-semibold shadow-[0_6px_18px_rgba(0,0,0,0.28)] backdrop-blur-sm transition-opacity ${
+                    className={`absolute left-0 top-0 z-20 flex h-11 w-11 items-center justify-center rounded-md transition-opacity ${
+                        selected || selectionActive
+                            ? 'opacity-100'
+                            : 'opacity-0 group-hover:opacity-100 focus:opacity-100 [@media(hover:none)]:opacity-70'
+                    }`}
+                >
+                    <span className={`flex h-6 w-6 items-center justify-center rounded-full border text-xs font-semibold shadow-[0_6px_18px_rgba(0,0,0,0.28)] backdrop-blur-sm ${
                         selected
                             ? 'border-[#ff9db0]/80 bg-[#e94560]/90 text-white'
                             : 'border-white/30 bg-black/45 text-white/60 hover:border-white/60'
-                    } ${
-                        // Always visible while selecting or selected; otherwise
-                        // revealed on hover (desktop) and faintly shown on touch.
-                        selected || selectionActive
-                            ? 'opacity-100'
-                            : 'opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-70'
-                    }`}
-                >
-                    {selected ? '✓' : ''}
-                </span>
+                    }`} aria-hidden="true">
+                        {selected ? '✓' : ''}
+                    </span>
+                </button>
             )}
 
             {photo.faces === undefined && (
@@ -449,6 +442,6 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
                     <p className="mt-0.5 truncate text-[10px] text-white/55">{namedFaces.fullLabel}</p>
                 )}
             </div>
-        </button>
+        </div>
     );
 }

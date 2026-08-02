@@ -81,9 +81,47 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
     const vpRef = useRef<HTMLDivElement>(null);
     const imgRef = useRef<HTMLImageElement>(null);
     const sidebarRef = useRef<HTMLElement>(null);
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const previouslyFocusedRef = useRef<HTMLElement | null>(null);
     const dragRef = useRef({ active: false, startX: 0, startY: 0, startPanX: 0, startPanY: 0 });
     const [, setViewportRevision] = useState(0);
     const [frozenSidebarWidth, setFrozenSidebarWidth] = useState<number | null>(null);
+
+    useEffect(() => {
+        previouslyFocusedRef.current = document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null;
+        return () => {
+            const previous = previouslyFocusedRef.current;
+            if (previous?.isConnected) previous.focus();
+        };
+    }, []);
+
+    useEffect(() => {
+        const frame = requestAnimationFrame(() => dialogRef.current?.focus({preventScroll: true}));
+        return () => cancelAnimationFrame(frame);
+    }, [fullscreen]);
+
+    const handleDialogKeyDown = useCallback((event: React.KeyboardEvent) => {
+        if (event.key !== 'Tab') return;
+        const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        );
+        if (!focusable?.length) {
+            event.preventDefault();
+            dialogRef.current?.focus();
+            return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    }, []);
 
     // Reset on photo change
     useEffect(() => {
@@ -551,7 +589,15 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
     // --- FULLSCREEN MODE ---
     if (fullscreen) {
         return (
-            <div className="fixed inset-0 z-[60] flex bg-black animate-[fadeIn_200ms_ease]">
+            <div
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-label={`Photo viewer: ${photo.name}`}
+                tabIndex={-1}
+                onKeyDown={handleDialogKeyDown}
+                className="fixed inset-0 z-[60] flex bg-black animate-[fadeIn_200ms_ease]"
+            >
                 {viewport}
 
                 <div className={`absolute top-4 left-1/2 -translate-x-1/2 text-white/20 text-xs tabular-nums transition-opacity duration-500 ${chevronVisible ? 'opacity-100' : 'opacity-0'}`}>
@@ -561,7 +607,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
                 {/* Back to gallery */}
                 <button
                     onClick={() => { setFullscreen(false); setChevronVisible(false); onClose(); }}
-                    className={`fixed bottom-6 right-[4.5rem] z-[70] w-10 h-10 flex items-center justify-center bg-black/70 backdrop-blur-sm rounded-full border border-white/15 text-white/50 hover:text-white/70 transition-opacity duration-500 ${chevronVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                    className={`fixed bottom-6 right-[4.75rem] z-[70] flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/70 text-white/50 backdrop-blur-sm transition-opacity duration-500 hover:text-white/70 ${chevronVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
                     aria-label="Back to gallery"
                 >
                     <ChevronLeft className="w-5 h-5" />
@@ -570,7 +616,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
                 {/* Exit fullscreen */}
                 <button
                     onClick={() => { setFullscreen(false); setChevronVisible(false); }}
-                    className={`fixed bottom-6 right-4 z-[70] w-10 h-10 flex items-center justify-center bg-black/70 backdrop-blur-sm rounded-full border border-white/15 text-white/50 hover:text-white/70 transition-opacity duration-500 ${chevronVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                    className={`fixed bottom-6 right-4 z-[70] flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/70 text-white/50 backdrop-blur-sm transition-opacity duration-500 hover:text-white/70 ${chevronVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
                     aria-label="Exit fullscreen"
                 >
                     <Minimize className="w-5 h-5" />
@@ -581,7 +627,15 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
 
     // --- IMAGE VIEW MODE ---
     return (
-        <div className="fixed inset-0 z-[60] flex bg-black animate-[fadeIn_200ms_ease]">
+        <div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Photo viewer: ${photo.name}`}
+            tabIndex={-1}
+            onKeyDown={handleDialogKeyDown}
+            className="fixed inset-0 z-[60] flex bg-black animate-[fadeIn_200ms_ease]"
+        >
             <div className="flex-1 min-w-0 relative">
                 {viewport}
                 <button
@@ -589,7 +643,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
                         event.stopPropagation();
                         setSidebarOpen(o => !o);
                     }}
-                    className={`absolute top-4 right-16 z-30 flex h-10 w-10 items-center justify-center rounded-full border transition-colors bg-black/70 backdrop-blur-sm ${
+                    className={`absolute top-4 right-[4.75rem] z-30 flex h-11 w-11 items-center justify-center rounded-full border transition-colors bg-black/70 backdrop-blur-sm ${
                         sidebarOpen
                             ? 'border-[#e94560]/40 text-[#e94560]'
                             : 'border-white/15 text-white/55 hover:text-white/80'
@@ -604,7 +658,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
                         event.stopPropagation();
                         onClose();
                     }}
-                    className="absolute top-4 right-4 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-black/70 text-white/55 backdrop-blur-sm transition-colors hover:text-white/80"
+                    className="absolute top-4 right-4 z-30 flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/70 text-white/55 backdrop-blur-sm transition-colors hover:text-white/80"
                     aria-label="Close image view"
                     title="Close image view (Esc)"
                 >
@@ -721,7 +775,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
             {/* Fullscreen — fixed circle, bottom-right */}
             <button
                 onClick={() => setFullscreen(true)}
-                className="fixed bottom-6 right-4 z-[70] w-10 h-10 flex items-center justify-center bg-black/70 backdrop-blur-sm rounded-full border border-white/15 text-white/55 hover:text-white/70 transition-colors"
+                className="fixed bottom-6 right-4 z-[70] flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/70 text-white/55 backdrop-blur-sm transition-colors hover:text-white/70"
                 aria-label="Fullscreen"
                 title="Fullscreen"
             >
@@ -836,9 +890,11 @@ function FaceCropRow({ cropPath, index, score, name, clusterId, embeddings, getF
     return (
         <div className="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2 py-1.5">
             <button
+                type="button"
                 onClick={handleSearch}
+                aria-label={`Find photos with face ${index + 1}`}
                 title={`Face ${index + 1} (${(score * 100).toFixed(0)}%) — click to find similar`}
-                className="w-8 h-8 rounded-full overflow-hidden border border-white/20 hover:border-white/60 transition-colors shrink-0"
+                className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/20 transition-colors hover:border-white/60"
             >
                 {src ? (
                     <img src={src} alt={`Face ${index + 1}`} className="w-full h-full object-cover" />

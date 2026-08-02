@@ -22,6 +22,8 @@ export {
 } from './lib/gallery.js';
 export type {PhotoGridProps} from './components/PhotoGrid.js';
 export {PhotoGrid} from './components/PhotoGrid.js';
+export type {ProgressDisplay, ProgressState} from './lib/progress.js';
+export {resolveProgressDisplay} from './lib/progress.js';
 export type {SettingsStorage} from './lib/settings.js';
 export {
     DEFAULT_SETTINGS_STORAGE_KEY,

@@ -38,7 +38,7 @@ All UI work must reinforce the existing product strategy:
 | D-04 | Is Breadcrumb History a user-facing “Saved places” feature or an Advanced/platform tool? | App shell | Open |
 | D-05 | Is portable HTML export a v1 commitment? If yes, what artifact does it produce? | Trustworthy operations | Open |
 | D-06 | Is AI Audit allowed in production builds? | App shell | Open |
-| D-07 | Which ingest and analysis phases have safe pause, cancel, and resume semantics? | Trustworthy operations | Discovery required |
+| [D-07](./decisions/D-07-operation-interruption.md) | Which ingest and analysis phases have safe pause, cancel, and resume semantics? | Trustworthy operations | Resolved for v1: do not expose until operation lifecycle and commit boundaries exist |
 
 Decision records should state the chosen behavior, rationale, owner, date, and affected
 acceptance criteria. Do not remove rejected alternatives from history.

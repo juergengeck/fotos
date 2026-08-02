@@ -304,25 +304,6 @@ export function ClusterCard({
 
     return (
         <div
-            role="button"
-            tabIndex={0}
-            onClick={handleClick}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-            onContextMenu={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (onContextMenu) {
-                    onContextMenu(e);
-                }
-            }}
-            onKeyDown={event => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    onClick();
-                }
-            }}
             className={`group relative flex flex-col gap-3 rounded-2xl border p-4 text-left transition-colors ${
                 selected
                     ? 'border-[#ff9db0] bg-[#1f1015] ring-2 ring-[#e94560]/70'
@@ -332,24 +313,25 @@ export function ClusterCard({
             }`}
         >
             {onToggleSelect && (
-                <span
-                    role="checkbox"
-                    aria-checked={selected}
+                <button
+                    type="button"
+                    aria-pressed={selected}
                     aria-label={selected ? 'Deselect person' : 'Select person'}
-                    tabIndex={-1}
                     onClick={handleCheckboxClick}
-                    className={`absolute left-2.5 top-2.5 z-10 flex h-5 w-5 items-center justify-center rounded-full border text-[11px] font-semibold backdrop-blur-sm transition-opacity ${
+                    className={`absolute left-0 top-0 z-10 flex h-11 w-11 items-center justify-center rounded-md transition-opacity ${
+                        selected || selectionActive
+                            ? 'opacity-100'
+                            : 'opacity-0 group-hover:opacity-100 focus:opacity-100 [@media(hover:none)]:opacity-70'
+                    }`}
+                >
+                    <span className={`flex h-6 w-6 items-center justify-center rounded-full border text-xs font-semibold backdrop-blur-sm ${
                         selected
                             ? 'border-[#ff9db0]/80 bg-[#e94560]/90 text-white'
                             : 'border-white/30 bg-black/45 text-white/60 hover:border-white/60'
-                    } ${
-                        selected || selectionActive
-                            ? 'opacity-100'
-                            : 'opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-70'
-                    }`}
-                >
-                    {selected ? '✓' : ''}
-                </span>
+                    }`} aria-hidden="true">
+                        {selected ? '✓' : ''}
+                    </span>
+                </button>
             )}
             <div className="flex items-center gap-3">
                 {avatarUrl ? (
@@ -389,9 +371,21 @@ export function ClusterCard({
                 <span>{cluster.faceCount} faces</span>
                 <span>{cluster.photoCount} photos</span>
             </div>
-            <div className="text-[11px] uppercase tracking-[0.2em] text-white/25 group-hover:text-white/45 transition-colors">
-                {selectionActive ? 'Click to select' : 'Open cluster gallery'}
-            </div>
+            <button
+                type="button"
+                onClick={handleClick}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+                onContextMenu={event => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onContextMenu?.(event);
+                }}
+                className="min-h-11 rounded-md border border-white/10 bg-white/[0.035] px-3 py-2 text-left text-xs uppercase tracking-[0.16em] text-white/55 transition-colors hover:bg-white/[0.07] hover:text-white/80"
+            >
+                {selectionActive ? (selected ? 'Deselect person' : 'Select person') : 'Open person photos'}
+            </button>
         </div>
     );
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useId, useRef } from 'react';
 
 export interface ConfirmModalProps {
     open: boolean;
@@ -24,13 +24,23 @@ export function ConfirmModal({
     const confirmRef = useRef<HTMLButtonElement>(null);
     const cancelRef = useRef<HTMLButtonElement>(null);
     const dialogRef = useRef<HTMLDivElement>(null);
-    const titleId = 'confirm-modal-title';
+    const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+    const titleId = useId();
+    const descriptionId = useId();
 
-    // Auto-focus the cancel button on open (safer default for destructive actions)
+    // Preserve the invoking control and focus the safer action on open.
     useEffect(() => {
-        if (open) {
-            cancelRef.current?.focus();
-        }
+        if (!open) return;
+        previouslyFocusedRef.current = document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null;
+        const frame = requestAnimationFrame(() => cancelRef.current?.focus());
+        return () => {
+            cancelAnimationFrame(frame);
+            const previous = previouslyFocusedRef.current;
+            previouslyFocusedRef.current = null;
+            if (previous?.isConnected) previous.focus();
+        };
     }, [open]);
 
     // Close on Escape
@@ -84,6 +94,7 @@ export function ConfirmModal({
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby={titleId}
+                aria-describedby={descriptionId}
                 className="w-full max-w-sm mx-4 rounded-xl border border-white/10 bg-[var(--surface-2,#1a1a1a)] p-5 shadow-2xl animate-[fadeIn_150ms_ease]"
                 onClick={e => e.stopPropagation()}
                 onKeyDown={handleKeyDown}
@@ -94,7 +105,7 @@ export function ConfirmModal({
                 >
                     {title}
                 </h2>
-                <p className="mt-2 text-xs leading-relaxed text-white/50">
+                <p id={descriptionId} className="mt-2 text-xs leading-relaxed text-white/60">
                     {message}
                 </p>
 
@@ -103,7 +114,7 @@ export function ConfirmModal({
                         ref={cancelRef}
                         type="button"
                         onClick={onCancel}
-                        className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/55 transition-colors hover:bg-white/10 hover:text-white/75"
+                        className="min-h-11 rounded-md border border-white/10 bg-white/5 px-4 py-2 text-xs text-white/65 transition-colors hover:bg-white/10 hover:text-white/85"
                     >
                         {cancelLabel}
                     </button>
@@ -111,7 +122,7 @@ export function ConfirmModal({
                         ref={confirmRef}
                         type="button"
                         onClick={onConfirm}
-                        className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                        className={`min-h-11 rounded-md px-4 py-2 text-xs font-medium transition-colors ${
                             isDestructive
                                 ? 'bg-[var(--danger,#a44)] text-[var(--danger-fg,#faa)] hover:bg-[#c55]'
                                 : 'bg-[var(--accent-primary,#e94560)] text-white hover:bg-[var(--accent-primary-hover,#d13354)]'
