@@ -10,6 +10,7 @@ const {
     calculateIdHashOfObjMock,
     getInstanceIdHashMock,
     getInstanceOwnerIdHashMock,
+    appendMediaBookContentMock,
 } = vi.hoisted(() => ({
     storeVersionedObjectMock: vi.fn(async (obj: Record<string, unknown>) => ({
         hash: `${String(obj.$type$)}-hash`,
@@ -36,6 +37,7 @@ const {
     calculateIdHashOfObjMock: vi.fn(async () => 'FotosEntry-id-hash'),
     getInstanceIdHashMock: vi.fn(() => 'instance-id-hash'),
     getInstanceOwnerIdHashMock: vi.fn(() => 'owner-hash'),
+    appendMediaBookContentMock: vi.fn(async () => undefined),
 }));
 
 vi.mock('@refinio/one.core/lib/storage-versioned-objects.js', () => ({
@@ -82,7 +84,7 @@ vi.mock('@refinio/source.media/services', () => ({
         sourceRef: params.sourceIdHash,
         ...params,
     })),
-    appendMediaBookContent: vi.fn(async () => undefined),
+    appendMediaBookContent: appendMediaBookContentMock,
 }));
 
 vi.mock('./fotos-authenticity.js', () => ({
@@ -112,6 +114,7 @@ describe('fotos sync authorship toggle', () => {
         calculateIdHashOfObjMock.mockClear().mockResolvedValue('FotosEntry-id-hash');
         getInstanceIdHashMock.mockReset().mockReturnValue('instance-id-hash');
         getInstanceOwnerIdHashMock.mockReset().mockReturnValue('owner-hash');
+        appendMediaBookContentMock.mockClear();
     });
 
     it('claims authorship by default', () => {
@@ -140,6 +143,10 @@ describe('fotos sync authorship toggle', () => {
         expect(createFotosAuthenticityAttestationMock).not.toHaveBeenCalled();
         expect(addAuthenticityAttestationToManifestMock).not.toHaveBeenCalled();
         expect(storeVersionedObjectMock).toHaveBeenCalledTimes(5);
+        expect(appendMediaBookContentMock).toHaveBeenCalledWith(
+            expect.any(Object),
+            expect.objectContaining({author: 'owner-hash'}),
+        );
     });
 
     it('still resolves authenticity context when claiming authorship', async () => {

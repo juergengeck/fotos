@@ -2,7 +2,7 @@
 
 Status: In progress
 Owner: fotos product and engineering
-Last updated: 2026-08-02
+Last updated: 2026-08-03
 Evidence: [UX-04–08, UX-12–13](../ui.prd.md#4-ux-findings-and-proposals)
 
 ## Outcome
@@ -94,7 +94,7 @@ Implemented in the first slice:
 - keyboard/focus semantics for dialogs, context menus, lightbox, photo cards, and
   touched sidebar/cluster controls;
 - D-07 discovery: no pause/cancel/resume control is exposed before engine support exists.
-- first-run controls, legal-notice controls/dialog, selection actions, header actions,
+- first-run controls, legal-notice controls/dialog, selection actions, control-pane actions,
   invite results, and the contact picker use the touched 44px, focus, and dialog gates.
 - collection creation, membership additions, unshared collection deletion, and
   selection-scope materialization have a time-bounded undo toast in a lane that moves

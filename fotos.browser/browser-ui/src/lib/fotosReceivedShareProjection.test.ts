@@ -8,7 +8,7 @@ import {
 import {
     projectReceivedFotosShares,
     type ReceivedFotosShareProjectionDeps,
-} from './fotosReceivedShareProjection.js';
+} from '@refinio/fotos.core/received-shares';
 
 const issuer = 'issuer-person' as any;
 const subject = 'recipient-person' as any;
@@ -44,6 +44,7 @@ function depsFor(options?: {badSignature?: boolean; missingManifest?: boolean}):
         ]),
         getCertificateChain: vi.fn(async hash => chains.get(hash)!),
         getCertificate: vi.fn(async hash => certificates.get(hash)!),
+        getEntry: vi.fn(async hash => ({$type$: 'FotosEntry', contentHash: `content-${hash}`, thumb: `thumb-${hash}`} as any)),
         getManifest: vi.fn(async () => {
             if (options?.missingManifest) throw new Error('missing');
             return createFotosShareManifest({issuer, scope, entries: ['entry-a', 'entry-b'] as any});
@@ -86,6 +87,26 @@ describe('projectReceivedFotosShares', () => {
             deps,
         );
         expect(projection[0]).toMatchObject({status: 'active', verified: true, photoCount: 2});
+        expect(projection[0]?.entries.map(entry => entry.contentHash)).toEqual(['content-entry-a', 'content-entry-b']);
+        expect(deps.getEntry).toHaveBeenCalledTimes(2);
+    });
+
+    it('can restore entries from stored manifest references without an import event', async () => {
+        const deps = depsFor();
+        deps.listLatestCertificateChains = vi.fn(async () => [
+            {hash: 'active-chain-hash', idHash: 'stable-chain-id', timestamp: 1},
+        ]);
+        const before = await projectReceivedFotosShares(subject, async () => true, deps);
+        const reopened = await projectReceivedFotosShares(subject, async () => true, deps);
+        expect(reopened[0]?.entries).toEqual(before[0]?.entries);
+        expect(reopened[0]?.entries).toHaveLength(2);
+    });
+
+    it('never loads photo content through an unverified certificate', async () => {
+        const deps = depsFor();
+        await projectReceivedFotosShares(subject, async () => false, deps);
+        expect(deps.getManifest).not.toHaveBeenCalled();
+        expect(deps.getEntry).not.toHaveBeenCalled();
     });
 
     it('does not project outbound certificates indexed through the issuer reverse map', async () => {

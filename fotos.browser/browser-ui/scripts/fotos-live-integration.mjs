@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 
 import { randomUUID } from 'node:crypto';
+import * as playwrightModule from 'playwright';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '../../..');
-const VGER_ROOT = resolve(REPO_ROOT, 'vger');
 const DEFAULT_BASE_URL = 'https://fotos.one/';
 const READY_TIMEOUT_MS = Number(process.env.FOTOS_LIVE_READY_TIMEOUT_MS || 180_000);
 const PRESENCE_TIMEOUT_MS = Number(process.env.FOTOS_LIVE_PRESENCE_TIMEOUT_MS || 120_000);
@@ -42,21 +42,6 @@ function isTransientDebugApiError(error) {
     message.includes('Most likely because of a navigation') ||
     message.includes('Target page, context or browser has been closed')
   );
-}
-
-async function loadPlaywright() {
-  try {
-    return await import('playwright');
-  } catch {
-    const fallbackPath = resolve(VGER_ROOT, 'node_modules/playwright/index.js');
-    if (!existsSync(fallbackPath)) {
-      throw new Error(
-        'Playwright is not installed. Install it in /Users/gecko/src/vger or add it to fotos.browser/browser-ui.',
-      );
-    }
-
-    return await import(pathToFileURL(fallbackPath).href);
-  }
 }
 
 async function launchBrowser(playwrightModule, headless) {
@@ -312,7 +297,6 @@ async function main() {
     }
   }
 
-  const playwrightModule = await loadPlaywright();
   const baseUrl = process.env.FOTOS_LIVE_URL || DEFAULT_BASE_URL;
   const suffix = randomUUID().replace(/-/g, '').slice(0, 8);
   const headless = process.env.HEADLESS !== 'false';

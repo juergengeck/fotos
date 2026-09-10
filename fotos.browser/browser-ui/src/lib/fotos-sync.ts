@@ -10,7 +10,7 @@
  */
 
 import type {SHA256Hash, SHA256IdHash} from '@refinio/one.core/lib/util/type-checks.js';
-import type {BLOB} from '@refinio/one.core/lib/recipes.js';
+import type {BLOB, Person} from '@refinio/one.core/lib/recipes.js';
 import {
     getObjectByIdHash,
     storeVersionedObject,
@@ -479,6 +479,11 @@ export async function syncPhotoToOneCore(
     rootHandle: FileSystemDirectoryHandle | null,
     authenticityContext: FotosAuthenticityContext | null = null,
 ): Promise<void> {
+    const author = getInstanceOwnerIdHash() as SHA256IdHash<Person> | null;
+    if (!author) {
+        throw new Error('[fotos-sync] Cannot persist a photo without the local owner identity');
+    }
+
     // Build the FotosEntry
     const mime = mimeFromName(photo.name);
     const entry: FotosEntry = {
@@ -580,6 +585,7 @@ export async function syncPhotoToOneCore(
         getObjectByIdHash: getVersionedObjectIfPresent,
         storeVersionedObject,
     }, {
+        author,
         deviceId,
         sourceIdHashes: [sourceState.sourceIdHash],
         entryIdHashes: [sourceState.entryIdHash],

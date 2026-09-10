@@ -12,9 +12,9 @@ export default defineConfig({
             {find: '@refinio/fotos.ui', replacement: path.resolve(__dirname, '../fotos.ui/src/index.ts')},
             {find: '@refinio/fotos.core/faces', replacement: path.resolve(__dirname, '../fotos.core/src/faces.ts')},
             {find: '@refinio/fotos.core', replacement: path.resolve(__dirname, '../fotos.core/src/index.ts')},
-            {find: '@refinio/trie.core', replacement: path.resolve(__dirname, '../trie.core/src/index.ts')},
-            {find: /^@refinio\/meaning\.core\/(.*)$/, replacement: path.resolve(__dirname, '../meaning.core/src/$1')},
-            {find: '@refinio/meaning.core', replacement: path.resolve(__dirname, '../meaning.core/src/index.ts')},
+            {find: '@refinio/trie.core', replacement: path.resolve(__dirname, '../../one/packages/trie.core/src/index.ts')},
+            {find: /^@refinio\/meaning\.core\/(.*)$/, replacement: path.resolve(__dirname, '../../one/packages/meaning.core/src/$1')},
+            {find: '@refinio/meaning.core', replacement: path.resolve(__dirname, '../../one/packages/meaning.core/src/index.ts')},
             // Browser shim for one.core crypto (used by trie.core/hash.ts)
             {find: '@refinio/one.core/lib/system/crypto-helpers.js', replacement: path.resolve(__dirname, './src/shims/crypto-helpers.ts')},
             // Externalize remaining one.core imports (type-only, tree-shaken)

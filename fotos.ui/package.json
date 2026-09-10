@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@refinio/fotos.core": "workspace:*",
-    "react": "^19.0.0"
+    "react": "catalog:"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

@@ -299,9 +299,20 @@ Required:
 - Ingest tests for hashing, EXIF, pipeline behavior, and index HTML parsing/writing.
 - Face cluster tests for assignment, merge, sensitivity, and metadata rebuild.
 - Popup tests for fotos id origin filtering, postMessage protocol, create mode, and recover mode.
-- Browser integration tests for share target and live sync where feasible.
+- A product-owned integrated runner in the browser Settings pane drives the
+  documented desktop and mobile UI flows, exposes live step/log state, supports
+  stop, and writes one timed Markdown report.
+- The runner's coverage contract parses the UI flow inventory and fails when any
+  documented `F<n>` flow lacks an executable evidence owner or when a removed flow
+  remains in the test manifest.
+- The full browser protocol composes the deterministic seeded UI protocol with the
+  UI/domain contract suite and the real multi-instance live-sync, named-identity
+  sharing/revocation, and ad-hoc invite/revocation protocols.
 - Typecheck all packages before release.
 - Manual smoke tests on desktop Chrome, installed mobile PWA, and fallback `fotos.html`.
+
+The test profiles, evidence boundaries, and report locations are specified in the
+[integrated QA protocol](./testing.md).
 
 ## 15. Open Questions
 

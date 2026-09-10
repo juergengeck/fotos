@@ -22,6 +22,18 @@
     "./service-contract": {
       "import": "./dist/service-contract.js",
       "types": "./dist/service-contract.d.ts"
+    },
+    "./filesystem": {
+      "import": "./dist/fotos-file-system.js",
+      "types": "./dist/fotos-file-system.d.ts"
+    },
+    "./received-shares": {
+      "import": "./dist/received-shares.js",
+      "types": "./dist/received-shares.d.ts"
+    },
+    "./shared-filesystem": {
+      "import": "./dist/shared-fotos-file-system.js",
+      "types": "./dist/shared-fotos-file-system.d.ts"
     }
   },
   "files": [

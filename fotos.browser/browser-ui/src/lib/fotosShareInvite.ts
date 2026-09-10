@@ -109,6 +109,9 @@ function normalizePayload(value: unknown): FotosShareInvitePayload | null {
     kind: 'fotos-gallery-share',
     scope: 'gallery',
     pairingInvitation: {
+      // Pairing owns this envelope, including its protocol version and relation.
+      // Reconstructing only token/key/url loses fields required by the receiver.
+      ...invitation,
       token: invitation.token,
       publicKey: invitation.publicKey as Invitation['publicKey'],
       url: invitation.url,

@@ -21,17 +21,21 @@ Metadata folders are named `one/` throughout the stack. We do not use `.one/`.
 ## Quick start
 
 ```bash
-cd /Users/gecko/src/vger
-ONNXRUNTIME_NODE_INSTALL=skip pnpm install
+cd /Users/gecko/src/one
+ONNXRUNTIME_NODE_INSTALL=skip corepack pnpm install --frozen-lockfile
 
-cd packages/fotos.browser/browser-ui
+cd ../fotos/fotos.browser/browser-ui
 pnpm dev          # http://localhost:5188
 ```
+
+The web clients and shared Fotos packages are members of the `../one` workspace.
+Use its lockfile and package-manager version for installation. Expo keeps its
+separate vendored install, sourcing ONE-owned packages from `../one/packages`.
 
 ## Deploy
 
 ```bash
-cd packages/fotos.browser
+cd /Users/gecko/src/fotos/fotos.browser
 ./deploy.sh       # builds, strips large WASM, deploys to Cloudflare Pages
 ```
 

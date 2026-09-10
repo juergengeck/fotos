@@ -2,8 +2,8 @@
 
 Status: Proposed
 Owner: fotos product and engineering
-Last updated: 2026-08-02
-Related: [UI audit](../ui.prd.md), [PRD](../PRD.md), [MRD](../MRD.md)
+Last updated: 2026-08-03
+Related: [UI audit](../ui.prd.md), [PRD](../PRD.md), [integrated QA protocol](../testing.md), [MRD](../MRD.md)
 
 ## Purpose
 
@@ -33,7 +33,7 @@ All UI work must reinforce the existing product strategy:
 | ID | Decision | Blocks | Status |
 |---|---|---|---|
 | [D-01](./decisions/D-01-headless-path.md) | Headless `Connect to server` is a development-only Advanced affordance. | — | Decided |
-| [D-02](./decisions/D-02-mobile-shell.md) | Mobile uses the same information architecture through a compact header and task sheet. | — | Decided |
+| [D-02](./decisions/D-02-mobile-shell.md) | Mobile uses the same right-control-pane information architecture through a bottom task sheet, without persistent top chrome. | — | Decided |
 | D-03 | Recipient removal publishes a newer revocation version of the sharing certificate, removes derived access to the affected roots, and stops future synchronization. It does not remotely delete content already synchronized or saved by the recipient. | — | [Decided](./decisions/D-03-sharing-revocation.md) |
 | [D-04](./decisions/D-04-saved-places.md) | Breadcrumb branches are the user-facing Saved places feature in Settings. | — | Decided |
 | [D-05](./decisions/D-05-html-export.md) | Portable HTML export is not a v1 commitment; its handlerless control is removed. | — | Decided |
@@ -102,3 +102,7 @@ An epic is ready for implementation when:
 An epic is done when its acceptance criteria and cross-cutting release gates pass,
 automated checks cover state transitions and semantics where practical, and a manual
 task-based pass succeeds on desktop and mobile-sized surfaces.
+
+The integrated QA runner is the executable release surface for this definition. A
+flow is not covered merely because its component rendered: its coverage entry must
+name the browser, contract, or multi-instance evidence that proves the behavior.

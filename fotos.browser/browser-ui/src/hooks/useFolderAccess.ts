@@ -1661,6 +1661,8 @@ export interface UseFolderAccessOptions {
     clusterSensitivity?: number;
     faceAnalyticsEnabled?: boolean;
     semanticSearchEnabled?: boolean;
+    receivedEntries?: readonly FotosEntry[];
+    onReceivedPhotoError?: (message: string) => void;
 }
 
 export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAccess {
@@ -1812,119 +1814,137 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         ingestProgress?.fileName,
     ]);
 
-    // Listen for FotosEntry objects arriving via CHUM sync from remote peers.
-    // Materialize remote-only entries so shared thumbs appear in the gallery,
-    // and merge face enrichment into matching local files when available.
-    useEffect(() => {
-        const unsub = listenForFotosUpdates((entry) => {
-            void (async () => {
-                const rootHandle = rootHandleRef.current;
-                const materialized = await materializeRemoteFotosEntry(entry);
-                let shouldKeepRemoteAssets = false;
-                let shouldOpenRemoteGallery = false;
-                let shouldWriteFilesystemFaces = false;
-                let filesystemPhoto: PhotoEntry | null = null;
+    // Both initial manifest projection and live imports use the same materializer.
+    const receiveFotosEntry = useCallback(async (entry: FotosEntry) => {
+        const rootHandle = rootHandleRef.current;
+        const materialized = await materializeRemoteFotosEntry(entry);
+        let shouldKeepRemoteAssets = false;
+        let shouldOpenRemoteGallery = false;
+        let shouldWriteFilesystemFaces = false;
+        let filesystemPhoto: PhotoEntry | null = null;
 
-                setEntries(prev => {
-                    const idx = prev.findIndex(p => p.hash === entry.contentHash);
-                    if (idx < 0) {
-                        shouldKeepRemoteAssets = true;
-                        shouldOpenRemoteGallery = !isOpen && !rootHandle;
-                        console.log(
-                            `[fotos-sync] Remote photo imported: ${materialized.photo.name}`,
-                        );
-                        return [...prev, materialized.photo];
-                    }
+        const nextEntries = (() => {
+            const prev = entriesRef.current;
+            const idx = prev.findIndex(p => p.hash === entry.contentHash);
+            if (idx < 0) {
+                shouldKeepRemoteAssets = true;
+                shouldOpenRemoteGallery = !rootHandle;
+                console.log(
+                    `[fotos-sync] Remote photo imported: ${materialized.photo.name}`,
+                );
+                return [...prev, materialized.photo];
+            }
 
-                    const photo = prev[idx];
-                    const nextFaces = shouldAdoptIncomingFaces(photo.faces, materialized.photo.faces)
-                        ? (
-                            rootHandle
-                                ? buildFilesystemFaceInfoFromRemoteEntry(photo, entry, materialized.faceData)
-                                : materialized.photo.faces
-                        )
-                        : photo.faces;
-                    const nextPhoto: PhotoEntry = {
-                        ...photo,
-                        capturedAt: photo.capturedAt ?? materialized.photo.capturedAt,
-                        updatedAt: materialized.photo.updatedAt ?? photo.updatedAt,
-                        exif: photo.exif ?? materialized.photo.exif,
-                        folderPath: photo.folderPath ?? materialized.photo.folderPath,
-                        mimeType: photo.mimeType ?? materialized.photo.mimeType,
-                        thumb: photo.thumb ?? materialized.photo.thumb,
-                        sourcePath: photo.sourcePath ?? materialized.photo.sourcePath,
-                        faces: nextFaces,
-                    };
+            const photo = prev[idx];
+            const nextFaces = shouldAdoptIncomingFaces(photo.faces, materialized.photo.faces)
+                ? (
+                    rootHandle
+                        ? buildFilesystemFaceInfoFromRemoteEntry(photo, entry, materialized.faceData)
+                        : materialized.photo.faces
+                )
+                : photo.faces;
+            const nextPhoto: PhotoEntry = {
+                ...photo,
+                capturedAt: photo.capturedAt ?? materialized.photo.capturedAt,
+                updatedAt: materialized.photo.updatedAt ?? photo.updatedAt,
+                exif: photo.exif ?? materialized.photo.exif,
+                folderPath: photo.folderPath ?? materialized.photo.folderPath,
+                mimeType: photo.mimeType ?? materialized.photo.mimeType,
+                thumb: photo.thumb ?? materialized.photo.thumb,
+                sourcePath: photo.sourcePath ?? materialized.photo.sourcePath,
+                faces: nextFaces,
+            };
 
-                    const changed = nextPhoto.capturedAt !== photo.capturedAt
-                        || nextPhoto.updatedAt !== photo.updatedAt
-                        || nextPhoto.exif !== photo.exif
-                        || nextPhoto.folderPath !== photo.folderPath
-                        || nextPhoto.mimeType !== photo.mimeType
-                        || nextPhoto.thumb !== photo.thumb
-                        || nextPhoto.sourcePath !== photo.sourcePath
-                        || nextPhoto.faces !== photo.faces;
-                    if (!changed) {
-                        return prev;
-                    }
+            const changed = nextPhoto.capturedAt !== photo.capturedAt
+                || nextPhoto.updatedAt !== photo.updatedAt
+                || nextPhoto.exif !== photo.exif
+                || nextPhoto.folderPath !== photo.folderPath
+                || nextPhoto.mimeType !== photo.mimeType
+                || nextPhoto.thumb !== photo.thumb
+                || nextPhoto.sourcePath !== photo.sourcePath
+                || nextPhoto.faces !== photo.faces;
+            if (!changed) {
+                return prev;
+            }
 
-                    shouldKeepRemoteAssets = true;
-                    if (rootHandle && nextPhoto.faces !== photo.faces && materialized.faceData) {
-                        shouldWriteFilesystemFaces = true;
-                        filesystemPhoto = nextPhoto;
-                    }
+            shouldKeepRemoteAssets = true;
+            if (rootHandle && nextPhoto.faces !== photo.faces && materialized.faceData) {
+                shouldWriteFilesystemFaces = true;
+                filesystemPhoto = nextPhoto;
+            }
 
-                    const updated = [...prev];
-                    updated[idx] = nextPhoto;
+            const updated = [...prev];
+            updated[idx] = nextPhoto;
 
-                    console.log(
-                        `[fotos-sync] Remote update: ${photo.name}`
-                        + (entry.faceCount ? ` → ${entry.faceCount} faces` : ''),
-                    );
-                    return updated;
-                });
+            console.log(
+                `[fotos-sync] Remote update: ${photo.name}`
+                + (entry.faceCount ? ` → ${entry.faceCount} faces` : ''),
+            );
+            return updated;
+        })();
+        entriesRef.current = nextEntries;
+        setEntries(nextEntries);
 
-                if (shouldKeepRemoteAssets) {
-                    for (const [key, url] of materialized.cacheEntries) {
-                        urlCacheRef.current.set(key, url);
-                    }
-                } else {
-                    for (const [, url] of materialized.cacheEntries) {
-                        URL.revokeObjectURL(url);
-                    }
-                }
+        if (shouldKeepRemoteAssets) {
+            for (const [key, url] of materialized.cacheEntries) {
+                const previousUrl = urlCacheRef.current.get(key);
+                if (previousUrl) URL.revokeObjectURL(previousUrl);
+                urlCacheRef.current.set(key, url);
+            }
+        } else {
+            for (const [, url] of materialized.cacheEntries) {
+                URL.revokeObjectURL(url);
+            }
+        }
 
-                if (shouldOpenRemoteGallery) {
-                    setFolderName(currentFolderName => currentFolderName ?? 'shared');
-                    setIsOpen(true);
-                }
+        if (shouldOpenRemoteGallery) {
+            setFolderName(currentFolderName => currentFolderName ?? 'shared');
+            setIsOpen(true);
+        }
 
-                if (rootHandle && shouldWriteFilesystemFaces && filesystemPhoto && materialized.faceData) {
-                    const photoForWrite = filesystemPhoto as PhotoEntry;
-                    try {
-                        await updateIndexHtmlFaceData(rootHandle, photoForWrite, materialized.faceData.dataAttrs);
-                        await writeFaceCropsToFilesystem(
-                            rootHandle,
-                            photoForWrite,
-                            entry.contentHash,
-                            materialized.faceData.cropBlobs,
-                        );
+        if (rootHandle && shouldWriteFilesystemFaces && filesystemPhoto && materialized.faceData) {
+            const photoForWrite = filesystemPhoto as PhotoEntry;
+            try {
+                await updateIndexHtmlFaceData(rootHandle, photoForWrite, materialized.faceData.dataAttrs);
+                await writeFaceCropsToFilesystem(
+                    rootHandle,
+                    photoForWrite,
+                    entry.contentHash,
+                    materialized.faceData.cropBlobs,
+                );
 
-                        console.log(
-                            `[fotos-sync] Wrote face data to filesystem for ${photoForWrite.name}`,
-                        );
-                    } catch (err) {
-                        console.warn(
-                            `[fotos-sync] Failed to write face data for ${photoForWrite.name}:`,
-                            err,
-                        );
-                    }
-                }
-            })();
+                console.log(
+                    `[fotos-sync] Wrote face data to filesystem for ${photoForWrite.name}`,
+                );
+            } catch (err) {
+                console.warn(
+                    `[fotos-sync] Failed to write face data for ${photoForWrite.name}:`,
+                    err,
+                );
+            }
+        }
+    }, []);
+
+    useEffect(() => listenForFotosUpdates(entry => {
+        void receiveFotosEntry(entry).catch(error => {
+            options.onReceivedPhotoError?.(`Could not open shared photo: ${error instanceof Error ? error.message : String(error)}`);
         });
+    }), [receiveFotosEntry, options.onReceivedPhotoError]);
 
-        return unsub;
-    }, [isOpen]);
+    // Reopen through the verified share manifests, including while offline. No
+    // transport replay or unscoped storage enumeration is needed to restore them.
+    useEffect(() => {
+        let cancelled = false;
+        void (async () => {
+            for (const entry of options.receivedEntries ?? []) {
+                if (cancelled) return;
+                await receiveFotosEntry(entry);
+            }
+        })().catch(error => {
+            if (!cancelled) options.onReceivedPhotoError?.(`Could not reopen shared gallery: ${error instanceof Error ? error.message : String(error)}`);
+        });
+        return () => { cancelled = true; };
+    }, [options.receivedEntries, receiveFotosEntry, options.onReceivedPhotoError]);
 
     const updateFacePreparationProgress = useCallback((progress: FaceWorkerProgress) => {
         const activePass = facePassProgressRef.current;
@@ -2839,13 +2859,27 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                     preference,
                 });
                 return true;
-            } catch {
-                return false;
+            } catch (error) {
+                if (error instanceof DOMException && error.name === 'AbortError') return false;
+                throw error;
             }
         }
 
-        return false;
-    }, [mobile, openFromHandle]);
+        const destination = await resolveImportDestination('share-target', {
+            requestPermission: true,
+            allowPicker: false,
+        });
+        if (!destination) throw new Error('Fotos could not open local storage for this gallery.');
+        await Promise.all([
+            saveLastFolderPreference(destination.preference),
+            saveImportDestinationPreference(destination.preference),
+        ]);
+        await openFromHandle(destination.handle, {
+            label: destination.preference.label,
+            preference: destination.preference,
+        });
+        return true;
+    }, [mobile, openFromHandle, resolveImportDestination]);
 
     const openFolder = useCallback(() => {
         if (pendingImport?.files.length) {

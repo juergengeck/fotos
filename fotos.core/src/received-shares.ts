@@ -12,7 +12,8 @@ import {
     type FotosShareCertificateChain,
     type FotosShareManifest,
     type FotosShareScope,
-} from '@refinio/fotos.core';
+    type FotosEntry,
+} from './index.js';
 
 export interface ReceivedFotosShareScope {
     certificateIdHash: string;
@@ -22,6 +23,8 @@ export interface ReceivedFotosShareScope {
     status: 'active' | 'revoked' | 'invalid';
     verified: boolean;
     photoCount: number | null;
+    /** Exact entries reached through the verified, producer-owned share manifest. */
+    entries: FotosEntry[];
     observedAt: number;
     issuedAt: string | null;
     revokedAt: string | null;
@@ -40,11 +43,13 @@ export interface ReceivedFotosShareProjectionDeps {
     getCertificateChain(hash: string): Promise<FotosShareCertificateChain>;
     getCertificate(hash: string): Promise<FotosShareCertificate>;
     getManifest(issuer: string, scope: FotosShareScope): Promise<FotosShareManifest>;
+    getEntry(hash: SHA256Hash<FotosEntry>): Promise<FotosEntry>;
     certificateIdHash(certificate: FotosShareCertificate): Promise<string>;
     getCertificateSignature(hash: string): Promise<unknown>;
 }
 
 const defaultDeps: ReceivedFotosShareProjectionDeps = {
+    getEntry: hash => getObjectWithType(hash, 'FotosEntry') as Promise<FotosEntry>,
     listLatestCertificateChains: async subject => (
         await getAllEntries(
             subject as SHA256IdHash<Person>,
@@ -70,7 +75,7 @@ const defaultDeps: ReceivedFotosShareProjectionDeps = {
         $type$: 'FotosShareCertificate',
         id: certificate.id,
     })),
-    getCertificateSignature: hash => getObjectWithType(hash as SHA256Hash<any>, 'Signature'),
+    getCertificateSignature: hash => getObjectWithType(hash as SHA256Hash<any>),
 };
 
 function invalidScope(
@@ -89,6 +94,7 @@ function invalidScope(
         status: 'invalid',
         verified: false,
         photoCount: null,
+        entries: [],
         observedAt: reference.timestamp,
         issuedAt: typeof certificate?.issuedAt === 'string' ? certificate.issuedAt : null,
         revokedAt: typeof certificate?.revokedAt === 'string' ? certificate.revokedAt : null,
@@ -190,6 +196,7 @@ export async function projectReceivedFotosShares(
                 status: 'revoked' as const,
                 verified: true,
                 photoCount: null,
+                entries: [],
                 observedAt,
                 issuedAt: certificate.issuedAt,
                 revokedAt: certificate.revokedAt,
@@ -218,6 +225,7 @@ export async function projectReceivedFotosShares(
                 status: 'active' as const,
                 verified: true,
                 photoCount: manifest.entries.size,
+                entries: await Promise.all(Array.from(manifest.entries, hash => deps.getEntry(hash))),
                 observedAt,
                 issuedAt: certificate.issuedAt,
                 revokedAt: null,

@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HEADLESS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$HEADLESS_DIR/.." && pwd)"
-VGER_ROOT="$(cd "$REPO_ROOT/vger" && pwd)"
+VGER_ROOT="$(cd "$REPO_ROOT/../vger" && pwd)"
 VGER_HEADLESS_DIR="$VGER_ROOT/packages/vger.headless"
 ONE_CORE_DIR="$(cd "$REPO_ROOT/../one/packages/one.core" && pwd)"
 

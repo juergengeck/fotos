@@ -16,7 +16,7 @@ import {
     appendMediaBookContent,
     createMediaSource,
     createMediaSourceEntry,
-} from '../../../vger/packages/source.media/src/services/MediaSourceService.js';
+} from '../../../../one/packages/source.media/src/services/MediaSourceService.js';
 import type { SHA256Hash, SHA256IdHash } from '@refinio/one.core/lib/util/type-checks.js';
 import {
     deleteFotosShareInboxBatch,

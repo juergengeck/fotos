@@ -58,6 +58,7 @@ const mocks = vi.hoisted(() => ({
         status: 'stored',
     })),
     ensureVersionedIdObject: vi.fn(async () => true),
+    getInstanceOwnerIdHash: vi.fn(() => 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
     calculateIdHashOfObj: vi.fn(async (obj?: { $type$?: string }) =>
         obj?.$type$ === 'FotosDeviceBook'
             ? 'device-book-id-hash'
@@ -87,6 +88,10 @@ vi.mock('@refinio/one.core/lib/storage-versioned-objects.js', () => ({
         addListener: vi.fn(() => () => undefined),
     },
     storeVersionedObject: mocks.storeVersionedObject,
+}));
+
+vi.mock('@refinio/one.core/lib/instance.js', () => ({
+    getInstanceOwnerIdHash: mocks.getInstanceOwnerIdHash,
 }));
 
 vi.mock('@refinio/one.core/lib/storage-unversioned-objects.js', () => ({
@@ -125,6 +130,9 @@ describe('grantFotosAccess', () => {
         });
         mocks.storeVersionedObject.mockClear();
         mocks.ensureVersionedIdObject.mockClear().mockResolvedValue(true);
+        mocks.getInstanceOwnerIdHash.mockReset().mockReturnValue(
+            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        );
         mocks.calculateIdHashOfObj.mockClear().mockImplementation(async (obj?: { $type$?: string }) =>
             obj?.$type$ === 'FotosDeviceBook'
                 ? 'device-book-id-hash'
@@ -200,6 +208,10 @@ describe('grantFotosAccess', () => {
             expect.objectContaining({ id: 'device-book-id-hash' }),
             expect.objectContaining({ id: 'media-book-id-hash' }),
         ]));
+        expect(mocks.calculateIdHashOfObj).toHaveBeenCalledWith(expect.objectContaining({
+            $type$: 'Book',
+            author: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        }));
     });
 
     it('extends remembered peer access when a new manifest entry is added later', async () => {

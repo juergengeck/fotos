@@ -72,26 +72,28 @@ the signed revocation version when the retained control path reconnects.
 
 ## Evidence From Flexibel and ONE
 
-Flexibel's current role-certificate lifecycle establishes the pattern:
+Fotos uses the certificate and access implementations in `../one`. Flexibel's
+role-certificate lifecycle provides historical product evidence; its separate
+`../one-experimental` base is not a Fotos runtime dependency.
 
-- [`RoleCertificate` v2](../../../../../one-experimental/packages/trust.core/src/recipes/RoleCertificate.ts#L22)
+- [`RoleCertificate` v2](../../../../../one/packages/trust.core/src/recipes/RoleCertificate.ts#L22)
   has stable identity fields plus `status`, validity bounds, `revokedAt`, and a reason.
 - [Flow 12](../../../../../heiner/one.flexibel/docs/flows/12-role-trust-certificate-chain.md#L30)
   specifies revocation as a new signed version of the same stable identity, delivered
   through the retained participant channel; renewal is causally newer and stale active
   evidence cannot overwrite it.
-- [`AccessCertificate`](../../../../../one-experimental/packages/trust.abac/src/recipes/AccessCertificate.ts#L1)
+- [`AccessCertificate`](../../../../../one/packages/trust.abac/src/recipes/AccessCertificate.ts#L1)
   is versioned by a stable id and represents revocation as a newer immediately expired
   version with no effective contexts.
-- [ONE access replacement](../../../../../one-experimental/packages/one.core/src/access.ts#L105)
+- [ONE access replacement](../../../../../one/packages/one.core/src/access.ts#L105)
   permits an empty replacement version to revoke previous grants.
-- [The CHUM access test](../../../../../one-experimental/packages/one.core/test/src/chum-sync-notification-test.ts#L207)
+- [The CHUM access test](../../../../../one/packages/one.core/test/src/chum-sync-notification-test.ts#L207)
   verifies that revoked id-root access stops future version deltas.
 
-Relevant shared-repository history:
+Relevant shared-repository history, present in `../one`:
 
-- `one-experimental@01b456b`: Model role revocation and superseding evidence.
-- `one-experimental@ee5bc41`: Move role evidence to detached ONE signatures (v2 recipes).
+- `one@01b456b`: Model role revocation and superseding evidence.
+- `one@ee5bc41`: Move role evidence to detached ONE signatures (v2 recipes).
 
 ## Consequences
 

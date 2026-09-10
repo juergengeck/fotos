@@ -1,3 +1,5 @@
+import { registerDeviceSettings } from '@refinio/settings.devices';
+import { createLocalDevicesPlan, type DevicesPlan } from '@refinio/device.core';
 /**
  * ONE.core boot module for fotos.browser.
  *
@@ -23,6 +25,7 @@ import { TRUST_LEVEL_ORDER, type TrustLevel } from '@refinio/trust.core/types/tr
 import { ModuleRegistry } from '@refinio/api/plan-system';
 import { CoreModule } from '@vger/vger.core/modules/CoreModule.js';
 import { ChatModule } from '@vger/vger.core/modules/ChatModule.js';
+import { JournalModule } from '@vger/vger.core/modules/JournalModule.js';
 import { IndexModule } from '@vger/vger.core/modules/IndexModule.js';
 import { TrustModule } from '@vger/vger.core/modules/TrustModule.js';
 import { ConnectionModule } from '@vger/vger.core/modules/ConnectionModule.js';
@@ -35,7 +38,6 @@ import {
 import {
   InstanceSettingsStorage,
   SettingsPlan,
-  registerDeviceSettings,
   registerRefinioSettings,
   registerSubscriptionSettings,
   registerGlueSettings,
@@ -43,6 +45,7 @@ import {
 
 // ONE.core instance helpers
 import { getInstanceIdHash, getInstanceOwnerIdHash } from '@refinio/one.core/lib/instance.js';
+import { storeVersionedObject } from '@refinio/one.core/lib/storage-versioned-objects.js';
 import { getLocalInstanceOfPerson } from '@refinio/one.models/lib/misc/instance.js';
 
 import { registerFotosHistorySettings } from './fotosHistorySettings.js';
@@ -107,6 +110,7 @@ export interface FotosModel {
   connectionModule: ConnectionModuleType | null;
   trustPlan: TrustPlan;
   settingsPlan: SettingsPlan;
+  devicesPlan: DevicesPlan;
   glueModule: GlueModule | null;
 }
 
@@ -214,16 +218,19 @@ async function initModules(
     instanceIdHash: getInstanceIdHash()!,
   });
   const settingsPlan = new SettingsPlan(storage);
+  const devicesPlan = await createLocalDevicesPlan({ displayName: 'Fotos browser', platform: 'browser' });
   const ownerId = getInstanceOwnerIdHash()! as SHA256IdHash<Person>;
   const glueStartup = await getConfiguredPublicationIdentity(settingsPlan, ownerId);
   const syncEnabled = glueStartup.syncEnabled;
   publicationIdentity = glueStartup.publicationIdentity;
 
-  // ModuleRegistry: CoreModule -> ChatModule -> IndexModule -> TrustModule -> ConnectionModule -> GlueModule
+  // ModuleRegistry: CoreModule -> JournalModule -> ChatModule -> IndexModule -> TrustModule -> ConnectionModule -> GlueModule
   const registry = new ModuleRegistry();
+  registry.setStorageFunction(storeVersionedObject);
 
   const exportPlan = new ExportPlan();
   const coreModule = new CoreModule(commServerUrl);
+  const journalModule = new JournalModule();
   const chatModule = new ChatModule();
   const indexModule = new IndexModule();
   const trustModule = new TrustModule();
@@ -246,8 +253,10 @@ async function initModules(
   registry.supply('OneCore', oneCore);
   registry.supply('SyncRules', fotosContentRules);
   registry.supply('SettingsPlan', settingsPlan);
+  registry.supply('DevicesPlan', devicesPlan);
   registry.supply('ExportPlan', exportPlan);
   registry.register(coreModule);
+  registry.register(journalModule);
   registry.register(chatModule);
   registry.register(indexModule);
   registry.register(trustModule);
@@ -258,14 +267,15 @@ async function initModules(
   if (syncEnabled && publicationIdentity) {
     const nextConnectionModule = new ConnectionModule(
       commServerUrl,
-      undefined,
+      window.location.origin,
       undefined,
       API_BASE,
     );
     nextConnectionModule.enableCredentialAutoConnect = false;
-    // GlueModule owns live peer dialing in browser mode. Leaving the generic
-    // route manager enabled causes it to redial every cached endpoint on boot.
-    nextConnectionModule.setManagedOutgoingConnections(false);
+    // The authenticated endpoint and route lifecycle belong to ConnectionsModel.
+    // Pairing commits the endpoint and releases its CHUM route after access is
+    // published. Disabling this owner strands accepted photo invitations.
+    nextConnectionModule.setManagedOutgoingConnections(true);
     connectionModule = nextConnectionModule;
     connectionModuleWithFotos = nextConnectionModule as ConnectionModuleType & {
       connectToGlueServer?: (personId: SHA256IdHash<Person>) => Promise<void>;
@@ -305,22 +315,8 @@ async function initModules(
       return () => window.removeEventListener('beforeunload', cb);
     };
     browserGlueModule.getLocalTransportCapabilities = async () => ['webrtc', 'commserver-relay'];
-    browserGlueModule.connectToPeerByKey = async (encKey: string, ownId: string, caps?: string[], remotePersonId?: string) => {
-      const localInstanceId = ownId === gluePublicationIdentity
-        ? gluePublicationInstanceId
-        : await getLocalInstanceIdForPerson(ownId);
-      await connectionModule!.connectToPeerByKey(
-        encKey,
-        ownId as any,
-        caps,
-        remotePersonId as any,
-        localInstanceId as any,
-      );
-    };
-    browserGlueModule.connectToPeerDirectByKey = (encKey: string, ownId: string, caps?: string[]) =>
-      connectionModule!.connectToPeerDirectByKey(encKey, ownId as any, caps);
-    browserGlueModule.disconnectPeerRelayByKey = (encKey: string, ownId: string, _remotePersonId: string) =>
-      connectionModule!.disconnectPeerRelayByKey(encKey, ownId as any);
+    // Presence remains a discovery surface. Do not install a second browser
+    // dialer over ConnectionsModel's authenticated endpoint routes.
 
     // Incoming CHUM admission boundary
     connectionModule.setUnknownPeerIdentityMatcher((remotePersonId, remotePublicKey) => {
@@ -365,6 +361,7 @@ async function initModules(
     connectionModule,
     trustPlan: trustModule.trustPlan,
     settingsPlan,
+    devicesPlan,
     glueModule,
   };
 }

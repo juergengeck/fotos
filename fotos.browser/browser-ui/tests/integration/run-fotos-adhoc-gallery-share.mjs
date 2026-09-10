@@ -19,7 +19,7 @@ const HEADLESS_CLI = 'src/cli.ts';
 const COMM_SERVER_BUNDLE = resolve(ONE_ROOT, 'packages/one.models/comm_server.bundle.js');
 const SUITE_SCRIPT = resolve(__dirname, 'fotos-adhoc-gallery-share-suite.mjs');
 const STATIC_SERVER = resolve(__dirname, 'browser-static-server.cjs');
-const VITE_BIN = resolve(VGER_ROOT, 'node_modules/.bin/vite');
+const VITE_BIN = resolve(BROWSER_UI_ROOT, 'node_modules/vite/bin/vite.js');
 const SELLER_PAYMENTS_ROOT = resolve(VGER_ROOT, 'packages/seller.payments');
 const SELLER_PAYMENTS_DIST = resolve(SELLER_PAYMENTS_ROOT, 'dist/index.js');
 const START_TIMEOUT_MS = Number(process.env.FOTOS_ADHOC_SERVER_TIMEOUT_MS || 90_000);
@@ -277,8 +277,8 @@ async function ensureBuiltPrerequisites() {
 
 async function buildBrowserUi(env, outDir) {
   await runCheckedCommand(
-    '/bin/bash',
-    ['-lc', `"${VITE_BIN}" build --outDir "${outDir}" --emptyOutDir`],
+    process.execPath,
+    [VITE_BIN, 'build', '--outDir', outDir, '--emptyOutDir'],
     {
       cwd: BROWSER_UI_ROOT,
       env,

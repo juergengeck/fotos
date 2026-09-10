@@ -77,7 +77,10 @@ const overrides = {};
 for (const [pkgName, tarballName] of packedTarballs) {
   overrides[pkgName] = `file:./vendor/${tarballName}`;
 
-  if (packageJson.dependencies && packageJson.dependencies[pkgName]) {
+  // Pin peers at the application root too: peer resolution needs an explicit
+  // local provider and must never fetch internal ONE packages from a registry.
+  packageJson.dependencies ??= {};
+  {
     const oldValue = packageJson.dependencies[pkgName];
     const newValue = `file:./vendor/${tarballName}`;
 

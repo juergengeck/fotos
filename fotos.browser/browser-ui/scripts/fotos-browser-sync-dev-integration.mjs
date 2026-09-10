@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from 'node:child_process';
+import { createSocket } from 'node:dgram';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path, { dirname, resolve } from 'node:path';
@@ -10,10 +11,11 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BROWSER_UI_ROOT = resolve(__dirname, '..');
 const REPO_ROOT = resolve(BROWSER_UI_ROOT, '../..');
-const VGER_ROOT = resolve(REPO_ROOT, 'vger');
+const VGER_ROOT = resolve(REPO_ROOT, '../vger');
 const ONE_ROOT = resolve(REPO_ROOT, '../one');
 const HEADLESS_ROOT = resolve(VGER_ROOT, 'packages/vger.headless');
-const HEADLESS_CLI = resolve(HEADLESS_ROOT, 'src/cli.ts');
+const HEADLESS_CLI = 'src/cli.ts';
+const VITE_BIN = resolve(BROWSER_UI_ROOT, 'node_modules/vite/bin/vite.js');
 const COMM_SERVER_BUNDLE = resolve(ONE_ROOT, 'packages/one.models/comm_server.bundle.js');
 const INTEGRATION_SCRIPT = resolve(__dirname, 'fotos-live-integration.mjs');
 const SELLER_PAYMENTS_ROOT = resolve(VGER_ROOT, 'packages/seller.payments');
@@ -75,6 +77,20 @@ function getFreePort() {
   });
 }
 
+function getFreeUdpPort() {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const socket = createSocket('udp4');
+    socket.bind(0, '127.0.0.1', () => {
+      const { port } = socket.address();
+      socket.close(() => resolvePromise(port));
+    });
+    socket.on('error', error => {
+      socket.close();
+      rejectPromise(error);
+    });
+  });
+}
+
 async function waitForHttp(url, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -119,7 +135,7 @@ async function waitForPostLoginReady(baseUrl, timeoutMs) {
       if (response.ok) {
         const body = await response.json();
         const handlers = body.handlers ?? [];
-        if (handlers.some(handler => handler.name === 'connection')) {
+        if (handlers.some(handler => handler.name === 'connections')) {
           return;
         }
       }
@@ -220,8 +236,8 @@ async function ensureBuiltPrerequisites() {
 
 async function buildBrowserUi(env, outDir) {
   await runCheckedCommand(
-    '/bin/bash',
-    ['-lc', `npm exec vite build -- --outDir "${outDir}" --emptyOutDir`],
+    process.execPath,
+    [VITE_BIN, 'build', '--outDir', outDir, '--emptyOutDir'],
     {
       cwd: BROWSER_UI_ROOT,
       env,
@@ -233,7 +249,8 @@ async function buildBrowserUi(env, outDir) {
 async function main() {
   const commPort = Number(process.env.FOTOS_SMOKE_COMM_PORT || await getFreePort());
   const headlessPort = Number(process.env.FOTOS_SMOKE_HEADLESS_PORT || await getFreePort());
-  const vitePort = Number(process.env.FOTOS_SMOKE_PORT || 5518);
+  const headlessQuicVCPort = Number(process.env.FOTOS_SMOKE_HEADLESS_QUICVC_PORT || await getFreeUdpPort());
+  const vitePort = Number(process.env.FOTOS_SMOKE_PORT || await getFreePort());
   const commUrl = `ws://localhost:${commPort}`;
   const headlessUrl = `http://localhost:${headlessPort}`;
   const viteUrl = `http://localhost:${vitePort}/`;
@@ -255,6 +272,7 @@ async function main() {
       'tsx',
       HEADLESS_CLI,
       '--port', String(headlessPort),
+      '--quicvc-port', String(headlessQuicVCPort),
       '--host', 'localhost',
       '--storage', storageDir,
       '--comm-server', commUrl,
@@ -308,8 +326,8 @@ async function main() {
     await buildBrowserUi(browserUiEnv, browserBuildDir);
 
     previewServer = spawn(
-      'npm',
-      ['exec', 'vite', 'preview', '--', '--host', 'localhost', '--port', String(vitePort), '--strictPort', '--outDir', browserBuildDir],
+      process.execPath,
+      [VITE_BIN, 'preview', '--host', 'localhost', '--port', String(vitePort), '--strictPort', '--outDir', browserBuildDir],
       {
         cwd: BROWSER_UI_ROOT,
         detached: process.platform !== 'win32',

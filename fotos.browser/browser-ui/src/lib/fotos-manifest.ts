@@ -29,6 +29,7 @@ import {
     onVersionedObj,
     storeVersionedObject
 } from '@refinio/one.core/lib/storage-versioned-objects.js';
+import { getInstanceOwnerIdHash } from '@refinio/one.core/lib/instance.js';
 import { getObject } from '@refinio/one.core/lib/storage-unversioned-objects.js';
 import { calculateIdHashOfObj } from '@refinio/one.core/lib/util/object.js';
 import { mergeFotosManifestState } from './fotosManifestMerge.js';
@@ -575,6 +576,11 @@ export async function grantFotosDeviceBookAccess(
     remotePersonId: SHA256IdHash<Person>,
     options: GrantFotosDeviceBookAccessOptions,
 ): Promise<{ deviceBookIdHash: string; mediaBookIdHash: string }> {
+    const author = getInstanceOwnerIdHash() as SHA256IdHash<Person> | null;
+    if (!author) {
+        throw new Error('[fotos-manifest] Cannot share a Media Book without the local owner identity');
+    }
+
     const deviceBook = await ensureFotosDeviceBook({
         calculateIdHashOfObj,
         getObjectByIdHash,
@@ -590,6 +596,7 @@ export async function grantFotosDeviceBookAccess(
         getObjectByIdHash,
         storeVersionedObject,
     }, {
+        author,
         deviceId: options.deviceId,
     });
     const mediaBookIdHash = String(mediaBook.stored.idHash);

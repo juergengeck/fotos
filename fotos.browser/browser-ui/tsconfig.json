@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
+    "target": "ES2022",
     "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
     "moduleResolution": "bundler",
@@ -19,6 +19,8 @@
     "paths": {
       "@/*": ["./src/*"],
       "@refinio/fotos.ui": ["../../fotos.ui/src/index.ts"],
+      "@refinio/assembly.core": ["../../../one/packages/assembly.core/dist/index.d.ts"],
+      "@refinio/assembly.core/*": ["../../../one/packages/assembly.core/dist/*"],
       "@refinio/source.media": ["../../../one/packages/source.media/dist/index.d.ts"],
       "@refinio/source.media/*": ["../../../one/packages/source.media/dist/*"],
       "@refinio/source.core": ["../../../one/packages/source.core/dist/index.d.ts"],
@@ -32,7 +34,7 @@
   },
   "include": [
     "src",
-    "../../local.core/src/transformers.d.ts"
+    "../../../one/packages/local.core/src/transformers.d.ts"
   ],
   "exclude": [
     "node_modules",

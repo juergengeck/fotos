@@ -12,13 +12,12 @@ export {
     normalizeImageBytesForContentHash,
 };
 
-export async function sha256Hex(data: BufferSource): Promise<string> {
+export async function sha256Hex(data: ArrayBuffer | ArrayBufferView): Promise<string> {
     const hash = createHash('sha256');
     if (data instanceof ArrayBuffer) {
         hash.update(Buffer.from(data));
     } else {
-        const view = data as Uint8Array;
-        hash.update(Buffer.from(view.buffer, view.byteOffset, view.byteLength));
+        hash.update(Buffer.from(data.buffer, data.byteOffset, data.byteLength));
     }
     return hash.digest('hex');
 }

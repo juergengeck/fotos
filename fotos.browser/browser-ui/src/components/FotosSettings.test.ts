@@ -244,6 +244,7 @@ describe('FotosSettings identity flows', () => {
 
     globalThis.window = {
       location: {
+        pathname: '/',
         reload: vi.fn(),
       },
     } as any;
@@ -528,6 +529,7 @@ describe('FotosSettings identity flows', () => {
       false,
       false,
       true,
+      false, // Devices section stays collapsed during the identity flow.
       true,
       false,
     ], { model });

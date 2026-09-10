@@ -20,6 +20,7 @@ config.transformer.enableBabelRCLookup = false;
 // Tell Metro where to find node_modules
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
+  path.resolve(oneRoot, 'node_modules'),
   path.resolve(vgerRoot, 'packages/vger.expo/node_modules'),
   path.resolve(vgerRoot, 'node_modules'),
   path.resolve(workspaceRoot, 'node_modules'),
@@ -58,39 +59,39 @@ const NODE_ONLY_MODULES = [
 ];
 const nodeOnlyStub = path.resolve(projectRoot, 'stubs/node-only-stub.js');
 const WORKSPACE_PREFIX_ALIASES = {
-  '@vger/vger.core/': path.resolve(vgerRoot, 'packages/vger.core/src/'),
-  '@vger/vger.ui/': path.resolve(vgerRoot, 'packages/vger.ui/src/'),
-  '@refinio/coding.core/': path.resolve(vgerRoot, 'packages/coding.core/src/'),
+  '@vger/vger.core/': path.resolve(oneRoot, 'packages/vger.core/src/'),
+  '@vger/vger.ui/': path.resolve(oneRoot, 'packages/vger.ui/src/'),
+  '@refinio/coding.core/': path.resolve(oneRoot, 'packages/coding.core/src/'),
   '@refinio/fotos.core/': path.resolve(fotosRoot, 'fotos.core/src/'),
   '@refinio/fotos.ui/': path.resolve(fotosRoot, 'fotos.ui/src/'),
   '@refinio/fotos.gallery/': path.resolve(fotosRoot, 'fotos.gallery/src/'),
-  '@refinio/source.openlegal/': path.resolve(vgerRoot, 'packages/source.openlegal/src/'),
-  '@refinio/source.wikipedia/': path.resolve(vgerRoot, 'packages/source.wikipedia/src/'),
+  '@refinio/source.openlegal/': path.resolve(oneRoot, 'packages/source.openlegal/src/'),
+  '@refinio/source.wikipedia/': path.resolve(oneRoot, 'packages/source.wikipedia/src/'),
   '@refinio/trust.pdf/': path.resolve(oneRoot, 'packages/trust.pdf/dist/'),
 };
 const WORKSPACE_EXACT_ALIASES = {
-  '@vger/vger.core': path.resolve(vgerRoot, 'packages/vger.core/src/index.ts'),
-  '@vger/vger.ui': path.resolve(vgerRoot, 'packages/vger.ui'),
-  '@refinio/coding.core': path.resolve(vgerRoot, 'packages/coding.core/src/index.ts'),
+  '@vger/vger.core': path.resolve(oneRoot, 'packages/vger.core/src/index.ts'),
+  '@vger/vger.ui': path.resolve(oneRoot, 'packages/vger.ui'),
+  '@refinio/coding.core': path.resolve(oneRoot, 'packages/coding.core/src/index.ts'),
   '@refinio/fotos.core': path.resolve(fotosRoot, 'fotos.core/src/index.ts'),
   '@refinio/fotos.ui': path.resolve(fotosRoot, 'fotos.ui/src/index.ts'),
   '@refinio/fotos.gallery': path.resolve(fotosRoot, 'fotos.gallery/src/index.ts'),
-  '@refinio/source.openlegal': path.resolve(vgerRoot, 'packages/source.openlegal/src/index.ts'),
-  '@refinio/source.wikipedia': path.resolve(vgerRoot, 'packages/source.wikipedia/src/index.ts'),
+  '@refinio/source.openlegal': path.resolve(oneRoot, 'packages/source.openlegal/src/index.ts'),
+  '@refinio/source.wikipedia': path.resolve(oneRoot, 'packages/source.wikipedia/src/index.ts'),
   '@refinio/trust.pdf': path.resolve(oneRoot, 'packages/trust.pdf/dist/index.js'),
 };
 const VENDORED_EXACT_ALIASES = {
   '@refinio/one.core-expo/load-expo': path.resolve(projectRoot, 'node_modules/@refinio/one.core-expo/dist/load-expo.js'),
   '@refinio/chat.core/types/ChatAttachmentSharing.js': path.resolve(
-    vgerRoot,
+    oneRoot,
     'packages/chat.core/src/types/ChatAttachmentSharing.ts'
   ),
   '@refinio/cube.core/dimensions/DimensionStateError.js': path.resolve(
-    vgerRoot,
+    oneRoot,
     'packages/cube.core/src/dimensions/DimensionStateError.ts'
   ),
   '@refinio/vger.agent/services/AgentOrchestrationRecorderService.js': path.resolve(
-    vgerRoot,
+    oneRoot,
     'packages/vger.agent/src/services/AgentOrchestrationRecorderService.ts'
   ),
 };
@@ -117,17 +118,17 @@ function resolveFromExpoVendor(context, moduleName, platform) {
 config.resolver.extraNodeModules = {
   ...config.resolver.extraNodeModules,
   crypto: path.resolve(projectRoot, 'shims/crypto.js'),
-  '@vger/vger.ui': path.resolve(vgerRoot, 'packages/vger.ui'),
-  '@vger/vger.core': path.resolve(vgerRoot, 'packages/vger.core/src'),
-  '@glueone/glue.core': path.resolve(vgerRoot, 'packages/glue.core'),
-  '@refinio/one.core-expo': path.resolve(vgerRoot, 'packages/one.core-expo'),
-  '@refinio/one.core-expo/load-expo': path.resolve(vgerRoot, 'packages/one.core-expo/src/load-expo.ts'),
-  '@refinio/meaning.core': path.resolve(vgerRoot, 'packages/meaning.core'),
+  '@vger/vger.ui': path.resolve(oneRoot, 'packages/vger.ui'),
+  '@vger/vger.core': path.resolve(oneRoot, 'packages/vger.core/src'),
+  '@glueone/glue.core': path.resolve(oneRoot, 'packages/glue.core'),
+  '@refinio/one.core-expo': path.resolve(oneRoot, 'packages/one.core-expo'),
+  '@refinio/one.core-expo/load-expo': path.resolve(oneRoot, 'packages/one.core-expo/src/load-expo.ts'),
+  '@refinio/meaning.core': path.resolve(oneRoot, 'packages/meaning.core'),
   '@refinio/fotos.core': path.resolve(fotosRoot, 'fotos.core/src'),
   '@refinio/fotos.ui': path.resolve(fotosRoot, 'fotos.ui/src'),
   '@refinio/fotos.gallery': path.resolve(fotosRoot, 'fotos.gallery/src'),
   '@shopify/flash-list': path.resolve(projectRoot, 'node_modules/@shopify/flash-list'),
-  'scrypt-js': path.resolve(vgerRoot, 'packages/one.core-expo/node_modules/scrypt-js'),
+  'scrypt-js': path.resolve(oneRoot, 'packages/one.core-expo/node_modules/scrypt-js'),
   ...canonicalModules,
 };
 

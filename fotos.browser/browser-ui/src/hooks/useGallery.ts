@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { GalleryTrieManager } from '@refinio/fotos.core';
+import { GalleryTrieManager, type FotosEntry } from '@refinio/fotos.core';
 import { groupPhotosByDay, useFotosGalleryState } from '@refinio/fotos.ui';
 import type { PhotoEntry } from '@/types/fotos';
 import { buildFaceClusterSummaries, buildSimilarFaceMatches } from '@/lib/cluster-gallery';
@@ -17,6 +17,8 @@ export interface UseGalleryOptions {
     faceAnalyticsEnabled?: boolean;
     semanticSearchEnabled?: boolean;
     collections?: FotosCollectionDefinition[];
+    receivedEntries?: readonly FotosEntry[];
+    onReceivedPhotoError?: (message: string) => void;
     /** When provided, this folder source is used instead of creating one via useFolderAccess. */
     folder?: FolderAccess;
 }
@@ -24,6 +26,8 @@ export interface UseGalleryOptions {
 export function useGallery(options: UseGalleryOptions = {}) {
     const localFolder = useFolderAccess({
         clusterSensitivity: options.clusterSensitivity,
+        receivedEntries: options.receivedEntries,
+        onReceivedPhotoError: options.onReceivedPhotoError,
         faceAnalyticsEnabled: options.faceAnalyticsEnabled,
         semanticSearchEnabled: options.semanticSearchEnabled,
     });

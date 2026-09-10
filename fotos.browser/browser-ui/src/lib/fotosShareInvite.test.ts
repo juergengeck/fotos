@@ -13,6 +13,9 @@ const pairingInvitation = {
   token: 'pair-token-1',
   publicKey: 'ab'.repeat(32),
   url: 'wss://api.glue.one/comm',
+  pairingProtocolVersion: 2,
+  pairingMode: 'standard',
+  identityRelation: 'distinct-person',
 } as const;
 
 describe('fotosShareInvite', () => {

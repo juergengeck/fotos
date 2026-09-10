@@ -1,4 +1,4 @@
-import type {Person} from '@refinio/one.core/lib/recipes.js';
+import type {OneVersionedObjectTypes, Person} from '@refinio/one.core/lib/recipes.js';
 import {createAccess} from '@refinio/one.core/lib/access.js';
 import {SET_ACCESS_MODE} from '@refinio/one.core/lib/storage-base-common.js';
 import {
@@ -26,7 +26,7 @@ import {
     type FotosShareScope,
 } from '@refinio/fotos.core';
 
-interface StoredVersion<T> {
+interface StoredVersion<T extends OneVersionedObjectTypes> {
     obj: T;
     hash: SHA256Hash<T>;
     idHash: SHA256IdHash<T>;
@@ -35,7 +35,7 @@ interface StoredVersion<T> {
 export interface FotosShareCertificateDeps {
     calculateIdHash(object: unknown): Promise<SHA256IdHash<any>>;
     getByIdHash(idHash: SHA256IdHash<any>): Promise<StoredVersion<any>>;
-    storeVersioned<T>(object: T): Promise<StoredVersion<T>>;
+    storeVersioned<T extends OneVersionedObjectTypes>(object: T): Promise<StoredVersion<T>>;
     signVersion(hash: SHA256Hash<any>, issuer: SHA256IdHash<Person>): Promise<SHA256Hash<any>>;
     setAccess(entries: Array<Record<string, unknown>>): Promise<void>;
     resolveEntryChildren(hash: SHA256Hash<FotosEntry>): Promise<ChildObject[]>;

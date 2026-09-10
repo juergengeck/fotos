@@ -256,10 +256,10 @@ async function ensureBuiltPrerequisites() {
 }
 
 async function buildBrowserUi(env, outDir) {
-  const viteBin = resolve(VGER_ROOT, 'node_modules/.bin/vite');
+  const viteBin = resolve(BROWSER_UI_ROOT, 'node_modules/vite/bin/vite.js');
   await runCheckedCommand(
-    '/bin/bash',
-    ['-lc', `"${viteBin}" build --outDir "${outDir}" --emptyOutDir`],
+    process.execPath,
+    [viteBin, 'build', '--outDir', outDir, '--emptyOutDir'],
     {
       cwd: BROWSER_UI_ROOT,
       env,

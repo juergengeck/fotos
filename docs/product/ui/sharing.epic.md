@@ -2,7 +2,7 @@
 
 Status: Implemented
 Owner: fotos product and engineering
-Last updated: 2026-08-02
+Last updated: 2026-08-03
 Evidence: [UX-03 and UX-19](../ui.prd.md#ux-03--sharing-grants-are-silent-immediate-and-unreviewable)
 Decision: [D-03 sharing revocation](./decisions/D-03-sharing-revocation.md)
 
@@ -50,7 +50,8 @@ invite links as an explicit secondary path rather than a public-link default.
 
 ## Persistent Share State
 
-- Gallery header, collection rows, and person/cluster rows show a shared indicator.
+- The right control pane summary, collection rows, and person/cluster rows show a
+  shared indicator.
 - Activating it opens one “Shared with” view for inspection and change.
 - The view distinguishes pending, committed, failed, and removed assignments.
 - Item counts are measured from the committed scope and labelled as approximate if the
@@ -87,7 +88,7 @@ invite links as an explicit secondary path rather than a public-link default.
   revocation and recipient-side current-version projection.
 - Unified Selection supplies a typed, reviewable scope; it must not pass a silently
   filtered subset.
-- App Shell supplies the Sharing view and persistent header/row indicators.
+- App Shell supplies the Sharing view and persistent control-pane/row indicators.
 - Protocol owners must confirm PIN use, expiry, link revocation, and whether recipients
   can download originals for each scope.
 
@@ -118,9 +119,9 @@ Implemented in the browser and shared core:
   matches instead of instantiating every recipient picker in a large library.
 - The unified action bar can hand an exact photo/people selection to Sharing by
   materializing it as a named collection scope before any recipient is staged.
-- Committed gallery access is visible in the persistent header, and committed
-  collection/person access is visible on the corresponding Browse rows; each indicator
-  opens the centralized Sharing destination.
+- Committed gallery access is visible in the right control pane, and committed
+  collection/person access is visible on the corresponding Browse rows; each
+  indicator opens the centralized Sharing destination.
 - Recipients project only current certificate versions addressed to their local
   identities, verify detached signatures through trusted issuer keys, bind active
   certificates to the exact current manifest, and surface active/revoked/invalid state.

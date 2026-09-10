@@ -2,41 +2,38 @@
 
 Status: In progress
 Owner: fotos product and engineering
-Last updated: 2026-08-02
+Last updated: 2026-08-03
 Evidence: [UX-09–11, UX-14, UX-17–18, UX-23](../ui.prd.md#ux-09--the-bottom-right-corner-is-contested-by-four-different-controls)
 
 ## Outcome
 
-The main photo task remains oriented and usable when filters are collapsed. Primary
-view, search, library context, status, identity state, and navigation have stable
-homes. Settings, sharing, and advanced tools no longer compete inside a 256px filter
-column.
+The main photo task uses the full viewport height while one right-hand control pane
+owns browsing controls and task navigation. Primary view, search, library context,
+status, identity state, Sharing, and Settings have stable homes without duplicating
+them in persistent top chrome.
 
 ## User Jobs
 
 - Know which library, view, and filters are active.
-- Switch between Photos and People and search without opening a utility panel.
-- Collapse filters without losing primary navigation or status.
+- Switch between Photos and People and search in the visible control pane.
+- Maximize the gallery by collapsing the pane, with one small edge affordance to
+  restore it.
 - Manage library, identity, devices, and sharing in spaces sized for those tasks.
 
 ## Target Information Architecture
 
-### Persistent app header
+### Authoritative right control pane
 
-- Library identity/switcher.
-- Photos/People primary-view control.
-- Search entry point with explicit scope and result count.
-- Identity/sync state indicator that does not require opening settings.
-- Overflow entry for Sharing, Settings, and applicable library actions.
-- Filter/sidebar toggle.
-- A second row for breadcrumbs and active-filter summary when needed.
+The collapsible right pane is the only persistent control surface. Its Browse task
+owns library context, the Photos/People switch, scoped search with result count,
+collections, people, tags, date, sort, thumbnail size, and relevant sensitivity
+controls. Peer tabs open Sharing and Settings in the same pane, widening it where a
+task needs more space. Identity/sync and background status are summarized in the
+pane; they are not repeated above the gallery.
 
-### Facets panel
-
-The collapsible side panel contains browsing facets only: collections, people, tags,
-date, sort, thumbnail size, and relevant sensitivity controls. It does not contain
-identity setup, recovery, devices, storage configuration, broad sharing management,
-or development diagnostics.
+Collapsing the pane is an explicit maximize-gallery state. The gallery then exposes
+one small edge-mounted reopen control, not a toolbar or second navigation surface.
+Breadcrumbs render only when they describe an active drill-down or filter.
 
 ### Full-pane tasks
 
@@ -46,9 +43,10 @@ or development diagnostics.
 
 ### Status and overlays
 
-- Background status has one header-level summary with expandable details.
+- Background status has one control-pane summary with expandable details.
 - Toasts, selection actions, and floating controls use reserved non-overlapping lanes.
-- The filter toggle lives in the header, not in the floating-control lane.
+- The pane close action lives in the pane; its collapsed state exposes one edge handle
+  outside the bottom-right floating-control lane.
 
 ## First Run
 
@@ -59,16 +57,18 @@ connection placement depends on D-01.
 
 ## Responsive Behavior
 
-- Desktop: persistent header, optional facets column, main pane, full-pane settings.
-- Mobile portrait: persistent compact header; filters use a sheet or full-screen view
-  according to D-02; primary navigation must not depend on an undiscoverable gesture.
-- Mobile landscape/tablet: header remains; facets may become a rail or resizable panel.
+- Desktop: full-height main pane plus the right control pane; Settings and Sharing may
+  widen the pane.
+- Mobile portrait: the control pane becomes a task sheet according to D-02; primary
+  navigation must not depend on an undiscoverable gesture.
+- Mobile landscape/tablet: the control pane may become a rail or resizable panel.
 - Breakpoint changes preserve the active library, view, query, filters, selection, and
   open task unless the destination cannot represent it.
 
 ## In Scope
 
-- Header, breadcrumbs, search placement/scope, Photos/People switch, filter toggle.
+- Control-pane navigation, breadcrumbs, search placement/scope, Photos/People switch,
+  and collapse/reopen behavior.
 - Reallocation of current sidebar features to facets, Settings, Sharing, or Advanced.
 - Floating-control and toast lanes.
 - First-run hierarchy and identity-status visibility.
@@ -86,15 +86,15 @@ connection placement depends on D-01.
 
 Implemented:
 
-- A persistent header owns library context, Photos/People switching, scoped search
-  with result counts, identity/sync state, background status, panel visibility,
-  Sharing, and Settings entry points.
 - Browse, Sharing, and Settings are explicit peer navigation destinations; sharing is
   no longer rendered as a Browse section.
-- Desktop sidebar collapse controls were removed from the contested floating-control
-  lane; header controls now own panel visibility.
 - Folder add, switch, remove, rescan, and reanalysis controls are consolidated under
   Settings → Library instead of appearing in Browse or Sharing.
+- The redundant persistent app header is removed; Photos/People, scoped search,
+  result count, identity/sync state, background status, and pane visibility live in
+  the authoritative right control pane.
+- The gallery preserves its full height and exposes only a small edge-mounted reopen
+  affordance when the pane is collapsed.
 - First run presents one dominant library-intake action and a local-originals privacy
   promise. AI setup moved to the People job and settings; headless connection is
   development-only Advanced UI.
@@ -118,8 +118,10 @@ Still required for completion: run the populated-library responsive navigation m
 
 ## Acceptance Criteria
 
-- Library, primary view, search, identity/sync state, and filter navigation remain
-  accessible with the facets panel collapsed.
+- Library, primary view, search, identity/sync state, and task navigation have exactly
+  one persistent home in the right control pane.
+- Collapsing the pane maximizes the gallery and leaves one discoverable reopen handle;
+  it does not preserve a second top toolbar.
 - Search communicates its scope and result count.
 - Sharing is not housed under Browse; identity and recovery are not squeezed into the
   facets panel.
@@ -132,7 +134,8 @@ Still required for completion: run the populated-library responsive navigation m
 
 ## Validation Scenarios
 
-1. Open, collapse filters, search, switch view, open settings, and return without state loss.
+1. Open, search, switch view, open Settings, return, collapse the pane, and reopen it
+   without state loss.
 2. Switch libraries with active filters and selection; verify the specified reset boundary.
 3. Enter by photo and share deep links, then exercise browser back/forward.
 4. Run first use, restored-library use, and pending-mobile-import use at each viewport class.
@@ -140,6 +143,7 @@ Still required for completion: run the populated-library responsive navigation m
 
 ## Success Measures
 
-- Reduced steps to search and Photos/People switching from the default gallery.
-- No supported state in which collapsing facets removes all primary navigation.
+- Search and Photos/People switching remain immediately available in the default
+  control pane without reducing gallery height.
+- The collapsed gallery has one discoverable route back to the control pane.
 - Keyboard-only completion of orientation, search, and settings-return scenarios.

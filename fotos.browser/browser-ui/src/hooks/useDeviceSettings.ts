@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-    DEFAULT_DEVICE_SETTINGS,
-    type DeviceSettings,
-} from '@refinio/settings.core';
+import { DEFAULT_DEVICE_SETTINGS, type DeviceSettings } from '@refinio/settings.devices';
 import type { FotosModel } from '@/lib/onecore-boot';
 
 export const DEVICE_SETTINGS_MODULE_ID = 'device';

@@ -123,7 +123,9 @@ async function launchRoleContext(playwrightModule, role, baseUrl, headless, arti
     headless,
     ignoreHTTPSErrors: true,
     serviceWorkers: 'block',
-    viewport: { width: 720, height: 920 },
+    viewport: role === 'recipient' ? {width: 390, height: 844} : {width: 1440, height: 900},
+    isMobile: role === 'recipient',
+    hasTouch: role === 'recipient',
     args: [
       '--window-size=720,920',
       role === 'sender' ? '--window-position=30,40' : '--window-position=780,40',
@@ -221,16 +223,25 @@ async function prepareIdentity(page, displayName, timeoutMs = READY_TIMEOUT_MS) 
   }, displayName, timeoutMs);
 }
 
-async function createGalleryShareInvite(page, timeoutMs = READY_TIMEOUT_MS) {
-  return await evaluateWithDebugApi(page, async () => {
-    return await window.__fotosDebug.createGalleryShareInvite();
-  }, undefined, timeoutMs);
+async function createGalleryShareInvite(page) {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.getByRole('button', {name: 'Open sharing', exact: true}).click();
+  await page.getByRole('button', {name: 'Create share link', exact: true}).click();
+  const result = page.getByRole('region', {name: 'Share link result'});
+  await result.waitFor({state: 'visible'});
+  const pin = (await result.locator('[aria-label^="PIN "]').innerText()).trim();
+  await result.getByRole('button', {name: 'Copy link', exact: true}).click();
+  await result.getByRole('button', {name: 'Copied', exact: true}).waitFor();
+  const url = await page.evaluate(() => navigator.clipboard.readText());
+  const payload = JSON.parse(Buffer.from(new URL(url).searchParams.get('fotosShare'), 'base64url').toString());
+  return {url, pin, expiresAt: payload.expiresAt};
 }
 
-async function acceptGalleryShareInvite(page, pin, timeoutMs = READY_TIMEOUT_MS) {
-  return await evaluateWithDebugApi(page, async targetPin => {
-    return await window.__fotosDebug.acceptGalleryShareInvite(targetPin);
-  }, pin, timeoutMs);
+async function acceptGalleryShareInvite(page, pin) {
+  const dialog = page.getByRole('dialog', {name: 'Open shared gallery'});
+  await dialog.getByRole('textbox', {name: 'Invitation PIN'}).fill(pin);
+  // Exercise mobile's real action, including its destination and identity reload.
+  await dialog.getByRole('button', {name: 'Open gallery', exact: true}).click();
 }
 
 async function getFotosSyncState(page, timeoutMs = READY_TIMEOUT_MS) {
@@ -257,15 +268,6 @@ async function requestPeerConnection(page, personId, timeoutMs = READY_TIMEOUT_M
   }, personId, timeoutMs);
 }
 
-async function forceRouteKeyConnect(page, personId, keySource = 'advertised', timeoutMs = READY_TIMEOUT_MS) {
-  return await evaluateWithDebugApi(page, async ({ targetPersonId, targetKeySource }) => {
-    if (typeof window.__fotosDebug.forceRouteKeyConnect !== 'function') {
-      return null;
-    }
-
-    return await window.__fotosDebug.forceRouteKeyConnect(targetPersonId, targetKeySource);
-  }, { targetPersonId: personId, targetKeySource: keySource }, timeoutMs);
-}
 
 async function getAccessibleRootSummary(page, personId, timeoutMs = READY_TIMEOUT_MS) {
   return await evaluateWithDebugApi(page, async targetPersonId => {
@@ -753,45 +755,6 @@ async function main() {
       assertHealthy,
     );
 
-    await waitForStage(
-      'adhoc-peer-connection',
-      CONNECTION_TIMEOUT_MS,
-      async () => {
-        const [senderInfo, recipientInfo] = await Promise.all([
-          getPeerConnectionInfo(sender.page, report.guestPersonId, 5_000),
-          getPeerConnectionInfo(recipient.page, report.senderPersonId, 5_000),
-        ]);
-
-        return (senderInfo?.online || senderInfo?.coordinatorState)
-          && (recipientInfo?.online || recipientInfo?.coordinatorState)
-          ? { senderInfo, recipientInfo }
-          : false;
-      },
-      captureSnapshot,
-      assertHealthy,
-    );
-
-    await waitForStage(
-      'adhoc-peer-routing-key',
-      CONNECTION_TIMEOUT_MS,
-      async () => {
-        const [senderInfo, recipientInfo] = await Promise.all([
-          getPeerConnectionInfo(sender.page, report.guestPersonId, 5_000),
-          getPeerConnectionInfo(recipient.page, report.senderPersonId, 5_000),
-        ]);
-
-        return senderInfo?.advertisedEncryptionKey && recipientInfo?.advertisedEncryptionKey
-          ? { senderInfo, recipientInfo }
-          : false;
-      },
-      captureSnapshot,
-      assertHealthy,
-    );
-
-    report.routeKeyDialResults = await Promise.all([
-      forceRouteKeyConnect(sender.page, report.guestPersonId, 'advertised', 10_000),
-      forceRouteKeyConnect(recipient.page, report.senderPersonId, 'advertised', 10_000),
-    ]);
     report.postGrantAccessibleRoots = await Promise.all([
       getAccessibleRootSummary(sender.page, report.guestPersonId, 10_000),
       getAccessibleRootSummary(recipient.page, report.senderPersonId, 10_000),
@@ -830,6 +793,29 @@ async function main() {
       captureSnapshot,
       assertHealthy,
     );
+
+    await recipient.page.getByText('Shared gallery is ready', {exact: true}).waitFor({timeout: SHARE_TIMEOUT_MS});
+    if (new URL(recipient.page.url()).searchParams.has('fotosShare')) throw new Error('Consumed invitation is still in the URL');
+    await recipient.page.getByRole('button', {name: `Open ${sharedFileName}`, exact: true}).click();
+    await recipient.page.waitForFunction(name => {
+      const image = document.querySelector(`[role="dialog"] img[alt="${name}"]`);
+      return image?.complete && image.naturalWidth > 0;
+    }, sharedFileName);
+    await recipient.page.getByRole('button', {name: 'Close image view'}).click();
+
+    // Close future peer connections before reopening: already received photos
+    // must come from the stored share graph, without a new transfer.
+    await recipient.context.routeWebSocket('**/*', socket => socket.close());
+    await recipient.page.reload({waitUntil: 'domcontentloaded'});
+    await waitForDebugApi(recipient.page);
+    await recipient.page.getByRole('button', {name: `Open ${sharedFileName}`, exact: true}).waitFor({timeout: SHARE_TIMEOUT_MS});
+    if (await recipient.page.getByRole('dialog', {name: 'Open shared gallery'}).count()) throw new Error('Reopening asks to accept the invitation again');
+    const reopenedIdentity = await getLocalIdentitySnapshot(recipient.page);
+    if (reopenedIdentity.publicationIdentity !== report.guestPersonId) throw new Error('Recipient identity changed after reopening');
+    await sender.page.reload({waitUntil: 'domcontentloaded'});
+    await waitForDebugApi(sender.page);
+    await sender.page.getByRole('button', {name: `Open ${sharedFileName}`, exact: true}).waitFor({timeout: SHARE_TIMEOUT_MS});
+    report.reopen = {senderPhotoVisible: true, recipientPhotoVisibleWithoutPeer: true, recipientIdentityPreserved: true};
 
     report.finalState = await captureSnapshot();
     await writeReportArtifact(artifactDir, report);

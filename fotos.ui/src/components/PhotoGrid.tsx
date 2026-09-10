@@ -306,7 +306,7 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
     const faceCount = getFaceCount(photo.faces);
     const namedFaces = summarizeNamedFaces(photo.faces);
     
-    const timerRef = useRef<NodeJS.Timeout | null>(null);
+    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const hasLongPressed = useRef(false);
 
     const handleTouchStart = useCallback((e: React.TouchEvent) => {

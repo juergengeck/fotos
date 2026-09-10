@@ -3,9 +3,13 @@ import react from '@vitejs/plugin-react';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import { VitePWA } from 'vite-plugin-pwa';
 import { fotosApiPlugin } from './vite-plugin-fotos-api';
+import { fotosTestRunnerPlugin } from './vite-plugin-fotos-test-runner';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
 
 const DEV_API_PROXY_TARGET = process.env.VITE_HEADLESS_URL || 'https://api.glue.one';
 const DEV_ALLOWED_HOSTS = (process.env.VITE_ALLOWED_HOSTS || '')
@@ -15,10 +19,7 @@ const DEV_ALLOWED_HOSTS = (process.env.VITE_ALLOWED_HOSTS || '')
 const DEV_SERVER_HOST = process.env.VITE_DEV_HOST || undefined;
 const DEV_HMR_HOST = process.env.VITE_HMR_HOST || undefined;
 const DEV_HMR_PROTOCOL = process.env.VITE_HMR_PROTOCOL || undefined;
-const ORT_RUNTIME_DIR = path.resolve(
-    __dirname,
-    '../../../vger/node_modules/.pnpm/onnxruntime-web@1.24.2/node_modules/onnxruntime-web/dist',
-);
+const ORT_RUNTIME_DIR = path.dirname(require.resolve('onnxruntime-web/webgpu'));
 const ORT_RUNTIME_FILES = [
     'ort-wasm-simd-threaded.jsep.mjs',
     'ort-wasm-simd-threaded.jsep.wasm',
@@ -279,6 +280,7 @@ export default defineConfig({
         ortRuntimePlugin(),
         localPhotosPlugin(),
         fotosApiPlugin(),
+        fotosTestRunnerPlugin(__dirname),
         VitePWA({
             registerType: 'prompt',
             strategies: 'injectManifest',
@@ -322,14 +324,14 @@ export default defineConfig({
             {find: /^@refinio\/agent\.core\/(.*)\.js$/, replacement: path.resolve(__dirname, '../../../one/packages/agent.core/src/$1.ts')},
             {find: /^@refinio\/agent\.core\/(.*)$/, replacement: path.resolve(__dirname, '../../../one/packages/agent.core/src/$1')},
             {find: '@refinio/agent.core', replacement: path.resolve(__dirname, '../../../one/packages/agent.core/src/index.ts')},
-            {find: '@huggingface/transformers', replacement: path.resolve(__dirname, '../../../vger/node_modules/.pnpm/node_modules/@huggingface/transformers/dist/transformers.web.js')},
+            {find: '@refinio/assembly.core', replacement: path.resolve(__dirname, '../../../one/packages/assembly.core/dist')},
             {find: '@vger/vger.core', replacement: path.resolve(__dirname, '../../../one/packages/vger.core/dist')},
             {find: '@vger/vger.glue', replacement: path.resolve(__dirname, '../../../vger/packages/vger.glue/dist')},
             {find: '@refinio/source.media', replacement: path.resolve(__dirname, '../../../one/packages/source.media/dist')},
             {find: '@refinio/source.core', replacement: path.resolve(__dirname, '../../../one/packages/source.core/dist')},
             {find: '@refinio/media.core', replacement: path.resolve(__dirname, '../../../one/packages/media.core/dist')},
             {find: '@refinio/recovery.core', replacement: path.resolve(__dirname, '../../../vger/packages/recovery.core/dist')},
-            {find: '@refinio/trust.core/recipes', replacement: path.resolve(__dirname, '../../../one/packages/trust.core/dist/recipes/index.js')},
+            {find: /^@refinio\/trust\.core\/recipes$/, replacement: path.resolve(__dirname, '../../../one/packages/trust.core/dist/recipes/index.js')},
             {find: '@refinio/trust.core', replacement: path.resolve(__dirname, '../../../one/packages/trust.core/dist')},
             // Stub out Node-only modules that ONE.core dependency tree pulls in
             {find: '@anthropic-ai/sdk', replacement: path.resolve(__dirname, './src/stubs/empty.ts')},
@@ -344,7 +346,7 @@ export default defineConfig({
             {find: 'vite-plugin-node-polyfills/shims/process', replacement: path.resolve(__dirname, 'node_modules/vite-plugin-node-polyfills/shims/process/dist/index.js')},
         ],
         extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'],
-        dedupe: ['react', 'react-dom', '@refinio/one.core', '@refinio/one.models'],
+        dedupe: ['react', 'react-dom', '@huggingface/transformers', '@refinio/one.core', '@refinio/one.models'],
     },
     define: {
         global: 'globalThis',

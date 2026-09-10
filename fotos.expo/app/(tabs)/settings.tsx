@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, Switch, Text, TextInput, View, useColorScheme } from 'react-native';
+import { NativeDevicesManager } from '@vger/vger.ui/native/devices';
+import { Alert, Pressable, ScrollView, Switch, Text, View, useColorScheme } from 'react-native';
 import { useModel } from '../../ios-ui';
 import { useAuth } from '../../ios-ui/hooks/useAuth';
 import { useFotosRuntime } from '../../src/hooks/use-fotos-runtime';
@@ -20,44 +20,10 @@ export default function SettingsScreen() {
   const { logout, isLoading: authLoading } = useAuth();
   const { snapshot } = useFotosRuntime();
   const { platformCapabilities } = snapshot;
-  const [displayName, setDisplayName] = useState('');
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadDisplayName() {
-      try {
-        const section = await model.settingsPlan?.getSection({ moduleId: 'device' });
-        const nextName = typeof section?.values?.displayName === 'string'
-          ? section.values.displayName
-          : '';
-        if (!cancelled) {
-          setDisplayName(nextName);
-        }
-      } catch {
-        if (!cancelled) {
-          setDisplayName('');
-        }
-      }
-    }
-
-    void loadDisplayName();
-    return () => {
-      cancelled = true;
-    };
-  }, [model.settingsPlan]);
-
   const updateDiscovery = async (enabled: boolean) => {
     await model.settingsPlan?.updateSection({
       moduleId: 'device',
       values: { discoveryEnabled: enabled },
-    });
-  };
-
-  const updateDisplayName = async () => {
-    await model.settingsPlan?.updateSection({
-      moduleId: 'device',
-      values: { displayName },
     });
   };
 
@@ -78,6 +44,7 @@ export default function SettingsScreen() {
       style={{ flex: 1, backgroundColor: screenBackground(isDark) }}
       contentContainerStyle={{ padding: 16, gap: 16 }}
     >
+      <NativeDevicesManager devices={model?.devicesPlan} pairing={model?.connectionPlan} />
       <View
         style={{
           backgroundColor: cardBackground(isDark),
@@ -116,26 +83,7 @@ export default function SettingsScreen() {
           Runtime platform: {platformCapabilities.platformLabel}
         </Text>
 
-        <View style={{ gap: 8 }}>
-          <Text style={{ color: mutedTextColor(isDark), fontSize: 13, fontWeight: '600' }}>
-            Display name
-          </Text>
-          <TextInput
-            value={displayName}
-            onChangeText={setDisplayName}
-            onEndEditing={() => void updateDisplayName()}
-            style={{
-              borderRadius: 14,
-              borderWidth: 1,
-              borderColor: borderColor(isDark),
-              backgroundColor: mutedCardBackground(isDark),
-              color: textColor(isDark),
-              paddingHorizontal: 14,
-              paddingVertical: 12,
-              fontSize: 15,
-            }}
-          />
-        </View>
+
 
         <View
           style={{

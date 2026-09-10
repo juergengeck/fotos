@@ -4,6 +4,7 @@ dist/
 _deploy/
 *.log
 *.tgz
+fotos.browser/browser-ui/tests/integration/reports/
 
 # Local dependency shims for sibling VGER/ONE packages
 auth.core

@@ -1,3 +1,4 @@
+import { DeviceCoreRecipes, DeviceCoreReverseMaps } from '@refinio/device.core';
 import type { Recipe } from '@refinio/one.core/lib/recipes.js';
 import RecipesStable from '@refinio/one.models/lib/recipes/recipes-stable.js';
 import RecipesExperimental from '@refinio/one.models/lib/recipes/recipes-experimental.js';
@@ -10,6 +11,10 @@ import {
   ReverseMapsForIdObjectsExperimental,
 } from '@refinio/one.models/lib/recipes/reversemaps-experimental.js';
 import { RefinioApiRecipes } from '@refinio/api/recipes';
+import {
+  AssemblyCoreRecipes,
+  AssemblyCoreReverseMaps,
+} from '@refinio/assembly.core';
 import GlueContentRecipes from '@glueone/glue.core/recipes/GlueContentRecipes.js';
 import PresenceRecipes from '@glueone/glue.core/recipes/PresenceRecipes.js';
 import TimeTrieRecipes from '@glueone/glue.core/recipes/TimeTrieRecipes.js';
@@ -50,7 +55,9 @@ export const FotosOneCoreRecipes: Recipe[] = [
   ...TrustCoreRecipes,
   ...CubeCoreRecipes,
   ...SettingsRecipes,
+  ...DeviceCoreRecipes,
   ...CHAT_CORE_RECIPES,
+  ...AssemblyCoreRecipes,
   ...ConnectionPhoneBookRecipes,
   ...SourceCoreRecipes,
   ...RefinioApiRecipes,
@@ -58,9 +65,11 @@ export const FotosOneCoreRecipes: Recipe[] = [
 ] as Recipe[];
 
 export const FotosReverseMaps = mergeReverseMapDefinitions(
+  new Map(DeviceCoreReverseMaps),
   ReverseMapsStable,
   ReverseMapsExperimental,
   TrustCoreReverseMaps,
+  AssemblyCoreReverseMaps,
   new Map([
     ['FotosShareCertificate', new Set(['subject', 'issuer'])],
     ['FotosShareCertificateChain', new Set(['subject', 'issuer'])],

@@ -1,3 +1,4 @@
+import { DevicesSettings } from './DevicesSettings';
 import { useState } from 'react';
 import { Search, FolderOpen, Download, SlidersHorizontal, ChevronLeft, X } from 'lucide-react';
 import type { FotosSettings, StorageMode, DisplaySettings } from '@/types/fotos';
@@ -27,7 +28,7 @@ export function Sidebar({
     tags, activeTag, onTagClick,
     searchQuery, onSearchChange,
     photoCount, totalCount,
-    settings, onUpdateStorage, onUpdateDisplay, onUpdateDeviceName,
+    settings, onUpdateStorage, onUpdateDisplay,
     folderName, onOpenFolder, onRescan,
     faceSearchActive, onClearFaceSearch
 }: SidebarProps) {
@@ -133,8 +134,7 @@ export function Sidebar({
                     <SettingsTab
                         settings={settings}
                         onUpdateStorage={onUpdateStorage}
-                        onUpdateDeviceName={onUpdateDeviceName}
-                    />
+                        />
                 )}
             </div>
         </aside>
@@ -332,13 +332,13 @@ function SourceRow({ icon, label }: { icon: React.ReactNode; label: string }) {
     );
 }
 
-function SettingsTab({ settings, onUpdateStorage, onUpdateDeviceName }: {
+function SettingsTab({ settings, onUpdateStorage }: {
     settings: FotosSettings;
     onUpdateStorage: (updates: Partial<FotosSettings['storage']>) => void;
-    onUpdateDeviceName: (name: string) => void;
 }) {
     return (
         <>
+            <DevicesSettings />
             <SectionLabel>Storage</SectionLabel>
 
             <SmallField label="Blob directory">
@@ -389,16 +389,6 @@ function SettingsTab({ settings, onUpdateStorage, onUpdateDeviceName }: {
                 />
             </SmallField>
 
-            <SectionLabel>Device</SectionLabel>
-
-            <SmallField label="Device name">
-                <input
-                    type="text"
-                    value={settings.device.name}
-                    onChange={e => onUpdateDeviceName(e.target.value)}
-                    className="sidebar-input"
-                />
-            </SmallField>
         </>
     );
 }

@@ -1,8 +1,8 @@
 /// <reference path="../../../../../one/packages/one.core/@OneObjectInterfaces.d.ts" />
 /// <reference path="../../../../../one/packages/one.models/@OneObjectInterfaces.d.ts" />
-/// <reference path="../../../../../vger/packages/vger.core/@OneObjectInterfaces.d.ts" />
-/// <reference path="../../../../../vger/packages/glue.core/src/recipes/@OneObjectInterfaces.d.ts" />
-/// <reference path="../../../../../vger/packages/assembly.core/src/types/Assembly.ts" />
+/// <reference path="../../../../../one/packages/vger.core/@OneObjectInterfaces.d.ts" />
+/// <reference path="../../../../../one/packages/glue.core/src/recipes/@OneObjectInterfaces.d.ts" />
+/// <reference path="../../../../../one/packages/assembly.core/src/types/Assembly.ts" />
 
 declare module '*?worker&url' {
     const workerUrl: string;

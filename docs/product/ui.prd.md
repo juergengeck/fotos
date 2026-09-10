@@ -2,7 +2,7 @@
 
 Status: Evidence draft
 Owner: fotos product and engineering
-Last updated: 2026-08-02
+Last updated: 2026-08-03
 Related: [PRD](./PRD.md), [MRD](./MRD.md), [UI delivery plan](./ui/README.md)
 
 ## 1. Purpose and Scope
@@ -283,12 +283,12 @@ Remove selection controls from the sidebar Collections block; it becomes a plain
 
 **Priority: P0 — release gate.**
 
-**Problem.** Adding a chip in `ShareWithField` immediately calls `grantNewPeers` → `grantFotosAccess` ([App.tsx:844-872](../../fotos.browser/browser-ui/src/App.tsx#L844)), granting CHUM access to real photos. There is no confirmation, no summary of what is being shared ("your whole gallery — 4,812 photos"), no undo, and nothing in the gallery header ever indicates that a library or collection *is* shared. Revocation is only implicit — removing a chip changes the wanted-peer set, but no UI states whether already-synced content is retracted. Peer resolution failure is a single flat string, "No matching glue identity or person id found." ([ShareWithField.tsx:406](../../fotos.browser/browser-ui/src/components/ShareWithField.tsx#L406)), after a ten-strategy resolver that the user cannot see into.
+**Problem.** Adding a chip in `ShareWithField` immediately calls `grantNewPeers` → `grantFotosAccess` ([App.tsx:844-872](../../fotos.browser/browser-ui/src/App.tsx#L844)), granting CHUM access to real photos. There is no confirmation, no summary of what is being shared ("your whole gallery — 4,812 photos"), no undo, and no persistent control-pane or row indicator that a library or collection *is* shared. Revocation is only implicit — removing a chip changes the wanted-peer set, but no UI states whether already-synced content is retracted. Peer resolution failure is a single flat string, "No matching glue identity or person id found." ([ShareWithField.tsx:406](../../fotos.browser/browser-ui/src/components/ShareWithField.tsx#L406)), after a ten-strategy resolver that the user cannot see into.
 
 **Proposal.**
 
 1. **Explicit share step.** Chips stage a change; a `Share` button commits it behind a confirm sheet that names scope, recipient, and item count: *"Share **Summer 2025** (218 photos) with **anna@glue.one**? They will be able to download originals."*
-2. **Persistent share state.** A shared indicator (avatar stack + count) on the gallery header, collection rows, and cluster rows, clicking through to a "Shared with" panel. Today the only trace is a chip buried three collapsible sections deep.
+2. **Persistent share state.** A shared indicator (avatar stack + count) in the right control pane and on collection and cluster rows, clicking through to the Sharing task. Today the only trace is a chip buried three collapsible sections deep.
 3. **Explicit revoke.** Removing a recipient publishes a newer revocation version of
    the sharing certificate and removes derived access to the affected fotos roots,
    stopping future photos and updates. It does not remotely delete photos already
@@ -310,7 +310,7 @@ Remove selection controls from the sidebar Collections block; it becomes a plain
 1. Make ingest **non-blocking**: render the gallery immediately and stream photos in as they are processed. Demote the overlay to the existing sticky progress strip in `PhotoGrid` — which already exists and is better ([PhotoGrid.tsx:217](../../fotos.ui/src/components/PhotoGrid.tsx#L217)).
 2. Add **Pause** and **Cancel** to every long pass (scan, faces, semantic), plus a "resume later" state — model downloads in particular are large and may be on metered connections.
 3. Replace fabricated bars with **indeterminate** indicators plus a truthful phase label. Show determinate bars only where `current/total` is real.
-4. Collapse the four concurrent progress reporters (overlay, grid strip, sidebar row, marquee) into **one** global status line in the app header, expandable to per-phase detail.
+4. Collapse the four concurrent progress reporters (overlay, grid strip, sidebar row, marquee) into **one** status line in the right control pane, expandable to per-phase detail.
 
 ### UX-05 — The infinite marquee
 
@@ -381,29 +381,40 @@ When the sidebar is collapsed the grid extends to the viewport edge, putting the
 **Proposal.** Define a single **floating-control stack** with reserved lanes:
 
 - Bottom-right lane, bottom-up: contextual FAB (scrubber) → view chrome (fullscreen) → layout chrome (sidebar toggle), each 56px apart, and never more than two visible simultaneously.
-- Move the sidebar toggle out of the floating layer entirely — put it in the app header (see UX-10), which is where a layout control belongs.
+- Move the pane-close action into the pane itself. When closed, use one small
+  edge-mounted reopen handle outside the bottom-right FAB lane (see UX-10).
 - Toasts (`UpdatePrompt`, share progress) get their own bottom-centre lane with a shared stacking manager, so they cannot cover the selection action bar (they currently can — both target bottom-centre).
 
-### UX-10 — There is no app header
+### UX-10 — A persistent app header duplicates the right control pane
 
 **Priority: P1 — structural.**
 
-**Problem.** `GalleryBreadcrumbs` only renders when a filter or detail view is active (`hasGalleryDetail`, [App.tsx:501, 1445](../../fotos.browser/browser-ui/src/App.tsx#L501)). In the default library view the main pane has **no chrome at all** — no library name, no photo count, no search, no mode switch, no actions. All of that is in a 256px sidebar which can be collapsed away entirely. The folder name appears only in a 11px sidebar row ([Sidebar.tsx:727](../../fotos.browser/browser-ui/src/components/Sidebar.tsx#L727)).
+**Problem.** A persistent header duplicates the same information architecture already
+provided by the right control pane: library context, Photos/People, search, sharing,
+settings, identity state, and pane visibility. It permanently consumes vertical photo
+space and can wrap to a second row at narrower widths. Making pane collapse “lossless”
+by copying its controls creates two competing owners instead of a clear maximize state.
 
-**Proposal.** Add a persistent header to the main pane:
+**Proposal.** The right control pane is authoritative:
 
 ```
-[Folder ▾ Summer 2025]   Photos | People      🔍 Search…      [⋯]  [👤 anna]  [☰]
-   ↳ breadcrumb trail appears as a second line when filtered
+┌─ Main photo surface ────────────────────────┬─ Control pane ─────────┐
+│ Grid / People / Lightbox                    │ Library · status       │
+│ Contextual breadcrumb only when drilled in │ Photos | People        │
+│                                            │ Search + result count  │
+│                                            │ Browse | Sharing | ⚙   │
+└────────────────────────────────────────────┴────────────────────────┘
 ```
 
-- Folder switcher (replaces the sidebar Folders list for switching; the list stays in settings for management).
-- **Photos / People segmented control** — this is a primary view mode and currently hides in the sidebar ([Sidebar.tsx:978](../../fotos.browser/browser-ui/src/components/Sidebar.tsx#L978)).
-- **Search moves to the header.** It is the single most-used control and currently sits below the Collections builder in a collapsible sidebar.
-- Identity chip showing auth state, replacing the need to dig into Settings → fotos id to know whether you are signed in.
-- Sidebar toggle.
+- Keep library context and management in the pane, with management under Settings → Library.
+- Put **Photos / People**, scoped search, and result count at the top of Browse.
+- Put identity/sync, sharing state, and background status in the pane navigation area.
+- Put the close action in the pane. When closed, leave one small edge-mounted reopen
+  handle and no persistent top toolbar.
+- Render breadcrumbs only for active drill-down/filter context; selection actions and
+  transient progress may overlay the gallery without becoming global navigation.
 
-This lets the sidebar shrink to what it is good at — filters and facets — and makes collapsing it lossless.
+This preserves the full gallery height and gives every persistent control one owner.
 
 ### UX-11 — Sidebar is six features in one 256px column
 
@@ -417,9 +428,15 @@ This lets the sidebar shrink to what it is good at — filters and facets — an
 
 **Proposal.** Split by task, not by proximity:
 
-1. **Sidebar = filters and facets only**: search scope, collections list, people list, tags, sort, size, sensitivity. No settings, no sharing, no folder management.
-2. **Settings becomes a full-pane view or modal**, not a column: Identity · Library & Storage · Image AI · Sharing · Devices · History · Advanced. Recovery-key setup in particular needs width — it is a 5-step flow with drag-to-reorder image rows currently squeezed into 256px ([FotosSettings.tsx:1276](../../fotos.browser/browser-ui/src/components/FotosSettings.tsx#L1276)).
-3. **Sharing becomes its own view**, reachable from the header `⋯` and from any share affordance, showing all three scopes in one place with a consistent recipient picker.
+1. **Right pane = the control plane**: Browse owns library summary, Photos/People,
+   scoped search, collections, people, tags, sort, size, and sensitivity.
+2. **Settings becomes a peer pane task**, widened or promoted to a full-pane/modal
+   layout when its content requires it: Identity · Library & Storage · Image AI ·
+   Sharing · Devices · History · Advanced. Recovery-key setup in particular needs
+   width — it is a 5-step flow with drag-to-reorder image rows currently squeezed
+   into 256px ([FotosSettings.tsx:1276](../../fotos.browser/browser-ui/src/components/FotosSettings.tsx#L1276)).
+3. **Sharing becomes its own pane task**, reachable from pane navigation and from any
+   share affordance, showing all three scopes in one place with a consistent recipient picker.
 4. Show explicit, labelled tabs on desktop, matching mobile.
 5. Move "AI Audit" (`LLMComparisonPanel`) behind a developer flag — it operates on "the selected photo or first visible photo" ([App.tsx:2524](../../fotos.browser/browser-ui/src/App.tsx#L2524)) and is a diagnostic tool, not a user feature.
 
@@ -534,7 +551,7 @@ There is no undo anywhere in the app. Copy is also ambiguous on the highest-stak
 
 **Problem.** Browser history (`?photo=` routing, [App.tsx:1104](../../fotos.browser/browser-ui/src/App.tsx#L1104)) and a synced "Breadcrumb History" branch tree in settings ([Sidebar.tsx:2449](../../fotos.browser/browser-ui/src/components/Sidebar.tsx#L2449)) coexist with no visible relationship. The branch tree exposes ONE-platform concepts directly — eventIds, branches, "Open <folder> to restore this branch" ([Sidebar.tsx:2700](../../fotos.browser/browser-ui/src/components/Sidebar.tsx#L2700)) — as a settings feature the user must reason about. It is powerful and almost certainly incomprehensible to a family archivist.
 
-**Proposal.** Reframe as **"Saved places"** or **"Continue where you left off"**: a card list with a thumbnail, human label ("Anna · Summer 2025"), and relative time. Surface the most recent entries in the header/home view where they are useful, not in settings. Keep the branch tree behind an Advanced disclosure for users who want it.
+**Proposal.** Reframe as **"Saved places"** or **"Continue where you left off"**: a card list with a thumbnail, human label ("Anna · Summer 2025"), and relative time. Surface the most recent entries in the Browse control pane where they are useful, not in persistent gallery chrome. Keep the branch tree behind an Advanced disclosure for users who want it.
 
 ### UX-23 — Folder/library management is scattered
 
@@ -542,7 +559,7 @@ There is no undo anywhere in the app. Copy is also ambiguous on the highest-stak
 
 **Problem.** Folder state appears in four places: the sidebar `FolderHeader` (name only, [Sidebar.tsx:727](../../fotos.browser/browser-ui/src/components/Sidebar.tsx#L727)), the `Folders` collapsible under Browse (list, switch, remove, rescan, reanalyze), the landing CTA, and the storage settings section. Switching folders is a click on a row buried under a collapsible in a tab.
 
-**Proposal.** One **Library** concept, surfaced in the header folder switcher (UX-10), with management (add, remove, rescan, reanalyze, storage mode, quota) consolidated in Settings → Library. Show per-folder health there: photo count, last scan, pending analysis, sidecar-write status.
+**Proposal.** One **Library** concept, summarized in the right control pane (UX-10), with management (add, remove, rescan, reanalyze, storage mode, quota) consolidated in Settings → Library. Show per-folder health there: photo count, last scan, pending analysis, sidecar-write status.
 
 ### UX-24 — Empty states are dead ends
 
@@ -565,17 +582,15 @@ There is no undo anywhere in the app. Copy is also ambiguous on the highest-stak
 ## 5. Proposed Target IA
 
 ```
-┌─ Header ────────────────────────────────────────────────────────────┐
-│ [Library ▾]  Photos | People       🔍 Search           ⋯   👤   ☰   │
-│ Breadcrumb / active filters                          218 photos     │
-└─────────────────────────────────────────────────────────────────────┘
-┌─ Facets (collapsible) ─┬─ Main pane ───────────────────────────────┐
-│ Collections            │  Grid / People / Lightbox                 │
-│ People                 │                                           │
-│ Tags                   │           ┌─ Selection action bar ─┐      │
-│ Date range             │           │ 12 selected · actions  │      │
-│ Sort / Size            │           └────────────────────────┘      │
-└────────────────────────┴───────────────────────────────────────────┘
+┌─ Main pane ───────────────────────────────┬─ Control pane ─────────┐
+│ Grid / People / Lightbox                  │ Library · sync · status│
+│ Contextual breadcrumb when drilled in     │ Photos | People        │
+│                                           │ Scoped search · count  │
+│        ┌─ Selection action bar ─┐         │ Browse | Sharing | ⚙   │
+│        │ 12 selected · actions  │         │ Collections / facets   │
+│        └────────────────────────┘         │ / current task         │
+└───────────────────────────────────────────┴────────────────────────┘
+  Collapsed pane → one edge reopen handle; no persistent top toolbar
   Status line (ingest/analysis) ─── toast lane ─── floating FAB lane
 
 Full-pane views (not sidebar):
@@ -591,12 +606,34 @@ Implementation is split into bounded epics in the [UI delivery plan](./ui/README
 |---|---|---|
 | [Trustworthy operations](./ui/trustworthy-operations.epic.md) | UX-04–08, UX-12–13 | Remove false state and dead controls; make destructive and modal interactions safe and accessible. |
 | [Unified selection](./ui/selection.epic.md) | UX-01–02 | Define one interaction contract and one authoritative action surface without assuming that heterogeneous selections share one storage shape. |
-| [App shell and navigation](./ui/app-shell.epic.md) | UX-09–11, UX-14, UX-17–18, UX-23 | Introduce persistent orientation and separate browsing, settings, sharing, and advanced tasks. |
+| [App shell and navigation](./ui/app-shell.epic.md) | UX-09–11, UX-14, UX-17–18, UX-23 | Make the right control pane authoritative and separate browsing, settings, sharing, and advanced tasks without persistent top chrome. |
 | [Explicit sharing](./ui/sharing.epic.md) | UX-03, UX-19 | Make access changes staged, reviewable, visible, and honest about revocation. |
 
 UX-15–16 and UX-20–25 remain backlog findings until the four core epics and their
 decision gates are resolved. Accessibility is a cross-cutting release constraint,
 not a late delivery phase.
+
+## 6.1 Executable Flow Coverage
+
+The flow inventory above is also a machine-checked test contract. The browser dev
+server owns an integrated runner in **Settings → QA runner**. Its coverage preflight
+parses every `F<n>` row in this document and compares it with
+`fotos-flow-coverage.mjs`; a missing or stale identifier fails the protocol before
+behavioral probes run.
+
+Two profiles are available:
+
+- **UI protocol:** fresh Playwright contexts, deterministic OPFS-backed photo
+  fixtures, desktop and mobile viewports, user-visible controls, and product-state
+  assertions through the browser debug projection.
+- **Full protocol:** the UI profile plus the UI/domain contract suite and the real
+  multi-instance live-sync, named fotos-ID sharing/revocation, and ad-hoc gallery
+  invite/revocation protocols.
+
+Runner state, current step, timing, failures, and logs are visible in the control
+pane and written to a single Markdown report under
+`fotos.browser/browser-ui/tests/integration/reports/`. See the
+[integrated QA protocol](./testing.md) for evidence ownership and invocation.
 
 ## 7. Product-Level Release Constraints
 

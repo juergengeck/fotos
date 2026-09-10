@@ -101,7 +101,9 @@ function normalizeTextResponse(result: unknown): { response: string; thinking?: 
 }
 
 export class FotosLLMPlan {
-  private readonly platform = new BrowserLLMPlatform();
+  private readonly platform = new BrowserLLMPlatform({
+    getUiLanguage: () => document.documentElement.lang,
+  });
   private readonly llmManager = new LLMManager(this.platform);
   private initialized = false;
   private loadedModelId: string | null = null;

@@ -8,12 +8,14 @@ import type { FotosHistoryBranchNode } from '@/lib/fotosHistorySettings';
 import { useDeviceSettings, type FotosDeviceSettings } from '@/hooks/useDeviceSettings';
 import { writeStoredSidebarTab } from '@/lib/authFlowState';
 import { FotosSettings as FotosSettingsPanel } from './FotosSettings';
+import { FotosTestRunnerPanel } from './FotosTestRunnerPanel';
 import { InlineRenameField } from './InlineRenameField';
 import { LLMComparisonPanel } from './LLMComparisonPanel';
 import { ShareWithField, type SharePeerOption } from './ShareWithField';
 import type { ManagedFolder } from '@/hooks/useFolderAccess';
 import { ShareInviteCard } from './ShareInviteCard';
-import type {ReceivedFotosShareScope} from '@/lib/fotosReceivedShareProjection';
+import type {ReceivedFotosShareScope} from '@refinio/fotos.core/received-shares';
+import {BrowseControls, ControlPaneHeader} from './ControlPaneHeader';
 
 export type SidebarTab = 'browse' | 'sharing' | 'settings';
 
@@ -25,6 +27,10 @@ interface SidebarProps {
     activeTag: string | null;
     onTagClick: (tag: string | null) => void;
     browseSummary: string;
+    searchQuery: string;
+    onSearchChange: (query: string) => void;
+    searchResultCount: number;
+    searchTotalCount: number;
     settings: FotosSettings;
     acceptSharing: boolean;
     onUpdateStorage: (updates: Partial<FotosSettings['storage']>) => void;
@@ -59,6 +65,12 @@ interface SidebarProps {
     fotosModel?: FotosModel | null;
     mobile?: boolean;
     galleryMode: 'images' | 'clusters';
+    onGalleryModeChange: (mode: 'images' | 'clusters') => void;
+    identityReady: boolean;
+    identityLabel?: string | null;
+    backgroundStatus?: string | null;
+    onOpenShortcuts: () => void;
+    onClose?: () => void;
     collections: FotosCollectionSummary[];
     activeCollectionId: string | null;
     onCollectionSelect: (collectionId: string | null) => void;
@@ -111,7 +123,7 @@ export function Sidebar({
     onTabChange,
     openRequest = 0,
     tags, activeTag, onTagClick,
-    browseSummary,
+    browseSummary, searchQuery, onSearchChange, searchResultCount, searchTotalCount,
     settings, acceptSharing, onUpdateStorage, onUpdateDisplay, onUpdateDeviceName, onUpdateAnalysis,
     historyEnabled, historyReady, historyCurrentEventId, historyBranchTree,
     historyVisibleEntryCount, historyBranchCount,
@@ -122,7 +134,8 @@ export function Sidebar({
     faceSearchActive, onClearFaceSearch,
     fotosModel,
     mobile,
-    galleryMode,
+    galleryMode, onGalleryModeChange,
+    identityReady, identityLabel, backgroundStatus, onOpenShortcuts, onClose,
     collections,
     activeCollectionId,
     onCollectionSelect,
@@ -270,6 +283,16 @@ export function Sidebar({
                         </div>
                     </div>
 
+                    <ControlPaneHeader
+                        folderName={folderName ?? 'Photos'}
+                        identityReady={identityReady}
+                        identityLabel={identityLabel}
+                        backgroundStatus={backgroundStatus}
+                        galleryShareCount={gallerySharePersonIds.length}
+                        onOpenSharing={() => setTab('sharing')}
+                        onOpenShortcuts={onOpenShortcuts}
+                    />
+
                     {/* Top Tab Headers (Landscape/Desktop Only) */}
                     <div className="hidden landscape:flex items-center border-b border-white/10 shrink-0">
                         <SidebarTabHeader tab={tab} setTab={setTab} />
@@ -287,7 +310,16 @@ export function Sidebar({
 
                 <div className="min-h-0 flex-1 overflow-y-auto p-3 space-y-4">
                     {tab === 'browse' && (
-                        <BrowseTab
+                        <>
+                            <BrowseControls
+                                mode={galleryMode}
+                                query={searchQuery}
+                                resultCount={searchResultCount}
+                                totalCount={searchTotalCount}
+                                onModeChange={onGalleryModeChange}
+                                onQueryChange={onSearchChange}
+                            />
+                            <BrowseTab
                             tags={tags} activeTag={activeTag} onTagClick={onTagClick}
                             browseSummary={browseSummary}
                             settings={settings}
@@ -324,7 +356,8 @@ export function Sidebar({
                             onCollectionContextMenu={onCollectionContextMenu}
                             showOnboarding={showOnboarding}
                             onDismissOnboarding={onDismissOnboarding}
-                        />
+                            />
+                        </>
                     )}
                     {tab === 'sharing' && (
                         <LibrarySharingPanel
@@ -402,6 +435,17 @@ export function Sidebar({
         <aside className={`
             ${tab === 'browse' ? 'w-64' : 'w-[min(34rem,48vw)]'} h-full min-h-0 overflow-hidden flex flex-col bg-[#0d0d0d] border-l border-white/10 shrink-0
         `}>
+            <ControlPaneHeader
+                folderName={folderName ?? 'Photos'}
+                identityReady={identityReady}
+                identityLabel={identityLabel}
+                backgroundStatus={backgroundStatus}
+                galleryShareCount={gallerySharePersonIds.length}
+                onOpenSharing={() => setTab('sharing')}
+                onOpenShortcuts={onOpenShortcuts}
+                onClose={onClose}
+            />
+
             {/* Tabs */}
             <div className="flex items-center border-b border-white/10">
                 <SidebarTabHeader tab={tab} setTab={setTab} />
@@ -421,7 +465,16 @@ export function Sidebar({
             {/* Content */}
             <div className="min-h-0 flex-1 overflow-y-auto p-3 space-y-4">
                 {tab === 'browse' && (
-                    <BrowseTab
+                    <>
+                        <BrowseControls
+                            mode={galleryMode}
+                            query={searchQuery}
+                            resultCount={searchResultCount}
+                            totalCount={searchTotalCount}
+                            onModeChange={onGalleryModeChange}
+                            onQueryChange={onSearchChange}
+                        />
+                        <BrowseTab
                         tags={tags}
                         activeTag={activeTag}
                         onTagClick={onTagClick}
@@ -462,7 +515,8 @@ export function Sidebar({
                         onCollectionContextMenu={onCollectionContextMenu}
                         showOnboarding={showOnboarding}
                         onDismissOnboarding={onDismissOnboarding}
-                    />
+                        />
+                    </>
                 )}
                 {tab === 'sharing' && (
                     <LibrarySharingPanel
@@ -1847,6 +1901,7 @@ function SettingsTab({
         { id: 'settings-imageai', label: 'Image AI' },
         { id: 'settings-history', label: 'Saved places' },
         { id: 'settings-devices', label: 'Devices' },
+        ...(import.meta.env.DEV ? [{ id: 'settings-qa', label: 'QA runner' }] : []),
     ] as const;
 
     const [activeSection, setActiveSection] = useState<string>(settingsSections[0].id);
@@ -1907,7 +1962,7 @@ function SettingsTab({
         <div className="flex flex-col -m-3 min-h-0">
             {/* Sticky pill navigation */}
             <div className="sticky top-0 z-10 bg-[#0d0d0d] border-b border-white/8 px-3 py-2">
-                <div className="flex gap-1 overflow-x-auto scrollbar-none">
+                <div className="flex gap-1 overflow-x-auto scrollbar-none" aria-label="Settings sections">
                     {settingsSections.map(section => (
                         <button
                             key={section.id}
@@ -2094,6 +2149,12 @@ function SettingsTab({
                         onUpdateSettings={updateDeviceSettings}
                     />
                 </div>
+
+                {import.meta.env.DEV ? (
+                    <div id="settings-qa" ref={el => setSectionRef('settings-qa', el)}>
+                        <FotosTestRunnerPanel />
+                    </div>
+                ) : null}
             </div>
         </div>
     );
