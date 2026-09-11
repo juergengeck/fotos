@@ -1,7 +1,7 @@
 import type {OneObjectTypeNames} from '@refinio/one.core/lib/recipes.js';
 import {calculateHashOfObj} from '@refinio/one.core/lib/util/object.js';
 import {createCryptoHash} from '@refinio/one.core/lib/system/crypto-helpers.js';
-import {projectReceivedFotosShares, type ReceivedFotosShareScope} from './received-shares.js';
+import {projectReceivedFotosShares} from './received-shares.js';
 import {readFotosOriginal} from './fotos-file-system.js';
 import type {FotosEntry} from './recipes/FotosRecipes.js';
 export {FotosRecipes} from './recipes/FotosRecipes.js';
@@ -24,8 +24,8 @@ function canonical(value: string): string {
   return value;
 }
 /** Stable collection address includes its issuer to distinguish independently shared collections. */
-function collectionPath(scope: ReceivedFotosShareScope): string {
-  return `/${encodeURIComponent(scope.scope.id).replace(/\./g, '%2E')} (${scope.issuer})`;
+export function getSharedFotosCollectionPath(scopeId: string, issuer: string): string {
+  return `/${encodeURIComponent(scopeId).replace(/\./g, '%2E')} (${issuer})`;
 }
 
 /** Read-only collection folders reached through verified Fotos sharing certificates. */
@@ -45,7 +45,7 @@ export class SharedFotosFileSystem {
     const directories = new Set(['/']);
     const photos: Photo[] = [];
     for (const scope of scopes) {
-      const root = collectionPath(scope);
+      const root = getSharedFotosCollectionPath(scope.scope.id, scope.issuer);
       directories.add(root);
       for (const entry of scope.entries) {
         if (!entry.sourcePath) failure(-22, 'Shared Fotos entry has no source path');

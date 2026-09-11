@@ -261,6 +261,11 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
 
     const chooseSharedGalleryDestination = useCallback(async () => false, []);
 
+    const importLocalFiles = useCallback(async (
+        _files: readonly File[],
+        _options: {useAppLocalFolder?: boolean} = {},
+    ) => false, []);
+
     const renameFace = useCallback(async (_clusterId: string, _name: string) => {
         // Future: POST to headless
     }, []);
@@ -313,6 +318,7 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
         removeFolder,
         chooseSharedGalleryDestination,
         openLocalFiles,
+        importLocalFiles,
         rescan,
         deletePhoto,
         reanalyzeFaces,

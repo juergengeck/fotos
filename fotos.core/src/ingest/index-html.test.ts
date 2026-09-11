@@ -1,6 +1,14 @@
 // index-html.test.ts
 import { describe, it, expect } from 'vitest';
-import { renderIndexHtml, parseIndexHtml, parseFolderMeta, parseFolderIndex, escapeHtml, formatSize } from './index-html.js';
+import {
+    renderIndexHtml,
+    parseIndexHtml,
+    parseFolderMeta,
+    parseFolderIndex,
+    escapeHtml,
+    formatSize,
+    parseFotosEntryByteSize,
+} from './index-html.js';
 import type { FolderMetadata } from './types.js';
 
 describe('escapeHtml', () => {
@@ -13,6 +21,20 @@ describe('formatSize', () => {
     it('formats bytes', () => { expect(formatSize(512)).toBe('512 B'); });
     it('formats megabytes', () => { expect(formatSize(2_500_000)).toBe('2.4 MB'); });
     it('formats zero', () => { expect(formatSize(0)).toBe('0 B'); });
+});
+
+describe('parseFotosEntryByteSize', () => {
+    it('rejects indexes without exact byte metadata', () => {
+        expect(() => parseFotosEntryByteSize(undefined)).toThrow('re-ingest the index');
+    });
+
+    it('rejects malformed exact byte metadata', () => {
+        expect(() => parseFotosEntryByteSize('14 KB')).toThrow('Invalid Fotos entry byte size');
+    });
+
+    it('rejects unsafe exact byte metadata', () => {
+        expect(() => parseFotosEntryByteSize('9007199254740992')).toThrow('safe integer range');
+    });
 });
 
 describe('renderIndexHtml + parseIndexHtml roundtrip', () => {
@@ -39,6 +61,23 @@ describe('renderIndexHtml + parseIndexHtml roundtrip', () => {
         expect(parsed).toHaveLength(1);
         expect(parsed[0].name).toBe('photo.jpg');
         expect(parsed[0].contentHash).toBe('abc123');
+    });
+
+    it('roundtrips exact byte size independently from rounded display text', () => {
+        const entries = [{
+            name: 'exact.png',
+            size: 14_320,
+            mtime: Date.now(),
+            mime: 'image/png',
+            contentHash: 'exact-hash',
+            path: 'exact.png',
+            data: {'content-hash': 'exact-hash', 'stream-id': 'exact-stream'},
+        }];
+
+        const html = renderIndexHtml('.', entries, [], Date.now());
+        expect(html).toContain('data-size-bytes="14320"');
+        expect(html).toContain('<td class="fs-size">14 KB</td>');
+        expect(parseIndexHtml(html, '')[0]?.size).toBe(14_320);
     });
 
     it('roundtrips stream-id and exif data', () => {
@@ -294,7 +333,14 @@ describe('parseFolderIndex full roundtrip', () => {
 function legacyIndexHtml(opts: {
     path: string;
     childLinks?: { href: string; label: string }[];
-    entries?: { name: string; mime: string; hash: string; exifDate?: string; size?: string }[];
+    entries?: {
+        name: string;
+        mime: string;
+        hash: string;
+        exifDate?: string;
+        size?: string;
+        sizeBytes?: number;
+    }[];
 }): string {
     const childRows = (opts.childLinks ?? []).map(c =>
         `        <tr class="fs-child">
@@ -307,7 +353,7 @@ function legacyIndexHtml(opts: {
     const entryRows = (opts.entries ?? []).map(e => {
         let attrs = ` data-mime="${e.mime}" data-hash="${e.hash}"`;
         if (e.exifDate) attrs += ` data-exif-date="${e.exifDate}"`;
-        return `        <tr class="fs-entry"${attrs}>
+        return `        <tr class="fs-entry" data-size-bytes="${e.sizeBytes ?? 2_621_440}"${attrs}>
             <td class="fs-icon">\u{1F5BC}</td>
             <td class="fs-name">${e.name}</td>
             <td class="fs-faces"></td>
@@ -416,8 +462,8 @@ describe('parseFolderIndex — legacy data-* format', () => {
         const html = legacyIndexHtml({
             path: '2017',
             entries: [
-                { name: 'photo1.jpg', mime: 'image/jpeg', hash: 'abc123', exifDate: '2017-03-15', size: '2.5 MB' },
-                { name: 'photo2.jpg', mime: 'image/jpeg', hash: 'def456', exifDate: '2017-08-20', size: '1.8 MB' },
+                { name: 'photo1.jpg', mime: 'image/jpeg', hash: 'abc123', exifDate: '2017-03-15', size: '2.5 MB', sizeBytes: 2_621_440 },
+                { name: 'photo2.jpg', mime: 'image/jpeg', hash: 'def456', exifDate: '2017-08-20', size: '1.8 MB', sizeBytes: 1_887_437 },
             ],
         });
         const result = parseFolderIndex(html, '2017');

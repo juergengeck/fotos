@@ -11,6 +11,8 @@ const {
     getInstanceIdHashMock,
     getInstanceOwnerIdHashMock,
     appendMediaBookContentMock,
+    storeArrayBufferAsBlobMock,
+    hashImageFileMock,
 } = vi.hoisted(() => ({
     storeVersionedObjectMock: vi.fn(async (obj: Record<string, unknown>) => ({
         hash: `${String(obj.$type$)}-hash`,
@@ -38,6 +40,8 @@ const {
     getInstanceIdHashMock: vi.fn(() => 'instance-id-hash'),
     getInstanceOwnerIdHashMock: vi.fn(() => 'owner-hash'),
     appendMediaBookContentMock: vi.fn(async () => undefined),
+    storeArrayBufferAsBlobMock: vi.fn(async () => ({hash: 'original-blob-hash'})),
+    hashImageFileMock: vi.fn(async () => 'photo-hash'),
 }));
 
 vi.mock('@refinio/one.core/lib/storage-versioned-objects.js', () => ({
@@ -49,8 +53,12 @@ vi.mock('@refinio/one.core/lib/storage-versioned-objects.js', () => ({
 }));
 
 vi.mock('@refinio/one.core/lib/storage-blob.js', () => ({
-    storeArrayBufferAsBlob: vi.fn(),
+    storeArrayBufferAsBlob: storeArrayBufferAsBlobMock,
     readBlobAsArrayBuffer: vi.fn(),
+}));
+
+vi.mock('./browserIngest.js', () => ({
+    hashImageFile: hashImageFileMock,
 }));
 
 vi.mock('@refinio/one.core/lib/instance.js', () => ({
@@ -115,10 +123,32 @@ describe('fotos sync authorship toggle', () => {
         getInstanceIdHashMock.mockReset().mockReturnValue('instance-id-hash');
         getInstanceOwnerIdHashMock.mockReset().mockReturnValue('owner-hash');
         appendMediaBookContentMock.mockClear();
+        storeArrayBufferAsBlobMock.mockClear().mockResolvedValue({hash: 'original-blob-hash'});
+        hashImageFileMock.mockClear().mockResolvedValue('photo-hash');
     });
 
     it('claims authorship by default', () => {
         expect(shouldClaimFotosAuthorship()).toBe(true);
+    });
+
+    it('preserves declared GIF MIME in synced entries and original variants without a filename extension', async () => {
+        await syncPhotosToOneCore([{
+            hash: 'gif-hash',
+            name: 'animation',
+            mimeType: 'image/gif',
+            size: 123,
+            managed: 'metadata',
+            tags: [],
+            addedAt: '2026-09-11T00:00:00.000Z',
+        }], null, {claimAuthorship: false});
+
+        const objects = storeVersionedObjectMock.mock.calls.map(([object]) => object);
+        expect(objects.find(object => object.$type$ === 'FotosEntry')).toMatchObject({
+            contentHash: 'gif-hash', mime: 'image/gif',
+        });
+        expect(objects.find(object => object.$type$ === 'FotosMediaVariant' && object.role === 'original')).toMatchObject({
+            contentHash: 'gif-hash', mime: 'image/gif',
+        });
     });
 
     it('adapts a missing ONE.core version head to an optional source.media read', async () => {
@@ -167,5 +197,69 @@ describe('fotos sync authorship toggle', () => {
         expect(createFotosAuthenticityAttestationMock).toHaveBeenCalledWith('photo-hash', expect.any(Object));
         expect(addAuthenticityAttestationToManifestMock).toHaveBeenCalledTimes(1);
         expect(storeVersionedObjectMock).toHaveBeenCalledTimes(6);
+    });
+
+    it('publishes verified local original bytes through the original media variant', async () => {
+        const bytes = new Uint8Array([1, 2, 3, 4]);
+        const file = {
+            size: bytes.byteLength,
+            arrayBuffer: vi.fn(async () => bytes.buffer),
+        } as unknown as File;
+        const rootHandle = {
+            getFileHandle: vi.fn(async () => ({
+                getFile: vi.fn(async () => file),
+            })),
+        } as unknown as FileSystemDirectoryHandle;
+
+        await syncPhotosToOneCore([{
+            hash: 'photo-hash',
+            name: 'photo.png',
+            sourcePath: 'photo.png',
+            size: bytes.byteLength,
+            managed: 'metadata',
+            tags: [],
+            addedAt: '2026-09-11T00:00:00.000Z',
+        }], rootHandle, {
+            claimAuthorship: false,
+            requireOriginalBlob: true,
+        });
+
+        expect(hashImageFileMock).toHaveBeenCalledWith(file);
+        expect(storeArrayBufferAsBlobMock).toHaveBeenCalledOnce();
+        const originalVariant = storeVersionedObjectMock.mock.calls
+            .map(([object]) => object)
+            .find(object => object.$type$ === 'FotosMediaVariant' && object.role === 'original');
+        expect(originalVariant).toMatchObject({
+            contentHash: 'photo-hash',
+            role: 'original',
+            blob: 'original-blob-hash',
+        });
+    });
+
+    it('rejects portable publication when source bytes no longer match the entry identity', async () => {
+        const file = {
+            size: 4,
+            arrayBuffer: vi.fn(async () => new Uint8Array([1, 2, 3, 4]).buffer),
+        } as unknown as File;
+        const rootHandle = {
+            getFileHandle: vi.fn(async () => ({
+                getFile: vi.fn(async () => file),
+            })),
+        } as unknown as FileSystemDirectoryHandle;
+        hashImageFileMock.mockResolvedValue('different-photo-hash');
+
+        await expect(syncPhotosToOneCore([{
+            hash: 'photo-hash',
+            name: 'photo.png',
+            sourcePath: 'photo.png',
+            size: 4,
+            managed: 'metadata',
+            tags: [],
+            addedAt: '2026-09-11T00:00:00.000Z',
+        }], rootHandle, {
+            claimAuthorship: false,
+            requireOriginalBlob: true,
+        })).rejects.toThrow('Original content changed');
+        expect(storeArrayBufferAsBlobMock).not.toHaveBeenCalled();
     });
 });

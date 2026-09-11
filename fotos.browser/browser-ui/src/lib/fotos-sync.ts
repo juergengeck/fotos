@@ -26,6 +26,7 @@ import {
     addEntryToManifest,
 } from './fotos-manifest.js';
 import {EMBEDDING_DIM, facesToDataAttrs} from '@refinio/fotos.core';
+import {getMediaMimeType} from '@refinio/media.core/media-types';
 import type {
     FaceResult,
     FaceAnalysisResult,
@@ -54,9 +55,12 @@ import {
     createMediaSource,
     createMediaSourceEntry,
 } from '@refinio/source.media/services';
+import {hashImageFile} from './browserIngest.js';
 
 export interface SyncPhotosToOneCoreOptions {
     claimAuthorship?: boolean;
+    /** Fail the sync when a local original cannot be published as a portable BLOB. */
+    requireOriginalBlob?: boolean;
 }
 
 export function shouldClaimFotosAuthorship(
@@ -82,33 +86,6 @@ export async function getVersionedObjectIfPresent(idHash: SHA256IdHash<any>) {
         if (isMissingVersionedObject(error)) return undefined;
         throw error;
     }
-}
-
-/**
- * Infer MIME type from file extension.
- */
-function mimeFromName(name: string): string {
-    const ext = name.split('.').pop()?.toLowerCase() ?? '';
-    const map: Record<string, string> = {
-        jpg: 'image/jpeg',
-        jpeg: 'image/jpeg',
-        png: 'image/png',
-        gif: 'image/gif',
-        webp: 'image/webp',
-        avif: 'image/avif',
-        heic: 'image/heic',
-        heif: 'image/heif',
-        tiff: 'image/tiff',
-        tif: 'image/tiff',
-        bmp: 'image/bmp',
-        svg: 'image/svg+xml',
-        mp4: 'video/mp4',
-        mov: 'video/quicktime',
-        avi: 'video/x-msvideo',
-        mkv: 'video/x-matroska',
-        webm: 'video/webm',
-    };
-    return map[ext] ?? 'application/octet-stream';
 }
 
 /**
@@ -164,6 +141,31 @@ async function storeEphemeralThumbnailBlob(
         console.warn(`[fotos-sync] Failed to store ephemeral thumbnail ${thumbUrl}:`, err);
         return undefined;
     }
+}
+
+async function storeOriginalBlob(
+    rootHandle: FileSystemDirectoryHandle | null,
+    photo: PhotoEntry,
+): Promise<SHA256Hash<BLOB> | undefined> {
+    const sourcePath = photo.sourcePath?.trim();
+    if (!rootHandle || !sourcePath || sourcePath.startsWith('remote:')) {
+        return undefined;
+    }
+
+    const file = await readFileFromHandle(rootHandle, sourcePath);
+    if (file.size !== photo.size) {
+        throw new Error(
+            `[fotos-sync] Original size changed for ${sourcePath}: expected ${photo.size}, got ${file.size}`,
+        );
+    }
+    const contentHash = await hashImageFile(file);
+    if (contentHash !== photo.hash) {
+        throw new Error(
+            `[fotos-sync] Original content changed for ${sourcePath}: expected ${photo.hash}, got ${contentHash}`,
+        );
+    }
+
+    return (await storeArrayBufferAsBlob(await file.arrayBuffer())).hash;
 }
 
 function isPersistentBrowserLocator(locator: string | undefined): locator is string {
@@ -261,6 +263,7 @@ async function storeFotosMediaState(
     photo: PhotoEntry,
     entryIdHash: SHA256IdHash<FotosEntry>,
     mime: string,
+    originalBlobHash?: SHA256Hash<BLOB>,
     thumbBlobHash?: SHA256Hash<BLOB>,
 ): Promise<{
     variants: Set<SHA256Hash<FotosMediaVariant>>;
@@ -281,6 +284,7 @@ async function storeFotosMediaState(
         byteSize: photo.size,
         width: photo.exif?.width,
         height: photo.exif?.height,
+        blob: originalBlobHash,
         createdAt: photo.capturedAt ?? photo.addedAt ?? photo.updatedAt,
         label: photo.name,
     });
@@ -478,6 +482,7 @@ export async function syncPhotoToOneCore(
     photo: PhotoEntry,
     rootHandle: FileSystemDirectoryHandle | null,
     authenticityContext: FotosAuthenticityContext | null = null,
+    options: SyncPhotosToOneCoreOptions = {},
 ): Promise<void> {
     const author = getInstanceOwnerIdHash() as SHA256IdHash<Person> | null;
     if (!author) {
@@ -485,7 +490,7 @@ export async function syncPhotoToOneCore(
     }
 
     // Build the FotosEntry
-    const mime = mimeFromName(photo.name);
+    const mime = getMediaMimeType(photo.name, photo.mimeType);
     const entry: FotosEntry = {
         $type$: 'FotosEntry',
         contentHash: photo.hash,
@@ -535,8 +540,19 @@ export async function syncPhotoToOneCore(
         entry.faceCount = photo.faces.count;
     }
 
+    const originalBlobHash = await storeOriginalBlob(rootHandle, photo);
+    if (options.requireOriginalBlob && !originalBlobHash && !photo.sourcePath?.startsWith('remote:')) {
+        throw new Error(`[fotos-sync] Local original is unavailable for ${photo.name}`);
+    }
+
     const entryIdHash = await calculateIdHashOfObj(entry as any) as SHA256IdHash<FotosEntry>;
-    const mediaState = await storeFotosMediaState(photo, entryIdHash, mime, thumbHash);
+    const mediaState = await storeFotosMediaState(
+        photo,
+        entryIdHash,
+        mime,
+        originalBlobHash,
+        thumbHash,
+    );
     if (mediaState.variants.size > 0) {
         entry.variants = mediaState.variants;
     }
@@ -625,6 +641,7 @@ export async function syncPhotosToOneCore(
 
     let synced = 0;
     let errors = 0;
+    const failureMessages: string[] = [];
     const authenticityContext = shouldClaimFotosAuthorship(options)
         ? await resolveFotosAuthenticityContext().catch(err => {
             console.warn('[fotos-sync] Authenticity signing unavailable:', err);
@@ -634,15 +651,21 @@ export async function syncPhotosToOneCore(
 
     for (const photo of photos) {
         try {
-            await syncPhotoToOneCore(photo, rootHandle, authenticityContext);
+            await syncPhotoToOneCore(photo, rootHandle, authenticityContext, options);
             synced++;
         } catch (err) {
             errors++;
+            failureMessages.push(err instanceof Error ? err.message : String(err));
             console.warn(`[fotos-sync] Failed to sync ${photo.name}:`, err);
         }
     }
 
     console.log(`[fotos-sync] Complete: ${synced} synced, ${errors} errors`);
+    if (options.requireOriginalBlob && errors > 0) {
+        throw new Error(
+            `[fotos-sync] Failed to publish ${errors} local original${errors === 1 ? '' : 's'}: ${failureMessages.join('; ')}`,
+        );
+    }
 }
 
 /**

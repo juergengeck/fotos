@@ -65,6 +65,10 @@ const mocks = vi.hoisted(() => ({
             : obj?.$type$ === 'Book'
                 ? 'media-book-id-hash'
                 : 'manifest-id-hash'),
+    getObject: vi.fn(async (hash?: string) => ({
+        $type$: 'FotosEntry',
+        contentHash: hash === 'old-entry-hash' ? 'same-photo' : hash,
+    })),
 }));
 
 vi.mock('@refinio/one.core/lib/access.js', () => ({
@@ -95,7 +99,7 @@ vi.mock('@refinio/one.core/lib/instance.js', () => ({
 }));
 
 vi.mock('@refinio/one.core/lib/storage-unversioned-objects.js', () => ({
-    getObject: vi.fn(),
+    getObject: mocks.getObject,
 }));
 
 vi.mock('@refinio/one.core/lib/util/object.js', () => ({
@@ -138,7 +142,11 @@ describe('grantFotosAccess', () => {
                 ? 'device-book-id-hash'
                 : obj?.$type$ === 'Book'
                     ? 'media-book-id-hash'
-                    : 'manifest-id-hash');
+                : 'manifest-id-hash');
+        mocks.getObject.mockClear().mockImplementation(async (hash?: string) => ({
+            $type$: 'FotosEntry',
+            contentHash: hash === 'old-entry-hash' ? 'same-photo' : hash,
+        }));
     });
 
     it('grants manifest access through the access-manager feed-forward path', async () => {
@@ -228,6 +236,30 @@ describe('grantFotosAccess', () => {
             $type$: 'FotosManifest',
             id: 'fotos',
             entries: expect.any(Set),
+        }));
+    });
+
+    it('replaces an older concrete version of the same logical photo entry', async () => {
+        mocks.getObjectByIdHash.mockResolvedValue({
+            hash: 'manifest-version-hash',
+            obj: {
+                $type$: 'FotosManifest',
+                id: 'fotos',
+                entries: new Set(['old-entry-hash', 'other-entry-hash']),
+                authenticityAttestations: new Set(),
+            },
+        });
+        mocks.getObject.mockImplementation(async (hash?: string) => ({
+            $type$: 'FotosEntry',
+            contentHash: hash === 'old-entry-hash' || hash === 'new-entry-hash'
+                ? 'same-photo'
+                : 'other-photo',
+        }));
+
+        await addEntryToManifest('new-entry-hash' as any);
+
+        expect(mocks.storeVersionedObject).toHaveBeenCalledWith(expect.objectContaining({
+            entries: new Set(['other-entry-hash', 'new-entry-hash']),
         }));
     });
 

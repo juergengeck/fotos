@@ -462,14 +462,27 @@ export async function addEntryToManifest(entryHash: SHA256Hash<FotosEntry>): Pro
 
     const existing = await getObjectByIdHash(manifestIdHash);
     const manifest = existing.obj as unknown as FotosManifest;
-    const entries = new Set(manifest.entries);
+    const incomingEntry = await getObject(entryHash);
+    const entries = new Set<SHA256Hash<FotosEntry>>();
+    for (const currentHash of manifest.entries) {
+        if (currentHash === entryHash) {
+            entries.add(currentHash);
+            continue;
+        }
+        const currentEntry = await getObject(currentHash);
+        if (currentEntry.contentHash !== incomingEntry.contentHash) {
+            entries.add(currentHash);
+        }
+    }
     const authenticityAttestations = new Set(manifest.authenticityAttestations ?? []);
 
-    if (entries.has(entryHash)) {
+    entries.add(entryHash);
+    if (
+        entries.size === manifest.entries.size
+        && Array.from(entries).every(hash => manifest.entries.has(hash))
+    ) {
         return;
     }
-
-    entries.add(entryHash);
 
     const storedManifest = await storeVersionedObject({
         $type$: 'FotosManifest',

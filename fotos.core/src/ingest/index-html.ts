@@ -113,7 +113,7 @@ export function renderIndexHtml(
 
         const facesHtml = renderFacesCell(e.data);
 
-        return `        <tr class="fs-entry"${attrs}>
+        return `        <tr class="fs-entry" data-size-bytes="${e.size}"${attrs}>
             <td class="fs-icon">\u{1F5BC}</td>
             <td class="fs-name">${nameContent}</td>
             <td class="fs-faces">${facesHtml}</td>
@@ -212,13 +212,21 @@ function extractTextContent(html: string, className: string): string {
     return parts.length > 0 ? parts[parts.length - 1] : stripped;
 }
 
-function parseSize(text: string): number {
-    const match = text.match(/([\d.]+)\s*(B|KB|MB|GB|TB)/i);
-    if (!match) return 0;
-    const val = parseFloat(match[1]);
-    const unit = match[2].toUpperCase();
-    const mult: Record<string, number> = {B: 1, KB: 1024, MB: 1048576, GB: 1073741824, TB: 1099511627776};
-    return Math.round(val * (mult[unit] ?? 1));
+/** Parse the exact byte count required on every Fotos index entry. */
+export function parseFotosEntryByteSize(
+    exactBytes: string | undefined,
+): number {
+    if (exactBytes === undefined) {
+        throw new Error('Fotos index entry lacks exact byte size; re-ingest the index');
+    }
+    if (!/^(0|[1-9]\d*)$/.test(exactBytes)) {
+        throw new Error(`Invalid Fotos entry byte size: ${exactBytes}`);
+    }
+    const size = Number(exactBytes);
+    if (!Number.isSafeInteger(size)) {
+        throw new Error(`Fotos entry byte size exceeds the safe integer range: ${exactBytes}`);
+    }
+    return size;
 }
 
 export interface ParsedPhotoEntry {
@@ -425,8 +433,6 @@ export function parseIndexHtml(html: string, relPath: string): ParsedPhotoEntry[
         const streamId = getAttr(attrs, 'data-stream-id') ?? '';
         const contentHash = getAttr(attrs, 'data-content-hash') ?? getAttr(attrs, 'data-hash') ?? '';
         const thumb = getAttr(attrs, 'data-thumb');
-        const sizeText = extractTextContent(rowHtml, 'fs-size');
-
         const entry: ParsedPhotoEntry = {
             hash: streamId || contentHash,
             name,
@@ -435,7 +441,7 @@ export function parseIndexHtml(html: string, relPath: string): ParsedPhotoEntry[
             sourcePath: relPath ? `${relPath}/${name}` : name,
             thumb: thumb ? (relPath ? `${relPath}/one/${thumb}` : `one/${thumb}`) : undefined,
             mime,
-            size: parseSize(sizeText),
+            size: parseFotosEntryByteSize(getAttr(attrs, 'data-size-bytes')),
             tags: relPath ? [relPath.split('/')[0]] : [],
             addedAt: getAttr(attrs, 'data-exif-date') ?? new Date().toISOString(),
         };

@@ -18,6 +18,7 @@ import type {
     GallerySurfaceProfile,
 } from '@refinio/fotos.core';
 import { copyFilesToDirectory, ingestDirectory, type IngestProgress, type FaceWorkerHandle } from '@/lib/browserIngest';
+import {parseFotosEntryByteSize} from '../../../../fotos.core/src/ingest/index-html.js';
 import { createFaceWorker } from '@/lib/faceWorkerClient';
 import { createSemanticWorker } from '@/lib/semanticWorkerClient';
 import { isMobile } from '@/lib/platform';
@@ -357,8 +358,6 @@ function parseOneIndex(html: string, relPath: string): PhotoEntry[] {
         const streamId = row.getAttribute('data-stream-id') ?? '';
         const contentHash = row.getAttribute('data-content-hash') ?? row.getAttribute('data-hash') ?? '';
         const thumb = row.getAttribute('data-thumb');
-        const sizeText = row.querySelector('.fs-size')?.textContent?.trim() ?? '0';
-
         const exif: ExifData = {};
         const exifDate = row.getAttribute('data-exif-date');
         if (exifDate) exif.date = exifDate;
@@ -480,15 +479,9 @@ function parseOneIndex(html: string, relPath: string): PhotoEntry[] {
             semantic = null;
         }
 
-        // Parse size from display text (e.g., "4.2 MB")
-        let size = 0;
-        const sizeMatch = sizeText.match(/([\d.]+)\s*(B|KB|MB|GB|TB)/i);
-        if (sizeMatch) {
-            const val = parseFloat(sizeMatch[1]);
-            const unit = sizeMatch[2].toUpperCase();
-            const multipliers: Record<string, number> = { B: 1, KB: 1024, MB: 1048576, GB: 1073741824, TB: 1099511627776 };
-            size = Math.round(val * (multipliers[unit] ?? 1));
-        }
+        const size = parseFotosEntryByteSize(
+            row.getAttribute('data-size-bytes') ?? undefined,
+        );
 
         const scannedAt = doc.querySelector('.fs-node')?.getAttribute('data-scanned') ?? new Date().toISOString();
 
@@ -752,15 +745,21 @@ async function walkForOneIndices(
     entries: PhotoEntry[]
 ): Promise<void> {
     // Check for one/index.html in this directory
+    let html: string | undefined;
     try {
         const oneDir = await dirHandle.getDirectoryHandle('one');
         const indexFile = await oneDir.getFileHandle('index.html');
         const file = await indexFile.getFile();
-        const html = await file.text();
+        html = await file.text();
+    } catch (error) {
+        if (!(error instanceof DOMException) || error.name !== 'NotFoundError') {
+            throw error;
+        }
+    }
+
+    if (html !== undefined) {
         const parsed = parseOneIndex(html, relPath);
         entries.push(...parsed);
-    } catch {
-        // No one/ here, that's fine
     }
 
     // Recurse into subdirectories
@@ -1213,6 +1212,11 @@ export interface FolderAccess {
     chooseSharedGalleryDestination: () => Promise<boolean>;
     /** Debug/test helper that always opens the file-input intake path. */
     openLocalFiles: () => boolean;
+    /** Import local image files through the same intake path as the file picker. */
+    importLocalFiles: (
+        files: readonly File[],
+        options?: {useAppLocalFolder?: boolean},
+    ) => Promise<boolean>;
     /** Rescan the current folder */
     rescan: () => Promise<void>;
     /** Remove a photo from the current gallery metadata */
@@ -2476,6 +2480,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         options: {
             requestPermission: boolean;
             allowPicker: boolean;
+            useAppLocalFolder?: boolean;
         },
     ): Promise<{
         handle: FileSystemDirectoryHandle;
@@ -2507,7 +2512,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             }
         }
 
-        const canUseAppLocalFolder = mobile || !canUseDirectoryPicker();
+        const canUseAppLocalFolder = options.useAppLocalFolder === true || mobile || !canUseDirectoryPicker();
         if (canUseAppLocalFolder) {
             const preference: PersistedFolderPreference = {
                 kind: 'opfs',
@@ -2674,6 +2679,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         options: {
             requestPermission: boolean;
             allowPicker: boolean;
+            useAppLocalFolder?: boolean;
         },
     ): Promise<boolean> => {
         const destination = await resolveImportDestination(source, options);
@@ -2808,7 +2814,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             const input = document.createElement('input');
             input.type = 'file';
             input.multiple = true;
-            input.accept = 'image/*,.heic,.heif';
+            input.accept = 'image/*,video/mp4,video/webm,video/quicktime,.heic,.heif,.mp4,.webm,.mov';
             // Keep in the DOM but visually hidden.
             input.style.position = 'fixed';
             input.style.left = '-9999px';
@@ -2829,7 +2835,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             input.removeAttribute('directory');
         }
         input.multiple = true;
-        input.accept = 'image/*,.heic,.heif';
+        input.accept = 'image/*,video/mp4,video/webm,video/quicktime,.heic,.heif,.mp4,.webm,.mov';
         // Allow re-selecting the same files.
         input.value = '';
         input.onchange = () => {
@@ -2840,6 +2846,17 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     }, [handleFallbackFiles]);
 
     const openLocalFiles = useCallback(() => openFallbackInput({ directory: false }), [openFallbackInput]);
+
+    const importLocalFiles = useCallback(async (
+        files: readonly File[],
+        options: {useAppLocalFolder?: boolean} = {},
+    ): Promise<boolean> => {
+        return await importFilesIntoLibrary(files, 'local-picker', {
+            requestPermission: false,
+            allowPicker: false,
+            useAppLocalFolder: options.useAppLocalFolder,
+        });
+    }, [importFilesIntoLibrary]);
 
     const chooseSharedGalleryDestination = useCallback(async (): Promise<boolean> => {
         if (!mobile && canUseDirectoryPicker()) {
@@ -3386,12 +3403,14 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         }
 
         for (const folder of foldersRef.current) {
-            if (folder.entries.length === 0) {
+            const localEntries = folder.entries.filter(entry => !isRemoteGalleryEntry(entry));
+            if (localEntries.length === 0) {
                 continue;
             }
 
-            await syncPhotosToOneCore(folder.entries, folder.handle, {
+            await syncPhotosToOneCore(localEntries, folder.handle, {
                 claimAuthorship: claimAuthorshipOnIngest,
+                requireOriginalBlob: true,
             });
         }
     }, [claimAuthorshipOnIngest, entries, isOpen]);
@@ -3922,6 +3941,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         removeFolder,
         chooseSharedGalleryDestination,
         openLocalFiles,
+        importLocalFiles,
         rescan,
         deletePhoto,
         reanalyzeFaces,
