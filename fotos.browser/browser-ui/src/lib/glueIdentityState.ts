@@ -1,6 +1,7 @@
 import {
     DEFAULT_GLUE_CONNECTION_BINDING_ID,
     getGlueBindingPersonId,
+    getGlueConnectionBindings,
     getGlueIdentityProfile,
 } from '@glueone/glue.core';
 
@@ -50,4 +51,24 @@ export function resolveGlueIdentityState(
         publicationIdentity,
         displayName: resolveGlueDisplayName(values, publicationIdentity),
     };
+}
+
+export function requirePreparedGlueIdentity(
+    values: Record<string, unknown>,
+    expectedPersonId: string,
+    bindingId = DEFAULT_GLUE_CONNECTION_BINDING_ID,
+): string {
+    const normalizedExpectedPersonId = asTrimmedString(expectedPersonId);
+    if (!normalizedExpectedPersonId) {
+        throw new Error('expectedPersonId is required');
+    }
+
+    const persistedPublicationIdentity = asTrimmedString(getGlueConnectionBindings(values)[bindingId]);
+    if (values.syncEnabled !== true || persistedPublicationIdentity !== normalizedExpectedPersonId) {
+        throw new Error(
+            `Prepared Fotos identity mismatch: expected ${normalizedExpectedPersonId}, got ${persistedPublicationIdentity ?? 'none'}`,
+        );
+    }
+
+    return normalizedExpectedPersonId;
 }

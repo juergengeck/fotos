@@ -12,6 +12,7 @@ import {
     isFotosLibraryStateEmpty,
     loadFotosLibraryState,
     normalizeFotosLibraryState,
+    replaceFotosCollectionSelection,
     saveFotosLibraryState,
     serializeFotosLibraryState,
     type FotosCollectionDefinition,
@@ -166,6 +167,21 @@ export function useFotosCollections(
         }));
     }, [persist]);
 
+    const setCollectionMembers = useCallback((
+        collectionId: string,
+        selectedPhotos: readonly PhotoEntry[],
+        selectedClusters: readonly FaceClusterSummary[],
+    ) => {
+        persist(currentState => ({
+            ...currentState,
+            collections: currentState.collections.map(collection => (
+                collection.id === collectionId
+                    ? replaceFotosCollectionSelection(collection, selectedPhotos, selectedClusters)
+                    : collection
+            )),
+        }));
+    }, [persist]);
+
     const restoreCollection = useCallback((collection: FotosCollectionDefinition) => {
         persist(currentState => ({
             ...currentState,
@@ -249,6 +265,7 @@ export function useFotosCollections(
         sharing: libraryState.sharing,
         createCollection,
         addSelectionToCollection,
+        setCollectionMembers,
         restoreCollection,
         renameCollection,
         deleteCollection,

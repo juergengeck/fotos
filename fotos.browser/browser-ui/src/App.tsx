@@ -55,7 +55,10 @@ import {
     parsePersistentAppTask,
     parsePersistentPhotoRouteTarget,
 } from '@/lib/photoRoute';
-import { resolveGlueIdentityState } from '@/lib/glueIdentityState';
+import {
+    requirePreparedGlueIdentity,
+    resolveGlueIdentityState,
+} from '@/lib/glueIdentityState';
 import { resolveTokenToPersonId, type SharePeerOption } from '@/components/ShareWithField';
 import { readStoredSidebarTab } from '@/lib/authFlowState';
 import {
@@ -79,6 +82,12 @@ import {
     onVersionedObj,
 } from '@refinio/one.core/lib/storage-versioned-objects.js';
 import {calculateIdHashOfObj} from '@refinio/one.core/lib/util/object.js';
+import {getInstanceIdHash} from '@refinio/one.core/lib/instance.js';
+import {getDefaultKeys} from '@refinio/one.core/lib/keychain/keychain.js';
+import {getPublicKeys} from '@refinio/one.core/lib/keychain/key-storage-public.js';
+import {uint8arrayToHexString} from '@refinio/one.core/lib/util/arraybuffer-to-and-from-hex-string.js';
+import {getLocalInstanceOfPerson} from '@refinio/one.models/lib/misc/instance.js';
+import type {Invitation} from '@refinio/one.models/lib/misc/ConnectionEstablishment/PairingManager.js';
 import {
     getChumSyncDiagnostics,
     onChumImportBatch,
@@ -91,6 +100,15 @@ import {
 } from '@/lib/selectionCoordinator';
 import {clearIncomingShareUrl, getIncomingGalleryProgress} from '@/lib/fotosIncomingShareState';
 import {PanelRightOpen} from 'lucide-react';
+import {
+    fotosQaAppState,
+    fotosQaOperation,
+    getSettledCollectionMembers,
+    getSettledCollectionRecipients,
+    type FotosQaIdentitySnapshot,
+    type FotosQaOperationHandlers,
+} from '@/lib/fotosQaOperation';
+import {hashImageFile} from '@/lib/browserIngest';
 
 interface AppProps {
     fotosModel?: FotosModel;
@@ -154,6 +172,7 @@ function readFileAsDataUrl(file: File): Promise<string> {
 }
 
 interface FotosDebugApi {
+    qa: typeof fotosQaOperation;
     getStatus: () => {
         initialized: boolean;
         ownerId: string | null;
@@ -312,6 +331,48 @@ async function getLocalIdentitySnapshot(
         glueDisplayName: resolvedIdentity.displayName,
         syncEnabled: values.syncEnabled === true,
         headlessConnected: Boolean(targetModel.headlessConnected),
+    };
+}
+
+async function getFotosQaIdentitySnapshot(
+    targetModel: FotosModel | null | undefined,
+): Promise<FotosQaIdentitySnapshot> {
+    const identity = await getLocalIdentitySnapshot(targetModel);
+    if (!targetModel?.initialized || !identity.publicationIdentity) {
+        return {
+            ...identity,
+            publicationPublicSignKey: null,
+            deviceInstanceId: null,
+            devicePublicEncryptionKey: null,
+            pairingInstanceId: null,
+            pairingPublicEncryptionKey: null,
+        };
+    }
+
+    const publicationIdentity = identity.publicationIdentity as any;
+    const publicationKeys = await getPublicKeys(await getDefaultKeys(publicationIdentity));
+    const deviceInstanceId = getInstanceIdHash();
+    const pairingInstanceId = await getLocalInstanceOfPerson(publicationIdentity);
+    const [deviceKeys, pairingKeys] = await Promise.all([
+        deviceInstanceId
+            ? getPublicKeys(await getDefaultKeys(deviceInstanceId as any))
+            : Promise.resolve(null),
+        pairingInstanceId
+            ? getPublicKeys(await getDefaultKeys(pairingInstanceId as any))
+            : Promise.resolve(null),
+    ]);
+
+    return {
+        ...identity,
+        publicationPublicSignKey: uint8arrayToHexString(publicationKeys.publicSignKey),
+        deviceInstanceId: deviceInstanceId ? String(deviceInstanceId) : null,
+        devicePublicEncryptionKey: deviceKeys
+            ? uint8arrayToHexString(deviceKeys.publicEncryptionKey)
+            : null,
+        pairingInstanceId: pairingInstanceId ? String(pairingInstanceId) : null,
+        pairingPublicEncryptionKey: pairingKeys
+            ? uint8arrayToHexString(pairingKeys.publicEncryptionKey)
+            : null,
     };
 }
 
@@ -1118,27 +1179,45 @@ export function App({ fotosModel: initialModel }: AppProps) {
         gallery.setActiveClusterId(clusterId);
     }, [gallery]);
 
-    const handleCreateCollection = useCallback((name: string) => {
-        if (selectedPhotosForCollections.length === 0 && selectedClustersForCollections.length === 0) {
+    const createCollectionFromSelection = useCallback((
+        name: string,
+        selectedPhotos: readonly PhotoEntry[],
+        selectedClusters: typeof selectedClustersForCollections,
+    ) => {
+        if (selectedPhotos.length === 0 && selectedClusters.length === 0) {
             return false;
         }
 
         const nextCollection = fotosCollections.createCollection(
             name,
-            selectedPhotosForCollections,
-            selectedClustersForCollections,
+            selectedPhotos,
+            selectedClusters,
         );
-        clearCollectionSelection();
         handleCollectionSelect(nextCollection.id);
         showUndo(`Collection “${nextCollection.name}” created.`, () => {
             fotosCollections.deleteCollection(nextCollection.id);
         });
-        return true;
+        return nextCollection;
     }, [
-        clearCollectionSelection,
         fotosCollections,
         handleCollectionSelect,
         showUndo,
+    ]);
+
+    const handleCreateCollection = useCallback((name: string) => {
+        const nextCollection = createCollectionFromSelection(
+            name,
+            selectedPhotosForCollections,
+            selectedClustersForCollections,
+        );
+        if (!nextCollection) {
+            return false;
+        }
+        clearCollectionSelection();
+        return true;
+    }, [
+        clearCollectionSelection,
+        createCollectionFromSelection,
         selectedClustersForCollections,
         selectedPhotosForCollections,
     ]);
@@ -1231,7 +1310,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
             && committedShareScopeFingerprintsRef.current.get(scopeKey) === fingerprint
         ) {
             params.persist();
-            return;
+            return null;
         }
 
         await gallery.folder.ensureSyncedToOneCore();
@@ -1257,6 +1336,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
         for (const transition of result.transitions) {
             if (transition.status === 'active') fotosShareController.recordGrant(transition.personId);
         }
+        return result;
     }, [expandSharePersonIds, fotosModel?.publicationIdentity, gallery.folder.ensureSyncedToOneCore]);
 
     const requestShareAssignment = useCallback((params: {
@@ -1287,7 +1367,9 @@ export function App({ fotosModel: initialModel }: AppProps) {
             message: `${params.contentHashes.length} photo${params.contentHashes.length === 1 ? '' : 's'} in scope. ${changes}`,
             confirmLabel: 'Apply sharing',
             isDestructive: removed.length > 0,
-            onConfirm: () => commitShareAssignment(params),
+            onConfirm: async () => {
+                await commitShareAssignment(params);
+            },
         });
     }, [commitShareAssignment, sharePeerOptions, showConfirm]);
 
@@ -1303,18 +1385,25 @@ export function App({ fotosModel: initialModel }: AppProps) {
         });
     }, [fotosCollections, locallyOwnedGalleryEntries, requestShareAssignment]);
 
-    const handleCollectionShareChange = useCallback(async (collectionId: string, nextPersonIds: string[]) => {
+    const getCollectionShareAssignment = useCallback((collectionId: string, nextPersonIds: string[]) => {
         const previousIds = fotosCollections.sharing.collectionPersonIds[collectionId] ?? [];
         const collection = collectionSummaries.find(candidate => candidate.id === collectionId);
-        requestShareAssignment({
+        if (!collection) {
+            throw new Error(`Unknown Fotos collection ${collectionId}`);
+        }
+        return {
             scope: {kind: 'collection', id: collectionId},
             scopeLabel: collection?.name ?? 'collection',
             previousPersonIds: previousIds,
             nextPersonIds,
             contentHashes: collection?.matchedPhotoHashes.filter(hash => locallyOwnedPhotoHashes.has(hash)) ?? [],
             persist: () => fotosCollections.setCollectionSharePersonIds(collectionId, nextPersonIds),
-        });
-    }, [collectionSummaries, fotosCollections, locallyOwnedPhotoHashes, requestShareAssignment]);
+        } as const;
+    }, [collectionSummaries, fotosCollections, locallyOwnedPhotoHashes]);
+
+    const handleCollectionShareChange = useCallback(async (collectionId: string, nextPersonIds: string[]) => {
+        requestShareAssignment(getCollectionShareAssignment(collectionId, nextPersonIds));
+    }, [getCollectionShareAssignment, requestShareAssignment]);
 
     const handleClusterShareChange = useCallback(async (clusterId: string, nextPersonIds: string[]) => {
         const previousIds = fotosCollections.sharing.clusterPersonIds[clusterId] ?? [];
@@ -2160,21 +2249,82 @@ export function App({ fotosModel: initialModel }: AppProps) {
         folder: gallery.folder,
         visiblePhotos,
         entries: gallery.folder.entries,
+        collections: collectionSummaries,
+        collectionSharePersonIds: fotosCollections.sharing.collectionPersonIds,
         sharePeerOptions,
         receivedShareScopes,
         createGalleryShareInvite,
         acceptIncomingGalleryShareInvite,
+        createCollectionFromSelection,
+        setCollectionMembers: fotosCollections.setCollectionMembers,
+        getCollectionShareAssignment,
+        commitShareAssignment,
     });
     debugRuntimeRef.current = {
         model: fotosModel,
         folder: gallery.folder,
         visiblePhotos,
         entries: gallery.folder.entries,
+        collections: collectionSummaries,
+        collectionSharePersonIds: fotosCollections.sharing.collectionPersonIds,
         sharePeerOptions,
         receivedShareScopes,
         createGalleryShareInvite,
         acceptIncomingGalleryShareInvite,
+        createCollectionFromSelection,
+        setCollectionMembers: fotosCollections.setCollectionMembers,
+        getCollectionShareAssignment,
+        commitShareAssignment,
     };
+
+    useEffect(() => {
+        fotosQaAppState.update({
+            initialized: Boolean(fotosModel?.initialized),
+            ownerId: fotosModel?.ownerId ? String(fotosModel.ownerId) : null,
+            publicationIdentity: fotosModel?.publicationIdentity
+                ? String(fotosModel.publicationIdentity)
+                : null,
+            gallery: {
+                isOpen: gallery.folder.isOpen,
+                folderName: gallery.folder.folderName,
+                items: gallery.folder.entries.map(entry => ({
+                    hash: entry.hash,
+                    name: entry.name,
+                })),
+            },
+            collections: collectionSummaries.map(collection => ({
+                id: collection.id,
+                name: collection.name,
+                photoHashes: [...collection.photoHashes],
+                personIds: [
+                    ...(fotosCollections.sharing.collectionPersonIds[collection.id] ?? []),
+                ],
+            })),
+            receivedShares: receivedShareScopes.map(share => ({
+                issuer: share.issuer,
+                scope: share.scope,
+                status: share.status,
+                verified: share.verified,
+                photoHashes: share.entries.map(entry => entry.contentHash),
+                photoNames: share.entries.map(entry => (
+                    entry.sourcePath?.split('/').filter(Boolean).pop() ?? entry.contentHash
+                )),
+                issuedAt: share.issuedAt,
+                revokedAt: share.revokedAt,
+                revocationReason: share.revocationReason,
+            })),
+        });
+    }, [
+        collectionSummaries,
+        fotosCollections.sharing.collectionPersonIds,
+        fotosModel?.initialized,
+        fotosModel?.ownerId,
+        fotosModel?.publicationIdentity,
+        gallery.folder.entries,
+        gallery.folder.folderName,
+        gallery.folder.isOpen,
+        receivedShareScopes,
+    ]);
 
     useEffect(() => {
         if (!fotosModel?.initialized) {
@@ -2461,12 +2611,364 @@ export function App({ fotosModel: initialModel }: AppProps) {
     ]);
 
     useEffect(() => {
+        const decodeFixture = (bytesBase64: string): Uint8Array => {
+            const normalized = bytesBase64.trim();
+            if (!normalized) {
+                throw new Error('bytesBase64 is required');
+            }
+            let binary: string;
+            try {
+                binary = atob(normalized);
+            } catch {
+                throw new Error('bytesBase64 is not valid base64');
+            }
+            return Uint8Array.from(binary, character => character.charCodeAt(0));
+        };
+        const abortableStateWait = <T,>(
+            wait: (signal: AbortSignal) => Promise<T>,
+            mutation: () => Promise<void> | void,
+        ): Promise<T> => {
+            const controller = new AbortController();
+            const pending = wait(controller.signal);
+            return Promise.resolve()
+                .then(mutation)
+                .then(() => pending)
+                .catch(error => {
+                    controller.abort(error);
+                    void pending.catch(() => {});
+                    throw error;
+                });
+        };
+
+        const handlers: FotosQaOperationHandlers = {
+            getIdentity: async () => await getFotosQaIdentitySnapshot(debugRuntimeRef.current.model),
+            getDiagnostics: async ({traceLimit}) => {
+                const activeModel = debugRuntimeRef.current.model;
+                const activeGlueModule = activeModel?.glueModule as {
+                    getPeerConnectionCoordinatorDebug?: () => Array<Record<string, unknown>>;
+                } | null | undefined;
+                const connections = activeModel?.connectionsModel?.connectionsInfo?.() ?? [];
+                return {
+                    publicationIdentity: activeModel?.publicationIdentity
+                        ? String(activeModel.publicationIdentity)
+                        : null,
+                    connections: connections.map(connection => ({
+                        id: String(connection.id),
+                        protocolName: connection.protocolName,
+                        isConnected: connection.isConnected,
+                        isTransportConnected: connection.isTransportConnected === true,
+                        lanePhase: connection.lanePhase ?? null,
+                        localPersonId: String(connection.localPersonId),
+                        remotePersonId: String(connection.remotePersonId),
+                        remoteInstanceId: String(connection.remoteInstanceId),
+                        enabled: connection.enabled,
+                        routes: connection.routes.map(route => ({
+                            name: route.name,
+                            transport: route.transport,
+                            active: route.active,
+                            enabled: route.enabled,
+                        })),
+                    })),
+                    peerConnectionCoordinator:
+                        activeGlueModule?.getPeerConnectionCoordinatorDebug?.() ?? [],
+                    chumSync: getChumSyncDiagnostics({traceLimit}),
+                };
+            },
+            prepareIdentity: async ({displayName}) => {
+                const activeModel = debugRuntimeRef.current.model;
+                if (!activeModel?.settingsPlan) {
+                    throw new Error('fotos.one model is not initialized');
+                }
+
+                const snapshot = await getLocalIdentitySnapshot(activeModel);
+                const result = await ensureConfiguredGlueIdentity(
+                    activeModel.settingsPlan,
+                    activeModel.leuteModel,
+                    displayName,
+                    activeModel.ownerId,
+                );
+                if (!snapshot.syncEnabled) {
+                    await activeModel.settingsPlan.updateSection({
+                        moduleId: 'glue',
+                        values: {syncEnabled: true},
+                    });
+                }
+                return {
+                    personId: String(result.personId),
+                    created: result.created,
+                    syncEnabled: true,
+                    reloadRequired: !snapshot.syncEnabled || snapshot.publicationIdentity !== result.personId,
+                };
+            },
+            registerPreparedIdentity: async ({displayName}) => {
+                const activeModel = debugRuntimeRef.current.model;
+                if (!activeModel?.settingsPlan) {
+                    throw new Error('fotos.one model is not initialized');
+                }
+
+                const snapshot = await getLocalIdentitySnapshot(activeModel);
+                const trimmedDisplayName = displayName?.trim() ?? snapshot.glueDisplayName?.trim() ?? '';
+                if (!trimmedDisplayName) {
+                    throw new Error('Prepare the identity with a display name before registering it.');
+                }
+                if (!snapshot.syncEnabled) {
+                    throw new Error('Prepare the identity and reload with sync enabled before registering it.');
+                }
+                if (!snapshot.publicationIdentity) {
+                    throw new Error('No prepared publication identity is available for registration.');
+                }
+
+                const {
+                    debugRegisterNameOnServer,
+                    nameToIdentity,
+                    registerNameOnServer,
+                } = await import('@glueone/glue.core');
+                const result = DEBUG_REGISTRATION_TOKEN
+                    ? await debugRegisterNameOnServer(
+                        snapshot.publicationIdentity as any,
+                        trimmedDisplayName,
+                        {token: DEBUG_REGISTRATION_TOKEN, ttlMs: DEBUG_REGISTRATION_TTL_MS},
+                    )
+                    : await registerNameOnServer(
+                        snapshot.publicationIdentity as any,
+                        trimmedDisplayName,
+                        'user',
+                    );
+                if (!result.success) {
+                    throw new Error(result.error || `Failed to register ${nameToIdentity(trimmedDisplayName)}`);
+                }
+
+                await publishLocalGlueProfileCredential(activeModel.settingsPlan);
+                const connectionModule = activeModel.connectionModule as {
+                    connectToGlueServer?: (localPersonId?: string) => Promise<void>;
+                } | null | undefined;
+                if (typeof connectionModule?.connectToGlueServer === 'function') {
+                    try {
+                        await connectionModule.connectToGlueServer(snapshot.publicationIdentity);
+                    } catch (error) {
+                        const message = error instanceof Error
+                            ? error.message.toLowerCase()
+                            : String(error).toLowerCase();
+                        if (!message.includes('duplicate connection') && !message.includes('already connected')) {
+                            throw error;
+                        }
+                    }
+                }
+
+                return {
+                    personId: snapshot.publicationIdentity,
+                    identity: nameToIdentity(trimmedDisplayName),
+                    cert: (result.data?.cert as Record<string, unknown> | undefined) ?? null,
+                };
+            },
+            reloadPreparedIdentity: async ({expectedPersonId}) => {
+                const activeModel = debugRuntimeRef.current.model;
+                if (!activeModel?.settingsPlan) {
+                    throw new Error('fotos.one model is not initialized');
+                }
+                const {values} = await activeModel.settingsPlan.getSection({moduleId: 'glue'});
+                const persistedPersonId = requirePreparedGlueIdentity(values, expectedPersonId);
+                return {personId: persistedPersonId, ready: true as const};
+            },
+            importPhotoFixture: async ({name, mimeType, bytesBase64, lastModified}) => {
+                const trimmedName = name.trim();
+                if (!trimmedName || !mimeType.trim()) {
+                    throw new Error('Photo fixture name and mimeType are required');
+                }
+                const before = fotosQaAppState.getSnapshot();
+                const decoded = decodeFixture(bytesBase64);
+                const bytes = new Uint8Array(decoded.byteLength);
+                bytes.set(decoded);
+                const file = new File([bytes.buffer], trimmedName, {
+                    type: mimeType.trim(),
+                    lastModified: lastModified ?? Date.now(),
+                });
+                const expectedHash = await hashImageFile(file);
+                if (before.gallery.items.some(item => (
+                    item.hash === expectedHash && item.name === trimmedName
+                ))) {
+                    throw new Error(`Fotos fixture ${trimmedName} is already imported`);
+                }
+                const settled = await abortableStateWait(
+                    signal => fotosQaAppState.waitFor(snapshot => (
+                        snapshot.gallery.items.some(item => (
+                            item.hash === expectedHash && item.name === trimmedName
+                        ))
+                    ), {
+                        afterStateRevision: before.stateRevision,
+                        timeoutMs: 60_000,
+                        signal,
+                    }),
+                    async () => {
+                        const imported = await debugRuntimeRef.current.folder.importLocalFiles(
+                            [file],
+                            {useAppLocalFolder: true},
+                        );
+                        if (!imported) {
+                            throw new Error('No writable Fotos import destination is available');
+                        }
+                    },
+                );
+                const importedItem = settled.gallery.items.find(item => (
+                    item.hash === expectedHash && item.name === trimmedName
+                ));
+                if (!importedItem) {
+                    throw new Error(`Fotos imported ${trimmedName} without a new gallery entry`);
+                }
+                return importedItem;
+            },
+            createCollection: async ({name, photoHashes}) => {
+                const runtime = debugRuntimeRef.current;
+                const requestedHashes = Array.from(new Set(photoHashes.map(hash => hash.trim()).filter(Boolean)));
+                const photosByHash = new Map(runtime.entries.map(photo => [photo.hash, photo]));
+                const missing = requestedHashes.filter(hash => !photosByHash.has(hash));
+                if (missing.length > 0) {
+                    throw new Error(`Unknown Fotos photo hashes: ${missing.join(', ')}`);
+                }
+                const selectedPhotos = requestedHashes.map(hash => photosByHash.get(hash)!);
+                const before = fotosQaAppState.getSnapshot();
+                let collectionId = '';
+                const settled = await abortableStateWait(
+                    signal => fotosQaAppState.waitFor(snapshot => (
+                        collectionId.length > 0
+                        && snapshot.collections.some(collection => collection.id === collectionId)
+                    ), {
+                        afterStateRevision: before.stateRevision,
+                        signal,
+                    }),
+                    () => {
+                        const collection = runtime.createCollectionFromSelection(name, selectedPhotos, []);
+                        if (!collection) {
+                            throw new Error('A Fotos collection requires at least one photo');
+                        }
+                        collectionId = collection.id;
+                    },
+                );
+                const collection = settled.collections.find(candidate => candidate.id === collectionId)!;
+                return {id: collection.id, name: collection.name, photoHashes: collection.photoHashes};
+            },
+            setCollectionMembers: async ({collectionId, photoHashes}) => {
+                const runtime = debugRuntimeRef.current;
+                if (!runtime.collections.some(collection => collection.id === collectionId)) {
+                    throw new Error(`Unknown Fotos collection ${collectionId}`);
+                }
+                const requestedHashes = Array.from(new Set(photoHashes.map(hash => hash.trim()).filter(Boolean)));
+                const photosByHash = new Map(runtime.entries.map(photo => [photo.hash, photo]));
+                const missing = requestedHashes.filter(hash => !photosByHash.has(hash));
+                if (missing.length > 0) {
+                    throw new Error(`Unknown Fotos photo hashes: ${missing.join(', ')}`);
+                }
+                const before = fotosQaAppState.getSnapshot();
+                const alreadySettled = getSettledCollectionMembers(
+                    before,
+                    collectionId,
+                    requestedHashes,
+                );
+                if (alreadySettled) {
+                    return alreadySettled;
+                }
+                const settled = await abortableStateWait(
+                    signal => fotosQaAppState.waitFor(snapshot => (
+                        getSettledCollectionMembers(snapshot, collectionId, requestedHashes) !== null
+                    ), {
+                        afterStateRevision: before.stateRevision,
+                        signal,
+                    }),
+                    () => runtime.setCollectionMembers(
+                        collectionId,
+                        requestedHashes.map(hash => photosByHash.get(hash)!),
+                        [],
+                    ),
+                );
+                const collection = settled.collections.find(candidate => candidate.id === collectionId)!;
+                return {id: collection.id, photoHashes: collection.photoHashes};
+            },
+            setCollectionRecipients: async ({collectionId, personIds}) => {
+                const runtime = debugRuntimeRef.current;
+                const requestedPersonIds = Array.from(new Set(personIds.map(id => id.trim()).filter(Boolean)));
+                const assignment = runtime.getCollectionShareAssignment(collectionId, requestedPersonIds);
+                const before = fotosQaAppState.getSnapshot();
+                const alreadySettled = getSettledCollectionRecipients(
+                    before,
+                    collectionId,
+                    requestedPersonIds,
+                );
+                if (alreadySettled) {
+                    return alreadySettled;
+                }
+                let transitions: Array<{personId: string; status: 'active' | 'revoked'}> = [];
+                const settled = await abortableStateWait(
+                    signal => fotosQaAppState.waitFor(snapshot => (
+                        getSettledCollectionRecipients(snapshot, collectionId, requestedPersonIds) !== null
+                    ), {
+                        afterStateRevision: before.stateRevision,
+                        timeoutMs: 60_000,
+                        signal,
+                    }),
+                    async () => {
+                        const result = await runtime.commitShareAssignment(assignment);
+                        transitions = result?.transitions.map(transition => ({
+                            personId: transition.personId,
+                            status: transition.status,
+                        })) ?? [];
+                    },
+                );
+                const collection = settled.collections.find(candidate => candidate.id === collectionId)!;
+                return {
+                    scope: 'collection' as const,
+                    id: collection.id,
+                    personIds: collection.personIds,
+                    transitions,
+                };
+            },
+            createPairingInvitation: async () => {
+                const activeModel = debugRuntimeRef.current.model;
+                if (!activeModel?.connectionsModel?.pairing || !activeModel.publicationIdentity) {
+                    throw new Error('Enable sync and prepare the Fotos identity before pairing');
+                }
+                return await activeModel.connectionsModel.pairing.createInvitation(
+                    activeModel.publicationIdentity,
+                    undefined,
+                    {mode: 'standard'},
+                );
+            },
+            acceptPairingInvitation: async ({invitation}: {invitation: Invitation}) => {
+                const activeModel = debugRuntimeRef.current.model;
+                if (!activeModel?.connectionsModel?.pairing || !activeModel.publicationIdentity) {
+                    throw new Error('Enable sync and prepare the Fotos identity before pairing');
+                }
+                await activeModel.connectionsModel.pairing.connectUsingInvitation(
+                    invitation,
+                    activeModel.publicationIdentity,
+                    {mode: invitation.pairingMode ?? 'standard'},
+                );
+                return {
+                    accepted: true as const,
+                    publicationIdentity: String(activeModel.publicationIdentity),
+                };
+            },
+        };
+
+        fotosQaOperation._attach(handlers);
+        const announceQaReady = (window as any).__announceFotosQaReady;
+        if (typeof announceQaReady === 'function') {
+            announceQaReady(
+                debugRuntimeRef.current.model?.publicationIdentity
+                    ? String(debugRuntimeRef.current.model?.publicationIdentity)
+                    : null,
+            );
+        }
+        return () => fotosQaOperation._detach(handlers);
+    }, []);
+
+    useEffect(() => {
         if (!shouldExposeFotosDebugApi(import.meta.env.DEV, window.location.search)) {
             return;
         }
 
         const debugWindow = window as Window & { __fotosDebug?: FotosDebugApi };
         const debugApi: FotosDebugApi = {
+            qa: fotosQaOperation,
             getStatus: () => {
                 const { model: activeModel, folder, visiblePhotos: activeVisiblePhotos, entries: activeEntries } = debugRuntimeRef.current;
                 return {

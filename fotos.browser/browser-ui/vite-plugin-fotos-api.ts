@@ -9,6 +9,7 @@
  */
 
 import type { Plugin, ViteDevServer } from 'vite';
+import {resolveFotosApiTarget} from './src/lib/fotosApiTarget.js';
 
 interface PendingRequest {
     resolve: (value: any) => void;
@@ -23,12 +24,19 @@ interface BrowserClientInfo {
     lastReadyAt: string;
 }
 
+interface QaReadyWaiter {
+    expectedPersonId: string;
+    resolve: (value: any) => void;
+    timer: ReturnType<typeof setTimeout>;
+}
+
 export function fotosApiPlugin(): Plugin {
     const CLIENT_STALE_AFTER_MS = 45_000;
     const pending = new Map<string, PendingRequest>();
     let discoveryPayload: { handlers: Array<{ name: string }> } | null = null;
     let activeClientId: string | null = null;
     const clients = new Map<string, BrowserClientInfo>();
+    const qaReadyWaiters = new Map<string, QaReadyWaiter>();
     let counter = 0;
 
     function nextId(): string {
@@ -72,28 +80,23 @@ export function fotosApiPlugin(): Plugin {
         );
     }
 
-    function resolveTargetClientId(explicitClientId?: string | null): string | null {
-        if (explicitClientId && clients.has(explicitClientId)) {
-            return explicitClientId;
-        }
-
-        if (activeClientId && clients.has(activeClientId)) {
-            return activeClientId;
-        }
-
+    function resolveTargetClient(explicitClientId?: string | null) {
         const preferredClient = listClients().find((client) => isPreferredClientLocation(client.location));
-        if (preferredClient) {
-            activeClientId = preferredClient.clientId;
-            return preferredClient.clientId;
+        const [fallbackClient] = preferredClient ? [] : listClients();
+        const resolution = resolveFotosApiTarget({
+            explicitClientId,
+            activeClientId,
+            clientIds: Array.from(clients.keys()),
+            fallbackClientId: preferredClient?.clientId ?? fallbackClient?.clientId ?? null,
+        });
+        if (!explicitClientId && resolution.clientId) {
+            activeClientId = resolution.clientId;
         }
+        return resolution;
+    }
 
-        const [fallbackClient] = listClients();
-        if (fallbackClient) {
-            activeClientId = fallbackClient.clientId;
-            return fallbackClient.clientId;
-        }
-
-        return null;
+    function resolveTargetClientId(explicitClientId?: string | null): string | null {
+        return resolveTargetClient(explicitClientId).clientId;
     }
 
     return {
@@ -106,7 +109,7 @@ export function fotosApiPlugin(): Plugin {
                 if (!entry) {
                     return;
                 }
-                if (entry.targetClientId && clientId && entry.targetClientId !== clientId) {
+                if (entry.targetClientId && entry.targetClientId !== clientId) {
                     return;
                 }
                 resolvePending(id, result);
@@ -118,7 +121,7 @@ export function fotosApiPlugin(): Plugin {
                 if (!entry) {
                     return;
                 }
-                if (entry.targetClientId && clientId && entry.targetClientId !== clientId) {
+                if (entry.targetClientId && entry.targetClientId !== clientId) {
                     return;
                 }
                 if (payload) {
@@ -158,6 +161,25 @@ export function fotosApiPlugin(): Plugin {
                 console.log(`[fotos-api] Browser ready (${activeClientId ?? 'unknown client'}): ${operationNames.join(', ')}`);
             });
 
+            server.hot.on('fotos:qa-ready', (data: any) => {
+                const clientId = typeof data.clientId === 'string' ? data.clientId : '';
+                const waiter = qaReadyWaiters.get(clientId);
+                if (!waiter || data.publicationIdentity !== waiter.expectedPersonId) {
+                    return;
+                }
+                clearTimeout(waiter.timer);
+                qaReadyWaiters.delete(clientId);
+                waiter.resolve({
+                    success: true,
+                    data: {
+                        clientId,
+                        publicationIdentity: data.publicationIdentity,
+                        location: typeof data.location === 'string' ? data.location : null,
+                        reloaded: true,
+                    },
+                });
+            });
+
             async function requestBrowser(
                 event: string,
                 payload: Record<string, unknown>,
@@ -165,7 +187,26 @@ export function fotosApiPlugin(): Plugin {
                 explicitClientId?: string | null,
             ): Promise<any> {
                 const id = nextId();
-                const targetClientId = resolveTargetClientId(explicitClientId);
+                const target = resolveTargetClient(explicitClientId);
+                if (target.explicitClientMissing) {
+                    return {
+                        success: false,
+                        error: {
+                            code: 'CLIENT_NOT_FOUND',
+                            message: `Fotos browser client '${explicitClientId}' is not connected`,
+                        },
+                    };
+                }
+                const targetClientId = target.clientId;
+                if (!targetClientId) {
+                    return {
+                        success: false,
+                        error: {
+                            code: 'NO_BROWSER_CLIENT',
+                            message: 'No Fotos browser client is connected',
+                        },
+                    };
+                }
                 return new Promise<any>((resolve) => {
                     const timer = setTimeout(() => {
                         pending.delete(id);
@@ -176,6 +217,38 @@ export function fotosApiPlugin(): Plugin {
                     }, 120_000);
                     pending.set(id, { resolve, timer, targetClientId });
                     server.hot.send(event, { id, targetClientId, ...payload });
+                });
+            }
+
+            function reloadBrowserClient(
+                clientId: string,
+                expectedPersonId: string,
+            ): Promise<any> {
+                const existing = qaReadyWaiters.get(clientId);
+                if (existing) {
+                    clearTimeout(existing.timer);
+                    existing.resolve({
+                        success: false,
+                        error: {
+                            code: 'RELOAD_REPLACED',
+                            message: `A newer reload replaced the pending reload for ${clientId}`,
+                        },
+                    });
+                }
+
+                return new Promise(resolve => {
+                    const timer = setTimeout(() => {
+                        qaReadyWaiters.delete(clientId);
+                        resolve({
+                            success: false,
+                            error: {
+                                code: 'RELOAD_TIMEOUT',
+                                message: `Fotos browser client '${clientId}' did not reload with identity '${expectedPersonId}' within 120s`,
+                            },
+                        });
+                    }, 120_000);
+                    qaReadyWaiters.set(clientId, {expectedPersonId, resolve, timer});
+                    server.hot.send('fotos:reload-client', {targetClientId: clientId});
                 });
             }
 
@@ -250,12 +323,29 @@ export function fotosApiPlugin(): Plugin {
                 }
 
                 // Send to browser via HMR
-                const result = await requestBrowser(
+                let result = await requestBrowser(
                     'fotos:api-request',
                     { operation, method, params },
                     `${operation}.${method} timed out (120s)`,
                     explicitClientId,
                 );
+                if (operation === 'fotos-qa' && method === 'reloadPreparedIdentity' && result?.success) {
+                    const target = resolveTargetClient(explicitClientId);
+                    const expectedPersonId = typeof params?.expectedPersonId === 'string'
+                        ? params.expectedPersonId.trim()
+                        : '';
+                    if (!explicitClientId || !target.clientId || !expectedPersonId) {
+                        result = {
+                            success: false,
+                            error: {
+                                code: 'INVALID_RELOAD_REQUEST',
+                                message: 'reloadPreparedIdentity requires an exact clientId and expectedPersonId',
+                            },
+                        };
+                    } else {
+                        result = await reloadBrowserClient(target.clientId, expectedPersonId);
+                    }
+                }
 
                 res.setHeader('Content-Type', 'application/json');
                 res.end(JSON.stringify(result, null, 2));

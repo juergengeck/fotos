@@ -8,6 +8,7 @@ import {
     buildFotosCollectionSummary,
     collectionMatchesPhoto,
     deserializeFotosLibraryState,
+    replaceFotosCollectionSelection,
 } from './fotosCollections';
 
 function createPhoto(overrides: Partial<PhotoEntry> = {}): PhotoEntry {
@@ -223,5 +224,23 @@ describe('addSelectionToFotosCollection', () => {
         expect(updated.photoHashes).toEqual(['photo-1', 'photo-2']);
         expect(updated.clusterIds).toEqual(['cluster-a', 'cluster-b']);
         expect(updated.personIds).toEqual(['alice']);
+    });
+});
+
+describe('replaceFotosCollectionSelection', () => {
+    it('replaces direct photo membership instead of retaining removed photos', () => {
+        const updated = replaceFotosCollectionSelection({
+            id: 'collection-1',
+            name: 'Family',
+            photoHashes: ['photo-1'],
+            clusterIds: ['cluster-a'],
+            personIds: ['alice'],
+            createdAt: '2024-01-01T00:00:00.000Z',
+            updatedAt: '2024-01-01T00:00:00.000Z',
+        }, [createPhoto({hash: 'photo-2'})], []);
+
+        expect(updated.photoHashes).toEqual(['photo-2']);
+        expect(updated.clusterIds).toEqual([]);
+        expect(updated.personIds).toEqual([]);
     });
 });

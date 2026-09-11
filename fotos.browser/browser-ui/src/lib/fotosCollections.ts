@@ -320,3 +320,21 @@ export function addSelectionToFotosCollection(
         updatedAt: new Date().toISOString(),
     };
 }
+
+export function replaceFotosCollectionSelection(
+    collection: FotosCollectionDefinition,
+    selectedPhotos: readonly PhotoEntry[],
+    selectedClusters: readonly FaceClusterSummary[],
+): FotosCollectionDefinition {
+    return {
+        ...collection,
+        photoHashes: uniqueStrings(selectedPhotos.map(photo => photo.hash)),
+        clusterIds: uniqueStrings(selectedClusters.flatMap(cluster => cluster.memberClusterIds)),
+        personIds: uniqueStrings(
+            selectedClusters
+                .map(cluster => cluster.personId)
+                .filter((personId): personId is string => Boolean(personId?.trim())),
+        ),
+        updatedAt: new Date().toISOString(),
+    };
+}

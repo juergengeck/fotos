@@ -5,6 +5,7 @@ import {
     updateGlueIdentityProfile,
 } from '@glueone/glue.core';
 import {
+    requirePreparedGlueIdentity,
     resolveGlueDisplayName,
     resolveGlueIdentityState,
     resolveGluePublicationIdentity,
@@ -43,5 +44,27 @@ describe('glueIdentityState', () => {
             publicationIdentity: 'bound-person-id',
             displayName: 'Bound Bob',
         });
+    });
+
+    it('validates the prepared identity from persisted Glue settings', () => {
+        const values = {
+            ...updateGlueIdentityBinding(
+                {},
+                'prepared-person-id',
+                DEFAULT_GLUE_CONNECTION_BINDING_ID,
+            ),
+            syncEnabled: true,
+        };
+
+        expect(requirePreparedGlueIdentity(values, ' prepared-person-id '))
+            .toBe('prepared-person-id');
+        expect(() => requirePreparedGlueIdentity(values, 'active-old-person-id'))
+            .toThrow('expected active-old-person-id, got prepared-person-id');
+        expect(() => requirePreparedGlueIdentity({...values, syncEnabled: false}, 'prepared-person-id'))
+            .toThrow('expected prepared-person-id, got prepared-person-id');
+        expect(() => requirePreparedGlueIdentity({
+            publicationIdentity: 'prepared-person-id',
+            syncEnabled: true,
+        }, 'prepared-person-id')).toThrow('expected prepared-person-id, got none');
     });
 });

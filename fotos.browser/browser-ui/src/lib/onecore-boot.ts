@@ -272,6 +272,13 @@ async function initModules(
       API_BASE,
     );
     nextConnectionModule.enableCredentialAutoConnect = false;
+    nextConnectionModule.addChumSyncRuntimeObjectTypes({
+      traceObjectTypes: [
+        'FotosShareCertificateChain',
+        'FotosShareCertificate',
+        'FotosShareManifest',
+      ],
+    });
     // The authenticated endpoint and route lifecycle belong to ConnectionsModel.
     // Pairing commits the endpoint and releases its CHUM route after access is
     // published. Disabling this owner strands accepted photo invitations.

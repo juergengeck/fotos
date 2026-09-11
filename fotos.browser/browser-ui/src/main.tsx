@@ -13,6 +13,7 @@ import { initGlueCore } from '@glueone/glue.core';
 import { createPlanRegistry, createPublicOperationCatalogPayload } from '@/lib/PlanRegistry';
 import { FotosPlan } from '@/lib/FotosPlan';
 import { fotosLLMPlan } from '@/lib/FotosLLMPlan';
+import {fotosQaOperation} from '@/lib/fotosQaOperation';
 import { bootFotosModel } from './lib/onecore-boot';
 import { installHangTrace, traceHang } from './lib/hangTrace';
 import { getRuntimeBrowserCryptoSupport } from './lib/browserCryptoSupport';
@@ -29,6 +30,10 @@ const planRegistry = createPlanRegistry();
 const fotosPlan = new FotosPlan();
 planRegistry.register('fotos', fotosPlan, {category: 'analytics', description: 'Face detection and image analytics'});
 planRegistry.register('fotosAI', fotosLLMPlan, { category: 'analytics', description: 'Local LLM comparison and analytics auditing' });
+planRegistry.register('fotos-qa', fotosQaOperation, {
+    category: 'qa',
+    description: 'Browser-owned Fotos identity, gallery, collection, pairing, and sharing operations',
+});
 
 // Debugging: window.__api('fotos', 'status') or window.__api('fotos', 'init')
 (window as any).__planRegistry = planRegistry;
@@ -53,9 +58,14 @@ startServiceWorkerUpdates();
 
 // ── HMR bridge (dev only) — canonical GET /api + POST /api/:operation/:method ──
 if (import.meta.hot) {
-    const browserApiClientId = typeof crypto?.randomUUID === 'function'
-        ? crypto.randomUUID()
-        : `fotos-browser-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const browserApiClientStorageKey = 'fotos.browser.api-client-id';
+    let browserApiClientId = sessionStorage.getItem(browserApiClientStorageKey)?.trim() ?? '';
+    if (!browserApiClientId) {
+        browserApiClientId = typeof crypto?.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `fotos-browser-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        sessionStorage.setItem(browserApiClientStorageKey, browserApiClientId);
+    }
     const READY_HEARTBEAT_MS = 15_000;
 
     const announceReady = () => {
@@ -106,6 +116,20 @@ if (import.meta.hot) {
         });
     });
 
+    import.meta.hot.on('fotos:reload-client', (msg: {targetClientId?: string}) => {
+        if (msg.targetClientId === browserApiClientId) {
+            window.location.reload();
+        }
+    });
+
+    (window as any).__announceFotosQaReady = (publicationIdentity: string | null) => {
+        import.meta.hot!.send('fotos:qa-ready', {
+            clientId: browserApiClientId,
+            publicationIdentity,
+            location: window.location.href,
+        });
+    };
+
     announceReady();
 
     const readyHeartbeat = window.setInterval(() => {
@@ -114,6 +138,7 @@ if (import.meta.hot) {
 
     import.meta.hot.dispose(() => {
         window.clearInterval(readyHeartbeat);
+        delete (window as any).__announceFotosQaReady;
     });
 }
 
