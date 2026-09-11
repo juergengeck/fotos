@@ -14,7 +14,8 @@
     "test:live:fotos-id-share": "node ./tests/integration/fotos-id-share-suite.mjs",
     "test:live:fotos-adhoc-gallery-share": "node ./tests/integration/fotos-adhoc-gallery-share-suite.mjs",
     "test": "node ./scripts/run-vitest.mjs run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:integration:media": "node ./tests/integration/fotos-media-playback-suite.mjs"
   },
   "dependencies": {
     "@glueone/auth.core": "workspace:*",
@@ -67,11 +68,13 @@
     "vite-plugin-pwa": "^1.2.0",
     "@refinio/settings.devices": "workspace:*",
     "@refinio/device.core": "workspace:*",
-    "@vger/vger.ui": "workspace:*"
+    "@vger/vger.ui": "workspace:*",
+    "@refinio/media.core": "workspace:*"
   },
   "peerDependencies": {
     "@refinio/settings.devices": "*",
     "@refinio/device.core": "*",
-    "@vger/vger.ui": "*"
+    "@vger/vger.ui": "*",
+    "@refinio/media.core": "*"
   }
 }

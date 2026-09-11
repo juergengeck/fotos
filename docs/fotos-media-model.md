@@ -39,6 +39,30 @@ same JPEG metadata stripping behavior instead of inventing its own mobile hash.
 
 ## Layers
 
+### Timed media in the browser
+
+GIF originals retain their `image/gif` MIME type and their complete bytes for
+hashing, export, and synchronization. Browser import creates a static poster;
+opening the original uses timed playback with pause, seeking, and looping.
+MP4, WebM, and MOV imports use the browser's video decoder and native controls.
+Codec support for those containers depends on the browser.
+
+Format classification and GIF frame decoding belong to the shared ONE owner,
+`../one/packages/media.core` (`media-types` and `gif` exports). Fotos owns the
+browser thumbnail generation and player presentation. GIF frame timing and
+compositing are derived from the original; playback does not replace it or
+create another canonical media item. A future persisted transcode must use a
+`transcode` variant with `derivedFrom` pointing to the original variant.
+
+Browser decoding runs in a dedicated worker and is cancelled when the viewer
+leaves the media item. The shared decoder bounds input size, decoded frame
+memory, and LZW work; decoding errors are surfaced in the viewer. The raw
+decoder preserves encoded delays, while `createGifPlaybackTimeline` supplies
+effective playback timing for animations with zero or very short delays.
+
+These playback controls are currently a browser feature; native Expo playback
+is separate from this integration.
+
 ### 1. Canonical media anchor
 
 [`FotosEntry`](../fotos.core/src/recipes/FotosRecipes.ts) remains the canonical

@@ -7,13 +7,12 @@
  */
 
 import ExifReader from 'exifreader';
+import { getMediaMimeType, getMediaPlaybackKind, isSupportedMediaFile } from '@refinio/media.core/media-types';
+import { generateMediaThumbnail } from './mediaThumbnail.js';
 import { getRuntimeBrowserCryptoSupport } from './browserCryptoSupport.js';
 
 // ── Constants ──────────────────────────────────────────────────────────
 
-const IMAGE_EXTS = new Set([
-    '.jpg', '.jpeg', '.png', '.webp', '.gif', '.tiff', '.tif', '.avif', '.heic', '.heif',
-]);
 const THUMB_MAX = 400;
 const THUMB_QUALITY = 0.8;
 const ONE_DIR = 'one';
@@ -63,24 +62,8 @@ type PreservedAttrsByHash = Map<string, Record<string, string>>;
 
 // ── MIME helpers ───────────────────────────────────────────────────────
 
-function extOf(name: string): string {
-    const i = name.lastIndexOf('.');
-    return i >= 0 ? name.slice(i).toLowerCase() : '';
-}
-
-export function isImportableImageFile(file: File): boolean {
-    return file.type.startsWith('image/') || IMAGE_EXTS.has(extOf(file.name));
-}
-
-function mimeFromName(name: string): string {
-    const ext = extOf(name);
-    const map: Record<string, string> = {
-        '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-        '.png': 'image/png', '.gif': 'image/gif',
-        '.webp': 'image/webp', '.tiff': 'image/tiff', '.tif': 'image/tiff',
-        '.avif': 'image/avif', '.heic': 'image/heic', '.heif': 'image/heic',
-    };
-    return map[ext] ?? 'application/octet-stream';
+export function isImportableMediaFile(file: File): boolean {
+    return isSupportedMediaFile(file.name, file.type);
 }
 
 // ── Crypto ─────────────────────────────────────────────────────────────
@@ -138,7 +121,7 @@ function stripJpegMetadata(buf: Uint8Array): Uint8Array {
     return out;
 }
 
-async function hashImageFile(file: File): Promise<string> {
+export async function hashImageFile(file: File): Promise<string> {
     const buf = new Uint8Array(await file.arrayBuffer());
     const data = isJpeg(buf) ? stripJpegMetadata(buf) : buf;
     return sha256(data.slice());
@@ -208,20 +191,7 @@ async function extractExif(file: File): Promise<ExifData> {
 // ── Thumbnail via Canvas ───────────────────────────────────────────────
 
 async function generateThumbBlob(file: File): Promise<Blob> {
-    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
-    const { width, height } = bitmap;
-
-    // Scale to fit within THUMB_MAX
-    const scale = Math.min(1, THUMB_MAX / Math.max(width, height));
-    const tw = Math.round(width * scale);
-    const th = Math.round(height * scale);
-
-    const canvas = new OffscreenCanvas(tw, th);
-    const ctx = canvas.getContext('2d')!;
-    ctx.drawImage(bitmap, 0, 0, tw, th);
-    bitmap.close();
-
-    return canvas.convertToBlob({ type: 'image/jpeg', quality: THUMB_QUALITY });
+    return generateMediaThumbnail(file, THUMB_MAX, THUMB_QUALITY);
 }
 
 // ── Directory scanning ─────────────────────────────────────────────────
@@ -237,14 +207,15 @@ async function scanDirectory(
     for await (const [name, handle] of (dirHandle as any).entries()) {
         if (name.startsWith('.')) continue;
 
-        if (handle.kind === 'file' && IMAGE_EXTS.has(extOf(name))) {
+        if (handle.kind === 'file') {
             const file = await (handle as FileSystemFileHandle).getFile();
+            if (!isImportableMediaFile(file)) continue;
             images.push({
                 name,
                 file,
                 handle: handle as FileSystemFileHandle,
                 relPath: relPath ? `${relPath}/${name}` : name,
-                mime: mimeFromName(name),
+                mime: getMediaMimeType(name, file.type),
             });
         } else if (handle.kind === 'directory' && name !== 'node_modules' && name !== 'one') {
             children.push(name);
@@ -350,7 +321,7 @@ function renderIndexHtml(
 
         const facesHtml = renderFacesCell(e.data);
 
-        return `        <tr class="fs-entry"${attrs}>
+        return `        <tr class="fs-entry" data-size-bytes="${e.size}"${attrs}>
             <td class="fs-icon">\u{1F5BC}</td>
             <td class="fs-name">${nameContent}</td>
             <td class="fs-faces">${facesHtml}</td>
@@ -500,7 +471,7 @@ export async function copyFilesToDirectory(
     const selectedFiles = Array.from(fileList);
     for (let index = 0; index < selectedFiles.length; index++) {
         const file = selectedFiles[index];
-        if (!isImportableImageFile(file)) {
+        if (!isImportableMediaFile(file)) {
             continue;
         }
 
@@ -577,7 +548,7 @@ export interface FaceWorkerHandle {
 }
 
 /**
- * Ingest a directory: scan for images, extract metadata, generate thumbnails,
+ * Ingest a directory: scan for media, extract metadata, generate static posters,
  * write one/index.html per directory.
  *
  * Requires the directory to be opened with `mode: 'readwrite'`.
@@ -620,7 +591,7 @@ export async function ingestDirectory(
             data['content-hash'] = contentHash;
 
             // EXIF
-            const exif = await extractExif(img.file);
+            const exif: ExifData = getMediaPlaybackKind(img.name, img.mime) === 'video' ? {} : await extractExif(img.file);
             if (exif.date) data['exif-date'] = exif.date;
             if (exif.camera) data['exif-camera'] = exif.camera;
             if (exif.lens) data['exif-lens'] = exif.lens;
@@ -652,7 +623,7 @@ export async function ingestDirectory(
             }
 
             // Face detection + recognition
-            if (faceWorker) {
+            if (faceWorker && getMediaPlaybackKind(img.name, img.mime) !== 'video') {
                 onProgress?.({
                     phase: 'faces',
                     current: processed,
@@ -721,7 +692,7 @@ export interface MobilePhotoEntry {
     mimeType?: string;
     /** Object URL for thumbnail */
     thumb?: string;
-    /** Object URL for full image */
+    /** Object URL for the original media */
     objectUrl: string;
     tags: string[];
     capturedAt?: string;
@@ -744,7 +715,7 @@ export async function ingestFiles(
     const selectedFiles = Array.from(fileList);
     for (let i = 0; i < selectedFiles.length; i++) {
         const f = selectedFiles[i];
-        if (isImportableImageFile(f)) {
+        if (isImportableMediaFile(f)) {
             files.push(f);
         }
     }
@@ -763,7 +734,7 @@ export async function ingestFiles(
         });
 
         const contentHash = await hashImageFile(file);
-        const exif = await extractExif(file);
+        const exif: ExifData = getMediaPlaybackKind(file.name, file.type) === 'video' ? {} : await extractExif(file);
         const relPath = (file as any).webkitRelativePath || file.name;
         const folder = relPath.includes('/') ? relPath.split('/').slice(1, -1).join('/') : '';
 
@@ -780,7 +751,7 @@ export async function ingestFiles(
             managed: 'metadata',
             sourcePath: relPath,
             folderPath: folder || undefined,
-            mimeType: file.type || mimeFromName(file.name),
+            mimeType: getMediaMimeType(file.name, file.type),
             thumb,
             objectUrl: URL.createObjectURL(file),
             tags: folder ? [folder.split('/')[0]] : [],

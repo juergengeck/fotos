@@ -3,7 +3,9 @@ import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, RotateCcw, FlipHo
 import type { PhotoEntry } from '@/types/fotos';
 import type { FaceClusterSummary } from '@/lib/cluster-gallery';
 import { EMBEDDING_DIM } from '@refinio/fotos.core';
+import {getMediaPlaybackKind} from '@refinio/media.core/media-types';
 import { InlineRenameField } from './InlineRenameField';
+import {TimedMediaPlayer} from './TimedMediaPlayer.js';
 
 const MIN_SCALE = 0.05;
 const MAX_SCALE = 20;
@@ -36,15 +38,15 @@ function clampPan(
     scale: number,
     rotation: number,
     viewport: HTMLDivElement | null,
-    image: HTMLImageElement | null,
+    mediaSize: {width: number; height: number} | null,
 ) {
-    if (!viewport || !image?.naturalWidth) {
+    if (!viewport || !mediaSize?.width) {
         return { x: 0, y: 0 };
     }
 
     const rotated = (rotation % 180) !== 0;
-    const width = (rotated ? image.naturalHeight : image.naturalWidth) * scale;
-    const height = (rotated ? image.naturalWidth : image.naturalHeight) * scale;
+    const width = (rotated ? mediaSize.height : mediaSize.width) * scale;
+    const height = (rotated ? mediaSize.width : mediaSize.height) * scale;
     const availableWidth = Math.max(viewport.clientWidth - VIEWPORT_PADDING, 0);
     const availableHeight = Math.max(viewport.clientHeight - VIEWPORT_PADDING, 0);
     const maxX = Math.max(0, (width - availableWidth) / 2);
@@ -58,6 +60,7 @@ function clampPan(
 
 export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onExport, onFaceSearch, onRenameFace, onDeleteFace, people, onAssociateFace, getFileUrl, mobile }: LightboxProps) {
     const photo = photos[index];
+    const mediaKind = getMediaPlaybackKind(photo.name, photo.mimeType);
     const [fullscreen, setFullscreen] = useState(false);
     const [chevronVisible, setChevronVisible] = useState(false);
     const chevronTimer = useRef<ReturnType<typeof setTimeout>>(null);
@@ -68,6 +71,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
     const [previousImgSrc, setPreviousImgSrc] = useState<string | null>(null);
     const [crossfadeKey, setCrossfadeKey] = useState(0);
     const isInitialLoad = useRef(true);
+    const loadedMediaKindRef = useRef<'image' | 'gif' | 'video' | null>(null);
 
     // Preload cache: sourcePath → resolved URL
     const preloadCache = useRef<Map<string, string>>(new Map());
@@ -78,8 +82,11 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
     const [rotation, setRotation] = useState(0);
     const [flipH, setFlipH] = useState(false);
     const [flipV, setFlipV] = useState(false);
+    const [mediaSize, setMediaSize] = useState<{width: number; height: number} | null>(null);
+    const handleMediaReady = useCallback((width: number, height: number) => {
+        setMediaSize({width, height});
+    }, []);
     const vpRef = useRef<HTMLDivElement>(null);
-    const imgRef = useRef<HTMLImageElement>(null);
     const sidebarRef = useRef<HTMLElement>(null);
     const dialogRef = useRef<HTMLDivElement>(null);
     const previouslyFocusedRef = useRef<HTMLElement | null>(null);
@@ -139,17 +146,16 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
     // Compute fit scale from actual displayed image natural size
     const getFitScale = useCallback(() => {
         const vp = vpRef.current;
-        const img = imgRef.current;
-        if (!vp || !img || !img.naturalWidth) return 1;
-        const natW = img.naturalWidth;
-        const natH = img.naturalHeight;
+        if (!vp || !mediaSize?.width) return 1;
+        const natW = mediaSize.width;
+        const natH = mediaSize.height;
         const rotated = (rotation % 180) !== 0;
         const imgW = rotated ? natH : natW;
         const imgH = rotated ? natW : natH;
         const availableWidth = Math.max(vp.clientWidth - VIEWPORT_PADDING, 1);
         const availableHeight = Math.max(vp.clientHeight - VIEWPORT_PADDING, 1);
         return Math.min(availableWidth / imgW, availableHeight / imgH, 1);
-    }, [rotation]);
+    }, [mediaSize, rotation]);
 
     const getEffectiveScale = useCallback(() => {
         return scale ?? getFitScale();
@@ -189,7 +195,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
     // Keyboard
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
-            if (e.target instanceof HTMLInputElement) return;
+            if (e.key !== 'Escape' && e.target instanceof Element && e.target.closest('input, select, textarea, video, [contenteditable="true"], [data-media-controls]')) return;
             switch (e.key) {
                 case 'Escape':
                     if (fullscreen) { setFullscreen(false); setChevronVisible(false); }
@@ -218,6 +224,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
 
     // Mouse drag (only when zoomed/panned)
     const onMouseDown = useCallback((e: React.MouseEvent) => {
+        if (e.target instanceof Element && e.target.closest('input, button, video, [data-media-controls]')) return;
         if (e.button !== 0 || scale === null) return;
         dragRef.current = { active: true, startX: e.clientX, startY: e.clientY, startPanX: pan.x, startPanY: pan.y };
         e.preventDefault();
@@ -269,8 +276,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
             }
 
             frame = window.requestAnimationFrame(() => {
-                const image = imgRef.current;
-                if (!image?.naturalWidth) {
+                if (!mediaSize?.width) {
                     setViewportRevision(revision => revision + 1);
                     return;
                 }
@@ -282,7 +288,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
                 }
 
                 setPan(current => {
-                    const next = clampPan(current, scale, rotation, viewport, image);
+                    const next = clampPan(current, scale, rotation, viewport, mediaSize);
                     return next.x === current.x && next.y === current.y ? current : next;
                 });
             });
@@ -298,7 +304,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
             }
             observer.disconnect();
         };
-    }, [rotation, scale]);
+    }, [mediaSize, rotation, scale]);
 
     // Wheel zoom. React's wheel listener is passive in this path, so bind natively.
     useEffect(() => {
@@ -306,6 +312,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
         if (!viewport) return;
 
         const onWheel = (event: WheelEvent) => {
+            if (event.target instanceof Element && event.target.closest('input, button, video, [data-media-controls]')) return;
             event.preventDefault();
             const factor = event.deltaY < 0 ? 1.15 : 0.87;
             zoomBy(factor);
@@ -316,13 +323,15 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
     }, [zoomBy]);
 
     // Double click toggle fit/1:1
-    const onDblClick = useCallback(() => {
+    const onDblClick = useCallback((event: React.MouseEvent) => {
+        if (event.target instanceof Element && event.target.closest('input, button, video, [data-media-controls]')) return;
         if (scale === null) zoom1to1();
         else zoomFit();
     }, [scale, zoom1to1, zoomFit]);
 
     // Click on viewport: fullscreen shows chevron, otherwise navigate
     const onViewportClick = useCallback((e: React.MouseEvent) => {
+        if (e.target instanceof Element && e.target.closest('input, button, video, [data-media-controls]')) return;
         if (dragRef.current.active) return;
         const vp = vpRef.current;
         if (!vp) return;
@@ -346,6 +355,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
     const isPinching = useRef(false);
 
     const onTouchStart = useCallback((e: React.TouchEvent) => {
+        if (e.target instanceof Element && e.target.closest('input, button, video, [data-media-controls]')) return;
         if (e.touches.length === 1) {
             const t = e.touches[0];
             touchStartRef.current = { x: t.clientX, y: t.clientY, time: Date.now() };
@@ -429,39 +439,57 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
     // Load full-size image
     const [imgSrc, setImgSrc] = useState('');
     const [imgLoaded, setImgLoaded] = useState(false);
+    const [sourceError, setSourceError] = useState<string | null>(null);
     useEffect(() => {
         // Capture the old image for crossfade (skip on initial load)
-        if (!isInitialLoad.current) {
+        if (!isInitialLoad.current && loadedMediaKindRef.current === 'image' && mediaKind === 'image') {
             setImgSrc(prev => {
                 if (prev) setPreviousImgSrc(prev);
                 return '';
             });
             setCrossfadeKey(k => k + 1);
+        } else {
+            setImgSrc('');
+            setPreviousImgSrc(null);
         }
         isInitialLoad.current = false;
+        loadedMediaKindRef.current = null;
         setImgLoaded(false);
+        setMediaSize(null);
+        setSourceError(null);
 
         const sourcePath = photo.sourcePath;
+        let cancelled = false;
         if (sourcePath) {
+            const acceptUrl = (url: string) => {
+                if (cancelled) return;
+                loadedMediaKindRef.current = mediaKind;
+                setImgSrc(url);
+            };
             // Check preload cache first
             const cached = preloadCache.current.get(sourcePath);
             if (cached) {
-                setImgSrc(cached);
+                acceptUrl(cached);
             } else {
                 getFileUrl(sourcePath).then(url => {
                     preloadCache.current.set(sourcePath, url);
-                    setImgSrc(url);
-                }).catch(() => {});
+                    acceptUrl(url);
+                }).catch(error => {
+                    if (cancelled) return;
+                    const detail = error instanceof Error ? error.message : String(error);
+                    setSourceError(`Unable to load “${photo.name}”: ${detail}`);
+                });
             }
         }
-    }, [photo.sourcePath, getFileUrl]);
+        return () => { cancelled = true; };
+    }, [mediaKind, photo.name, photo.sourcePath, getFileUrl]);
 
     // Preload adjacent images
     useEffect(() => {
         const preloadIndex = (i: number) => {
             const p = photos[i];
             const sourcePath = p?.sourcePath;
-            if (!sourcePath || preloadCache.current.has(sourcePath)) return;
+            if (!sourcePath || getMediaPlaybackKind(p.name, p.mimeType) !== 'image' || preloadCache.current.has(sourcePath)) return;
             getFileUrl(sourcePath).then(url => {
                 preloadCache.current.set(sourcePath, url);
                 // Trigger browser image decode/cache
@@ -520,7 +548,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
             onTouchEnd={onTouchEnd}
         >
             {/* Crossfade: previous image fading out */}
-            {previousImgSrc && (
+            {mediaKind === 'image' && previousImgSrc && (
                 <img
                     key={`prev-${crossfadeKey}`}
                     src={previousImgSrc}
@@ -543,13 +571,24 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
                 />
             )}
 
-            {imgSrc ? (
+            {sourceError ? (
+                <div className="absolute inset-0 flex items-center justify-center p-8 text-center text-sm text-red-200/80" style={{zIndex: 2}}>
+                    {sourceError}
+                </div>
+            ) : imgSrc && mediaKind === 'image' ? (
                 <img
                     src={imgSrc}
                     alt={photo.name}
                     className="select-none"
                     draggable={false}
-                    onLoad={() => setImgLoaded(true)}
+                    onLoad={event => {
+                        setMediaSize({
+                            width: event.currentTarget.naturalWidth,
+                            height: event.currentTarget.naturalHeight,
+                        });
+                        setImgLoaded(true);
+                    }}
+                    onError={() => setSourceError(`Unable to display “${photo.name}” as an image.`)}
                     style={{
                         ...imgStyle,
                         opacity: previousImgSrc ? 0 : 1,
@@ -557,12 +596,49 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
                         zIndex: 1,
                     }}
                     ref={el => {
-                        (imgRef as React.MutableRefObject<HTMLImageElement | null>).current = el;
                         if (el && previousImgSrc) {
                             el.style.opacity = '0';
                             requestAnimationFrame(() => { el.style.opacity = '1'; });
                         }
                     }}
+                />
+            ) : imgSrc && mediaKind === 'gif' ? (
+                <TimedMediaPlayer
+                    key={`${photo.hash}:${imgSrc}`}
+                    src={imgSrc}
+                    name={photo.name}
+                    mediaStyle={imgStyle}
+                    onReady={handleMediaReady}
+                    onLoadStateChange={setImgLoaded}
+                />
+            ) : imgSrc && mediaKind === 'video' ? (
+                <video
+                    key={`${photo.hash}:${imgSrc}`}
+                    src={imgSrc}
+                    aria-label={`Video: ${photo.name}`}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    className="select-none"
+                    style={{...imgStyle, zIndex: 1}}
+                    onLoadedMetadata={event => {
+                        setMediaSize({
+                            width: event.currentTarget.videoWidth,
+                            height: event.currentTarget.videoHeight,
+                        });
+                        setImgLoaded(true);
+                    }}
+                    onError={event => {
+                        const code = event.currentTarget.error?.code;
+                        const detail = code ? ` (media error ${code})` : '';
+                        setSourceError(`Unable to play “${photo.name}”${detail}.`);
+                    }}
+                    onClick={event => event.stopPropagation()}
+                    onDoubleClick={event => event.stopPropagation()}
+                    onMouseDown={event => event.stopPropagation()}
+                    onTouchStart={event => event.stopPropagation()}
+                    onTouchMove={event => event.stopPropagation()}
+                    onTouchEnd={event => event.stopPropagation()}
                 />
             ) : (
                 <div className="absolute inset-0 flex items-center justify-center text-white/55" style={{ zIndex: 1 }}>
@@ -578,7 +654,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
             )}
 
             {/* Spinner overlay while full image is decoding (src set but not yet loaded) */}
-            {imgSrc && !imgLoaded && (
+            {imgSrc && mediaKind !== 'gif' && !imgLoaded && !sourceError && (
                 <div className="absolute inset-0 flex items-center justify-center z-[2] pointer-events-none">
                     <div className="w-8 h-8 border-2 border-white/10 border-t-white/40 rounded-full animate-spin" />
                 </div>
