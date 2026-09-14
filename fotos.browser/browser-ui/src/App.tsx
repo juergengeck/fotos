@@ -72,6 +72,8 @@ import { DEBUG_REGISTRATION_TOKEN, DEBUG_REGISTRATION_TTL_MS } from './config';
 import { setFotosRuntimeSnapshot, setFotosRuntimeVisiblePhotos } from './lib/runtimeDiagnostics';
 import { determineAccessibleHashes } from '@refinio/one.core/lib/util/determine-accessible-hashes.js';
 import { commitFotosShareScope } from '@/lib/fotosShareCertificates';
+import {FotosShareCommitCoordinator} from '@/lib/fotosShareCommitCoordinator';
+import {getFotosShareTraceSpans, traceFotosSharePhase} from '@/lib/fotosShareTrace';
 import {
     projectReceivedFotosShares,
     type ReceivedFotosShareScope,
@@ -109,6 +111,7 @@ import {
     type FotosQaOperationHandlers,
 } from '@/lib/fotosQaOperation';
 import {hashImageFile} from '@/lib/browserIngest';
+import {isFotosQaSurfaceReady} from '@/lib/fotosQaReadiness';
 
 interface AppProps {
     fotosModel?: FotosModel;
@@ -402,6 +405,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
     const incomingSharePinRef = useRef<HTMLInputElement>(null);
     const incomingSharePreviousFocusRef = useRef<HTMLElement | null>(null);
     const [receivedShareScopes, setReceivedShareScopes] = useState<ReceivedFotosShareScope[]>([]);
+    const shareCommitCoordinatorRef = useRef(new FotosShareCommitCoordinator());
     const [confirmState, setConfirmState] = useState<{
         open: boolean;
         title: string;
@@ -584,6 +588,11 @@ export function App({ fotosModel: initialModel }: AppProps) {
         () => buildFotosCollectionSummaries(fotosCollections.collections, gallery.folder.entries),
         [fotosCollections.collections, gallery.folder.entries],
     );
+    const qaSurfaceReady = isFotosQaSurfaceReady({
+        modelInitialized: Boolean(fotosModel?.initialized),
+        sourceInitializationComplete: gallery.folder.initializationComplete,
+        collections: collectionSummaries,
+    });
     const locallyOwnedGalleryEntries = useMemo(
         () => gallery.folder.entries.filter(photo => !isRemoteGalleryEntry(photo)),
         [gallery.folder.entries],
@@ -1288,6 +1297,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
         nextPersonIds: readonly string[];
         contentHashes: readonly string[];
         persist: () => void;
+        intent?: 'assignment' | 'refresh';
     }) => {
         const issuer = fotosModel?.publicationIdentity;
         if (!issuer) {
@@ -1305,37 +1315,58 @@ export function App({ fotosModel: initialModel }: AppProps) {
             recipients: [...nextPersonIds].sort(),
             content: [...params.contentHashes].sort(),
         });
-        if (
-            certificateBackfilledScopesRef.current.has(scopeKey)
-            && committedShareScopeFingerprintsRef.current.get(scopeKey) === fingerprint
-        ) {
-            params.persist();
-            return null;
-        }
-
-        await gallery.folder.ensureSyncedToOneCore();
-        const snapshot = await fotosShareController.refreshManifest();
-        const entryHashByContentHash = new Map(
-            (snapshot?.resolvedEntries ?? []).map(entry => [entry.contentHash, entry.entryHash]),
-        );
-        const missingHashes = params.contentHashes.filter(hash => !entryHashByContentHash.has(hash));
-        if (missingHashes.length > 0) {
-            throw new Error(`${missingHashes.length} photo${missingHashes.length === 1 ? '' : 's'} could not be prepared for sharing.`);
-        }
-
-        const result = await commitFotosShareScope({
-            issuer: issuer as any,
-            scope: params.scope,
+        const result = await shareCommitCoordinatorRef.current.commit({
+            scopeKey,
+            fingerprint,
             previousPersonIds,
             nextPersonIds,
-            entryHashes: params.contentHashes.map(hash => entryHashByContentHash.get(hash) as any),
+            intent: params.intent,
+            operation: async committedPreviousPersonIds => {
+                if (
+                    certificateBackfilledScopesRef.current.has(scopeKey)
+                    && committedShareScopeFingerprintsRef.current.get(scopeKey) === fingerprint
+                ) {
+                    return null;
+                }
+
+                await traceFotosSharePhase(
+                    params.scope,
+                    'selected-photo-sync',
+                    () => gallery.folder.ensureSyncedToOneCore(params.contentHashes),
+                );
+                const snapshot = await traceFotosSharePhase(
+                    params.scope,
+                    'manifest-resolution',
+                    () => fotosShareController.refreshManifest(),
+                );
+                const entryHashByContentHash = new Map(
+                    (snapshot?.resolvedEntries ?? []).map(entry => [entry.contentHash, entry.entryHash]),
+                );
+                const missingHashes = params.contentHashes.filter(hash => !entryHashByContentHash.has(hash));
+                if (missingHashes.length > 0) {
+                    throw new Error(`${missingHashes.length} photo${missingHashes.length === 1 ? '' : 's'} could not be prepared for sharing.`);
+                }
+
+                const committed = await traceFotosSharePhase(
+                    params.scope,
+                    'commit-scope',
+                    () => commitFotosShareScope({
+                        issuer: issuer as any,
+                        scope: params.scope,
+                        previousPersonIds: committedPreviousPersonIds,
+                        nextPersonIds,
+                        entryHashes: params.contentHashes.map(hash => entryHashByContentHash.get(hash) as any),
+                    }),
+                );
+                certificateBackfilledScopesRef.current.add(scopeKey);
+                committedShareScopeFingerprintsRef.current.set(scopeKey, fingerprint);
+                for (const transition of committed.transitions) {
+                    if (transition.status === 'active') fotosShareController.recordGrant(transition.personId);
+                }
+                return committed;
+            },
         });
-        certificateBackfilledScopesRef.current.add(scopeKey);
-        committedShareScopeFingerprintsRef.current.set(scopeKey, fingerprint);
         params.persist();
-        for (const transition of result.transitions) {
-            if (transition.status === 'active') fotosShareController.recordGrant(transition.personId);
-        }
         return result;
     }, [expandSharePersonIds, fotosModel?.publicationIdentity, gallery.folder.ensureSyncedToOneCore]);
 
@@ -2279,7 +2310,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
 
     useEffect(() => {
         fotosQaAppState.update({
-            initialized: Boolean(fotosModel?.initialized),
+            initialized: qaSurfaceReady,
             ownerId: fotosModel?.ownerId ? String(fotosModel.ownerId) : null,
             publicationIdentity: fotosModel?.publicationIdentity
                 ? String(fotosModel.publicationIdentity)
@@ -2322,7 +2353,9 @@ export function App({ fotosModel: initialModel }: AppProps) {
         fotosModel?.publicationIdentity,
         gallery.folder.entries,
         gallery.folder.folderName,
+        gallery.folder.initializationComplete,
         gallery.folder.isOpen,
+        qaSurfaceReady,
         receivedShareScopes,
     ]);
 
@@ -2546,6 +2579,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 const scopeKey = `${params.scope.kind}:${params.scope.id}`;
                 await commitShareAssignment({
                     ...params,
+                    intent: 'refresh',
                     previousPersonIds: certificateBackfilledScopesRef.current.has(scopeKey)
                         ? params.previousPersonIds
                         : [],
@@ -2672,6 +2706,9 @@ export function App({ fotosModel: initialModel }: AppProps) {
                     peerConnectionCoordinator:
                         activeGlueModule?.getPeerConnectionCoordinatorDebug?.() ?? [],
                     chumSync: getChumSyncDiagnostics({traceLimit}),
+                    fotosSharePublication: {
+                        spans: getFotosShareTraceSpans(Math.min(traceLimit, 100)),
+                    },
                 };
             },
             prepareIdentity: async ({displayName}) => {
@@ -2950,6 +2987,11 @@ export function App({ fotosModel: initialModel }: AppProps) {
         };
 
         fotosQaOperation._attach(handlers);
+        return () => fotosQaOperation._detach(handlers);
+    }, []);
+
+    useEffect(() => {
+        if (!qaSurfaceReady) return;
         const announceQaReady = (window as any).__announceFotosQaReady;
         if (typeof announceQaReady === 'function') {
             announceQaReady(
@@ -2958,8 +3000,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                     : null,
             );
         }
-        return () => fotosQaOperation._detach(handlers);
-    }, []);
+    }, [fotosModel?.publicationIdentity, qaSurfaceReady]);
 
     useEffect(() => {
         if (!shouldExposeFotosDebugApi(import.meta.env.DEV, window.location.search)) {

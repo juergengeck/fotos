@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:qa": "node scripts/serve-qa.mjs",
     "build": "vite build",
     "test:integration:fotos-share": "node ./scripts/fotos-browser-sync-dev-integration.mjs",
     "test:integration:fotos-ui": "node ./tests/integration/fotos-ui-flow-suite.mjs",

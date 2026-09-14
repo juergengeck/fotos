@@ -20,10 +20,12 @@ import {getObjectWithType} from '@refinio/one.core/lib/storage-unversioned-objec
 import {onChumObjectImported} from '@refinio/one.core/lib/chum-sync.js';
 import {storeArrayBufferAsBlob, readBlobAsArrayBuffer} from '@refinio/one.core/lib/storage-blob.js';
 import {getInstanceIdHash, getInstanceOwnerIdHash} from '@refinio/one.core/lib/instance.js';
+import {exists} from '@refinio/one.core/lib/system/storage-base.js';
 import {calculateIdHashOfObj} from '@refinio/one.core/lib/util/object.js';
 import {
     addAuthenticityAttestationToManifest,
     addEntryToManifest,
+    readFotosManifestSnapshot,
 } from './fotos-manifest.js';
 import {EMBEDDING_DIM, facesToDataAttrs} from '@refinio/fotos.core';
 import {getMediaMimeType} from '@refinio/media.core/media-types';
@@ -45,6 +47,7 @@ import type {
 } from '../../../../fotos.core/src/recipes/FotosMediaRecipes.js';
 import {
     appendFotosDeviceBookContent,
+    readFotosDeviceBook,
 } from '../../../../fotos.core/src/fotos-device-book.js';
 import {
     createFotosMediaLocator,
@@ -54,6 +57,7 @@ import {
     appendMediaBookContent,
     createMediaSource,
     createMediaSourceEntry,
+    readMediaBook,
 } from '@refinio/source.media/services';
 import {hashImageFile} from './browserIngest.js';
 
@@ -63,10 +67,196 @@ export interface SyncPhotosToOneCoreOptions {
     requireOriginalBlob?: boolean;
 }
 
+let syncQueueTail: Promise<void> = Promise.resolve();
+
 export function shouldClaimFotosAuthorship(
     options: SyncPhotosToOneCoreOptions = {},
 ): boolean {
     return options.claimAuthorship !== false;
+}
+
+function createFotosEntryMetadata(photo: PhotoEntry): FotosEntry {
+    const entry: FotosEntry = {
+        $type$: 'FotosEntry',
+        contentHash: photo.hash,
+        streamId: photo.hash,
+        mime: getMediaMimeType(photo.name, photo.mimeType),
+        size: photo.size,
+    };
+
+    if (photo.capturedAt) entry.capturedAt = photo.capturedAt;
+    if (photo.updatedAt) entry.updatedAt = photo.updatedAt;
+    if (photo.sourcePath) entry.sourcePath = photo.sourcePath;
+    if (photo.folderPath) entry.folderPath = photo.folderPath;
+
+    const exif = photo.exif;
+    if (exif) {
+        if (exif.date) entry.exifDate = exif.date;
+        if (exif.camera) entry.exifCamera = exif.camera;
+        if (exif.lens) entry.exifLens = exif.lens;
+        if (exif.focalLength) entry.exifFocalLength = exif.focalLength;
+        if (exif.aperture) entry.exifAperture = exif.aperture;
+        if (exif.shutter) entry.exifShutter = exif.shutter;
+        if (exif.iso !== undefined) entry.exifIso = exif.iso;
+        if (exif.gps) {
+            entry.exifGpsLat = exif.gps.lat;
+            entry.exifGpsLon = exif.gps.lon;
+        }
+        if (exif.width !== undefined) entry.exifWidth = exif.width;
+        if (exif.height !== undefined) entry.exifHeight = exif.height;
+    }
+    if (photo.faces && photo.faces.count > 0) {
+        entry.faceCount = photo.faces.count;
+    }
+
+    return entry;
+}
+
+function hasMatchingEntryMetadata(current: FotosEntry, expected: FotosEntry): boolean {
+    const keys: Array<keyof FotosEntry> = [
+        'contentHash',
+        'streamId',
+        'mime',
+        'size',
+        'capturedAt',
+        'updatedAt',
+        'sourcePath',
+        'folderPath',
+        'exifDate',
+        'exifCamera',
+        'exifLens',
+        'exifFocalLength',
+        'exifAperture',
+        'exifShutter',
+        'exifIso',
+        'exifGpsLat',
+        'exifGpsLon',
+        'exifWidth',
+        'exifHeight',
+        'faceCount',
+    ];
+    return keys.every(key => current[key] === expected[key]);
+}
+
+interface StoredOriginalVariant {
+    hash: SHA256Hash<FotosMediaVariant>;
+    idHash: SHA256IdHash<FotosMediaVariant>;
+    blob: SHA256Hash<BLOB>;
+}
+
+async function findCompleteOriginalVariant(
+    entry: FotosEntry,
+    entryIdHash: SHA256IdHash<FotosEntry>,
+    photo: PhotoEntry,
+): Promise<StoredOriginalVariant | null> {
+    if (!(entry.variants instanceof Set) || entry.variants.size === 0) {
+        return null;
+    }
+
+    for (const variantHash of entry.variants) {
+        try {
+            const variant = await getObjectWithType(
+                variantHash as SHA256Hash<FotosMediaVariant>,
+                'FotosMediaVariant',
+            ) as FotosMediaVariant;
+            if (
+                variant.role === 'original'
+                && String(variant.family) === String(entryIdHash)
+                && variant.contentHash === photo.hash
+                && variant.mime === getMediaMimeType(photo.name, photo.mimeType)
+                && variant.byteSize === photo.size
+                && typeof variant.blob === 'string'
+                && variant.blob.length > 0
+                && await exists(variant.blob as SHA256Hash<BLOB>)
+            ) {
+                return {
+                    hash: variantHash as SHA256Hash<FotosMediaVariant>,
+                    idHash: await calculateIdHashOfObj(variant as any) as SHA256IdHash<FotosMediaVariant>,
+                    blob: variant.blob as SHA256Hash<BLOB>,
+                };
+            }
+        } catch (error) {
+            if (!isMissingVersionedObject(error)) throw error;
+        }
+    }
+    return null;
+}
+
+async function findStoredOriginalBlob(
+    photo: PhotoEntry,
+    entryIdHash: SHA256IdHash<FotosEntry>,
+): Promise<SHA256Hash<BLOB> | undefined> {
+    try {
+        const stored = await getObjectByIdHash(entryIdHash);
+        const original = await findCompleteOriginalVariant(
+            stored.obj as unknown as FotosEntry,
+            entryIdHash,
+            photo,
+        );
+        return original?.blob;
+    } catch (error) {
+        if (isMissingVersionedObject(error)) return undefined;
+        throw error;
+    }
+}
+
+interface ManifestAuthenticityRef {
+    attestationHash: string;
+    contentHash: string;
+    signerPersonId: string;
+}
+
+async function isPhotoAlreadySynced(
+    photo: PhotoEntry,
+    rootHandle: FileSystemDirectoryHandle | null,
+    manifestEntryHashes: ReadonlySet<string>,
+    manifestAttestations: readonly ManifestAuthenticityRef[],
+    requiredAuthenticitySigner: string | null | undefined,
+): Promise<boolean> {
+    const expected = createFotosEntryMetadata(photo);
+    const entryIdHash = await calculateIdHashOfObj(expected as any) as SHA256IdHash<FotosEntry>;
+    let stored;
+    try {
+        stored = await getObjectByIdHash(entryIdHash);
+    } catch (error) {
+        if (isMissingVersionedObject(error)) return false;
+        throw error;
+    }
+    const current = stored.obj as unknown as FotosEntry;
+    if (!manifestEntryHashes.has(String(stored.hash)) || !hasMatchingEntryMetadata(current, expected)) {
+        return false;
+    }
+
+    const originalVariant = await findCompleteOriginalVariant(current, entryIdHash, photo);
+    if (!originalVariant) return false;
+
+    const requiredAttestation = requiredAuthenticitySigner === undefined
+        ? undefined
+        : requiredAuthenticitySigner === null
+            ? null
+            : manifestAttestations.find(attestation =>
+                attestation.contentHash === photo.hash
+                && attestation.signerPersonId === requiredAuthenticitySigner,
+            ) ?? null;
+    if (requiredAuthenticitySigner !== undefined && !requiredAttestation) return false;
+
+    const author = getInstanceOwnerIdHash() as SHA256IdHash<Person> | null;
+    if (!author || !await hasCompleteBrowserPublication({
+        photo,
+        author,
+        entryHash: String(stored.hash),
+        entryIdHash: String(entryIdHash),
+        originalVariant,
+        authenticityHash: requiredAttestation?.attestationHash,
+    })) {
+        return false;
+    }
+
+    if (!photo.thumb) return !current.thumb;
+    const expectedThumbHash = rootHandle && !photo.thumb.startsWith('blob:') && !photo.thumb.startsWith('data:')
+        ? await storeThumbnailBlob(rootHandle, photo.thumb)
+        : await storeEphemeralThumbnailBlob(photo.thumb);
+    return Boolean(expectedThumbHash) && String(current.thumb ?? '') === String(expectedThumbHash);
 }
 
 function isMissingVersionedObject(error: unknown): boolean {
@@ -198,11 +388,15 @@ function resolveBrowserFotosDeviceId(): string {
     return String(instanceId || 'browser');
 }
 
-async function storeBrowserSourceState(photo: PhotoEntry): Promise<{
+interface BrowserSourceState {
+    source: Record<string, unknown>;
+    entry: Record<string, unknown>;
     sourceIdHash: string;
     entryIdHash: string;
     sourceRef: string;
-}> {
+}
+
+async function createBrowserSourceState(photo: PhotoEntry): Promise<BrowserSourceState> {
     const deviceId = resolveBrowserFotosDeviceId();
     const sourceLocator = photo.folderPath?.trim() || 'browser-gallery';
     const source = createMediaSource({
@@ -214,18 +408,34 @@ async function storeBrowserSourceState(photo: PhotoEntry): Promise<{
         metadata: {
             folderPath: photo.folderPath ?? null,
         },
-    });
-    const storedSource = await storeVersionedObject(source as any);
-
+    }) as unknown as Record<string, unknown>;
+    const sourceIdHash = String(await calculateIdHashOfObj(source as any));
     const entry = createMediaSourceEntry({
-        sourceId: source.id,
-        sourceIdHash: String(storedSource.idHash),
+        sourceId: String(source.id),
+        sourceIdHash,
         entryKind: 'file',
         locator: photo.sourcePath?.trim() || photo.name,
         title: photo.name,
         summary: photo.folderPath?.trim() ? `Imported from ${photo.folderPath}` : 'Imported from browser gallery',
         contentHash: photo.hash,
-    });
+    }) as unknown as Record<string, unknown>;
+
+    return {
+        source,
+        entry,
+        sourceIdHash,
+        entryIdHash: String(await calculateIdHashOfObj(entry as any)),
+        sourceRef: String(entry.sourceRef ?? ''),
+    };
+}
+
+async function storeBrowserSourceState(photo: PhotoEntry): Promise<{
+    sourceIdHash: string;
+    entryIdHash: string;
+    sourceRef: string;
+}> {
+    const {source, entry} = await createBrowserSourceState(photo);
+    const storedSource = await storeVersionedObject(source as any);
     const storedEntry = await storeVersionedObject(entry as any);
 
     return {
@@ -233,6 +443,113 @@ async function storeBrowserSourceState(photo: PhotoEntry): Promise<{
         entryIdHash: String(storedEntry.idHash),
         sourceRef: String(entry.sourceRef ?? ''),
     };
+}
+
+function collectionContainsAll(
+    values: Iterable<string> | undefined,
+    expected: readonly string[],
+): boolean {
+    if (expected.length === 0) return true;
+    if (!values) return false;
+    const current = new Set(Array.from(values, String));
+    return expected.every(value => current.has(value));
+}
+
+function hasExpectedObjectFields(
+    current: unknown,
+    expected: Record<string, unknown>,
+    fields: readonly string[],
+): boolean {
+    return Boolean(current && typeof current === 'object')
+        && fields.every(field =>
+            (current as Record<string, unknown>)[field] === expected[field],
+        );
+}
+
+async function readCurrentBrowserLocators(
+    photo: PhotoEntry,
+    variantIdHash: SHA256IdHash<FotosMediaVariant>,
+): Promise<{hashes: string[]; idHashes: string[]} | null> {
+    const hashes: string[] = [];
+    const idHashes: string[] = [];
+    const deviceId = resolveBrowserFotosDeviceId();
+    const lastVerifiedAt = photo.updatedAt ?? photo.addedAt ?? photo.capturedAt;
+    for (const locatorValue of collectOriginalVariantLocators(photo)) {
+        const expected = createFotosMediaLocator({
+            variant: variantIdHash,
+            platform: 'browser',
+            kind: 'relative-path',
+            scope: 'device-local',
+            locator: locatorValue,
+            ...(deviceId ? {deviceId} : {}),
+            ...(lastVerifiedAt ? {lastVerifiedAt} : {}),
+        });
+        const idHash = String(await calculateIdHashOfObj(expected as any));
+        const stored = await getVersionedObjectIfPresent(idHash as SHA256IdHash<FotosMediaLocator>);
+        if (!stored?.hash || !hasExpectedObjectFields(stored.obj, expected as any, [
+            '$type$', 'id', 'variant', 'platform', 'kind', 'scope', 'locator', 'deviceId', 'lastVerifiedAt',
+        ])) {
+            return null;
+        }
+        hashes.push(String(stored.hash));
+        idHashes.push(idHash);
+    }
+    return {hashes, idHashes};
+}
+
+async function hasCompleteBrowserPublication(params: {
+    photo: PhotoEntry;
+    author: SHA256IdHash<Person>;
+    entryHash: string;
+    entryIdHash: string;
+    originalVariant: StoredOriginalVariant;
+    authenticityHash?: string;
+}): Promise<boolean> {
+    const sourceState = await createBrowserSourceState(params.photo);
+    const [storedSource, storedSourceEntry, locators] = await Promise.all([
+        getVersionedObjectIfPresent(sourceState.sourceIdHash as any),
+        getVersionedObjectIfPresent(sourceState.entryIdHash as any),
+        readCurrentBrowserLocators(params.photo, params.originalVariant.idHash),
+    ]);
+    if (
+        !storedSource
+        || !storedSourceEntry
+        || !locators
+        || !hasExpectedObjectFields(storedSource.obj, sourceState.source, ['$type$', 'id'])
+        || !hasExpectedObjectFields(storedSourceEntry.obj, sourceState.entry, [
+            '$type$', 'id', 'sourceId', 'kind', 'locator', 'sourceRef', 'contentHash',
+        ])
+    ) {
+        return false;
+    }
+
+    const deviceId = resolveBrowserFotosDeviceId();
+    const persistence = {calculateIdHashOfObj, getObjectByIdHash, storeVersionedObject};
+    const [deviceBook, mediaBook] = await Promise.all([
+        readFotosDeviceBook(persistence, deviceId),
+        readMediaBook({
+            calculateIdHashOfObj,
+            getObjectByIdHash: getVersionedObjectIfPresent,
+            storeVersionedObject,
+        }, params.author, deviceId),
+    ]);
+    if (!deviceBook?.obj || !mediaBook?.obj) return false;
+
+    const deviceAuthenticity = params.authenticityHash ? [params.authenticityHash] : [];
+    return collectionContainsAll(deviceBook.obj.entries, [params.entryHash])
+        && collectionContainsAll(deviceBook.obj.sourceIdHashes, [sourceState.sourceIdHash])
+        && collectionContainsAll(deviceBook.obj.entryIdHashes, [sourceState.entryIdHash])
+        && collectionContainsAll(deviceBook.obj.variants, [String(params.originalVariant.hash)])
+        && collectionContainsAll(deviceBook.obj.locators, locators.hashes)
+        && collectionContainsAll(deviceBook.obj.authenticityAttestations, deviceAuthenticity)
+        && collectionContainsAll(mediaBook.obj.sourceIdHashes, [sourceState.sourceIdHash])
+        && collectionContainsAll(mediaBook.obj.entryIdHashes, [sourceState.entryIdHash])
+        && collectionContainsAll(mediaBook.obj.sourceRefs, sourceState.sourceRef ? [sourceState.sourceRef] : [])
+        && collectionContainsAll(mediaBook.obj.artifactIdHashes, [
+            params.entryIdHash,
+            String(params.originalVariant.idHash),
+            ...locators.idHashes,
+        ]);
 }
 
 async function storeBrowserLocator(params: {
@@ -489,38 +806,8 @@ export async function syncPhotoToOneCore(
         throw new Error('[fotos-sync] Cannot persist a photo without the local owner identity');
     }
 
-    // Build the FotosEntry
-    const mime = getMediaMimeType(photo.name, photo.mimeType);
-    const entry: FotosEntry = {
-        $type$: 'FotosEntry',
-        contentHash: photo.hash,
-        streamId: photo.hash,
-        mime,
-        size: photo.size,
-    };
-
-    if (photo.capturedAt) entry.capturedAt = photo.capturedAt;
-    if (photo.updatedAt) entry.updatedAt = photo.updatedAt;
-    if (photo.sourcePath) entry.sourcePath = photo.sourcePath;
-    if (photo.folderPath) entry.folderPath = photo.folderPath;
-
-    // Map EXIF fields
-    const exif = photo.exif;
-    if (exif) {
-        if (exif.date) entry.exifDate = exif.date;
-        if (exif.camera) entry.exifCamera = exif.camera;
-        if (exif.lens) entry.exifLens = exif.lens;
-        if (exif.focalLength) entry.exifFocalLength = exif.focalLength;
-        if (exif.aperture) entry.exifAperture = exif.aperture;
-        if (exif.shutter) entry.exifShutter = exif.shutter;
-        if (exif.iso !== undefined) entry.exifIso = exif.iso;
-        if (exif.gps) {
-            entry.exifGpsLat = exif.gps.lat;
-            entry.exifGpsLon = exif.gps.lon;
-        }
-        if (exif.width !== undefined) entry.exifWidth = exif.width;
-        if (exif.height !== undefined) entry.exifHeight = exif.height;
-    }
+    const entry = createFotosEntryMetadata(photo);
+    const mime = entry.mime;
 
     // Store thumbnail as BLOB if available
     let thumbHash: SHA256Hash<BLOB> | undefined;
@@ -535,17 +822,13 @@ export async function syncPhotoToOneCore(
         }
     }
 
-    // Map face data
-    if (photo.faces && photo.faces.count > 0) {
-        entry.faceCount = photo.faces.count;
-    }
-
-    const originalBlobHash = await storeOriginalBlob(rootHandle, photo);
+    const entryIdHash = await calculateIdHashOfObj(entry as any) as SHA256IdHash<FotosEntry>;
+    const originalBlobHash = await storeOriginalBlob(rootHandle, photo)
+        ?? await findStoredOriginalBlob(photo, entryIdHash);
     if (options.requireOriginalBlob && !originalBlobHash && !photo.sourcePath?.startsWith('remote:')) {
         throw new Error(`[fotos-sync] Local original is unavailable for ${photo.name}`);
     }
 
-    const entryIdHash = await calculateIdHashOfObj(entry as any) as SHA256IdHash<FotosEntry>;
     const mediaState = await storeFotosMediaState(
         photo,
         entryIdHash,
@@ -560,9 +843,6 @@ export async function syncPhotoToOneCore(
     // Store the versioned object (idempotent — same contentHash isId = same object)
     const result = await storeVersionedObject(entry as unknown as FotosEntry);
     const sourceState = await storeBrowserSourceState(photo);
-
-    // Add to manifest
-    await addEntryToManifest(result.hash as SHA256Hash<FotosEntry>);
 
     let authenticityHash: SHA256Hash<FotosAuthenticityAttestation> | undefined;
     let authenticityIdHash: SHA256IdHash<FotosAuthenticityAttestation> | undefined;
@@ -613,6 +893,11 @@ export async function syncPhotoToOneCore(
             ...(authenticityIdHash ? [String(authenticityIdHash)] : []),
         ],
     });
+
+    // Publish the global discovery root last. Completion is still proven from
+    // this device's source objects and books; another producer can already have
+    // placed the same content-keyed entry in the shared manifest.
+    await addEntryToManifest(result.hash as SHA256Hash<FotosEntry>);
 }
 
 /**
@@ -624,7 +909,7 @@ export async function syncPhotoToOneCore(
  * @param photos - The PhotoEntry array from folder scanning
  * @param rootHandle - The root directory handle (for reading thumbnail files)
  */
-export async function syncPhotosToOneCore(
+async function syncPhotosBatchToOneCore(
     photos: PhotoEntry[],
     rootHandle: FileSystemDirectoryHandle | null,
     options: SyncPhotosToOneCoreOptions = {},
@@ -642,14 +927,34 @@ export async function syncPhotosToOneCore(
     let synced = 0;
     let errors = 0;
     const failureMessages: string[] = [];
-    const authenticityContext = shouldClaimFotosAuthorship(options)
+    const manifest = await readFotosManifestSnapshot();
+    const manifestEntryHashes = new Set(manifest.entryHashes);
+    const claimAuthorship = shouldClaimFotosAuthorship(options);
+    const authenticityContext = claimAuthorship
         ? await resolveFotosAuthenticityContext().catch(err => {
             console.warn('[fotos-sync] Authenticity signing unavailable:', err);
             return null;
         })
         : null;
-
+    const dirtyPhotos: PhotoEntry[] = [];
     for (const photo of photos) {
+        if (!await isPhotoAlreadySynced(
+            photo,
+            rootHandle,
+            manifestEntryHashes,
+            manifest.resolvedAttestations,
+            claimAuthorship ? authenticityContext?.signerPersonId ?? null : undefined,
+        )) {
+            dirtyPhotos.push(photo);
+        }
+    }
+
+    if (dirtyPhotos.length === 0) {
+        console.log(`[fotos-sync] Complete: ${photos.length} unchanged, 0 synced, 0 errors`);
+        return;
+    }
+
+    for (const photo of dirtyPhotos) {
         try {
             await syncPhotoToOneCore(photo, rootHandle, authenticityContext, options);
             synced++;
@@ -666,6 +971,24 @@ export async function syncPhotosToOneCore(
             `[fotos-sync] Failed to publish ${errors} local original${errors === 1 ? '' : 's'}: ${failureMessages.join('; ')}`,
         );
     }
+}
+
+/**
+ * Sync dirty photos to ONE.core in call order. Each batch rechecks durable
+ * per-device publication completion after earlier overlapping work has settled.
+ */
+export function syncPhotosToOneCore(
+    photos: PhotoEntry[],
+    rootHandle: FileSystemDirectoryHandle | null,
+    options: SyncPhotosToOneCoreOptions = {},
+): Promise<void> {
+    const operation = syncQueueTail.then(() => syncPhotosBatchToOneCore(
+        photos,
+        rootHandle,
+        options,
+    ));
+    syncQueueTail = operation.catch(() => undefined);
+    return operation;
 }
 
 /**

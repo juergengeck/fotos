@@ -112,7 +112,7 @@ function invalidScope(
  */
 export async function projectReceivedFotosShares(
     subject: string,
-    verifySignature: (signature: unknown) => Promise<boolean>,
+    verifySignature: (signature: unknown, signatureHash?: string) => Promise<boolean>,
     deps: ReceivedFotosShareProjectionDeps = defaultDeps,
 ): Promise<ReceivedFotosShareScope[]> {
     const normalizedSubject = subject.trim();
@@ -173,7 +173,7 @@ export async function projectReceivedFotosShares(
             signatureObject.$type$ !== 'Signature'
             || String(signatureObject.data) !== String(chain.certificate)
             || String(signatureObject.issuer) !== String(chain.issuer)
-            || !await verifySignature(signature)
+            || !await verifySignature(signature, String(chain.signature))
         ) {
             return invalidScope(reference, 'Certificate signature is missing or untrusted', certificate);
         }

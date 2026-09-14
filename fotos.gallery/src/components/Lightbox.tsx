@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import type {
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
-  WheelEvent as ReactWheelEvent,
 } from 'react'
 import type { GalleryEntry } from '../types/gallery.js'
 
@@ -558,6 +557,22 @@ export function Lightbox<T extends GalleryEntry = GalleryEntry>({
     naturalSizeRef.current = naturalSize
   }, [naturalSize])
 
+  useEffect(() => {
+    const stage = stageRef.current
+    if (!stage) return
+
+    // React delegates wheel events through a passive listener. Zoom needs to
+    // cancel scrolling, so own a non-passive listener on this stage instead.
+    const onWheel = (event: WheelEvent): void => {
+      if (isInteractiveTarget(event.target)) return
+      event.preventDefault()
+      const point = getStagePoint(event.clientX, event.clientY, stage)
+      zoomBy(event.deltaY < 0 ? 1.12 : 0.9, point)
+    }
+    stage.addEventListener('wheel', onWheel, { passive: false })
+    return () => stage.removeEventListener('wheel', onWheel)
+  }, [entry])
+
   if (!entry) return null
 
   const url = getImageUrl(entry)
@@ -739,18 +754,6 @@ export function Lightbox<T extends GalleryEntry = GalleryEntry>({
 
   const handlePointerCancel = (event: ReactPointerEvent<HTMLDivElement>): void => {
     handlePointerUp(event)
-  }
-
-  const handleWheel = (event: ReactWheelEvent<HTMLDivElement>): void => {
-    const stage = stageRef.current
-    if (!stage || isInteractiveTarget(event.target)) {
-      return
-    }
-
-    event.preventDefault()
-    const point = getStagePoint(event.clientX, event.clientY, stage)
-    const factor = event.deltaY < 0 ? 1.12 : 0.9
-    zoomBy(factor, point)
   }
 
   const handleDoubleClick = (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -955,7 +958,6 @@ export function Lightbox<T extends GalleryEntry = GalleryEntry>({
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
               onPointerCancel={handlePointerCancel}
-              onWheel={handleWheel}
               onDoubleClick={handleDoubleClick}
               onClick={handleStageClick}
               style={{

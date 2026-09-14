@@ -71,6 +71,7 @@ function serviceEntryToPhotoEntry(raw: FotosServiceEntry): PhotoEntry {
  * instead of the local filesystem.
  */
 export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
+    const [initializationComplete, setInitializationComplete] = useState(!headlessUrl);
     const [isOpen, setIsOpen] = useState(false);
     const [folderName, setFolderName] = useState<string | null>(null);
     const [entries, setEntries] = useState<PhotoEntry[]>([]);
@@ -98,6 +99,7 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
     // Fetch entries when headlessUrl changes
     useEffect(() => {
         if (!headlessUrl) {
+            setInitializationComplete(true);
             setIsOpen(false);
             setFolderName(null);
             setEntries([]);
@@ -105,6 +107,7 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
         }
 
         let cancelled = false;
+        setInitializationComplete(false);
         void (async () => {
             setLoading(true);
             try {
@@ -143,6 +146,7 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
             } finally {
                 if (!cancelled) {
                     setLoading(false);
+                    setInitializationComplete(true);
                 }
             }
         })();
@@ -255,7 +259,7 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
         // Future: trigger server-side semantic embedding
     }, []);
 
-    const ensureSyncedToOneCore = useCallback(async () => {
+    const ensureSyncedToOneCore = useCallback(async (_contentHashes?: readonly string[]) => {
         // Headless sources are already served from the remote fotos runtime.
     }, []);
 
@@ -293,6 +297,7 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
     }, []);
 
     return {
+        initializationComplete,
         isOpen,
         surface,
         surfaceProfile,

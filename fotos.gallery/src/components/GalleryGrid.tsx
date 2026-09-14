@@ -12,6 +12,8 @@ export interface GalleryGridProps<T extends GalleryEntry = GalleryEntry> {
   onPhotoClick: (flatIndex: number) => void
   /** Minimum column width in px (default 148) */
   minColumnWidth?: number
+  /** Stream fills the available width with uncropped images and no gutters. */
+  layout?: 'grid' | 'stream'
   /** Offset sticky day labels when an app header overlays the scroll surface. */
   stickyHeaderOffset?: number
   /** Render sticky day headers inside the grid (default true). */
@@ -23,10 +25,12 @@ function GalleryCard<T extends GalleryEntry>({
   entry,
   url,
   onClick,
+  layout,
 }: {
   entry: T
   url: string | undefined
   onClick: () => void
+  layout: 'grid' | 'stream'
 }) {
   const [loaded, setLoaded] = useState(false)
   const time = new Date(entry.timestamp).toLocaleTimeString(undefined, {
@@ -41,11 +45,12 @@ function GalleryCard<T extends GalleryEntry>({
       title={entry.name}
       style={{
         position: 'relative',
-        aspectRatio: '1 / 1',
+        display: 'block',
+        aspectRatio: layout === 'grid' || !loaded ? '1 / 1' : undefined,
         width: '100%',
         overflow: 'hidden',
-        border: '1px solid var(--border, #333)',
-        borderRadius: 14,
+        border: layout === 'stream' ? 0 : '1px solid var(--border, #333)',
+        borderRadius: layout === 'stream' ? 0 : 14,
         padding: 0,
         background: 'var(--bg-secondary, #1a1a1a)',
         cursor: 'zoom-in',
@@ -59,8 +64,8 @@ function GalleryCard<T extends GalleryEntry>({
           onLoad={() => setLoaded(true)}
           style={{
             width: '100%',
-            height: '100%',
-            objectFit: 'cover',
+            height: layout === 'stream' ? 'auto' : '100%',
+            objectFit: layout === 'stream' ? 'contain' : 'cover',
             display: 'block',
             opacity: loaded ? 1 : 0,
             transition: 'opacity 0.2s',
@@ -141,6 +146,7 @@ export function GalleryGrid<T extends GalleryEntry>({
   getImageUrl,
   onPhotoClick,
   minColumnWidth = 148,
+  layout = 'grid',
   stickyHeaderOffset = 0,
   showDayHeaders = true,
   emptyLabel = 'no images yet',
@@ -210,15 +216,16 @@ export function GalleryGrid<T extends GalleryEntry>({
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: `repeat(auto-fill, minmax(${minColumnWidth}px, 1fr))`,
-                gap: 8,
-                padding: '12px 12px 14px',
+                gridTemplateColumns: layout === 'stream' ? 'minmax(0, 1fr)' : `repeat(auto-fill, minmax(${minColumnWidth}px, 1fr))`,
+                gap: layout === 'stream' ? 0 : 8,
+                padding: layout === 'stream' ? 0 : '12px 12px 14px',
               }}
             >
               {group.items.map((entry, i) => (
                 <GalleryCard
                   key={entry.hash}
                   entry={entry}
+                  layout={layout}
                   url={getImageUrl(entry)}
                   onClick={() => onPhotoClick(startIndex + i)}
                 />

@@ -1172,6 +1172,8 @@ async function rebuildPersistedClusterStateFromEntries(
 }
 
 export interface FolderAccess {
+    /** Initial persisted-source restoration has completed. */
+    initializationComplete: boolean;
     /** Whether a folder is currently open */
     isOpen: boolean;
     /** Current product surface */
@@ -1226,7 +1228,7 @@ export interface FolderAccess {
     /** Ensure photo-level semantic embeddings exist for the current folder */
     ensureSemanticEmbeddings: () => Promise<void>;
     /** Ensure the current gallery entries are represented in ONE.core for sharing */
-    ensureSyncedToOneCore: () => Promise<void>;
+    ensureSyncedToOneCore: (contentHashes?: readonly string[]) => Promise<void>;
     /** Get an object URL for a file (for display). Caller must revoke. */
     getFileUrl: (relativePath: string) => Promise<string>;
     /** Get an object URL for a thumbnail */
@@ -1670,6 +1672,7 @@ export interface UseFolderAccessOptions {
 }
 
 export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAccess {
+    const [initializationComplete, setInitializationComplete] = useState(false);
     const clusterSensitivity = options.clusterSensitivity ?? DEFAULT_CLUSTER_SENSITIVITY;
     const faceAnalyticsEnabled = options.faceAnalyticsEnabled ?? false;
     const semanticSearchEnabled = options.semanticSearchEnabled ?? false;
@@ -2744,7 +2747,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                 label: preference.label ?? handle.name,
                 preference,
             });
-        }).catch(() => {});
+        }).catch(() => {}).finally(() => setInitializationComplete(true));
     }, [openFromHandle]);
 
     // Handle incoming Web Share Target files (runs once on mount)
@@ -3397,13 +3400,20 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         return readFileFromHandle(handle, relativePath);
     }, [findFolderForPath]);
 
-    const ensureSyncedToOneCore = useCallback(async (): Promise<void> => {
+    const ensureSyncedToOneCore = useCallback(async (
+        contentHashes?: readonly string[],
+    ): Promise<void> => {
         if (!isOpen || entries.length === 0) {
             return;
         }
 
+        const requestedHashes = contentHashes ? new Set(contentHashes) : null;
+
         for (const folder of foldersRef.current) {
-            const localEntries = folder.entries.filter(entry => !isRemoteGalleryEntry(entry));
+            const localEntries = folder.entries.filter(entry => (
+                !isRemoteGalleryEntry(entry)
+                && (!requestedHashes || requestedHashes.has(entry.hash))
+            ));
             if (localEntries.length === 0) {
                 continue;
             }
@@ -3921,6 +3931,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     }, [entries]);
 
     return {
+        initializationComplete,
         isOpen,
         surface,
         surfaceProfile,

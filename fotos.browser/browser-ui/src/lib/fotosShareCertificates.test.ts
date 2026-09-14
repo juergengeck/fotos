@@ -1,6 +1,7 @@
-import {describe, expect, it, vi} from 'vitest';
+import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {SET_ACCESS_MODE} from '@refinio/one.core/lib/storage-base-common.js';
 import {commitFotosShareScope, type FotosShareCertificateDeps} from './fotosShareCertificates.js';
+import {getFotosShareTraceSpans, resetFotosShareTraceForTests} from './fotosShareTrace.js';
 
 function makeDeps() {
     const calls: string[] = [];
@@ -41,6 +42,8 @@ function makeDeps() {
 }
 
 describe('commitFotosShareScope', () => {
+    beforeEach(() => resetFotosShareTraceForTests());
+
     it('publishes a newer revocation before replacing photo-root access', async () => {
         const {calls, deps, setAccess, storeVersioned} = makeDeps();
         const result = await commitFotosShareScope({
@@ -75,6 +78,24 @@ describe('commitFotosShareScope', () => {
                 chainHash: 'hash:FotosShareCertificateChain:manifest',
             }),
         ]);
+        expect(getFotosShareTraceSpans().map(span => span.phase)).toEqual([
+            'scope-closure',
+            'scope-root-load-or-create',
+            'certificate-status-check',
+            'certificate-store',
+            'certificate-sign',
+            'certificate-chain-access',
+            'certificate-chain-store',
+            'manifest-access-replace',
+            'manifest-store',
+        ]);
+        expect(getFotosShareTraceSpans()).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                scopeKind: 'collection',
+                scopeId: 'summer',
+                outcome: 'success',
+            }),
+        ]));
     });
 
     it('stores an active renewal under the same certificate identity when re-added', async () => {

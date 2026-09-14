@@ -25,6 +25,7 @@ import {
     type FotosShareSnapshotChild,
     type FotosShareScope,
 } from '@refinio/fotos.core';
+import {traceFotosSharePhase} from './fotosShareTrace.js';
 
 interface StoredVersion<T extends OneVersionedObjectTypes> {
     obj: T;
@@ -150,36 +151,55 @@ async function storeAndPublishCertificate(
     certificate: FotosShareCertificate,
     deps: FotosShareCertificateDeps,
 ): Promise<FotosShareCertificateTransition> {
-    const stored = await deps.storeVersioned(certificate);
-    const signatureHash = await deps.signVersion(stored.hash, certificate.issuer);
     const scope: FotosShareScope = {
         kind: certificate.scopeKind,
         id: certificate.scopeId,
     };
-    const chain = createFotosShareCertificateChain({
-        issuer: certificate.issuer,
-        subject: certificate.subject,
+    const stored = await traceFotosSharePhase(
         scope,
-        certificate: stored.hash,
-        signature: signatureHash,
-    });
-    const chainIdHash = await deps.calculateIdHash({
-        $type$: chain.$type$,
-        id: chain.id,
-    });
+        'certificate-store',
+        () => deps.storeVersioned(certificate),
+    );
+    const signatureHash = await traceFotosSharePhase(
+        scope,
+        'certificate-sign',
+        () => deps.signVersion(stored.hash, certificate.issuer),
+    );
+    const {chain, chainIdHash} = await traceFotosSharePhase(
+        scope,
+        'certificate-chain-access',
+        async () => {
+            const nextChain = createFotosShareCertificateChain({
+                issuer: certificate.issuer,
+                subject: certificate.subject,
+                scope,
+                certificate: stored.hash,
+                signature: signatureHash,
+            });
+            const nextChainIdHash = await deps.calculateIdHash({
+                $type$: nextChain.$type$,
+                id: nextChain.id,
+            });
 
-    // Retain this IdAccess after revocation and establish it before storing the
-    // chain version. The store event is the feed-forward checkpoint that makes
-    // an already-running CHUM session observe the complete cert+signature DAG.
-    await deps.setAccess([
-        {
-            id: chainIdHash,
-            person: [certificate.subject],
-            hashGroup: [],
-            mode: SET_ACCESS_MODE.ADD,
+            // Retain this IdAccess after revocation and establish it before storing the
+            // chain version. The store event is the feed-forward checkpoint that makes
+            // an already-running CHUM session observe the complete cert+signature DAG.
+            await deps.setAccess([
+                {
+                    id: nextChainIdHash,
+                    person: [certificate.subject],
+                    hashGroup: [],
+                    mode: SET_ACCESS_MODE.ADD,
+                },
+            ]);
+            return {chain: nextChain, chainIdHash: nextChainIdHash};
         },
-    ]);
-    const storedChain = await deps.storeVersioned(chain);
+    );
+    const storedChain = await traceFotosSharePhase(
+        scope,
+        'certificate-chain-store',
+        () => deps.storeVersioned(chain),
+    );
 
     return {
         personId: String(certificate.subject),
@@ -210,42 +230,58 @@ export async function commitFotosShareScope(
     const nextSet = new Set(nextPersonIds);
     const removed = previousPersonIds.filter(personId => !nextSet.has(personId));
     const added = nextPersonIds.filter(personId => !previousSet.has(personId));
-    const snapshotChildren: FotosShareSnapshotChild[] = [];
-    for (const entryHash of params.entryHashes) {
-        const children = await deps.resolveEntryChildren(entryHash);
-        snapshotChildren.push(...children.map(child => ({
-            type: child.type,
-            hash: String(child.hash),
-        })));
-    }
-    const manifest = createFotosShareManifest({
-        issuer: params.issuer,
-        scope: params.scope,
-        entries: params.entryHashes,
-        snapshotChildren,
-    });
-    const manifestIdHash = await deps.calculateIdHash({
-        $type$: manifest.$type$,
-        id: manifest.id,
-    });
+    const {manifest, manifestIdHash} = await traceFotosSharePhase(
+        params.scope,
+        'scope-closure',
+        async () => {
+            const snapshotChildren: FotosShareSnapshotChild[] = [];
+            for (const entryHash of params.entryHashes) {
+                const children = await deps.resolveEntryChildren(entryHash);
+                snapshotChildren.push(...children.map(child => ({
+                    type: child.type,
+                    hash: String(child.hash),
+                })));
+            }
+            const nextManifest = createFotosShareManifest({
+                issuer: params.issuer,
+                scope: params.scope,
+                entries: params.entryHashes,
+                snapshotChildren,
+            });
+            const nextManifestIdHash = await deps.calculateIdHash({
+                $type$: nextManifest.$type$,
+                id: nextManifest.id,
+            });
+            return {manifest: nextManifest, manifestIdHash: nextManifestIdHash};
+        },
+    );
 
-    let currentManifest: StoredVersion<FotosShareManifest> | null = null;
-    try {
-        currentManifest = await deps.getByIdHash(manifestIdHash) as StoredVersion<FotosShareManifest>;
-    } catch {
-        // A first share needs a stored root before IdAccess can be created.
-        currentManifest = await deps.storeVersioned(manifest);
-    }
+    let currentManifest = await traceFotosSharePhase(
+        params.scope,
+        'scope-root-load-or-create',
+        async (): Promise<StoredVersion<FotosShareManifest>> => {
+            try {
+                return await deps.getByIdHash(manifestIdHash) as StoredVersion<FotosShareManifest>;
+            } catch {
+                // A first share needs a stored root before IdAccess can be created.
+                return await deps.storeVersioned(manifest);
+            }
+        },
+    );
 
     const transitions: FotosShareCertificateTransition[] = [];
     const transitionAt = new Date().toISOString();
     for (const personId of removed) {
-        if (await hasCurrentCertificateStatus(
-            params.issuer,
-            personId as SHA256IdHash<Person>,
+        if (await traceFotosSharePhase(
             params.scope,
-            'revoked',
-            deps,
+            'certificate-status-check',
+            () => hasCurrentCertificateStatus(
+                params.issuer,
+                personId as SHA256IdHash<Person>,
+                params.scope,
+                'revoked',
+                deps,
+            ),
         )) continue;
         transitions.push(await storeAndPublishCertificate(
             createRevokedFotosShareCertificate({
@@ -259,12 +295,16 @@ export async function commitFotosShareScope(
         ));
     }
     for (const personId of added) {
-        if (await hasCurrentCertificateStatus(
-            params.issuer,
-            personId as SHA256IdHash<Person>,
+        if (await traceFotosSharePhase(
             params.scope,
-            'active',
-            deps,
+            'certificate-status-check',
+            () => hasCurrentCertificateStatus(
+                params.issuer,
+                personId as SHA256IdHash<Person>,
+                params.scope,
+                'active',
+                deps,
+            ),
         )) continue;
         transitions.push(await storeAndPublishCertificate(
             createActiveFotosShareCertificate({
@@ -278,7 +318,7 @@ export async function commitFotosShareScope(
     }
 
     const committedRecipients = nextPersonIds as unknown as SHA256IdHash<Person>[];
-    await deps.setAccess([
+    await traceFotosSharePhase(params.scope, 'manifest-access-replace', () => deps.setAccess([
         {
             id: manifestIdHash,
             person: committedRecipients,
@@ -291,11 +331,15 @@ export async function commitFotosShareScope(
             hashGroup: [],
             mode: SET_ACCESS_MODE.REPLACE,
         },
-    ]);
+    ]));
 
-    if (!sameFotosShareManifest(currentManifest.obj, manifest)) {
-        currentManifest = await deps.storeVersioned(manifest);
-    }
+    currentManifest = await traceFotosSharePhase(
+        params.scope,
+        'manifest-store',
+        async () => sameFotosShareManifest(currentManifest.obj, manifest)
+            ? currentManifest
+            : deps.storeVersioned(manifest),
+    );
 
     return {
         manifestIdHash: String(manifestIdHash),
