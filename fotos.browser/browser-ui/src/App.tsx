@@ -63,11 +63,16 @@ import { resolveTokenToPersonId, type SharePeerOption } from '@/components/Share
 import { readStoredSidebarTab } from '@/lib/authFlowState';
 import {
     createFotosShareInvite,
+    isFotosShareInviteExpired,
     parseFotosShareInviteUrl,
-    verifyFotosShareInvitePin,
     type CreatedFotosShareInvite,
     type FotosShareInvitePayload,
 } from '@/lib/fotosShareInvite';
+import {
+    decidePinProofOutcome,
+    submitFotosSharePinProof,
+    type PendingGalleryInvite,
+} from '@/lib/fotosSharePinProof';
 import { DEBUG_REGISTRATION_TOKEN, DEBUG_REGISTRATION_TTL_MS } from './config';
 import { setFotosRuntimeSnapshot, setFotosRuntimeVisiblePhotos } from './lib/runtimeDiagnostics';
 import { determineAccessibleHashes } from '@refinio/one.core/lib/util/determine-accessible-hashes.js';
@@ -79,6 +84,15 @@ import {
     type ReceivedFotosShareScope,
 } from '@refinio/fotos.core/received-shares';
 import type { FotosShareScope } from '@refinio/fotos.core';
+import {
+    FOTOS_SHARE_PIN_MAX_ATTEMPTS,
+    isFotosSharePinFormat,
+    type FotosSharePinProof,
+} from '@refinio/fotos.core';
+import {createAccess} from '@refinio/one.core/lib/access.js';
+import {getObjectWithType} from '@refinio/one.core/lib/storage-unversioned-objects.js';
+import {storeVersionedObject} from '@refinio/one.core/lib/storage-versioned-objects.js';
+import {getAllEntries} from '@refinio/one.core/lib/reverse-map-query.js';
 import {
     getObjectByIdHash,
     onVersionedObj,
@@ -487,7 +501,10 @@ export function App({ fotosModel: initialModel }: AppProps) {
         folder: headlessUrl ? headlessFolder : undefined,
     });
     const scrollRef = useRef<HTMLDivElement>(null);
-    const pendingGalleryInviteTokensRef = useRef(new Set<string>());
+    // Pending gallery invitations: the sender keeps each token's PIN in memory.
+    // Nothing about the PIN is in the link. The gallery is granted only after
+    // the recipient proves the PIN with a FotosSharePinProof object over CHUM.
+    const pendingGalleryInviteTokensRef = useRef(new Map<string, PendingGalleryInvite>());
     const pendingShareResumeStartedRef = useRef(false);
     const certificateBackfilledScopesRef = useRef(new Set<string>());
     const committedShareScopeFingerprintsRef = useRef(new Map<string, string>());
@@ -1320,6 +1337,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
             fingerprint,
             previousPersonIds,
             nextPersonIds,
+            requestedPersonIds: params.nextPersonIds,
             intent: params.intent,
             operation: async committedPreviousPersonIds => {
                 if (
@@ -1456,6 +1474,73 @@ export function App({ fotosModel: initialModel }: AppProps) {
         });
     }, [fotosCollections, gallery.allClusters, locallyOwnedGalleryEntries, requestShareAssignment]);
 
+    const grantGalleryShareToPerson = useCallback(async (personId: string) => {
+        // Build on the latest requested recipients, not this render's snapshot:
+        // another invitation accepted during an in-flight commit must not be revoked.
+        const previousIds = shareCommitCoordinatorRef.current.getRequestedPersonIds('gallery:main')
+            ?? fotosCollections.sharing.galleryPersonIds;
+        const nextPersonIds = previousIds.includes(personId)
+            ? previousIds
+            : [...previousIds, personId];
+        await commitShareAssignment({
+            scope: {kind: 'gallery', id: 'main'},
+            previousPersonIds: previousIds,
+            nextPersonIds,
+            contentHashes: locallyOwnedGalleryEntries.map(photo => photo.hash),
+            persist: () => fotosCollections.setGallerySharePersonIds(nextPersonIds),
+        });
+    }, [
+        fotosCollections,
+        commitShareAssignment,
+        locallyOwnedGalleryEntries,
+    ]);
+
+    const checkPendingGalleryPinProofs = useCallback(async () => {
+        const senderId = fotosModel?.publicationIdentity
+            ? String(fotosModel.publicationIdentity)
+            : null;
+        if (!senderId || pendingGalleryInviteTokensRef.current.size === 0) {
+            return;
+        }
+        let proofHashes: Array<string>;
+        try {
+            proofHashes = await getAllEntries(senderId as any, 'FotosSharePinProof') as Array<string>;
+        } catch {
+            return;
+        }
+        for (const proofHash of proofHashes) {
+            let proof: FotosSharePinProof;
+            try {
+                proof = await getObjectWithType(proofHash as any, 'FotosSharePinProof') as FotosSharePinProof;
+            } catch {
+                continue;
+            }
+            if (proof.$type$ !== 'FotosSharePinProof') continue;
+            const pending = pendingGalleryInviteTokensRef.current.get(proof.token);
+            if (!pending || !pending.remotePersonId) continue;
+            const outcome = decidePinProofOutcome(pending, proof, {
+                token: proof.token,
+                sender: senderId,
+                prover: pending.remotePersonId,
+            });
+            if (outcome === 'ignore') continue;
+            if (outcome === 'grant') {
+                pendingGalleryInviteTokensRef.current.delete(proof.token);
+                await grantGalleryShareToPerson(pending.remotePersonId);
+            } else if (outcome === 'exhausted') {
+                pendingGalleryInviteTokensRef.current.delete(proof.token);
+                console.warn(
+                    `[fotos.sharing] Gallery invitation PIN attempts exhausted (${FOTOS_SHARE_PIN_MAX_ATTEMPTS}).`,
+                );
+            } else {
+                pending.attempts += 1;
+            }
+        }
+    }, [
+        fotosModel?.publicationIdentity,
+        grantGalleryShareToPerson,
+    ]);
+
     useEffect(() => {
         const pairing = fotosModel?.connectionsModel?.pairing;
         if (!pairing) {
@@ -1470,34 +1555,47 @@ export function App({ fotosModel: initialModel }: AppProps) {
             _remoteInstanceId,
             token,
         ) => {
-            if (!token || !pendingGalleryInviteTokensRef.current.has(token)) {
+            // Pairing alone grants nothing. Record who paired with this token;
+            // the gallery is granted only after their PIN proof checks out.
+            if (!token) {
                 return;
             }
-
-            const normalizedRemotePersonId = String(remotePersonId);
-            pendingGalleryInviteTokensRef.current.delete(token);
-            const previousIds = fotosCollections.sharing.galleryPersonIds;
-            const nextPersonIds = previousIds.includes(normalizedRemotePersonId)
-                ? previousIds
-                : [...previousIds, normalizedRemotePersonId];
-            await commitShareAssignment({
-                scope: {kind: 'gallery', id: 'main'},
-                previousPersonIds: previousIds,
-                nextPersonIds,
-                contentHashes: locallyOwnedGalleryEntries.map(photo => photo.hash),
-                persist: () => fotosCollections.setGallerySharePersonIds(nextPersonIds),
-            });
+            const pending = pendingGalleryInviteTokensRef.current.get(token);
+            if (!pending) {
+                return;
+            }
+            pending.remotePersonId = String(remotePersonId);
+            await checkPendingGalleryPinProofs();
         });
 
         return () => {
             disconnect();
         };
     }, [
-        fotosCollections,
         fotosModel?.connectionsModel?.pairing,
-        commitShareAssignment,
-        locallyOwnedGalleryEntries,
+        checkPendingGalleryPinProofs,
     ]);
+
+    useEffect(() => {
+        if (!fotosModel || pendingGalleryInviteTokensRef.current.size === 0) {
+            return;
+        }
+        const onProofImported = (type: unknown) => {
+            if (type === 'FotosSharePinProof') void checkPendingGalleryPinProofs();
+        };
+        const unsubscribeImported = onChumObjectImported.addListener(event => {
+            if (event.imported.kind === 'object') onProofImported(event.imported.type);
+        });
+        const unsubscribeImportBatch = onChumImportBatch.addListener(event => {
+            if ([...event.batch.materialized, ...event.batch.advancedFrontiers].some(imported => (
+                imported.kind === 'object' && imported.type === 'FotosSharePinProof'
+            ))) void checkPendingGalleryPinProofs();
+        });
+        return () => {
+            unsubscribeImported();
+            unsubscribeImportBatch();
+        };
+    }, [fotosModel, checkPendingGalleryPinProofs]);
 
     const createGalleryShareInvite = useCallback(async (): Promise<CreatedGalleryShareInvite> => {
         if (!fotosModel?.connectionsModel?.pairing || !fotosModel.publicationIdentity) {
@@ -1514,7 +1612,11 @@ export function App({ fotosModel: initialModel }: AppProps) {
             throw new Error('No photos are ready to share yet.');
         }
 
-        const pairingInvitation = await fotosModel.connectionsModel.pairing.createInvitation(
+        const pairing = fotosModel.connectionsModel.pairing;
+        // Taken before the invitation's expiry timer starts, so the link never
+        // advertises validity beyond what the pairing manager accepts.
+        const pairingExpiresAt = new Date(Date.now() + pairing.inviteExpirationDurationInMs);
+        const pairingInvitation = await pairing.createInvitation(
             fotosModel.publicationIdentity,
             undefined,
             { mode: 'standard' },
@@ -1530,9 +1632,17 @@ export function App({ fotosModel: initialModel }: AppProps) {
             pairingInvitation,
             senderPersonId: String(fotosModel.publicationIdentity),
             galleryName: gallery.folder.folderName,
+            expiresAt: pairingExpiresAt,
             openInNewAccount: true,
         });
-        pendingGalleryInviteTokensRef.current.add(pairingInvitation.token);
+        // The PIN lives only here, in sender memory. It is shown on the
+        // sender's screen and told to the recipient over a different channel;
+        // it never appears in the link.
+        pendingGalleryInviteTokensRef.current.set(pairingInvitation.token, {
+            pin: invite.pin,
+            attempts: 0,
+            remotePersonId: null,
+        });
         const galleryInvite = {
             ...invite,
             sharedCount,
@@ -1590,19 +1700,13 @@ export function App({ fotosModel: initialModel }: AppProps) {
             throw new Error('No fotos share invite is pending.');
         }
 
-        if (
-            Number.isNaN(Date.parse(incomingShareInvite.expiresAt))
-            || Date.now() > Date.parse(incomingShareInvite.expiresAt)
-        ) {
+        if (isFotosShareInviteExpired(incomingShareInvite)) {
             throw new Error('This share link has expired.');
         }
 
         const pin = (options.pin ?? incomingSharePin).trim();
-        if (!/^\d{4}$/.test(pin)) {
+        if (!isFotosSharePinFormat(pin)) {
             throw new Error('Enter the four-digit PIN the sender gave you.');
-        }
-        if (!await verifyFotosShareInvitePin(incomingShareInvite, pin)) {
-            throw new Error('That PIN does not match this invitation.');
         }
 
         if (options.requireDestination ?? true) {
@@ -1659,6 +1763,27 @@ export function App({ fotosModel: initialModel }: AppProps) {
             {
                 mode: 'standard',
                 expectedRemotePersonId: incomingShareInvite.senderPersonId as any,
+            },
+        );
+        // Pairing authenticates both Persons and grants nothing. Prove the PIN
+        // to the sender as a ONE object over CHUM; the sender grants the
+        // gallery only after verifying this proof against the PIN it keeps.
+        await submitFotosSharePinProof(
+            {
+                token: incomingShareInvite.pairingInvitation.token,
+                sender: incomingShareInvite.senderPersonId as any,
+                prover: localPersonId as any,
+                pin,
+            },
+            {
+                calculateIdHash: object => calculateIdHashOfObj(object as any) as any,
+                storeVersioned: object => storeVersionedObject(object as any) as any,
+                setAccess: async entries => {
+                    await createAccess(entries as any);
+                },
+                getProof: async hash => (
+                    await getObjectWithType(hash as any, 'FotosSharePinProof')
+                ) as FotosSharePinProof,
             },
         );
         setIncomingShareStatus('connected');

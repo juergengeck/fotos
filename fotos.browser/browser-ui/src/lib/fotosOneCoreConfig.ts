@@ -73,6 +73,7 @@ export const FotosReverseMaps = mergeReverseMapDefinitions(
   new Map([
     ['FotosShareCertificate', new Set(['subject', 'issuer'])],
     ['FotosShareCertificateChain', new Set(['subject', 'issuer'])],
+    ['FotosSharePinProof', new Set(['sender', 'prover'])],
   ]),
 );
 

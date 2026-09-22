@@ -112,6 +112,24 @@ export interface FotosShareCertificate {
 }
 
 /**
+ * Proof that the recipient knows the invitation PIN. Created by the recipient
+ * after pairing and readable only by the sender (plus the prover), so the PIN
+ * travels inside CHUM and never appears in the invite link. One object per
+ * invitation token and prover; the sender verifies it against the PIN kept in
+ * memory for the pending invitation and grants only on a match.
+ */
+export interface FotosSharePinProof {
+    $type$: 'FotosSharePinProof';
+    $version$: 'v1';
+    id: string;
+    token: string;
+    sender: SHA256IdHash<Person>;
+    prover: SHA256IdHash<Person>;
+    pin: string;
+    createdAt: string;
+}
+
+/**
  * Transfer root for one certificate version and its detached ONE signature.
  * Access is granted to this stable id before a new chain version is stored, so
  * an already-running CHUM session observes active, renewal, and revocation
@@ -137,6 +155,7 @@ declare module '@OneObjectInterfaces' {
         FotosShareManifest: Pick<FotosShareManifest, '$type$' | 'id'>;
         FotosShareCertificate: Pick<FotosShareCertificate, '$type$' | 'id'>;
         FotosShareCertificateChain: Pick<FotosShareCertificateChain, '$type$' | 'id'>;
+        FotosSharePinProof: Pick<FotosSharePinProof, '$type$' | 'id'>;
     }
 
     export interface OneVersionedObjectInterfaces {
@@ -146,6 +165,7 @@ declare module '@OneObjectInterfaces' {
         FotosShareManifest: FotosShareManifest;
         FotosShareCertificate: FotosShareCertificate;
         FotosShareCertificateChain: FotosShareCertificateChain;
+        FotosSharePinProof: FotosSharePinProof;
     }
 }
 
@@ -323,6 +343,20 @@ export const FotosShareCertificateChainRecipe: Recipe = {
     ],
 };
 
+export const FotosSharePinProofRecipe: Recipe = {
+    $type$: 'Recipe',
+    name: 'FotosSharePinProof',
+    rule: [
+        {itemprop: '$version$', itemtype: {type: 'string', regexp: /^v1$/}},
+        {itemprop: 'id', isId: true, itemtype: {type: 'string'}},
+        {itemprop: 'token', itemtype: {type: 'string'}},
+        {itemprop: 'sender', itemtype: {type: 'referenceToId', allowedTypes: new Set(['Person'])}},
+        {itemprop: 'prover', itemtype: {type: 'referenceToId', allowedTypes: new Set(['Person'])}},
+        {itemprop: 'pin', itemtype: {type: 'string', regexp: /^\d{4}$/}},
+        {itemprop: 'createdAt', itemtype: {type: 'string'}},
+    ],
+};
+
 export const FotosRecipes: Recipe[] = [
     FotosEntryRecipe,
     FotosManifestRecipe,
@@ -330,6 +364,7 @@ export const FotosRecipes: Recipe[] = [
     FotosShareManifestRecipe,
     FotosShareCertificateRecipe,
     FotosShareCertificateChainRecipe,
+    FotosSharePinProofRecipe,
     ...FotosMediaRecipes,
     ...FotosDeviceBookRecipes,
     ...GalleryTrieRecipes,

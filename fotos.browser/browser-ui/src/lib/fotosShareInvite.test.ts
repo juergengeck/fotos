@@ -5,8 +5,8 @@ import {
   createFotosShareInvite,
   decodeFotosShareInvitePayload,
   encodeFotosShareInvitePayload,
+  isFotosShareInviteExpired,
   parseFotosShareInviteUrl,
-  verifyFotosShareInvitePin,
 } from './fotosShareInvite';
 
 const pairingInvitation = {
@@ -18,21 +18,32 @@ const pairingInvitation = {
   identityRelation: 'distinct-person',
 } as const;
 
+function inFifteenMinutes(): Date {
+  return new Date(Date.now() + 15 * 60 * 1000);
+}
+
 describe('fotosShareInvite', () => {
-  it('creates an invite URL without putting the PIN in the URL', async () => {
+  it('keeps every trace of the PIN out of the URL and payload', async () => {
     const invite = await createFotosShareInvite({
       baseUrl: 'https://fotos.one/',
       pairingInvitation: pairingInvitation as any,
       senderPersonId: 'sender-person-id',
       galleryName: 'Family',
+      expiresAt: inFifteenMinutes(),
     });
 
     expect(invite.pin).toMatch(/^\d{4}$/);
     expect(invite.url).toContain(`${FOTOS_SHARE_INVITE_PARAM}=`);
     expect(invite.url).not.toContain('fotosAccount=new');
     expect(invite.url).not.toContain(invite.pin);
-    await expect(verifyFotosShareInvitePin(invite.payload, invite.pin)).resolves.toBe(true);
-    await expect(verifyFotosShareInvitePin(invite.payload, '0000')).resolves.toBe(invite.pin === '0000');
+    expect(invite.payload).not.toHaveProperty('pinSalt');
+    expect(invite.payload).not.toHaveProperty('pinDigest');
+    expect(invite.payload).not.toHaveProperty('pin');
+    for (const value of Object.values(invite.payload)) {
+      if (typeof value === 'string') expect(value).not.toBe(invite.pin);
+    }
+    expect(encodeFotosShareInvitePayload(invite.payload)).not.toContain(invite.pin);
+    expect(new URL(invite.url).search).not.toContain(invite.pin);
   });
 
   it('can opt into opening the invite under a new tab account', async () => {
@@ -40,6 +51,7 @@ describe('fotosShareInvite', () => {
       baseUrl: 'https://fotos.one/',
       pairingInvitation: pairingInvitation as any,
       senderPersonId: 'sender-person-id',
+      expiresAt: inFifteenMinutes(),
       openInNewAccount: true,
     });
 
@@ -51,6 +63,7 @@ describe('fotosShareInvite', () => {
       baseUrl: 'https://fotos.one/app',
       pairingInvitation: pairingInvitation as any,
       senderPersonId: 'sender-person-id',
+      expiresAt: inFifteenMinutes(),
     });
 
     const encoded = encodeFotosShareInvitePayload(invite.payload);
@@ -58,20 +71,41 @@ describe('fotosShareInvite', () => {
     expect(parseFotosShareInviteUrl(invite.url)).toEqual(invite.payload);
   });
 
-  it('rejects expired invites during PIN verification', async () => {
+  it('reports expired invites', async () => {
     const invite = await createFotosShareInvite({
       baseUrl: 'https://fotos.one/',
       pairingInvitation: pairingInvitation as any,
       senderPersonId: 'sender-person-id',
-      expiresInMs: 1,
+      expiresAt: new Date(Date.now() + 1_000),
     });
 
-    await expect(
-      verifyFotosShareInvitePin(
+    expect(isFotosShareInviteExpired(invite.payload)).toBe(false);
+    expect(
+      isFotosShareInviteExpired(
         invite.payload,
-        invite.pin,
         new Date(Date.parse(invite.payload.expiresAt) + 1),
       ),
-    ).resolves.toBe(false);
+    ).toBe(true);
+  });
+
+  it('advertises exactly the pairing expiry it was given', async () => {
+    const expiresAt = inFifteenMinutes();
+    const invite = await createFotosShareInvite({
+      baseUrl: 'https://fotos.one/',
+      pairingInvitation: pairingInvitation as any,
+      senderPersonId: 'sender-person-id',
+      expiresAt,
+    });
+
+    expect(invite.payload.expiresAt).toBe(expiresAt.toISOString());
+  });
+
+  it('refuses to create an invite whose pairing has already expired', async () => {
+    await expect(createFotosShareInvite({
+      baseUrl: 'https://fotos.one/',
+      pairingInvitation: pairingInvitation as any,
+      senderPersonId: 'sender-person-id',
+      expiresAt: new Date(Date.now() - 1),
+    })).rejects.toThrow('future pairing expiry');
   });
 });

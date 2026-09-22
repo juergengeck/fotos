@@ -23,5 +23,6 @@ describe('Fotos ONE.core runtime configuration', () => {
     expect([...merged.get('SharedType') ?? []].sort()).toEqual(['issuer', 'subject']);
     expect(FotosReverseMaps.get('FotosShareCertificate')).toEqual(new Set(['subject', 'issuer']));
     expect(FotosReverseMaps.get('FotosShareCertificateChain')).toEqual(new Set(['subject', 'issuer']));
+    expect(FotosReverseMaps.get('FotosSharePinProof')).toEqual(new Set(['sender', 'prover']));
   });
 });

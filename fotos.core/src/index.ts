@@ -161,7 +161,15 @@ export {
     FotosShareManifestRecipe,
     FotosShareCertificateRecipe,
     FotosShareCertificateChainRecipe,
+    FotosSharePinProofRecipe,
 } from './recipes/FotosRecipes.js';
+export {
+    FOTOS_SHARE_PIN_MAX_ATTEMPTS,
+    buildFotosSharePinProofId,
+    createFotosSharePinProof,
+    isFotosSharePinFormat,
+    verifyFotosSharePinProof,
+} from './share-pin-proof.js';
 export {
     buildFotosShareManifestId,
     buildFotosShareCertificateId,
@@ -180,6 +188,7 @@ export type {
     FotosShareManifest,
     FotosShareCertificate,
     FotosShareCertificateChain,
+    FotosSharePinProof,
     FotosShareScopeKind,
     FotosShareCertificateStatus,
 } from './recipes/FotosRecipes.js';

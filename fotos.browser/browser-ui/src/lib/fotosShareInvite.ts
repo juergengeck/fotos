@@ -3,6 +3,15 @@ import type { Invitation } from '@refinio/one.models/lib/misc/ConnectionEstablis
 export const FOTOS_SHARE_INVITE_PARAM = 'fotosShare';
 export const FOTOS_SHARE_NEW_ACCOUNT_PARAM = 'fotosAccount';
 
+/**
+ * Gallery invite link payload. It carries only what pairing needs: the pairing
+ * invitation, the sender's Person ID, a gallery label, and the expiry. The PIN
+ * is a second factor told to the recipient over a different channel. It never
+ * appears in the link — not in clear, not salted, not as a digest — so holding
+ * the link alone reveals nothing about the PIN. After pairing, the recipient's
+ * app sends proof of the PIN to the sender as a ONE object over CHUM, and the
+ * sender grants only after verifying that proof.
+ */
 export interface FotosShareInvitePayload {
   version: 1;
   kind: 'fotos-gallery-share';
@@ -12,12 +21,11 @@ export interface FotosShareInvitePayload {
   galleryName: string | null;
   createdAt: string;
   expiresAt: string;
-  pinSalt: string;
-  pinDigest: string;
 }
 
 export interface CreatedFotosShareInvite {
   url: string;
+  /** Four-digit PIN shown only on the sender's screen, never in the URL. */
   pin: string;
   payload: FotosShareInvitePayload;
 }
@@ -50,30 +58,11 @@ function decodeUtf8(bytes: Uint8Array): string {
   return new TextDecoder().decode(bytes);
 }
 
-function createRandomHex(byteCount: number): string {
-  const bytes = new Uint8Array(byteCount);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
-}
-
 export function createFourDigitPin(): string {
   const bytes = new Uint8Array(2);
   crypto.getRandomValues(bytes);
   const value = ((bytes[0]! << 8) | bytes[1]!) % 10_000;
   return value.toString().padStart(4, '0');
-}
-
-export async function digestFotosSharePin(pin: string, salt: string, token: string): Promise<string> {
-  const normalizedPin = pin.trim();
-  if (!/^\d{4}$/.test(normalizedPin)) {
-    throw new Error('Fotos share PIN must be exactly 4 digits.');
-  }
-
-  const digest = await crypto.subtle.digest(
-    'SHA-256',
-    encodeUtf8(`fotos-share-v1:${token}:${salt}:${normalizedPin}`) as BufferSource,
-  );
-  return bytesToBase64Url(new Uint8Array(digest));
 }
 
 export function encodeFotosShareInvitePayload(payload: FotosShareInvitePayload): string {
@@ -98,8 +87,6 @@ function normalizePayload(value: unknown): FotosShareInvitePayload | null {
     || typeof candidate.senderPersonId !== 'string'
     || typeof candidate.createdAt !== 'string'
     || typeof candidate.expiresAt !== 'string'
-    || typeof candidate.pinSalt !== 'string'
-    || typeof candidate.pinDigest !== 'string'
   ) {
     return null;
   }
@@ -120,8 +107,6 @@ function normalizePayload(value: unknown): FotosShareInvitePayload | null {
     galleryName: typeof candidate.galleryName === 'string' ? candidate.galleryName : null,
     createdAt: candidate.createdAt,
     expiresAt: candidate.expiresAt,
-    pinSalt: candidate.pinSalt,
-    pinDigest: candidate.pinDigest,
   };
 }
 
@@ -143,20 +128,11 @@ export function parseFotosShareInviteUrl(url: string): FotosShareInvitePayload |
   }
 }
 
-export async function verifyFotosShareInvitePin(
+export function isFotosShareInviteExpired(
   payload: FotosShareInvitePayload,
-  pin: string,
   now = new Date(),
-): Promise<boolean> {
-  if (Number.isNaN(Date.parse(payload.expiresAt)) || now.getTime() > Date.parse(payload.expiresAt)) {
-    return false;
-  }
-
-  return await digestFotosSharePin(
-    pin,
-    payload.pinSalt,
-    payload.pairingInvitation.token,
-  ) === payload.pinDigest;
+): boolean {
+  return Number.isNaN(Date.parse(payload.expiresAt)) || now.getTime() > Date.parse(payload.expiresAt);
 }
 
 export async function createFotosShareInvite(options: {
@@ -164,13 +140,16 @@ export async function createFotosShareInvite(options: {
   pairingInvitation: Invitation;
   senderPersonId: string;
   galleryName?: string | null;
-  expiresInMs?: number;
+  /** When the pairing invitation stops being accepted; the link must not outlive it. */
+  expiresAt: Date;
   openInNewAccount?: boolean;
 }): Promise<CreatedFotosShareInvite> {
   const pin = createFourDigitPin();
-  const pinSalt = createRandomHex(16);
   const createdAt = new Date();
-  const expiresAt = new Date(createdAt.getTime() + (options.expiresInMs ?? 24 * 60 * 60 * 1000));
+  const expiresAt = options.expiresAt;
+  if (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= createdAt.getTime()) {
+    throw new Error('A fotos share invite requires a future pairing expiry.');
+  }
   const payload: FotosShareInvitePayload = {
     version: 1,
     kind: 'fotos-gallery-share',
@@ -180,8 +159,6 @@ export async function createFotosShareInvite(options: {
     galleryName: options.galleryName?.trim() || null,
     createdAt: createdAt.toISOString(),
     expiresAt: expiresAt.toISOString(),
-    pinSalt,
-    pinDigest: await digestFotosSharePin(pin, pinSalt, options.pairingInvitation.token),
   };
 
   const url = new URL(options.baseUrl);
