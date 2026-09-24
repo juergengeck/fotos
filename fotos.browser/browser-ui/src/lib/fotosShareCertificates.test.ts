@@ -249,4 +249,34 @@ describe('commitFotosShareScope', () => {
             snapshotOrder: ['object:entry-a', 'id:issuer'],
         });
     });
+
+    it('leaves scope access unchanged when revocation evidence cannot be signed', async () => {
+        const {calls, deps, setAccess, storeVersioned} = makeDeps();
+        const failure = new Error('issuer key unavailable');
+        deps.signVersion = vi.fn(async () => {
+            throw failure;
+        });
+
+        await expect(commitFotosShareScope({
+            issuer: 'issuer' as any,
+            scope: {kind: 'collection', id: 'summer'},
+            previousPersonIds: ['anna', 'ben'],
+            nextPersonIds: ['ben'],
+            entryHashes: ['entry-a' as any],
+        }, deps)).rejects.toBe(failure);
+
+        // D-03: the recipient is removed from derived access only after its
+        // revocation is signed and published, so a failed signature keeps the
+        // previous access set and publishes no new manifest version.
+        expect(calls).toEqual(['store:FotosShareCertificate:revoked']);
+        expect(setAccess).not.toHaveBeenCalled();
+        expect(storeVersioned).toHaveBeenCalledTimes(1);
+        expect(getFotosShareTraceSpans().map(span => [span.phase, span.outcome])).toEqual([
+            ['scope-closure', 'success'],
+            ['scope-root-load-or-create', 'success'],
+            ['certificate-status-check', 'success'],
+            ['certificate-store', 'success'],
+            ['certificate-sign', 'error'],
+        ]);
+    });
 });

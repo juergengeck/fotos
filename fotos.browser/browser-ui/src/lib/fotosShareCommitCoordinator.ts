@@ -9,6 +9,8 @@ export interface FotosShareCommitRequest<T> {
     fingerprint: string;
     previousPersonIds: readonly string[];
     nextPersonIds: readonly string[];
+    /** The caller's unexpanded recipients for `nextPersonIds`, as they are persisted. */
+    requestedPersonIds: readonly string[];
     intent?: 'assignment' | 'refresh';
     operation: (previousPersonIds: readonly string[]) => Promise<T>;
 }
@@ -16,6 +18,12 @@ export interface FotosShareCommitRequest<T> {
 interface DesiredScopeState {
     requestToken: symbol | null;
     personIds: readonly string[];
+    requestedPersonIds: readonly string[];
+}
+
+interface CommittedScopeState {
+    personIds: readonly string[];
+    requestedPersonIds: readonly string[];
 }
 
 function samePersonIds(left: readonly string[], right: readonly string[]): boolean {
@@ -32,7 +40,7 @@ function samePersonIds(left: readonly string[], right: readonly string[]): boole
  */
 export class FotosShareCommitCoordinator {
     private readonly queues = new Map<string, ScopeCommitQueue>();
-    private readonly committedPersonIds = new Map<string, readonly string[]>();
+    private readonly committedScopes = new Map<string, CommittedScopeState>();
     private readonly desiredScopes = new Map<string, DesiredScopeState>();
 
     commit<T>(request: FotosShareCommitRequest<T>): Promise<T | null> {
@@ -50,12 +58,14 @@ export class FotosShareCommitCoordinator {
                 this.desiredScopes.set(request.scopeKey, {
                     requestToken: null,
                     personIds: [...request.nextPersonIds],
+                    requestedPersonIds: [...request.requestedPersonIds],
                 });
             }
         } else {
             this.desiredScopes.set(request.scopeKey, {
                 requestToken,
                 personIds: [...request.nextPersonIds],
+                requestedPersonIds: [...request.requestedPersonIds],
             });
         }
 
@@ -82,10 +92,13 @@ export class FotosShareCommitCoordinator {
             ) {
                 return null;
             }
-            const previousPersonIds = this.committedPersonIds.get(request.scopeKey)
+            const previousPersonIds = this.committedScopes.get(request.scopeKey)?.personIds
                 ?? request.previousPersonIds;
             const result = await request.operation(previousPersonIds);
-            this.committedPersonIds.set(request.scopeKey, [...request.nextPersonIds]);
+            this.committedScopes.set(request.scopeKey, {
+                personIds: [...request.nextPersonIds],
+                requestedPersonIds: [...request.requestedPersonIds],
+            });
             return result;
         });
         queue.lastFingerprint = request.fingerprint;
@@ -98,6 +111,16 @@ export class FotosShareCommitCoordinator {
         return this.trackAssignmentFailure(request, requestToken, commit);
     }
 
+    /**
+     * Unexpanded recipients most recently requested for a scope in this runtime,
+     * or undefined when persisted state is authoritative. Callers that add one
+     * recipient build on this so concurrent additions do not drop each other.
+     */
+    getRequestedPersonIds(scopeKey: string): readonly string[] | undefined {
+        const desired = this.desiredScopes.get(scopeKey);
+        return desired ? [...desired.requestedPersonIds] : undefined;
+    }
+
     private trackAssignmentFailure<T>(
         request: FotosShareCommitRequest<T>,
         requestToken: symbol | null,
@@ -108,13 +131,17 @@ export class FotosShareCommitCoordinator {
         }
         return commit.catch(error => {
             if (this.desiredScopes.get(request.scopeKey)?.requestToken === requestToken) {
-                this.desiredScopes.set(request.scopeKey, {
-                    requestToken: null,
-                    personIds: [
-                        ...(this.committedPersonIds.get(request.scopeKey)
-                            ?? request.previousPersonIds),
-                    ],
-                });
+                const committed = this.committedScopes.get(request.scopeKey);
+                if (committed) {
+                    this.desiredScopes.set(request.scopeKey, {
+                        requestToken: null,
+                        personIds: [...committed.personIds],
+                        requestedPersonIds: [...committed.requestedPersonIds],
+                    });
+                } else {
+                    // Nothing committed in this runtime: persisted state is authoritative again.
+                    this.desiredScopes.delete(request.scopeKey);
+                }
             }
             throw error;
         });

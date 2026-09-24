@@ -52,4 +52,46 @@ describe('resolveShareGrantPersonIds', () => {
             'publication-peer-person',
         ]);
     });
+
+    it('does not add a peer whose self-asserted display name matches the reviewed contact', () => {
+        const peers: SharePeerOption[] = [
+            createPeer({
+                personId: 'anna-contact',
+                displayName: 'Anna',
+                glueIdentity: 'anna@glue.one',
+                persistent: true,
+            }),
+            createPeer({
+                personId: 'impostor',
+                displayName: 'Anna',
+                online: true,
+                hasVerifiedIdentity: true,
+            }),
+        ];
+
+        expect(resolveShareGrantPersonIds('anna-contact', peers)).toEqual(['anna-contact']);
+    });
+
+    it('does not expand an unverified peer through its display name', () => {
+        const peers: SharePeerOption[] = [
+            createPeer({
+                personId: 'unverified-anna',
+                displayName: 'Anna',
+                online: true,
+            }),
+            createPeer({
+                personId: 'anna-contact',
+                displayName: 'Anna',
+                glueIdentity: 'anna@glue.one',
+                persistent: true,
+            }),
+            createPeer({
+                personId: 'other-unverified-anna',
+                displayName: 'Anna',
+                online: true,
+            }),
+        ];
+
+        expect(resolveShareGrantPersonIds('unverified-anna', peers)).toEqual(['unverified-anna']);
+    });
 });

@@ -26,6 +26,7 @@ function commit<T>(params: {
         fingerprint: params.fingerprint,
         previousPersonIds: params.previousPersonIds ?? [],
         nextPersonIds: params.nextPersonIds ?? [],
+        requestedPersonIds: params.nextPersonIds ?? [],
         intent: params.intent,
         operation: params.operation,
     });
@@ -311,5 +312,142 @@ describe('FotosShareCommitCoordinator', () => {
             },
         })).resolves.toBe('retried refresh');
         expect(refreshedPredecessors).toEqual([['b'], ['b']]);
+    });
+
+    it('drops a refresh queued ahead of an assignment that changes its recipients', async () => {
+        const coordinator = new FotosShareCommitCoordinator();
+        await commit({
+            coordinator,
+            fingerprint: 'members:b:content:1',
+            nextPersonIds: ['b'],
+            operation: async () => 'initial',
+        });
+
+        const blocker = deferred<void>();
+        const held = commit({
+            coordinator,
+            fingerprint: 'members:b:content:2',
+            previousPersonIds: ['b'],
+            nextPersonIds: ['b'],
+            operation: async () => {
+                await blocker.promise;
+                return 'content';
+            },
+        });
+        // Accepted while its recipients still match the desired state.
+        const refreshOperation = vi.fn(async () => 'refreshed');
+        const refresh = commit({
+            coordinator,
+            fingerprint: 'members:b:content:3',
+            previousPersonIds: ['b'],
+            nextPersonIds: ['b'],
+            intent: 'refresh',
+            operation: refreshOperation,
+        });
+        // The explicit revocation supersedes it before the refresh reaches the queue head.
+        const revokedFrom: Array<readonly string[]> = [];
+        const revoke = commit({
+            coordinator,
+            fingerprint: 'members:none:content:3',
+            previousPersonIds: ['b'],
+            nextPersonIds: [],
+            operation: async previousPersonIds => {
+                revokedFrom.push(previousPersonIds);
+                return 'revoked';
+            },
+        });
+
+        blocker.resolve();
+        await expect(Promise.all([held, refresh, revoke])).resolves.toEqual([
+            'content',
+            null,
+            'revoked',
+        ]);
+        expect(refreshOperation).not.toHaveBeenCalled();
+        expect(revokedFrom).toEqual([['b']]);
+    });
+
+    it('adopts the first refresh after a reload as the desired recipients', async () => {
+        const coordinator = new FotosShareCommitCoordinator();
+        const refreshedFrom: Array<readonly string[]> = [];
+
+        // A fresh runtime has no committed history; the refresh publishes from
+        // the persisted predecessor it was given.
+        await expect(commit({
+            coordinator,
+            fingerprint: 'members:b:content:1',
+            previousPersonIds: [],
+            nextPersonIds: ['b'],
+            intent: 'refresh',
+            operation: async previousPersonIds => {
+                refreshedFrom.push(previousPersonIds);
+                return 'restored';
+            },
+        })).resolves.toBe('restored');
+
+        // A later refresh for other recipients is not an assignment and is ignored.
+        const conflictingRefresh = vi.fn(async () => 'conflict');
+        await expect(commit({
+            coordinator,
+            fingerprint: 'members:c:content:1',
+            previousPersonIds: [],
+            nextPersonIds: ['c'],
+            intent: 'refresh',
+            operation: conflictingRefresh,
+        })).resolves.toBeNull();
+
+        expect(refreshedFrom).toEqual([[]]);
+        expect(conflictingRefresh).not.toHaveBeenCalled();
+    });
+
+    it('lets concurrent additions build on the latest requested recipients', async () => {
+        const coordinator = new FotosShareCommitCoordinator();
+        const persisted = ['x'];
+        await commit({
+            coordinator,
+            fingerprint: 'members:x',
+            nextPersonIds: persisted,
+            operation: async () => 'initial',
+        });
+
+        const firstPending = deferred<void>();
+        const transitions: string[] = [];
+        const addRecipient = (personId: string, hold?: Promise<void>) => {
+            const base = coordinator.getRequestedPersonIds('collection:summer') ?? persisted;
+            const next = [...base, personId];
+            return commit({
+                coordinator,
+                fingerprint: `members:${next.join(',')}`,
+                previousPersonIds: base,
+                nextPersonIds: next,
+                operation: async previousPersonIds => {
+                    if (hold) await hold;
+                    transitions.push(`${previousPersonIds.join(',')}->${next.join(',')}`);
+                },
+            });
+        };
+
+        // Two invitations accepted while the first grant is still publishing.
+        const first = addRecipient('r1', firstPending.promise);
+        const second = addRecipient('r2');
+        firstPending.resolve();
+        await Promise.all([first, second]);
+
+        expect(transitions).toEqual(['x->x,r1', 'x,r1->x,r1,r2']);
+        expect(coordinator.getRequestedPersonIds('collection:summer')).toEqual(['x', 'r1', 'r2']);
+    });
+
+    it('returns to persisted recipients after a first assignment fails', async () => {
+        const coordinator = new FotosShareCommitCoordinator();
+        await expect(commit({
+            coordinator,
+            fingerprint: 'members:a',
+            nextPersonIds: ['a'],
+            operation: async () => {
+                throw new Error('publication failed');
+            },
+        })).rejects.toThrow('publication failed');
+
+        expect(coordinator.getRequestedPersonIds('collection:summer')).toBeUndefined();
     });
 });

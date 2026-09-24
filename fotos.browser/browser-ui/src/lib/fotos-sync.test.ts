@@ -461,7 +461,9 @@ describe('fotos sync authorship toggle', () => {
 
         await syncPhotosToOneCore([photo], null, {claimAuthorship: false});
 
-        expect(getObjectWithTypeMock).toHaveBeenCalledTimes(2);
+        // Missing device books make the photo dirty before any per-photo reads;
+        // publication then reuses the other device's verified original BLOB.
+        expect(getObjectWithTypeMock).toHaveBeenCalledWith('original-variant-hash', 'FotosMediaVariant');
         expect(existsMock).toHaveBeenCalledWith('raw-original-blob-hash');
         expect(storeVersionedObjectMock.mock.calls
             .map(([object]) => object)
@@ -605,6 +607,43 @@ describe('fotos sync authorship toggle', () => {
 
         expect(storeVersionedObjectMock).toHaveBeenCalled();
         expect(addEntryToManifestMock).toHaveBeenCalledOnce();
+    });
+
+    it('keeps a photo with an unreadable thumbnail complete instead of republishing it every batch', async () => {
+        const photo = {
+            hash: 'photo-hash', name: 'photo.jpg', sourcePath: 'remote:photo.jpg', thumb: 'thumbs/missing.jpg',
+            mimeType: 'image/jpeg', size: 123, managed: 'metadata' as const,
+            tags: [], addedAt: '2026-09-11T00:00:00.000Z',
+        };
+        // The earlier publication could not read the thumbnail either, so it has none.
+        mockPersistedPhoto(photo);
+        const unreadable = new Error('thumbnail missing');
+        unreadable.name = 'NotFoundError';
+        const rootHandle = {
+            getFileHandle: vi.fn(async () => { throw unreadable; }),
+            getDirectoryHandle: vi.fn(async () => { throw unreadable; }),
+        } as unknown as FileSystemDirectoryHandle;
+
+        await syncPhotosToOneCore([photo], rootHandle, {claimAuthorship: false});
+
+        expect(storeVersionedObjectMock).not.toHaveBeenCalled();
+        expect(addEntryToManifestMock).not.toHaveBeenCalled();
+    });
+
+    it('reads this device\'s publication books once per batch', async () => {
+        const photo = {
+            hash: 'photo-hash', name: 'photo.jpg', sourcePath: 'remote:photo.jpg',
+            mimeType: 'image/jpeg', size: 123, managed: 'metadata' as const,
+            tags: [], addedAt: '2026-09-11T00:00:00.000Z',
+        };
+        mockPersistedPhoto(photo);
+
+        await syncPhotosToOneCore([photo, {...photo}, {...photo}], null, {claimAuthorship: false});
+
+        expect(storeVersionedObjectMock).not.toHaveBeenCalled();
+        expect(readMediaBookMock).toHaveBeenCalledOnce();
+        expect(getObjectByIdHashMock.mock.calls
+            .filter(([idHash]) => idHash === 'FotosDeviceBook-id-hash')).toHaveLength(1);
     });
 
     it('rebuilds a persisted entry when source media identity changes', async () => {

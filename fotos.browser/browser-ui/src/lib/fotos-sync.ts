@@ -212,7 +212,9 @@ async function isPhotoAlreadySynced(
     manifestEntryHashes: ReadonlySet<string>,
     manifestAttestations: readonly ManifestAuthenticityRef[],
     requiredAuthenticitySigner: string | null | undefined,
+    books: PublicationBooks | null,
 ): Promise<boolean> {
+    if (!books) return false;
     const expected = createFotosEntryMetadata(photo);
     const entryIdHash = await calculateIdHashOfObj(expected as any) as SHA256IdHash<FotosEntry>;
     let stored;
@@ -240,10 +242,9 @@ async function isPhotoAlreadySynced(
             ) ?? null;
     if (requiredAuthenticitySigner !== undefined && !requiredAttestation) return false;
 
-    const author = getInstanceOwnerIdHash() as SHA256IdHash<Person> | null;
-    if (!author || !await hasCompleteBrowserPublication({
+    if (!await hasCompleteBrowserPublication({
         photo,
-        author,
+        books,
         entryHash: String(stored.hash),
         entryIdHash: String(entryIdHash),
         originalVariant,
@@ -252,11 +253,10 @@ async function isPhotoAlreadySynced(
         return false;
     }
 
-    if (!photo.thumb) return !current.thumb;
-    const expectedThumbHash = rootHandle && !photo.thumb.startsWith('blob:') && !photo.thumb.startsWith('data:')
-        ? await storeThumbnailBlob(rootHandle, photo.thumb)
-        : await storeEphemeralThumbnailBlob(photo.thumb);
-    return Boolean(expectedThumbHash) && String(current.thumb ?? '') === String(expectedThumbHash);
+    // Complete means a republish would store the same thumbnail reference,
+    // including none when the thumbnail cannot be read.
+    const expectedThumbHash = await storePhotoThumbnail(photo, rootHandle);
+    return String(current.thumb ?? '') === String(expectedThumbHash ?? '');
 }
 
 function isMissingVersionedObject(error: unknown): boolean {
@@ -331,6 +331,18 @@ async function storeEphemeralThumbnailBlob(
         console.warn(`[fotos-sync] Failed to store ephemeral thumbnail ${thumbUrl}:`, err);
         return undefined;
     }
+}
+
+/** Store the thumbnail a publication references; undefined when it cannot be read. */
+async function storePhotoThumbnail(
+    photo: PhotoEntry,
+    rootHandle: FileSystemDirectoryHandle | null,
+): Promise<SHA256Hash<BLOB> | undefined> {
+    if (!photo.thumb) return undefined;
+    if (photo.thumb.startsWith('blob:') || photo.thumb.startsWith('data:')) {
+        return await storeEphemeralThumbnailBlob(photo.thumb);
+    }
+    return rootHandle ? await storeThumbnailBlob(rootHandle, photo.thumb) : undefined;
 }
 
 async function storeOriginalBlob(
@@ -445,14 +457,51 @@ async function storeBrowserSourceState(photo: PhotoEntry): Promise<{
     };
 }
 
-function collectionContainsAll(
-    values: Iterable<string> | undefined,
-    expected: readonly string[],
-): boolean {
-    if (expected.length === 0) return true;
-    if (!values) return false;
-    const current = new Set(Array.from(values, String));
-    return expected.every(value => current.has(value));
+function toStringSet(values: Iterable<unknown> | undefined): ReadonlySet<string> {
+    return new Set(values ? Array.from(values, String) : []);
+}
+
+function containsAll(values: ReadonlySet<string>, expected: readonly string[]): boolean {
+    return expected.every(value => values.has(value));
+}
+
+/** This device's publication books, indexed once per sync batch. */
+interface PublicationBooks {
+    device: Record<
+        'entries' | 'sourceIdHashes' | 'entryIdHashes' | 'variants' | 'locators' | 'authenticityAttestations',
+        ReadonlySet<string>
+    >;
+    media: Record<'sourceIdHashes' | 'entryIdHashes' | 'sourceRefs' | 'artifactIdHashes', ReadonlySet<string>>;
+}
+
+async function readPublicationBooks(author: SHA256IdHash<Person>): Promise<PublicationBooks | null> {
+    const deviceId = resolveBrowserFotosDeviceId();
+    const persistence = {calculateIdHashOfObj, getObjectByIdHash, storeVersionedObject};
+    const [deviceBook, mediaBook] = await Promise.all([
+        readFotosDeviceBook(persistence, deviceId),
+        readMediaBook({
+            calculateIdHashOfObj,
+            getObjectByIdHash: getVersionedObjectIfPresent,
+            storeVersionedObject,
+        }, author, deviceId),
+    ]);
+    if (!deviceBook?.obj || !mediaBook?.obj) return null;
+    return {
+        device: {
+            entries: toStringSet(deviceBook.obj.entries),
+            sourceIdHashes: toStringSet(deviceBook.obj.sourceIdHashes),
+            entryIdHashes: toStringSet(deviceBook.obj.entryIdHashes),
+            variants: toStringSet(deviceBook.obj.variants),
+            locators: toStringSet(deviceBook.obj.locators),
+            authenticityAttestations: toStringSet(deviceBook.obj.authenticityAttestations),
+        },
+        media: {
+            sourceIdHashes: toStringSet(mediaBook.obj.sourceIdHashes),
+            entryIdHashes: toStringSet(mediaBook.obj.entryIdHashes),
+            sourceRefs: toStringSet(mediaBook.obj.sourceRefs),
+            artifactIdHashes: toStringSet(mediaBook.obj.artifactIdHashes),
+        },
+    };
 }
 
 function hasExpectedObjectFields(
@@ -499,7 +548,7 @@ async function readCurrentBrowserLocators(
 
 async function hasCompleteBrowserPublication(params: {
     photo: PhotoEntry;
-    author: SHA256IdHash<Person>;
+    books: PublicationBooks;
     entryHash: string;
     entryIdHash: string;
     originalVariant: StoredOriginalVariant;
@@ -523,29 +572,18 @@ async function hasCompleteBrowserPublication(params: {
         return false;
     }
 
-    const deviceId = resolveBrowserFotosDeviceId();
-    const persistence = {calculateIdHashOfObj, getObjectByIdHash, storeVersionedObject};
-    const [deviceBook, mediaBook] = await Promise.all([
-        readFotosDeviceBook(persistence, deviceId),
-        readMediaBook({
-            calculateIdHashOfObj,
-            getObjectByIdHash: getVersionedObjectIfPresent,
-            storeVersionedObject,
-        }, params.author, deviceId),
-    ]);
-    if (!deviceBook?.obj || !mediaBook?.obj) return false;
-
+    const {device, media} = params.books;
     const deviceAuthenticity = params.authenticityHash ? [params.authenticityHash] : [];
-    return collectionContainsAll(deviceBook.obj.entries, [params.entryHash])
-        && collectionContainsAll(deviceBook.obj.sourceIdHashes, [sourceState.sourceIdHash])
-        && collectionContainsAll(deviceBook.obj.entryIdHashes, [sourceState.entryIdHash])
-        && collectionContainsAll(deviceBook.obj.variants, [String(params.originalVariant.hash)])
-        && collectionContainsAll(deviceBook.obj.locators, locators.hashes)
-        && collectionContainsAll(deviceBook.obj.authenticityAttestations, deviceAuthenticity)
-        && collectionContainsAll(mediaBook.obj.sourceIdHashes, [sourceState.sourceIdHash])
-        && collectionContainsAll(mediaBook.obj.entryIdHashes, [sourceState.entryIdHash])
-        && collectionContainsAll(mediaBook.obj.sourceRefs, sourceState.sourceRef ? [sourceState.sourceRef] : [])
-        && collectionContainsAll(mediaBook.obj.artifactIdHashes, [
+    return containsAll(device.entries, [params.entryHash])
+        && containsAll(device.sourceIdHashes, [sourceState.sourceIdHash])
+        && containsAll(device.entryIdHashes, [sourceState.entryIdHash])
+        && containsAll(device.variants, [String(params.originalVariant.hash)])
+        && containsAll(device.locators, locators.hashes)
+        && containsAll(device.authenticityAttestations, deviceAuthenticity)
+        && containsAll(media.sourceIdHashes, [sourceState.sourceIdHash])
+        && containsAll(media.entryIdHashes, [sourceState.entryIdHash])
+        && containsAll(media.sourceRefs, sourceState.sourceRef ? [sourceState.sourceRef] : [])
+        && containsAll(media.artifactIdHashes, [
             params.entryIdHash,
             String(params.originalVariant.idHash),
             ...locators.idHashes,
@@ -809,17 +847,9 @@ export async function syncPhotoToOneCore(
     const entry = createFotosEntryMetadata(photo);
     const mime = entry.mime;
 
-    // Store thumbnail as BLOB if available
-    let thumbHash: SHA256Hash<BLOB> | undefined;
-    if (photo.thumb) {
-        thumbHash = rootHandle
-            ? await storeThumbnailBlob(rootHandle, photo.thumb)
-            : (photo.thumb.startsWith('blob:') || photo.thumb.startsWith('data:'))
-                ? await storeEphemeralThumbnailBlob(photo.thumb)
-                : undefined;
-        if (thumbHash) {
-            entry.thumb = thumbHash;
-        }
+    const thumbHash = await storePhotoThumbnail(photo, rootHandle);
+    if (thumbHash) {
+        entry.thumb = thumbHash;
     }
 
     const entryIdHash = await calculateIdHashOfObj(entry as any) as SHA256IdHash<FotosEntry>;
@@ -936,6 +966,8 @@ async function syncPhotosBatchToOneCore(
             return null;
         })
         : null;
+    const author = getInstanceOwnerIdHash() as SHA256IdHash<Person> | null;
+    const books = author ? await readPublicationBooks(author) : null;
     const dirtyPhotos: PhotoEntry[] = [];
     for (const photo of photos) {
         if (!await isPhotoAlreadySynced(
@@ -944,6 +976,7 @@ async function syncPhotosBatchToOneCore(
             manifestEntryHashes,
             manifest.resolvedAttestations,
             claimAuthorship ? authenticityContext?.signerPersonId ?? null : undefined,
+            books,
         )) {
             dirtyPhotos.push(photo);
         }

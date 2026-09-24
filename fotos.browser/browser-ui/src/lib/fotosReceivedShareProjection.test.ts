@@ -133,4 +133,53 @@ describe('projectReceivedFotosShares', () => {
         await expect(projectReceivedFotosShares(subject, async () => true, deps)).resolves.toEqual([]);
         expect(deps.getCertificateSignature).not.toHaveBeenCalled();
     });
+
+    it('rejects a certificate whose scope does not match its transfer chain', async () => {
+        const deps = depsFor();
+        const otherScope = createActiveFotosShareCertificate({
+            issuer,
+            subject,
+            scope: {kind: 'collection', id: 'winter'},
+            issuedAt: '2026-08-03T10:00:00.000Z',
+        });
+        deps.listLatestCertificateChains = vi.fn(async () => [
+            {hash: 'active-chain-hash', idHash: 'stable-chain-id', timestamp: 1},
+        ]);
+        deps.getCertificate = vi.fn(async () => otherScope);
+
+        const projection = await projectReceivedFotosShares(subject, async () => true, deps);
+
+        expect(projection).toHaveLength(1);
+        expect(projection[0]).toMatchObject({status: 'invalid', verified: false, entries: []});
+        expect(projection[0]?.invalidReason).toBe('Certificate identity binding is invalid');
+        expect(deps.getCertificateSignature).not.toHaveBeenCalled();
+        expect(deps.getManifest).not.toHaveBeenCalled();
+    });
+
+    it('rejects a revocation without its recorded time and reason', async () => {
+        const deps = depsFor();
+        const {revokedAt: _revokedAt, ...incomplete} = revoked;
+        deps.listLatestCertificateChains = vi.fn(async () => [
+            {hash: 'revoked-chain-hash', idHash: 'stable-chain-id', timestamp: 2},
+        ]);
+        deps.getCertificate = vi.fn(async () => incomplete as typeof revoked);
+
+        const projection = await projectReceivedFotosShares(subject, async () => true, deps);
+
+        expect(projection[0]).toMatchObject({status: 'invalid', verified: false});
+        expect(projection[0]?.invalidReason).toBe('Revocation lifecycle fields are incomplete');
+    });
+
+    it('does not expose entries when an active scope manifest is unavailable', async () => {
+        const deps = depsFor({missingManifest: true});
+        deps.listLatestCertificateChains = vi.fn(async () => [
+            {hash: 'active-chain-hash', idHash: 'stable-chain-id', timestamp: 1},
+        ]);
+
+        const projection = await projectReceivedFotosShares(subject, async () => true, deps);
+
+        expect(projection[0]).toMatchObject({status: 'invalid', entries: [], photoCount: null});
+        expect(projection[0]?.invalidReason).toBe('Active share manifest is unavailable');
+        expect(deps.getEntry).not.toHaveBeenCalled();
+    });
 });
