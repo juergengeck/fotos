@@ -2,9 +2,12 @@
 
 Status: Implemented
 Owner: fotos product and engineering
-Last updated: 2026-08-03
+Last updated: 2026-09-22
 Evidence: [UX-03 and UX-19](../ui.prd.md#ux-03--sharing-grants-are-silent-immediate-and-unreviewable)
 Decision: [D-03 sharing revocation](./decisions/D-03-sharing-revocation.md)
+Flows: [01 publish scope access](../../flows/01-publish-scope-access.md),
+[02 receive a shared scope](../../flows/02-receive-shared-scope.md),
+[03 gallery invitation](../../flows/03-gallery-invitation.md)
 
 ## Outcome
 
@@ -129,6 +132,19 @@ Implemented in the browser and shared core:
   certificate discovery; late stale active versions cannot replace a current revocation.
 - The centralized Sharing view summarizes outgoing and received scopes and renders
   certificate-backed Received state.
+- Every access change for a scope goes through one in-memory commit queue. Commits
+  for a scope run in order, identical requests are coalesced, the certificate
+  predecessor is the last committed recipient set rather than a UI snapshot, and a
+  background refresh can never restore a recipient that an explicit change removed.
+- Before a commit, only the scope's photos are published, and a photo counts as
+  published only when its entry, verified original, device source, locators, device
+  and media books, and requested authenticity attestation are all durable. An
+  interrupted earlier publication is repaired rather than trusted.
+- Each publication phase is traced (scope, timing, outcome; no content) and exposed
+  through the development QA diagnostics.
+- The Filer/Fotos protocol shares a collection into the native Filer, propagates
+  member additions and removals, survives an offline Filer restart, removes the
+  folder on revocation, and restores it after the publisher reloads and re-grants.
 - The two-browser identity-share protocol test disables the recipient network before
   removal, commits revocation and a later photo while that recipient is offline, then
   proves on reconnect that the detached signature verifies, the revoked projection wins,
@@ -159,6 +175,31 @@ Implemented in the browser and shared core:
    certificate version, access replacement, stopped future deltas, retained control
    path, local-copy behavior, and exact UI copy.
 5. Complete direct-share and invite-link flows using keyboard only and mobile touch.
+
+## Open Findings (2026-09-22)
+
+Fixed on 2026-09-22:
+
+- Grant expansion no longer adds peers whose display name matches a reviewed
+  recipient; only saved contacts with the same explicit identity join the grant.
+- The invite link's expiry is the pairing invitation's real lifetime (15 minutes)
+  instead of a fixed 24 hours.
+- Two invitations accepted during one commit no longer revoke each other.
+
+Still open, tracked in the flow documents:
+
+- Grant expansion and the "Verified identity" label treat self-signed profile
+  credentials as trusted and ignore Glue certification; trust should come only from
+  the user's approval or from Glue
+  ([Flow 01](../../flows/01-publish-scope-access.md#gaps)).
+- The invite PIN is a second factor meant to reach the sender separately, inside
+  CHUM, before the gallery is granted. Today the sender grants on pairing alone,
+  and only the recipient's browser checks the PIN, against a digest in the link
+  ([Flow 03](../../flows/03-gallery-invitation.md#security-properties)).
+- Revocation removes received photos from the recipient's views automatically.
+  Revocation may only request deletion, and automated deletion needs the
+  recipient's prior consent
+  ([Flow 02](../../flows/02-receive-shared-scope.md#revocation-as-the-recipient-sees-it)).
 
 ## Success Measures
 

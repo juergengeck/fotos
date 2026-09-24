@@ -635,6 +635,11 @@ pane and written to a single Markdown report under
 `fotos.browser/browser-ui/tests/integration/reports/`. See the
 [integrated QA protocol](./testing.md) for evidence ownership and invocation.
 
+The [flow documents](../flows/README.md) describe how the runtime realizes the
+sharing rows (F68–F79), including durable write order, failure behavior, and the
+evidence for each step. Code anchors in the inventory tables record the
+2026-08-03 audit and are not kept current; the flow documents name current owners.
+
 ## 7. Product-Level Release Constraints
 
 - No user-facing control is non-functional or displays fabricated data.

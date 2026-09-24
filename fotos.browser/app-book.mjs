@@ -136,6 +136,199 @@ const journeys = [
       'fotos.core/src/share-model.ts',
     ],
   }),
+  journey({
+    id: 'publish-scope-access',
+    title: 'Publish or change scope access',
+    purpose:
+      'Let the publisher grant or revoke one recipient on one gallery, collection, or person scope so that the signed certificate lifecycle, not UI state, is the authority, and a removed recipient receives no later scope version.',
+    roles: ['publisher'],
+    implementationStatus: 'implemented',
+    description:
+      'Every access change for a scope goes through one ordered commit path: publish the scope photos, sign and deliver certificate evidence, then replace scope access. See docs/flows/01-publish-scope-access.md.',
+    inputs: [
+      'A prepared publication identity',
+      'One share scope with at least one locally owned photo',
+      'The reviewed next recipient set',
+    ],
+    steps: [
+      {
+        id: 'queue-per-scope',
+        title: 'Order the change behind earlier changes to the same scope',
+        actorRole: 'fotos.one',
+        intent:
+          'Coalesce identical requests, keep changed requests in call order, and never let a background refresh restore a recipient an explicit change removed.',
+        expectedOutputs: ['One commit per distinct desired recipient and content state'],
+      },
+      {
+        id: 'publish-scope-photos',
+        title: 'Publish the scope photos durably',
+        actorRole: 'fotos.one',
+        intent:
+          'Republish any scope photo whose entry, verified original, device source, locators, books, or authenticity attestation is not durable yet.',
+        expectedOutputs: ['Manifest entries for every photo in the scope'],
+      },
+      {
+        id: 'sign-certificate-evidence',
+        title: 'Sign and deliver certificate evidence first',
+        actorRole: 'fotos.one',
+        intent:
+          'Store, sign, and publish a newer active or revoked certificate version under its stable identity through the retained chain before any access changes.',
+        expectedOutputs: ['A signed FotosShareCertificateChain version per changed recipient'],
+      },
+      {
+        id: 'replace-scope-access',
+        title: 'Replace scope access, then store the next manifest',
+        actorRole: 'fotos.one',
+        intent:
+          'Limit manifest access to the committed recipients, then store the next manifest version so a removed recipient never receives it.',
+        expectedOutputs: ['Scope access equal to the committed recipients'],
+      },
+    ],
+    outputs: [
+      'A certificate version per changed recipient whose status matches the committed assignment',
+      'Scope manifest access equal to the committed recipient set',
+      'Timed, content-free publication phase spans',
+    ],
+    checks: [
+      'A revocation is signed and published before scope access is replaced.',
+      'A revocation that cannot be signed leaves scope access unchanged.',
+      'Re-adding a recipient creates a newer active version under the same certificate identity.',
+      'A stale background refresh never restores a removed recipient.',
+      'An interrupted photo publication is repaired rather than treated as complete.',
+    ],
+    sources: [
+      'fotos.browser/browser-ui/src/lib/fotosShareCommitCoordinator.ts',
+      'fotos.browser/browser-ui/src/lib/fotosShareCertificates.ts',
+      'fotos.browser/browser-ui/src/lib/fotos-sync.ts',
+      'docs/flows/01-publish-scope-access.md',
+    ],
+  }),
+  journey({
+    id: 'receive-shared-scope',
+    title: 'Receive a shared scope',
+    purpose:
+      'Show a recipient exactly the scopes whose current certificate is addressed to them, signed by a trusted issuer, and active, and withdraw a scope once its revocation arrives.',
+    roles: ['recipient'],
+    implementationStatus: 'implemented',
+    description:
+      'The browser and the Filer project received scopes from the current certificate chain versions only. See docs/flows/02-receive-shared-scope.md.',
+    inputs: [
+      'Certificate chains addressed to one of the recipient identities',
+      'Trusted issuer signing keys',
+    ],
+    steps: [
+      {
+        id: 'discover-current-chains',
+        title: 'Discover current chains addressed to the recipient',
+        actorRole: 'fotos.one',
+        intent: 'List the current chain version per stable identity and ignore outbound chains.',
+        expectedOutputs: ['Candidate scopes for this recipient'],
+      },
+      {
+        id: 'verify-bindings-and-signature',
+        title: 'Verify identity bindings and the issuer signature',
+        actorRole: 'fotos.one',
+        intent:
+          'Reject any chain, certificate, or manifest whose issuer, subject, or scope binding differs, and any certificate whose signature does not verify with trusted keys.',
+        expectedOutputs: ['Each scope marked active, revoked, or invalid with a reason'],
+      },
+      {
+        id: 'serve-active-scopes',
+        title: 'Serve only active scopes',
+        actorRole: 'fotos.one',
+        intent:
+          'Expose entries only for active scopes, rebuild on certificate, manifest, and trust changes, and never return bytes from a tree invalidated during the read.',
+        expectedOutputs: ['Received gallery entries and Filer collection folders'],
+      },
+    ],
+    outputs: [
+      'A received-share projection with a status and reason per scope',
+      'No content exposed through an invalid or revoked scope',
+    ],
+    checks: [
+      'A late older active version cannot replace a newer revocation.',
+      'An untrusted signature or mismatched binding never exposes entries.',
+      'A revocation arriving during a Filer read withholds the bytes.',
+    ],
+    sources: [
+      'fotos.core/src/received-shares.ts',
+      'fotos.core/src/shared-fotos-file-system.ts',
+      'docs/flows/02-receive-shared-scope.md',
+    ],
+  }),
+];
+
+const BROWSER_UI_CWD = 'fotos.browser/browser-ui';
+const FOTOS_CORE_CWD = 'fotos.core';
+
+/** Bind implemented journeys to evidence that runs without network services. The
+ *  multi-instance and Filer/Fotos protocols need live services, so they are named
+ *  in the flow documents rather than bound here. */
+const flowBindings = [
+  {
+    id: 'fotos.app.binding.publish-scope-access',
+    flowId: 'fotos.app.journey.publish-scope-access',
+    workspaceId: 'fotos',
+    scope: 'product',
+    status: 'active',
+    allowedStarterRefs: ['role:publisher'],
+    toolRequirementRefs: [],
+    outputDestinationRefs: ['evidence:flow-run'],
+    evidence: [
+      {
+        id: 'fotos.test.publish-scope-access',
+        kind: 'test',
+        cwd: BROWSER_UI_CWD,
+        command:
+          'npm test --silent -- src/lib/fotosShareCommitCoordinator.test.ts src/lib/fotosShareCertificates.test.ts src/lib/fotos-sync.test.ts src/lib/fotosShareTrace.test.ts',
+        sourceRefs: [
+          sourceRef('fotos.browser/browser-ui/src/lib/fotosShareCommitCoordinator.test.ts'),
+          sourceRef('fotos.browser/browser-ui/src/lib/fotosShareCertificates.test.ts'),
+          sourceRef('fotos.browser/browser-ui/src/lib/fotos-sync.test.ts'),
+          sourceRef('fotos.browser/browser-ui/src/lib/fotosShareTrace.test.ts'),
+        ],
+        verifies: [
+          'A revocation is signed and published before scope access is replaced.',
+          'A revocation that cannot be signed leaves scope access unchanged.',
+          'A stale background refresh never restores a removed recipient.',
+          'An interrupted photo publication is repaired rather than treated as complete.',
+        ],
+      },
+    ],
+  },
+  {
+    id: 'fotos.app.binding.receive-shared-scope',
+    flowId: 'fotos.app.journey.receive-shared-scope',
+    workspaceId: 'fotos',
+    scope: 'product',
+    status: 'active',
+    allowedStarterRefs: ['role:recipient'],
+    toolRequirementRefs: [],
+    outputDestinationRefs: ['evidence:flow-run'],
+    evidence: [
+      {
+        id: 'fotos.test.received-share-projection',
+        kind: 'test',
+        cwd: BROWSER_UI_CWD,
+        command: 'npm test --silent -- src/lib/fotosReceivedShareProjection.test.ts',
+        sourceRefs: [
+          sourceRef('fotos.browser/browser-ui/src/lib/fotosReceivedShareProjection.test.ts'),
+        ],
+        verifies: [
+          'A late older active version cannot replace a newer revocation.',
+          'An untrusted signature or mismatched binding never exposes entries.',
+        ],
+      },
+      {
+        id: 'fotos.test.shared-fotos-file-system',
+        kind: 'test',
+        cwd: FOTOS_CORE_CWD,
+        command: 'npm test --silent -- src/shared-fotos-file-system.test.ts',
+        sourceRefs: [sourceRef('fotos.core/src/shared-fotos-file-system.test.ts')],
+        verifies: ['A revocation arriving during a Filer read withholds the bytes.'],
+      },
+    ],
+  },
 ];
 
 export const FOTOS_APP_BOOK_DEFINITION = {
@@ -144,7 +337,7 @@ export const FOTOS_APP_BOOK_DEFINITION = {
     title: 'Fotos',
     kind: 'workspace',
     description:
-      'Fotos publisher-owned photo sharing. This book currently covers one subject: what a shared scope discloses to the content tracker overlay, and who decides it.',
+      'Fotos publisher-owned photo sharing: publishing and revoking scope access, receiving shared scopes, and what a shared scope discloses to the content tracker overlay.',
     lifecycleStage: 'source',
     status: 'available',
     availabilityPayload: 'local',
@@ -153,6 +346,7 @@ export const FOTOS_APP_BOOK_DEFINITION = {
     sourceRefs: [
       sourceRef('fotos.browser/'),
       sourceRef('fotos.core/src/share-model.ts'),
+      sourceRef('docs/flows/README.md'),
       foreignRef('glue', 'docs/content-tracker.md'),
     ],
     entryIds: ['fotos.app.announce-policy', ...journeys.map(item => item.id)],
@@ -170,14 +364,14 @@ export const FOTOS_APP_BOOK_DEFINITION = {
       ],
     },
   ],
-  /** Empty on purpose. The journey is `unbound`: nothing in fotos implements a
-   *  facet announce yet, so there is no runnable evidence for it and a binding
-   *  here would claim one. `fotos.core/src/share-model.test.ts` covers a
-   *  precondition the journey depends on — that a scope has an explicit entries
-   *  set and an active-or-revoked certificate — but a precondition is not
-   *  evidence for the journey, and binding it would misreport this as built. */
-  flowBindings: [],
+  /** Only implemented journeys are bound. The spatial disclosure journey stays
+   *  `unbound`: nothing in fotos implements a facet announce yet, and
+   *  `fotos.core/src/share-model.test.ts` covers only a precondition it depends on,
+   *  which is not evidence for the journey. */
+  flowBindings,
   openImplementationGaps: [
+    'The gallery invitation flow (docs/flows/03-gallery-invitation.md) has only service-dependent protocol evidence, so it is not a bound journey here.',
+    'The spatial disclosure journey is unbound, so this catalog does not yet pass source.core validateAppBookCatalog, which requires exactly one active binding per journey.',
     'No spatial facet key is derived, stored, or announced anywhere in fotos today; the whole journey is a policy contract ahead of its runtime.',
     'The content tracker overlay does not exist yet (glue docs/content-tracker.md is a proposal), so there is nothing to announce to.',
     'No per-scope announce decision is persisted on FotosShareManifest or beside it.',

@@ -18,7 +18,10 @@ affected fotos roots. This stops export of future manifest, entry, media, and me
 versions covered by the revoked scope.
 
 Revocation does not remotely delete objects, blobs, exported files, screenshots, or
-other copies already stored on the recipient's device. The product must say so plainly.
+other copies already stored on the recipient's device. The issuer can only ask the
+recipient to delete them. The recipient's device may act on that request
+automatically only with the recipient's prior consent; otherwise the recipient
+decides. The product must say so plainly.
 
 The recipient's trust/control path remains intact so the new certificate version can
 be delivered and projected. Fotos must publish the revocation evidence before removing
@@ -65,6 +68,13 @@ The implementation transaction is:
 4. Replace derived access on the affected fotos roots, removing the recipient.
 5. Feed the new certificate and access state into local projections.
 6. Report success only after the authoritative local state reflects revocation.
+
+The implementation traces these steps as `certificate-store`, `certificate-sign`,
+`certificate-chain-access` and `certificate-chain-store` (1–3),
+`manifest-access-replace` (4), and `manifest-store`. The new manifest version is
+stored only after access replacement, so a removed recipient never receives it. A
+failure before access replacement leaves access unchanged. See
+[Flow 01](../../../flows/01-publish-scope-access.md) for the complete commit path.
 
 If delivery is asynchronous because the recipient is offline, the issuer still stops
 future export immediately through its local access replacement. The recipient observes
@@ -119,3 +129,10 @@ identity-share protocol test takes the recipient network offline before removal,
 revocation plus a later photo, reconnects the recipient, and proves delivery of the
 verified revocation while the later photo remains unavailable. The decision is therefore
 protocol-verified for the v1 direct-share path.
+
+As of 2026-09-22 the Filer/Fotos cross-application protocol also covers re-sharing
+after the publisher reloads. Its revocation step asserts that the recipient's Filer
+folder disappears and its files become unreadable. That automatic removal happens
+without a deletion request or the recipient's consent, so it conflicts with this
+decision; see [Flow 02](../../../flows/02-receive-shared-scope.md#gaps). A unit contract proves that
+a revocation that cannot be signed leaves scope access unchanged.

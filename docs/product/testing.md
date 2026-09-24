@@ -2,8 +2,9 @@
 
 Status: Implemented in the browser development server  
 Owner: fotos product and engineering  
-Last updated: 2026-09-05  
-Related: [PRD](./PRD.md), [UI flow inventory](./ui.prd.md), [UI delivery plan](./ui/README.md)
+Last updated: 2026-09-22
+Related: [PRD](./PRD.md), [UI flow inventory](./ui.prd.md), [UI delivery plan](./ui/README.md),
+[Flow documents](../flows/README.md)
 
 ## Goal
 
@@ -61,6 +62,57 @@ The ad-hoc journey must reach a usable photo through the normal product connecti
 path. It does not force a diagnostic route-key connection to complete delivery.
 Pairing success and an imported metadata object are intermediate checkpoints;
 neither substitutes for a rendered image and successful reopening.
+
+### Filer/Fotos cross-application protocol
+
+The four-instance protocol that proves durable collection sharing into the native
+Filer lives with its owner in
+[`../one/packages/refinio.api/src/filer/qa/FilerTestRunnerPlan.ts`](../../../one/packages/refinio.api/src/filer/qa/FilerTestRunnerPlan.ts).
+Alice and Charlie are Fotos browser actors, Bob is the Filer runtime. The steps are:
+
+1. verify the exact Fotos browser actors;
+2. register all identities with Glue;
+3. pair Bob and Charlie with Alice without sharing content;
+4. import two photos and collect only the first;
+5. share the collection with Bob and compare exact bytes;
+6. add the second member and verify live propagation;
+7. remove the first member and verify it becomes unreadable;
+8. restart Filer offline and verify persisted files;
+9. reconnect and keep the same projection;
+10. revoke Bob and verify the folder disappears;
+11. reload Alice, re-grant Bob, and verify Bob recovers the same scope;
+12. optionally run qa.core diagnostics.
+
+Charlie must stay unauthorized after every content step. Fotos drives this protocol
+only through the QA operation API below; it has no private test path into the app.
+
+This protocol runs from the Filer QA runner, not from the Fotos **Run full
+protocol** profile, and the release gate below does not require it yet. It is the
+only automated evidence for collection-scope sharing, member changes, and sender
+reload.
+
+### QA operation API (development server only)
+
+`vite-plugin-fotos-api.ts` exposes `POST /api/fotos-qa/<method>` and forwards each
+call over the Vite HMR channel to the browser client named by its `clientId`.
+`fotosQaOperation.ts` owns the methods: identity preparation, registration, and
+verified reload; photo fixture import; collection creation, membership, recipients,
+and revocation; pairing invitation creation and acceptance; received-share
+snapshots and waits; and `getDiagnostics`. Operations resolve only after the app
+state projection shows the requested result, not when the call returns.
+
+For multi-actor runs, start each actor with `npm run dev:qa -- <port>`. That server
+disables file watching, so a workspace build started by another actor cannot reload
+an actor mid-protocol. Restart it after changing code.
+
+`waitForAppReady` reports ready only when the model is initialized, persisted source
+restoration has finished, and every stored collection member is present in the
+gallery. A collection that references a photo no longer in any managed folder
+therefore keeps an actor not ready until the wait times out.
+
+`getDiagnostics` includes peer-connection and CHUM traces plus
+`fotosSharePublication.spans`, the timed phases of the most recent scope commits
+([Flow 01](../flows/01-publish-scope-access.md#diagnostics)).
 
 The network protocols own their ephemeral ports, storage, processes, and cleanup.
 They exercise product builds and browser role contexts, not mocked transports.
@@ -139,3 +191,27 @@ rerun as part of this change. Sender identity setup and local photo fixtures use
 the integration harness; native passkey and directory-picker dialogs are not
 covered by these runs. The recipient reload retained HTTP access to the app shell,
 so it proves restoration without peer transfer, not a fully offline PWA launch.
+
+## Flow documentation review — 2026-09-22
+
+Reviewed the durable sharing and QA changes against the new
+[flow documents](../flows/README.md) and extended the contracts they cite:
+signing failure leaves scope access unchanged, a refresh queued ahead of a
+recipient change is dropped at the queue head, the first refresh after a reload
+becomes the desired state, and the recipient projection rejects mismatched
+certificate/chain scopes, incomplete revocations, and unavailable active manifests.
+
+- `npm test` in `fotos.browser/browser-ui`: 46 files, 220 tests passed after the
+  fixes for display-name grant expansion, invite expiry, concurrent invitation
+  grants, and sync completion-check cost.
+- `npm run typecheck` in `fotos.browser/browser-ui`: passed.
+- `npm test` in `fotos.core`: 128 tests passed.
+- `node --test test/*.mjs` in `fotos.browser` (App Book contract): passed. It now
+  runs the unit evidence bound to the publish and receive journeys.
+- `npm run test:integration:fotos-ui` against `npm run dev:qa -- 5188`: all 10
+  desktop/mobile steps passed before and after those fixes, after repointing the stale `@vger/vger.glue` and
+  `@refinio/recovery.core` aliases in `vite.config.ts`, `vitest.config.ts`, and
+  `tsconfig.json` from `../vger/packages` to `../one/packages` (removed from
+  `../vger` by commit `d71b43dc9`).
+
+Not run: the multi-instance protocols and the Filer/Fotos protocol.
