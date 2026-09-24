@@ -34,9 +34,10 @@ recipient who is not yet a known contact. It ends in the same certificate-backed
    There is nothing in the link to check the PIN against. On a desktop surface it
    also asks for a destination folder.
 6. **Provision a guest identity if needed.** A recipient without pairing support
-   gets a Glue identity `Fotos Guest <random>`, sync is enabled, and the token and
-   PIN are stored in `sessionStorage`. The page reloads and resumes acceptance only
-   if the stored token matches the invitation.
+   gets a Glue identity `Fotos Guest <random>`, sync is enabled, and the page
+   reloads. Provisioning happens before any PIN is entered, so the PIN lives only
+   in memory afterwards and is never written to storage. After the reload the
+   recipient enters the PIN into the dialog.
 7. **Pair.** The recipient connects with the invitation and requires the remote
    Person to be the sender named in the invitation. Pairing authenticates both
    Persons and grants nothing.
@@ -97,5 +98,3 @@ recipient who is not yet a known contact. It ends in the same certificate-backed
 
 - A sender reload still ends every outstanding invitation early. The displayed
   expiry cannot show that.
-- The guest reload path keeps the PIN in `sessionStorage` until acceptance
-  finishes.

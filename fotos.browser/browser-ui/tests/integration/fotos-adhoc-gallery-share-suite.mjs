@@ -239,8 +239,13 @@ async function createGalleryShareInvite(page) {
 
 async function acceptGalleryShareInvite(page, pin) {
   const dialog = page.getByRole('dialog', {name: 'Open shared gallery'});
-  await dialog.getByRole('textbox', {name: 'Invitation PIN'}).fill(pin);
-  // Exercise mobile's real action, including its destination and identity reload.
+  try {
+    await dialog.getByRole('textbox', {name: 'Invitation PIN'}).fill(pin, {timeout: 5_000});
+  } catch {
+    return; // No dialog: this device already paired and proved.
+  }
+  // Fresh guests provision an identity first, which reloads the page; the PIN
+  // lives only in memory, so the caller enters it again after the reload.
   await dialog.getByRole('button', {name: 'Open gallery', exact: true}).click();
 }
 
@@ -739,6 +744,10 @@ async function main() {
 
     const guestIdentity = await getLocalIdentitySnapshot(recipient.page);
     report.guestPersonId = guestIdentity.publicationIdentity;
+
+    // Second accept: the PIN was never stored, so enter it again now that the
+    // guest identity exists. This pairs and submits the CHUM PIN proof.
+    await acceptGalleryShareInvite(recipient.page, invite.pin);
 
     await waitForStage(
       'sender-granted-manifest-ready',

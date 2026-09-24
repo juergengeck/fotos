@@ -278,7 +278,7 @@ interface FotosDebugApi {
         expiresAt: string;
     }>;
     acceptGalleryShareInvite: (pin: string) => Promise<{
-        accepted: true;
+        accepted: boolean;
         senderPersonId: string;
     }>;
     forceRouteKeyConnect: (personId: string, keySource?: 'advertised' | 'certified') => Promise<{
@@ -505,7 +505,6 @@ export function App({ fotosModel: initialModel }: AppProps) {
     // Nothing about the PIN is in the link. The gallery is granted only after
     // the recipient proves the PIN with a FotosSharePinProof object over CHUM.
     const pendingGalleryInviteTokensRef = useRef(new Map<string, PendingGalleryInvite>());
-    const pendingShareResumeStartedRef = useRef(false);
     const certificateBackfilledScopesRef = useRef(new Set<string>());
     const committedShareScopeFingerprintsRef = useRef(new Map<string, string>());
     const legacyFotosAccessRetiredRef = useRef(false);
@@ -1704,25 +1703,14 @@ export function App({ fotosModel: initialModel }: AppProps) {
             throw new Error('This share link has expired.');
         }
 
-        const pin = (options.pin ?? incomingSharePin).trim();
-        if (!isFotosSharePinFormat(pin)) {
-            throw new Error('Enter the four-digit PIN the sender gave you.');
-        }
-
-        if (options.requireDestination ?? true) {
-            setIncomingShareStatus('choosing-folder');
-            const destinationReady = await gallery.folder.chooseSharedGalleryDestination();
-            if (!destinationReady) {
-                setIncomingShareStatus('idle');
-                throw new Error('Choose a folder to store the shared gallery.');
-            }
-        }
-
         if (!fotosModel?.initialized) {
             throw new Error('fotos is still opening the share.');
         }
 
         if (!fotosModel.connectionsModel?.pairing) {
+            // Fresh guests provision an identity before they ever see a PIN
+            // prompt, so the PIN lives only in memory after the reload below
+            // and is never written to storage.
             setIncomingShareStatus('preparing');
             const guestSuffix = typeof crypto?.randomUUID === 'function'
                 ? crypto.randomUUID().slice(0, 8)
@@ -1737,18 +1725,25 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 moduleId: 'glue',
                 values: { syncEnabled: true },
             });
-            sessionStorage.setItem('fotos.pendingShareAcceptance', JSON.stringify({
-                token: incomingShareInvite.pairingInvitation.token,
-                pin,
-            }));
-            const resumeUrl = new URL(window.location.href);
-            resumeUrl.searchParams.set('fotosAcceptAsNew', '1');
-            window.history.replaceState(window.history.state, '', resumeUrl);
             window.location.reload();
             return {
-                accepted: true as const,
+                accepted: false as const,
                 senderPersonId: incomingShareInvite.senderPersonId,
             };
+        }
+
+        const pin = (options.pin ?? incomingSharePin).trim();
+        if (!isFotosSharePinFormat(pin)) {
+            throw new Error('Enter the four-digit PIN the sender gave you.');
+        }
+
+        if (options.requireDestination ?? true) {
+            setIncomingShareStatus('choosing-folder');
+            const destinationReady = await gallery.folder.chooseSharedGalleryDestination();
+            if (!destinationReady) {
+                setIncomingShareStatus('idle');
+                throw new Error('Choose a folder to store the shared gallery.');
+            }
         }
 
         const localPersonId = fotosModel.publicationIdentity ?? fotosModel.ownerId;
@@ -1804,46 +1799,6 @@ export function App({ fotosModel: initialModel }: AppProps) {
         incomingShareInvite,
         incomingSharePin,
     ]);
-
-    useEffect(() => {
-        if (
-            pendingShareResumeStartedRef.current
-            || !incomingShareInvite
-            || !fotosModel?.connectionsModel?.pairing
-            || new URL(window.location.href).searchParams.get('fotosAcceptAsNew') !== '1'
-        ) {
-            return;
-        }
-
-        let stored: {token?: string; pin?: string} | null = null;
-        try {
-            stored = JSON.parse(sessionStorage.getItem('fotos.pendingShareAcceptance') ?? 'null');
-        } catch {
-            stored = null;
-        }
-        if (
-            stored?.token !== incomingShareInvite.pairingInvitation.token
-            || typeof stored.pin !== 'string'
-        ) {
-            setIncomingShareStatus('error');
-            setIncomingShareError('The pending invitation could not be resumed. Enter the PIN again.');
-            return;
-        }
-
-        pendingShareResumeStartedRef.current = true;
-        setIncomingSharePin(stored.pin);
-        const cleanUrl = new URL(window.location.href);
-        cleanUrl.searchParams.delete('fotosAcceptAsNew');
-        window.history.replaceState(window.history.state, '', cleanUrl);
-        void acceptIncomingGalleryShareInvite({requireDestination: false, pin: stored.pin})
-            .catch(error => {
-                setIncomingShareStatus('error');
-                setIncomingShareError(error instanceof Error ? error.message : String(error));
-            })
-            .finally(() => {
-                sessionStorage.removeItem('fotos.pendingShareAcceptance');
-            });
-    }, [acceptIncomingGalleryShareInvite, fotosModel?.connectionsModel?.pairing, incomingShareInvite]);
 
     const handleAcceptIncomingGalleryShareInvite = useCallback(async () => {
         setIncomingShareError(null);
@@ -3532,7 +3487,6 @@ export function App({ fotosModel: initialModel }: AppProps) {
         && incomingShareStatus !== 'connected';
     const dismissIncomingShareInvite = useCallback(() => {
         if (incomingShareBusy) return;
-        sessionStorage.removeItem('fotos.pendingShareAcceptance');
         window.history.replaceState(window.history.state, '', clearIncomingShareUrl(window.location.href));
         setRouteLocation(getCurrentRouteLocation());
         setIncomingShareInvite(null);
