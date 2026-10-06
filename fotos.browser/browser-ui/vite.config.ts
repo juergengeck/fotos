@@ -327,7 +327,12 @@ export default defineConfig({
             {find: '@refinio/assembly.core', replacement: path.resolve(__dirname, '../../../one/packages/assembly.core/dist')},
             {find: '@vger/vger.core', replacement: path.resolve(__dirname, '../../../one/packages/vger.core/dist')},
             {find: '@vger/vger.glue', replacement: path.resolve(__dirname, '../../../one/packages/vger.glue/dist')},
-            {find: '@refinio/source.media', replacement: path.resolve(__dirname, '../../../one/packages/source.media/dist')},
+            // Resolve source.media's public entry points without requiring generated dist files.
+            {find: /^@refinio\/source\.media\/services$/, replacement: path.resolve(__dirname, '../../../one/packages/source.media/src/services/index.ts')},
+            {find: /^@refinio\/source\.media\/types$/, replacement: path.resolve(__dirname, '../../../one/packages/source.media/src/types/index.ts')},
+            {find: /^@refinio\/source\.media\/(.*)\.js$/, replacement: path.resolve(__dirname, '../../../one/packages/source.media/src/$1.ts')},
+            {find: /^@refinio\/source\.media\/(.*)$/, replacement: path.resolve(__dirname, '../../../one/packages/source.media/src/$1')},
+            {find: '@refinio/source.media', replacement: path.resolve(__dirname, '../../../one/packages/source.media/src/index.ts')},
             {find: '@refinio/source.core', replacement: path.resolve(__dirname, '../../../one/packages/source.core/dist')},
             {find: '@refinio/media.core', replacement: path.resolve(__dirname, '../../../one/packages/media.core/dist')},
             {find: '@refinio/recovery.core', replacement: path.resolve(__dirname, '../../../one/packages/recovery.core/dist')},
