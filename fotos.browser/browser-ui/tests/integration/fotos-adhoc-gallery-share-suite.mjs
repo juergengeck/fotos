@@ -239,13 +239,11 @@ async function createGalleryShareInvite(page) {
 
 async function acceptGalleryShareInvite(page, pin) {
   const dialog = page.getByRole('dialog', {name: 'Open shared gallery'});
-  try {
-    await dialog.getByRole('textbox', {name: 'Invitation PIN'}).fill(pin, {timeout: 5_000});
-  } catch {
-    return; // No dialog: this device already paired and proved.
-  }
-  // Fresh guests provision an identity first, which reloads the page; the PIN
-  // lives only in memory, so the caller enters it again after the reload.
+  if (await dialog.count() === 0) return; // No dialog: this device is done.
+  // Fresh guests see no PIN field: they provision an identity first (one
+  // reload) and enter the memory-only PIN afterwards.
+  const pinField = dialog.getByRole('textbox', {name: 'Invitation PIN'});
+  if (await pinField.count() > 0) await pinField.fill(pin);
   await dialog.getByRole('button', {name: 'Open gallery', exact: true}).click();
 }
 

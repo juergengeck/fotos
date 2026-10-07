@@ -28,20 +28,18 @@ recipient who is not yet a known contact. It ends in the same certificate-backed
 3. **Hand off.** The sender copies, Web-Shares, or shows the invitation as a QR code
    and tells the recipient the PIN over a different channel. *Revoke link* invalidates the pairing
    invitation and forgets the pending token and PIN.
-4. **Open.** The recipient opens the URL. The app parses the invitation, checks its
-   expiry, and asks for the PIN.
-5. **Collect the PIN.** The recipient's app checks only the four-digit format.
-   There is nothing in the link to check the PIN against. On a desktop surface it
-   also asks for a destination folder.
-6. **Provision a guest identity if needed.** A recipient without pairing support
-   gets a Glue identity `Fotos Guest <random>`, sync is enabled, and the page
-   reloads. Provisioning happens before any PIN is entered, so the PIN lives only
-   in memory afterwards and is never written to storage. After the reload the
-   recipient enters the PIN into the dialog.
-7. **Pair.** The recipient connects with the invitation and requires the remote
+4. **Open.** The recipient opens the URL. The app parses the invitation and checks
+   its expiry. A device without pairing support shows no PIN field: it first
+   provisions a `Fotos Guest <random>` Glue identity, enables sync, and reloads.
+   Provisioning happens before any PIN is entered, so the PIN lives only in
+   memory afterwards and is never written to storage.
+5. **Collect the PIN.** The dialog asks for the PIN and checks only the
+   four-digit format. There is nothing in the link to check the PIN against. On
+   a desktop surface it also asks for a destination folder.
+6. **Pair.** The recipient connects with the invitation and requires the remote
    Person to be the sender named in the invitation. Pairing authenticates both
    Persons and grants nothing.
-8. **Prove and grant.** After pairing, the recipient's app stores a
+7. **Prove and grant.** After pairing, the recipient's app stores a
    `FotosSharePinProof` object (token, sender, prover, PIN) with access granted to
    the sender's Person only, so the PIN travels inside CHUM
    (`submitFotosSharePinProof`). The sender's pairing-success handler only records
@@ -50,7 +48,7 @@ recipient who is not yet a known contact. It ends in the same certificate-backed
    — adding the remote Person to the recipients and running Flow 01 with intent
    `assignment` — only on the first valid proof. Five wrong proofs invalidate the
    invitation.
-9. **Receive.** The recipient projects the gallery scope as in
+8. **Receive.** The recipient projects the gallery scope as in
    [Flow 02](02-receive-shared-scope.md), shows incoming progress, and renders the
    photos.
 

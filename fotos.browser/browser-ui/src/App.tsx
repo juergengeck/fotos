@@ -3525,6 +3525,10 @@ export function App({ fotosModel: initialModel }: AppProps) {
             : 'Waiting for shared photos...';
     const incomingShareDialogOpen = Boolean(incomingShareInvite)
         && incomingShareStatus !== 'connected';
+    // Guests without pairing support provision an identity (one reload) before
+    // they ever see a PIN prompt, so the PIN is entered once, after the
+    // reload, and lives only in memory.
+    const incomingShareCanPair = Boolean(fotosModel?.connectionsModel?.pairing);
     const dismissIncomingShareInvite = useCallback(() => {
         if (incomingShareBusy) return;
         window.history.replaceState(window.history.state, '', clearIncomingShareUrl(window.location.href));
@@ -4016,11 +4020,13 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         </div>
                         <div className="mt-4 space-y-3">
                             <div className="rounded-md border border-white/10 bg-black/25 px-3 py-2 text-xs leading-relaxed text-white/55">
-                                {incomingShareUsesAppStorage
-                                    ? 'Enter the PIN sent separately. Shared previews are stored in Fotos on this device.'
-                                    : 'Enter the PIN sent separately, then choose a local folder. Shared previews are stored in Fotos on this device.'}
-                                {' '}If fotos needs to prepare a private sharing identity, it will reload and reopen this invitation automatically.
+                                {incomingShareCanPair
+                                    ? (incomingShareUsesAppStorage
+                                        ? 'Enter the PIN sent separately. Shared previews are stored in Fotos on this device.'
+                                        : 'Enter the PIN sent separately, then choose a local folder. Shared previews are stored in Fotos on this device.')
+                                    : 'This device needs a private sharing identity first. Continue to prepare it (one reload), then enter the PIN sent separately.'}
                             </div>
+                            {incomingShareCanPair && (
                             <label className="block text-xs font-medium text-white/70">
                                 Invitation PIN
                                 <input
@@ -4037,6 +4043,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                     aria-describedby={incomingShareError ? 'incoming-share-error' : undefined}
                                 />
                             </label>
+                            )}
                             {incomingShareError && (
                                 <div id="incoming-share-error" role="alert" className="rounded-md border border-[#e94560]/25 bg-[#e94560]/10 px-2.5 py-2 text-xs text-[#ffb5c3]">
                                     {incomingShareError}
@@ -4044,7 +4051,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                             )}
                             <button
                                 type="button"
-                                disabled={incomingShareBusy || incomingSharePin.length !== 4}
+                                disabled={incomingShareBusy || (incomingShareCanPair && incomingSharePin.length !== 4)}
                                 onClick={() => {
                                     void handleAcceptIncomingGalleryShareInvite();
                                 }}
