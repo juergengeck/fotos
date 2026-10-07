@@ -19,6 +19,7 @@ import type {
 } from '@refinio/fotos.core';
 import { copyFilesToDirectory, ingestDirectory, type IngestProgress, type FaceWorkerHandle } from '@/lib/browserIngest';
 import {parseFotosEntryByteSize} from '../../../../fotos.core/src/ingest/index-html.js';
+import {readFotosIndexWithExactByteSizes} from '@/lib/fotosIndexByteSizeMigration';
 import { createFaceWorker } from '@/lib/faceWorkerClient';
 import { createSemanticWorker } from '@/lib/semanticWorkerClient';
 import { isMobile } from '@/lib/platform';
@@ -749,8 +750,11 @@ async function walkForOneIndices(
     try {
         const oneDir = await dirHandle.getDirectoryHandle('one');
         const indexFile = await oneDir.getFileHandle('index.html');
-        const file = await indexFile.getFile();
-        html = await file.text();
+        html = await queueIndexHtmlWrite(() => readFotosIndexWithExactByteSizes(
+            indexFile,
+            dirHandle,
+            relPath ? `${relPath}/one/index.html` : 'one/index.html',
+        ));
     } catch (error) {
         if (!(error instanceof DOMException) || error.name !== 'NotFoundError') {
             throw error;
@@ -1192,6 +1196,8 @@ export interface FolderAccess {
     entries: PhotoEntry[];
     /** Loading state */
     loading: boolean;
+    /** A folder scan or restore failure that needs user attention. */
+    error: string | null;
     /** Ingestion progress (null when not ingesting) */
     ingestProgress: IngestProgress | null;
     /** Shared files waiting for a destination choice */
@@ -1682,6 +1688,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     const [folders, setFolders] = useState<ManagedFolderRecord[]>([]);
     const [entries, setEntries] = useState<PhotoEntry[]>([]);
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
     const [ingestProgress, setIngestProgress] = useState<IngestProgress | null>(null);
     const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
     const [claimAuthorshipOnIngest, setClaimAuthorshipOnIngest] = useState(true);
@@ -2132,16 +2139,26 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
 
     const scan = useCallback(async (handle: FileSystemDirectoryHandle) => {
         setLoading(true);
+        setError(null);
         traceHang('scan-start', { folderName: handle.name });
-        const found: PhotoEntry[] = [];
-        await walkForOneIndices(handle, handle, '', found);
-        setLoading(false);
-        traceHang('scan-complete', {
-            folderName: handle.name,
-            entryCount: found.length,
-            analyzedCount: found.filter(entry => entry.faces !== undefined).length,
-        });
-        return found;
+        try {
+            const found: PhotoEntry[] = [];
+            await walkForOneIndices(handle, handle, '', found);
+            traceHang('scan-complete', {
+                folderName: handle.name,
+                entryCount: found.length,
+                analyzedCount: found.filter(entry => entry.faces !== undefined).length,
+            });
+            return found;
+        } catch (cause) {
+            const detail = cause instanceof Error ? cause.message : String(cause);
+            const message = `Could not scan “${handle.name}”. ${detail}`;
+            setError(message);
+            traceHang('scan-error', {folderName: handle.name, error: detail});
+            throw cause;
+        } finally {
+            setLoading(false);
+        }
     }, []);
 
     /**
@@ -2747,7 +2764,11 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                 label: preference.label ?? handle.name,
                 preference,
             });
-        }).catch(() => {}).finally(() => setInitializationComplete(true));
+        }).catch(cause => {
+            const detail = cause instanceof Error ? cause.message : String(cause);
+            setError(`Could not restore your photo folder. ${detail}`);
+            console.error('[fotos-folder-restore]', cause);
+        }).finally(() => setInitializationComplete(true));
     }, [openFromHandle]);
 
     // Handle incoming Web Share Target files (runs once on mount)
@@ -2925,8 +2946,11 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                         label: preference.label ?? handle.name,
                         preference,
                     });
-                } catch {
-                    // User cancelled the directory picker.
+                } catch (cause) {
+                    if (cause instanceof DOMException && cause.name === 'AbortError') return;
+                    const detail = cause instanceof Error ? cause.message : String(cause);
+                    setError(`Could not open the photo folder. ${detail}`);
+                    console.error('[fotos-folder-open]', cause);
                 }
             })();
             return;
@@ -3941,6 +3965,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         folders: managedFolders,
         entries,
         loading,
+        error,
         ingestProgress,
         pendingImportCount: pendingImport?.files.length ?? 0,
         mobile,

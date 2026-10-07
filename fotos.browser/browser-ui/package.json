@@ -16,6 +16,8 @@
     "test:live:fotos-adhoc-gallery-share": "node ./tests/integration/fotos-adhoc-gallery-share-suite.mjs",
     "test": "node ./scripts/run-vitest.mjs run",
     "typecheck": "tsc --noEmit",
+    "test:integration:restore": "node --test tests/integration/fotos-library-restore.test.mjs",
+    "test:integration:gallery": "node --test tests/integration/fotos-gallery-scroll.test.mjs tests/integration/fotos-fullscreen-gallery.test.mjs",
     "test:integration:media": "node ./tests/integration/fotos-media-playback-suite.mjs"
   },
   "dependencies": {

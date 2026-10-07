@@ -312,6 +312,7 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
         }] : [],
         entries,
         loading,
+        error: null,
         ingestProgress: null,
         pendingImportCount: 0,
         mobile: false,

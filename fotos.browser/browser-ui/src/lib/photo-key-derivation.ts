@@ -53,6 +53,17 @@ const signDeps: Pick<RecoveryDeps, 'sign'> = {
 };
 
 const LEGACY_APPLICATION_SALT = 'one.photo.key.v1';
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+function getImageMimeType(bytes: Uint8Array): string {
+    if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xd8) {
+        return 'image/jpeg';
+    }
+    if (bytes.length >= PNG_SIGNATURE.length && PNG_SIGNATURE.every((byte, i) => bytes[i] === byte)) {
+        return 'image/png';
+    }
+    return 'application/octet-stream';
+}
 
 // ---------------------------------------------------------------------------
 // Public API — same signatures as the old inline implementation
@@ -132,9 +143,7 @@ export async function deriveKeyFromPhotos(
         throw new Error('Passphrase must not be empty');
     }
 
-    // Wrap raw bytes as files with opaque mimeType so extractRecoverableBytes
-    // passes them through unchanged (same behavior as the old implementation).
-    const files = images.map(bytes => ({bytes, mimeType: 'application/octet-stream'}));
+    const files = images.map(bytes => ({bytes, mimeType: getImageMimeType(bytes)}));
 
     const params =
         memoryCost !== undefined || timeCost !== undefined || parallelism !== undefined
@@ -148,6 +157,19 @@ export async function deriveRecoveryKeyCandidatesFromPhotos(
     options: PhotoKeyDerivationOptions,
 ): Promise<DerivedKeyResult[]> {
     const current = await deriveKeyFromPhotos(options);
+    // Fotos ids created before media extraction used the current salt with raw bytes.
+    const rawCurrent = await deriveRecoveryKey(
+        options.images.map(bytes => ({bytes, mimeType: 'application/octet-stream'})),
+        options.passphrase,
+        deriveDeps,
+        options.memoryCost !== undefined || options.timeCost !== undefined || options.parallelism !== undefined
+            ? {
+                memoryCost: options.memoryCost,
+                timeCost: options.timeCost,
+                parallelism: options.parallelism,
+            }
+            : undefined,
+    );
     const legacy = await deriveLegacyRecoveryKey(
         options.images.map(bytes => ({bytes, mimeType: 'application/octet-stream'})),
         options.passphrase,
@@ -159,10 +181,10 @@ export async function deriveRecoveryKeyCandidatesFromPhotos(
     );
 
     const keys = [current];
-    const currentPublicKeyHex = Array.from(current.publicKey, byte => byte.toString(16).padStart(2, '0')).join('');
-    const legacyPublicKeyHex = Array.from(legacy.publicKey, byte => byte.toString(16).padStart(2, '0')).join('');
-    if (legacyPublicKeyHex !== currentPublicKeyHex) {
-        keys.push(legacy);
+    for (const candidate of [rawCurrent, legacy]) {
+        if (!keys.some(key => key.publicKey.every((byte, i) => byte === candidate.publicKey[i]))) {
+            keys.push(candidate);
+        }
     }
     return keys;
 }

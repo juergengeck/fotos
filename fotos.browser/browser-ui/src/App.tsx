@@ -3975,6 +3975,11 @@ export function App({ fotosModel: initialModel }: AppProps) {
     return (
         <>
             {appContent}
+            {gallery.folder.error && (
+                <div role="alert" className="fixed bottom-4 left-4 right-4 z-[80] mx-auto max-w-2xl rounded-lg border border-[#e94560]/35 bg-[#38151b] p-4 text-sm text-white shadow-xl">
+                    {gallery.folder.error}
+                </div>
+            )}
             {incomingShareError && incomingShareStatus === 'connected' ? (
                 <div role="alert" className="fixed left-4 top-4 z-50 max-w-md rounded-lg bg-[#38151b] p-4 text-sm text-white">{incomingShareError}</div>
             ) : null}

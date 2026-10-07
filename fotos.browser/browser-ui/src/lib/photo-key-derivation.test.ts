@@ -19,6 +19,23 @@ const PASSPHRASE = 'morning-lake-rail';
 // Use fast Argon2 params for testing (low memory + iterations)
 const FAST_PARAMS = { memoryCost: 1024, timeCost: 1, parallelism: 1 };
 
+function withJpegHeader(bytes: Uint8Array): Uint8Array {
+    return new Uint8Array([
+        ...bytes.slice(0, 2),
+        0xff, 0xe1, 0x00, 0x06, 0x45, 0x78, 0x69, 0x66,
+        ...bytes.slice(2),
+    ]);
+}
+
+function withPngTextChunk(bytes: Uint8Array): Uint8Array {
+    const firstChunkEnd = 8 + 12 + new DataView(bytes.buffer, bytes.byteOffset).getUint32(8);
+    return new Uint8Array([
+        ...bytes.slice(0, firstChunkEnd),
+        0, 0, 0, 1, 0x74, 0x45, 0x58, 0x74, 0x61, 0, 0, 0, 0,
+        ...bytes.slice(firstChunkEnd),
+    ]);
+}
+
 describe('deriveKeyFromPhotos', () => {
     test('same inputs in same order produce same key (deterministic)', async () => {
         const result1 = await deriveKeyFromPhotos({
@@ -37,6 +54,18 @@ describe('deriveKeyFromPhotos', () => {
         expect(result1.secretKey).toEqual(result2.secretKey);
     });
 
+    test('JPEG and PNG metadata changes do not change a fotos id key', async () => {
+        const original = await deriveKeyFromPhotos({
+            images: [IMG_A, IMG_C], passphrase: PASSPHRASE, ...FAST_PARAMS,
+        });
+        const withHeaders = await deriveKeyFromPhotos({
+            images: [withJpegHeader(IMG_A), withPngTextChunk(IMG_C)],
+            passphrase: PASSPHRASE, ...FAST_PARAMS,
+        });
+
+        expect(withHeaders.publicKey).toEqual(original.publicKey);
+    });
+
     test('recovery candidates include the current derivation and legacy fallback when they differ', async () => {
         const current = await deriveKeyFromPhotos({
             images: [IMG_A, IMG_B],
@@ -50,8 +79,9 @@ describe('deriveKeyFromPhotos', () => {
         });
 
         expect(candidates[0]!.publicKey).toEqual(current.publicKey);
-        expect(candidates.length).toBeGreaterThan(1);
+        expect(candidates).toHaveLength(3);
         expect(candidates[1]!.publicKey).not.toEqual(current.publicKey);
+        expect(candidates[2]!.publicKey).not.toEqual(candidates[1]!.publicKey);
     });
 
     test('same images in different order produce different key', async () => {
