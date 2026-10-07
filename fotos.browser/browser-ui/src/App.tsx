@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { Impressum } from '@/components/Impressum';
 import { GalleryBreadcrumbs } from '@/components/GalleryBreadcrumbs';
 import { PhotoGrid } from '@/components/PhotoGrid';
+import {FullscreenGallery, FullscreenGalleryExit, GallerySurfaceSwitcher} from '@/components/FullscreenGallery';
+import {handleFullscreenGalleryKey} from '@/lib/fullscreenGalleryKeyboard';
 import { Lightbox } from '@/components/Lightbox';
 import { Sidebar, type SidebarTab } from '@/components/Sidebar';
 import { ConfirmModal } from '@/components/ConfirmModal';
@@ -400,6 +402,9 @@ export function App({ fotosModel: initialModel }: AppProps) {
     const [showHeadlessConnect, setShowHeadlessConnect] = useState(false);
     const [sidebarTab, setSidebarTab] = useState<SidebarTab>(() => window.location.pathname.replace(/\/$/, '') === '/invites/inviteDevice' ? 'settings' : readStoredSidebarTab() ?? 'browse');
     const [sidebarVisible, setSidebarVisible] = useState(true);
+    const [fullscreenGallery, setFullscreenGallery] = useState(false);
+    const galleryScrollTopRef = useRef(0);
+    const restoreGalleryToggleFocusRef = useRef(false);
     const [sidebarOpenRequest, setSidebarOpenRequest] = useState(0);
     const [shortcutsOpen, setShortcutsOpen] = useState(false);
     const [selection, dispatchSelection] = useReducer(selectionReducer, EMPTY_SELECTION_STATE);
@@ -677,6 +682,41 @@ export function App({ fotosModel: initialModel }: AppProps) {
             ? gallery.collectionDayGroups
         : gallery.dayGroups;
     const showClusterGallery = gallery.galleryMode === 'clusters' && !gallery.activeClusterId;
+    const showFullscreenGallery = fullscreenGallery && !showClusterGallery && visiblePhotos.length > 0;
+    const changeFullscreenGallery = useCallback((fullscreen: boolean) => {
+        if (fullscreen) {
+            galleryScrollTopRef.current = scrollRef.current?.scrollTop ?? 0;
+            restoreGalleryToggleFocusRef.current = true;
+        }
+        setFullscreenGallery(fullscreen);
+    }, []);
+    useEffect(() => {
+        if (showClusterGallery || visiblePhotos.length === 0) setFullscreenGallery(false);
+    }, [showClusterGallery, visiblePhotos.length]);
+    useEffect(() => {
+        const frame = requestAnimationFrame(() => {
+            if (!scrollRef.current) return;
+            scrollRef.current.scrollTop = showFullscreenGallery ? 0 : galleryScrollTopRef.current;
+            if (!showFullscreenGallery && restoreGalleryToggleFocusRef.current) {
+                scrollRef.current.parentElement?.querySelector<HTMLButtonElement>('[aria-label="Show images fullscreen"]')?.focus({preventScroll: true});
+                restoreGalleryToggleFocusRef.current = false;
+            }
+        });
+        return () => cancelAnimationFrame(frame);
+    }, [showFullscreenGallery]);
+    useEffect(() => {
+        // The lightbox keeps its own keyboard controls while a photo is open.
+        if (!showFullscreenGallery || gallery.selectedIndex !== null) return;
+        const handleKey = (event: KeyboardEvent) => {
+            if (scrollRef.current) handleFullscreenGalleryKey(event, scrollRef.current);
+            if (event.key !== 'Escape' || event.defaultPrevented) return;
+            if (event.target instanceof HTMLElement && event.target.closest('[role="dialog"]')) return;
+            event.preventDefault();
+            changeFullscreenGallery(false);
+        };
+        window.addEventListener('keydown', handleKey);
+        return () => window.removeEventListener('keydown', handleKey);
+    }, [changeFullscreenGallery, gallery.selectedIndex, showFullscreenGallery]);
     const trimmedSearchQuery = gallery.searchQuery.trim();
     const visibleSelectionPhotoIds = useMemo(
         () => showClusterGallery ? [] : visiblePhotos.map(photo => photo.hash),
@@ -693,7 +733,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
     ), [selection, visibleSelectionPeopleIds, visibleSelectionPhotoIds]);
 
     useEffect(() => {
-        if (selectedPhotoHashes.length + selectedClusterIds.length === 0) return;
+        if (showFullscreenGallery || selectedPhotoHashes.length + selectedClusterIds.length === 0) return;
         const clearOnEscape = (event: KeyboardEvent) => {
             if (event.key !== 'Escape' || event.defaultPrevented) return;
             const target = event.target as HTMLElement | null;
@@ -703,7 +743,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
         };
         window.addEventListener('keydown', clearOnEscape);
         return () => window.removeEventListener('keydown', clearOnEscape);
-    }, [selectedClusterIds.length, selectedPhotoHashes.length]);
+    }, [selectedClusterIds.length, selectedPhotoHashes.length, showFullscreenGallery]);
 
     const [contextMenu, setContextMenu] = useState<{
         x: number;
@@ -3656,17 +3696,30 @@ export function App({ fotosModel: initialModel }: AppProps) {
 
         return (
             <>
-                <div className="flex h-screen flex-col">
+                <div className={`flex h-screen flex-col ${showFullscreenGallery ? 'fixed inset-0 z-40 bg-black' : ''}`}>
                     {/* Portrait mobile: sheet over the grid. Landscape mobile and
                         desktop place the current task panel beside the main pane. */}
                     <div className={`flex min-h-0 flex-1 ${mobile ? 'flex-col landscape:flex-row' : ''}`}>
                     {/* Main content area */}
-                    <div className="flex-1 min-w-0 min-h-0 relative">
-                        <div ref={scrollRef} className={`h-full overflow-y-auto hide-scrollbar ${mobile ? 'pb-20 landscape:pb-0' : ''}`}>
-                            {showBreadcrumbs ? (
+                    <div className="flex flex-col flex-1 min-w-0 min-h-0 relative">
+                        {!showClusterGallery && visiblePhotos.length > 0 && !showFullscreenGallery && (
+                            <div className="flex h-14 shrink-0 items-center px-3">
+                                <GallerySurfaceSwitcher fullscreen={false} onChange={changeFullscreenGallery} />
+                            </div>
+                        )}
+                        <div ref={scrollRef} className={`flex-1 min-h-0 overflow-y-auto hide-scrollbar ${mobile && !showFullscreenGallery ? 'pb-20 landscape:pb-0' : ''}`}>
+                            {showBreadcrumbs && !showFullscreenGallery ? (
                                 <GalleryBreadcrumbs items={breadcrumbItems} summary={breadcrumbSummary} />
                             ) : null}
-                            {showClusterGallery ? (
+                            {showFullscreenGallery ? (
+                                <FullscreenGallery
+                                    dayGroups={visibleDayGroups}
+                                    scrollRef={scrollRef}
+                                    getThumbUrl={gallery.folder.getThumbUrl}
+                                    getFileUrl={gallery.folder.getFileUrl}
+                                    onPhotoClick={index => { void handlePhotoClick(index); }}
+                                />
+                            ) : showClusterGallery ? (
                                 <ClusterGallery
                                     clusters={gallery.clusters}
                                     activeClusterId={gallery.activeClusterId}
@@ -3733,18 +3786,19 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                 />
                             )}
                         </div>
-                        {!showClusterGallery && (
+                        {!showClusterGallery && !showFullscreenGallery && (
                             <>
                                 <TimelineScrubber
                                     scrollRef={scrollRef}
                                     dayGroups={visibleDayGroups}
+                                    topInset={visiblePhotos.length > 0 ? 56 : 0}
                                 />
-                                {showOnboarding && (
+                                {showOnboarding && !showFullscreenGallery && (
                                     <div className="absolute right-12 top-1/2 -translate-y-1/2 z-50 bg-[#e94560] text-white p-3 rounded-lg shadow-xl max-w-[200px] animate-[viewFadeIn_300ms_ease]">
                                         <div className="flex items-start justify-between gap-2">
                                             <div>
                                                 <p className="font-semibold text-xs mb-0.5">📅 Timeline Scrubber</p>
-                                                <p className="text-xs text-white/95 leading-tight">Drag this scrubber to jump to different dates in your library.</p>
+                                                <p className="text-xs text-white/95 leading-tight">Hold the arrow to scrub, or drag the date marker to jump through your library.</p>
                                             </div>
                                             <button type="button" onClick={handleDismissOnboarding} className="text-white/60 hover:text-white text-xs font-bold shrink-0">✕</button>
                                         </div>
@@ -3752,7 +3806,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                 )}
                             </>
                         )}
-                        <SelectionActionBar
+                        {!showFullscreenGallery && <SelectionActionBar
                             photoCount={selectedPhotoHashes.length}
                             peopleCount={selectedClusterIds.length}
                             hiddenCount={hiddenSelection.total}
@@ -3777,8 +3831,9 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                 ? gallery.allClusters.find(cluster => cluster.clusterId === gallery.activeClusterId)?.label
                                 : undefined}
                             onMergePeople={gallery.activeClusterId ? handleMergeSelectedPeople : undefined}
-                        />
-                        {!mobile && !sidebarVisible ? (
+                        />}
+                        {showFullscreenGallery && <FullscreenGalleryExit onExit={() => changeFullscreenGallery(false)} />}
+                        {!showFullscreenGallery && !mobile && !sidebarVisible ? (
                             <button
                                 type="button"
                                 onClick={() => setSidebarVisible(true)}
@@ -3792,7 +3847,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                     </div>
 
                     {/* Sidebar/task panel */}
-                    {sidebarVisible && <Sidebar
+                    {sidebarVisible && <div inert={showFullscreenGallery} style={{display: showFullscreenGallery ? 'none' : 'contents'}}><Sidebar
                         activeTab={sidebarTab}
                         onTabChange={openSidebarTab}
                         openRequest={sidebarOpenRequest}
@@ -3891,9 +3946,9 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         onCollectionContextMenu={handleCollectionContextMenu}
                         showOnboarding={showOnboarding}
                         onDismissOnboarding={handleDismissOnboarding}
-                    />}
+                    /></div>}
                     </div>
-                    <Impressum />
+                    {!showFullscreenGallery && <Impressum />}
                 </div>
 
                 {!showClusterGallery && gallery.selectedIndex !== null && (
