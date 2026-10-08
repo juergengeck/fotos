@@ -2,12 +2,15 @@ import {useCallback, useEffect, useRef, useState, type ReactNode} from 'react';
 import type {DayGroup} from '../lib/gallery.js';
 import {summarizeNamedFaces} from '../lib/faceLabels.js';
 import {resolveProgressDisplay, type ProgressState} from '../lib/progress.js';
+import {fitSparsePhotoSize} from '../lib/photoGridLayout.js';
 import {getFaceCount, type PhotoEntry} from '../types/fotos.js';
 
 export interface PhotoGridProps<TPhoto extends PhotoEntry = PhotoEntry> {
     dayGroups: Array<DayGroup<TPhoto>>;
     photos: TPhoto[];
     thumbScale: number;
+    /** Face indices to outline in each photo, from the active face/person selection. */
+    getHighlightedFaceIndices?: (photo: TPhoto) => readonly number[];
     onPhotoClick: (index: number) => void;
     /**
      * @deprecated Selection is now implicit. Kept for backward compatibility;
@@ -59,6 +62,7 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
     dayGroups,
     photos,
     thumbScale,
+    getHighlightedFaceIndices,
     onPhotoClick,
     selectionActive = false,
     selectedPhotoHashes,
@@ -78,6 +82,24 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
 }: PhotoGridProps<TPhoto>) {
     const [cursor, setCursor] = useState(-1);
     const gridRef = useRef<HTMLDivElement>(null);
+    const [availableSize, setAvailableSize] = useState({width: 0, height: 0});
+    const sparse = photos.length > 0 && photos.length <= 8;
+
+    useEffect(() => {
+        const grid = gridRef.current;
+        const viewport = grid?.parentElement;
+        if (!grid || !viewport) return;
+        const measure = () => {
+            // The scroll container also contains the surface controls/breadcrumbs.
+            const top = grid.getBoundingClientRect().top - viewport.getBoundingClientRect().top + viewport.scrollTop;
+            setAvailableSize({width: grid.clientWidth, height: Math.max(0, viewport.clientHeight - top)});
+        };
+        const observer = new ResizeObserver(measure);
+        observer.observe(viewport);
+        observer.observe(grid);
+        measure();
+        return () => observer.disconnect();
+    }, [loading, photos.length === 0]);
 
     // Compute how many columns the grid has from the first visible grid element
     const getColumnCount = useCallback(() => {
@@ -202,7 +224,12 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
         );
     }
 
-    const colStyle = `repeat(auto-fill, minmax(${thumbScale}px, 1fr))`;
+    const fittedSize = sparse ? fitSparsePhotoSize(
+        dayGroups.map(group => group.photos.length), availableSize.width, availableSize.height, thumbScale,
+    ) : thumbScale;
+    const colStyle = sparse
+        ? `repeat(auto-fit, minmax(0, ${fittedSize}px))`
+        : `repeat(auto-fill, minmax(min(100%, ${thumbScale}px), 1fr))`;
     const progressDisplay = analysisProgress ? resolveProgressDisplay(analysisProgress) : null;
     let flatIndex = 0;
 
@@ -253,6 +280,8 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
                                     <PhotoCard
                                         key={photo.hash}
                                         photo={photo}
+                                        contain={sparse}
+                                        highlightedFaceIndices={getHighlightedFaceIndices?.(photo) ?? []}
                                         flatIndex={fi}
                                         focused={fi === cursor}
                                         selected={selectedPhotoHashes?.has(photo.hash) === true}
@@ -283,6 +312,8 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
 function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
     photo,
     flatIndex,
+    contain,
+    highlightedFaceIndices,
     focused,
     selected,
     selectionActive,
@@ -293,6 +324,8 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
 }: {
     photo: TPhoto;
     flatIndex: number;
+    contain: boolean;
+    highlightedFaceIndices: readonly number[];
     focused: boolean;
     selected: boolean;
     selectionActive: boolean;
@@ -303,6 +336,11 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
 }) {
     const [thumbSrc, setThumbSrc] = useState<string | null>(null);
     const [loaded, setLoaded] = useState(false);
+    const [imageSize, setImageSize] = useState<{width: number; height: number} | null>(null);
+    const showFaces = highlightedFaceIndices.length > 0;
+    const useContain = contain || showFaces;
+    const faceWidth = photo.exif?.width || imageSize?.width;
+    const faceHeight = photo.exif?.height || imageSize?.height;
     const faceCount = getFaceCount(photo.faces);
     const namedFaces = summarizeNamedFaces(photo.faces);
     
@@ -401,9 +439,35 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
                     src={thumbSrc}
                     alt={photo.name}
                     loading="lazy"
-                    onLoad={() => setLoaded(true)}
-                    className={`w-full h-full object-cover transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`}
+                    onLoad={event => {
+                        setLoaded(true);
+                        setImageSize({width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight});
+                    }}
+                    className={`w-full h-full ${useContain ? 'object-contain' : 'object-cover'} transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`}
                 />
+            )}
+
+            {loaded && showFaces && faceWidth && faceHeight && (
+                <svg
+                    className="pointer-events-none absolute inset-0 h-full w-full"
+                    viewBox={`0 0 ${faceWidth} ${faceHeight}`}
+                    preserveAspectRatio="xMidYMid meet"
+                    role="img"
+                    aria-label="Selected faces"
+                >
+                    {highlightedFaceIndices.map(index => {
+                        const box = photo.faces?.bboxes[index];
+                        if (!box || !box.every(Number.isFinite)) return null;
+                        const [x1, y1, x2, y2] = box;
+                        if (x2 <= x1 || y2 <= y1) return null;
+                        return (
+                            <rect key={index} data-face-index={index}
+                                x={x1} y={y1} width={x2 - x1} height={y2 - y1}
+                                fill="none" stroke="#e94560" strokeWidth="3" vectorEffect="non-scaling-stroke"
+                            />
+                        );
+                    })}
+                </svg>
             )}
 
             {onToggleSelection && (

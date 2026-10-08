@@ -520,6 +520,31 @@ export function App({ fotosModel: initialModel }: AppProps) {
     // Selection is implicit: the grid is "selecting" whenever anything is selected.
     const photoSelectionActive = selectedPhotoHashes.length > 0;
     const selectedClusterIdSet = useMemo(() => new Set(selectedClusterIds), [selectedClusterIds]);
+    const highlightedFacesByPhoto = useMemo(() => {
+        const result = new Map<string, number[]>();
+        if (gallery.searchFace) {
+            for (const match of gallery.similarFaces) {
+                const indices = result.get(match.photo.hash) ?? [];
+                indices.push(match.faceIndex);
+                result.set(match.photo.hash, indices);
+            }
+        } else {
+            const clusterIds = new Set([
+                ...(gallery.activeCluster?.memberClusterIds ?? []),
+                ...gallery.allClusters.filter(cluster => selectedClusterIdSet.has(cluster.clusterId))
+                    .flatMap(cluster => cluster.memberClusterIds),
+            ]);
+            for (const photo of gallery.photos) {
+                const indices = photo.faces?.clusterIds?.flatMap((id, index) => clusterIds.has(id) ? [index] : []) ?? [];
+                if (indices.length) result.set(photo.hash, indices);
+            }
+        }
+        return result;
+    }, [gallery.searchFace, gallery.similarFaces, gallery.activeCluster, gallery.allClusters, gallery.photos, selectedClusterIdSet]);
+    const getHighlightedFaceIndices = useCallback(
+        (photo: PhotoEntry) => highlightedFacesByPhoto.get(photo.hash) ?? [],
+        [highlightedFacesByPhoto],
+    );
     const ownKnownPersonIds = useMemo(
         () => new Set(
             [fotosModel?.ownerId, fotosModel?.publicationIdentity]
@@ -3740,6 +3765,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                     dayGroups={visibleDayGroups}
                                     photos={visiblePhotos}
                                     thumbScale={settings.display.thumbScale}
+                                    getHighlightedFaceIndices={getHighlightedFaceIndices}
                                     onPhotoClick={(index) => { void handlePhotoClick(index); }}
                                     onPhotoContextMenu={handlePhotoContextMenu}
                                     selectionActive={photoSelectionActive}
