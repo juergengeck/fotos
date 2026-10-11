@@ -32,7 +32,7 @@ function GalleryCard<T extends GalleryEntry>({
   layout,
   day,
   aspectRatio,
-  widthWeight,
+  placement,
   onImageDimensions,
 }: {
   entry: T
@@ -41,7 +41,7 @@ function GalleryCard<T extends GalleryEntry>({
   layout: NonNullable<GalleryGridProps<T>['layout']>
   day: string
   aspectRatio?: number
-  widthWeight?: number
+  placement?: { row: number; width: number; offset: number }
   onImageDimensions?: (url: string, width: number, height: number) => void
 }) {
   const [loadedUrl, setLoadedUrl] = useState<string>()
@@ -64,9 +64,11 @@ function GalleryCard<T extends GalleryEntry>({
         aspectRatio: layout === 'grid' || (layout === 'stream' && !loaded)
           ? '1 / 1'
           : layout === 'immersive' && !loaded ? aspectRatio ?? 1 : undefined,
-        width: '100%',
+        width: placement ? `${placement.width}%` : '100%',
         minWidth: layout === 'immersive' ? 0 : undefined,
-        flex: layout === 'immersive' ? `${widthWeight ?? 1} 1 0px` : undefined,
+        gridRow: placement?.row,
+        gridColumn: placement ? 1 : undefined,
+        marginInlineStart: placement ? `${placement.offset}%` : undefined,
         overflow: 'hidden',
         border: layout === 'grid' ? '1px solid var(--border, #333)' : 0,
         borderRadius: layout === 'grid' ? 14 : 0,
@@ -209,7 +211,7 @@ export function GalleryGrid<T extends GalleryEntry>({
   }
 
   let flatIndex = 0
-  const renderPhoto = (entry: T, day: string, index: number, url: string | undefined, widthWeight?: number) => {
+  const renderPhoto = (entry: T, day: string, index: number, url: string | undefined, placement?: { row: number; width: number; offset: number }) => {
     return (
       <GalleryCard
         key={entry.hash}
@@ -217,7 +219,7 @@ export function GalleryGrid<T extends GalleryEntry>({
         layout={layout}
         day={day}
         aspectRatio={url ? imageRatios.get(url) : undefined}
-        widthWeight={widthWeight}
+        placement={placement}
         onImageDimensions={layout === 'immersive' ? reportImageDimensions : undefined}
         url={url}
         onClick={() => onPhotoClick(index)}
@@ -232,39 +234,37 @@ export function GalleryGrid<T extends GalleryEntry>({
   }
 
   if (layout === 'immersive') {
-    const photos = dayGroups.flatMap(group => group.items.map(entry => ({ entry, day: group.date, url: getImageUrl(entry) })))
-    const rows = []
+    const entries = dayGroups.flatMap(group => group.items.map(entry => ({ entry, day: group.date, url: getImageUrl(entry) })))
+    const photos = []
 
-    for (let i = 0; i < photos.length; i += columnCount) {
-      const row = photos.slice(i, i + columnCount)
+    for (let i = 0; i < entries.length; i += columnCount) {
+      const row = entries.slice(i, i + columnCount)
       const ratios = row.map(({ url }) => imageRatios.get(url ?? '') ?? 1)
       const totalRatio = ratios.reduce((total, ratio) => total + ratio, 0)
-      // Flex leaves space unused when grow factors total less than one. Normalize
-      // each row so even a single portrait fills its entire available width.
-      rows.push(
-        <div
-          key={i}
-          style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: 0,
-            padding: 0,
-          }}
-        >
-          {row.map(({ entry, day, url }, index) => renderPhoto(entry, day, i + index, url, 100 * ratios[index] / totalRatio))}
-        </div>,
-      )
+      let offset = 0
+      for (const [index, { entry, day, url }] of row.entries()) {
+        const width = 100 * ratios[index] / totalRatio
+        photos.push(renderPhoto(entry, day, i + index, url, {
+          row: Math.floor(i / columnCount) + 1,
+          width,
+          offset,
+        }))
+        offset += width
+      }
     }
 
     return (
       <div
         style={{
           display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1fr)',
+          alignItems: 'start',
           gap: 0,
           padding: 0,
         }}
       >
-        {rows}
+        {/* Keep photos as stable siblings: changing rows must not reload or fade them. */}
+        {photos}
       </div>
     )
   }
