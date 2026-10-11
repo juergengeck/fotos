@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { GalleryEntry, DayGroup } from '../types/gallery.js'
 import { formatDayLabel } from '../lib/grouping.js'
 
@@ -12,12 +12,12 @@ export interface GalleryGridProps<T extends GalleryEntry = GalleryEntry> {
   onPhotoClick: (flatIndex: number) => void
   /** Minimum column width in px (default 148) */
   minColumnWidth?: number
-  /** Stream shows uncropped images; immersive fills equal-width tiles without gutters. */
+  /** Stream shows uncropped images; immersive fills rows at natural image proportions without gutters. */
   layout?: 'grid' | 'stream' | 'immersive'
-  /** Number of equal-width columns in immersive layout (default 1). */
+  /** Number of images per immersive row (default 1). */
   columns?: number
-  /** Immersive tile height in px (default viewport height divided by columns). */
-  rowHeight?: number
+  /** Called after immersive row dimensions or columns change and the browser has laid them out. */
+  onLayoutChange?: () => void
   /** Offset sticky day labels when an app header overlays the scroll surface. */
   stickyHeaderOffset?: number
   /** Render sticky day headers inside the grid (default true). */
@@ -31,16 +31,21 @@ function GalleryCard<T extends GalleryEntry>({
   onClick,
   layout,
   day,
-  rowHeight,
+  aspectRatio,
+  widthWeight,
+  onImageDimensions,
 }: {
   entry: T
   url: string | undefined
   onClick: () => void
   layout: NonNullable<GalleryGridProps<T>['layout']>
   day: string
-  rowHeight: number | string
+  aspectRatio?: number
+  widthWeight?: number
+  onImageDimensions?: (url: string, width: number, height: number) => void
 }) {
-  const [loaded, setLoaded] = useState(false)
+  const [loadedUrl, setLoadedUrl] = useState<string>()
+  const loaded = !!url && loadedUrl === url
   const time = new Date(entry.timestamp).toLocaleTimeString(undefined, {
     hour: '2-digit',
     minute: '2-digit',
@@ -56,9 +61,12 @@ function GalleryCard<T extends GalleryEntry>({
       style={{
         position: 'relative',
         display: 'block',
-        aspectRatio: layout === 'grid' || (layout === 'stream' && !loaded) ? '1 / 1' : undefined,
+        aspectRatio: layout === 'grid' || (layout === 'stream' && !loaded)
+          ? '1 / 1'
+          : layout === 'immersive' && !loaded ? aspectRatio ?? 1 : undefined,
         width: '100%',
-        height: layout === 'immersive' ? rowHeight : undefined,
+        minWidth: layout === 'immersive' ? 0 : undefined,
+        flex: layout === 'immersive' ? `${widthWeight ?? 1} 1 0px` : undefined,
         overflow: 'hidden',
         border: layout === 'grid' ? '1px solid var(--border, #333)' : 0,
         borderRadius: layout === 'grid' ? 14 : 0,
@@ -72,11 +80,14 @@ function GalleryCard<T extends GalleryEntry>({
           src={url}
           alt={entry.name}
           loading="lazy"
-          onLoad={() => setLoaded(true)}
+          onLoad={event => {
+            setLoadedUrl(url)
+            onImageDimensions?.(url, event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)
+          }}
           style={{
             width: '100%',
-            height: layout === 'stream' ? 'auto' : '100%',
-            objectFit: layout === 'stream' ? 'contain' : 'cover',
+            height: layout === 'grid' ? '100%' : 'auto',
+            objectFit: layout === 'grid' ? 'cover' : 'contain',
             display: 'block',
             opacity: loaded ? 1 : 0,
             transition: 'opacity 0.2s',
@@ -163,11 +174,32 @@ export function GalleryGrid<T extends GalleryEntry>({
   minColumnWidth = 148,
   layout = 'grid',
   columns = 1,
-  rowHeight,
+  onLayoutChange,
   stickyHeaderOffset = 0,
   showDayHeaders = true,
   emptyLabel = 'no images yet',
 }: GalleryGridProps<T>) {
+  const [imageRatios, setImageRatios] = useState<Map<string, number>>(() => new Map())
+  const columnCount = Number.isFinite(columns) ? Math.max(1, Math.floor(columns)) : 1
+
+  useEffect(() => {
+    if (layout !== 'immersive' || !onLayoutChange) return
+    const frame = requestAnimationFrame(onLayoutChange)
+    return () => cancelAnimationFrame(frame)
+  }, [layout, columnCount, imageRatios, dayGroups, onLayoutChange])
+
+  const reportImageDimensions = (url: string, width: number, height: number) => {
+    if (width <= 0 || height <= 0) return
+    const ratio = width / height
+    if (!Number.isFinite(ratio)) return
+    setImageRatios(previous => {
+      if (previous.get(url) === ratio) return previous
+      const next = new Map(previous)
+      next.set(url, ratio)
+      return next
+    })
+  }
+
   if (totalCount === 0) {
     return (
       <div style={{ padding: '40px 16px', color: 'var(--muted, #888)', textAlign: 'center' }}>
@@ -177,42 +209,49 @@ export function GalleryGrid<T extends GalleryEntry>({
   }
 
   let flatIndex = 0
-  const immersiveRowHeight = rowHeight ?? `calc(100dvh / ${columns})`
-  const renderPhotos = (group: DayGroup<T>) => {
-    const startIndex = flatIndex
-    flatIndex += group.items.length
-
-    return group.items.map((entry, i) => (
+  const renderPhoto = (entry: T, day: string, index: number, url: string | undefined, widthWeight?: number) => {
+    return (
       <GalleryCard
         key={entry.hash}
         entry={entry}
         layout={layout}
-        day={group.date}
-        rowHeight={immersiveRowHeight}
-        url={getImageUrl(entry)}
-        onClick={() => onPhotoClick(startIndex + i)}
+        day={day}
+        aspectRatio={url ? imageRatios.get(url) : undefined}
+        widthWeight={widthWeight}
+        onImageDimensions={layout === 'immersive' ? reportImageDimensions : undefined}
+        url={url}
+        onClick={() => onPhotoClick(index)}
       />
-    ))
+    )
+  }
+  const renderPhotos = (group: DayGroup<T>) => {
+    const startIndex = flatIndex
+    flatIndex += group.items.length
+
+    return group.items.map((entry, i) => renderPhoto(entry, group.date, startIndex + i, getImageUrl(entry)))
   }
 
   if (layout === 'immersive') {
-    const photos = dayGroups.flatMap(renderPhotos)
+    const photos = dayGroups.flatMap(group => group.items.map(entry => ({ entry, day: group.date, url: getImageUrl(entry) })))
     const rows = []
-    const columnCount = Math.max(1, Math.floor(columns))
 
     for (let i = 0; i < photos.length; i += columnCount) {
       const row = photos.slice(i, i + columnCount)
+      const ratios = row.map(({ url }) => imageRatios.get(url ?? '') ?? 1)
+      const totalRatio = ratios.reduce((total, ratio) => total + ratio, 0)
+      // Flex leaves space unused when grow factors total less than one. Normalize
+      // each row so even a single portrait fills its entire available width.
       rows.push(
         <div
           key={i}
           style={{
-            display: 'grid',
-            gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))`,
+            display: 'flex',
+            alignItems: 'flex-start',
             gap: 0,
             padding: 0,
           }}
         >
-          {row}
+          {row.map(({ entry, day, url }, index) => renderPhoto(entry, day, i + index, url, 100 * ratios[index] / totalRatio))}
         </div>,
       )
     }
