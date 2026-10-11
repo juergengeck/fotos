@@ -12,6 +12,8 @@ export interface GalleryGridProps<T extends GalleryEntry = GalleryEntry> {
   onPhotoClick: (flatIndex: number) => void
   /** Minimum column width in px (default 148) */
   minColumnWidth?: number
+  /** Exact column width in px, capped to the available space. */
+  columnWidth?: number
   /** Stream fills the available width with uncropped images and no gutters. */
   layout?: 'grid' | 'stream'
   /** Offset sticky day labels when an app header overlays the scroll surface. */
@@ -146,6 +148,7 @@ export function GalleryGrid<T extends GalleryEntry>({
   getImageUrl,
   onPhotoClick,
   minColumnWidth = 148,
+  columnWidth,
   layout = 'grid',
   stickyHeaderOffset = 0,
   showDayHeaders = true,
@@ -216,7 +219,11 @@ export function GalleryGrid<T extends GalleryEntry>({
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: layout === 'stream' ? 'minmax(0, 1fr)' : `repeat(auto-fill, minmax(${minColumnWidth}px, 1fr))`,
+                gridTemplateColumns: layout === 'stream'
+                  ? 'minmax(0, 1fr)'
+                  : columnWidth === undefined
+                    ? `repeat(auto-fill, minmax(${minColumnWidth}px, 1fr))`
+                    : `repeat(auto-fill, minmax(0, min(100%, ${columnWidth}px)))`,
                 gap: layout === 'stream' ? 0 : 8,
                 padding: layout === 'stream' ? 0 : '12px 12px 14px',
               }}
