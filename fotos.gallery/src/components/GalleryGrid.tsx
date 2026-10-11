@@ -12,10 +12,12 @@ export interface GalleryGridProps<T extends GalleryEntry = GalleryEntry> {
   onPhotoClick: (flatIndex: number) => void
   /** Minimum column width in px (default 148) */
   minColumnWidth?: number
-  /** Exact column width in px, capped to the available space. */
-  columnWidth?: number
-  /** Stream fills the available width with uncropped images and no gutters. */
-  layout?: 'grid' | 'stream'
+  /** Stream shows uncropped images; immersive fills equal-width tiles without gutters. */
+  layout?: 'grid' | 'stream' | 'immersive'
+  /** Number of equal-width columns in immersive layout (default 1). */
+  columns?: number
+  /** Immersive tile height in px (default viewport height divided by columns). */
+  rowHeight?: number
   /** Offset sticky day labels when an app header overlays the scroll surface. */
   stickyHeaderOffset?: number
   /** Render sticky day headers inside the grid (default true). */
@@ -28,11 +30,15 @@ function GalleryCard<T extends GalleryEntry>({
   url,
   onClick,
   layout,
+  day,
+  rowHeight,
 }: {
   entry: T
   url: string | undefined
   onClick: () => void
-  layout: 'grid' | 'stream'
+  layout: NonNullable<GalleryGridProps<T>['layout']>
+  day: string
+  rowHeight: number | string
 }) {
   const [loaded, setLoaded] = useState(false)
   const time = new Date(entry.timestamp).toLocaleTimeString(undefined, {
@@ -45,14 +51,17 @@ function GalleryCard<T extends GalleryEntry>({
       type="button"
       onClick={onClick}
       title={entry.name}
+      data-gallery-day={layout === 'immersive' ? day : undefined}
+      data-gallery-photo={layout === 'immersive' ? true : undefined}
       style={{
         position: 'relative',
         display: 'block',
-        aspectRatio: layout === 'grid' || !loaded ? '1 / 1' : undefined,
+        aspectRatio: layout === 'grid' || (layout === 'stream' && !loaded) ? '1 / 1' : undefined,
         width: '100%',
+        height: layout === 'immersive' ? rowHeight : undefined,
         overflow: 'hidden',
-        border: layout === 'stream' ? 0 : '1px solid var(--border, #333)',
-        borderRadius: layout === 'stream' ? 0 : 14,
+        border: layout === 'grid' ? '1px solid var(--border, #333)' : 0,
+        borderRadius: layout === 'grid' ? 14 : 0,
         padding: 0,
         background: 'var(--bg-secondary, #1a1a1a)',
         cursor: 'zoom-in',
@@ -92,52 +101,56 @@ function GalleryCard<T extends GalleryEntry>({
           {entry.name}
         </div>
       )}
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: 'linear-gradient(to top, rgba(0,0,0,0.72), rgba(0,0,0,0.04) 45%, transparent)',
-          pointerEvents: 'none',
-        }}
-      />
-      <div
-        style={{
-          position: 'absolute',
-          insetInline: 0,
-          bottom: 0,
-          padding: '10px 12px 11px',
-          color: '#fff',
-          textAlign: 'left',
-          pointerEvents: 'none',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            gap: 8,
-            fontSize: 11,
-            color: 'rgba(255,255,255,0.8)',
-            marginBottom: 4,
-          }}
-        >
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {entry.senderName}
-          </span>
-          <span style={{ flexShrink: 0 }}>{time}</span>
-        </div>
-        <div
-          style={{
-            fontSize: 12,
-            fontWeight: 700,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {entry.name}
-        </div>
-      </div>
+      {layout !== 'immersive' && (
+        <>
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'linear-gradient(to top, rgba(0,0,0,0.72), rgba(0,0,0,0.04) 45%, transparent)',
+              pointerEvents: 'none',
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              insetInline: 0,
+              bottom: 0,
+              padding: '10px 12px 11px',
+              color: '#fff',
+              textAlign: 'left',
+              pointerEvents: 'none',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: 8,
+                fontSize: 11,
+                color: 'rgba(255,255,255,0.8)',
+                marginBottom: 4,
+              }}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {entry.senderName}
+              </span>
+              <span style={{ flexShrink: 0 }}>{time}</span>
+            </div>
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 700,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {entry.name}
+            </div>
+          </div>
+        </>
+      )}
     </button>
   )
 }
@@ -148,8 +161,9 @@ export function GalleryGrid<T extends GalleryEntry>({
   getImageUrl,
   onPhotoClick,
   minColumnWidth = 148,
-  columnWidth,
   layout = 'grid',
+  columns = 1,
+  rowHeight,
   stickyHeaderOffset = 0,
   showDayHeaders = true,
   emptyLabel = 'no images yet',
@@ -163,12 +177,63 @@ export function GalleryGrid<T extends GalleryEntry>({
   }
 
   let flatIndex = 0
+  const immersiveRowHeight = rowHeight ?? `calc(100dvh / ${columns})`
+  const renderPhotos = (group: DayGroup<T>) => {
+    const startIndex = flatIndex
+    flatIndex += group.items.length
+
+    return group.items.map((entry, i) => (
+      <GalleryCard
+        key={entry.hash}
+        entry={entry}
+        layout={layout}
+        day={group.date}
+        rowHeight={immersiveRowHeight}
+        url={getImageUrl(entry)}
+        onClick={() => onPhotoClick(startIndex + i)}
+      />
+    ))
+  }
+
+  if (layout === 'immersive') {
+    const photos = dayGroups.flatMap(renderPhotos)
+    const rows = []
+    const columnCount = Math.max(1, Math.floor(columns))
+
+    for (let i = 0; i < photos.length; i += columnCount) {
+      const row = photos.slice(i, i + columnCount)
+      rows.push(
+        <div
+          key={i}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))`,
+            gap: 0,
+            padding: 0,
+          }}
+        >
+          {row}
+        </div>,
+      )
+    }
+
+    return (
+      <div
+        style={{
+          display: 'grid',
+          gap: 0,
+          padding: 0,
+        }}
+      >
+        {rows}
+      </div>
+    )
+  }
 
   return (
     <>
       {dayGroups.map(group => {
-        const startIndex = flatIndex
-        flatIndex += group.items.length
+        const photos = renderPhotos(group)
 
         return (
           <section key={group.date} data-gallery-day={group.date}>
@@ -221,22 +286,12 @@ export function GalleryGrid<T extends GalleryEntry>({
                 display: 'grid',
                 gridTemplateColumns: layout === 'stream'
                   ? 'minmax(0, 1fr)'
-                  : columnWidth === undefined
-                    ? `repeat(auto-fill, minmax(${minColumnWidth}px, 1fr))`
-                    : `repeat(auto-fill, minmax(0, min(100%, ${columnWidth}px)))`,
+                  : `repeat(auto-fill, minmax(${minColumnWidth}px, 1fr))`,
                 gap: layout === 'stream' ? 0 : 8,
                 padding: layout === 'stream' ? 0 : '12px 12px 14px',
               }}
             >
-              {group.items.map((entry, i) => (
-                <GalleryCard
-                  key={entry.hash}
-                  entry={entry}
-                  layout={layout}
-                  url={getImageUrl(entry)}
-                  onClick={() => onPhotoClick(startIndex + i)}
-                />
-              ))}
+              {photos}
             </div>
           </section>
         )
