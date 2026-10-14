@@ -789,7 +789,7 @@ export function FotosSettings({
     return (
         <>
         <CollapsibleSection label="Devices" defaultOpen={window.location.pathname.replace(/\/$/, '') === '/invites/inviteDevice'}>
-            <DevicesManager devices={model?.devicesPlan} pairing={model?.connectionModule?.connectionPlan} />
+            <DevicesManager devices={model?.devicesPlan} pairing={model?.connectionModule?.connectionPlan} settings={model?.settingsPlan} />
         </CollapsibleSection>
         <CollapsibleSection label="fotos id">
             <div className="space-y-2">

@@ -70,6 +70,7 @@ const WORKSPACE_PREFIX_ALIASES = {
   '@refinio/trust.pdf/': path.resolve(oneRoot, 'packages/trust.pdf/dist/'),
 };
 const WORKSPACE_EXACT_ALIASES = {
+  '@vger/vger.ui/native/devices': path.resolve(oneRoot, 'packages/vger.ui/src/components/device/DevicesManager.native.tsx'),
   '@vger/vger.core': path.resolve(oneRoot, 'packages/vger.core/src/index.ts'),
   '@vger/vger.ui': path.resolve(oneRoot, 'packages/vger.ui'),
   '@refinio/coding.core': path.resolve(oneRoot, 'packages/coding.core/src/index.ts'),

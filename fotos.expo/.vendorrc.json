@@ -234,7 +234,7 @@
     },
     {
       "name": "@vger/vger.glue",
-      "path": "../../vger/packages/vger.glue"
+      "path": "../../one/packages/vger.glue"
     },
     {
       "name": "@vger/vger.ui",
@@ -327,6 +327,54 @@
     {
       "name": "@vger/vger.txt.ui",
       "path": "../../one/packages/vger.txt.ui"
+    },
+    {
+      "name": "@refinio/browser.core",
+      "path": "../../one/packages/browser.core"
+    },
+    {
+      "name": "@refinio/calendar.core",
+      "path": "../../one/packages/calendar.core"
+    },
+    {
+      "name": "@refinio/discovery.core",
+      "path": "../../one/packages/discovery.core"
+    },
+    {
+      "name": "@refinio/filer.core",
+      "path": "../../one/packages/filer.core"
+    },
+    {
+      "name": "@refinio/group.core",
+      "path": "../../one/packages/group.core"
+    },
+    {
+      "name": "@refinio/imap.safety",
+      "path": "../../vger/packages/imap.safety"
+    },
+    {
+      "name": "@refinio/llm.nimble",
+      "path": "../../one/packages/llm.nimble"
+    },
+    {
+      "name": "@refinio/meme.core",
+      "path": "../../one/packages/meme.core"
+    },
+    {
+      "name": "@refinio/module.core",
+      "path": "../../one/packages/module.core"
+    },
+    {
+      "name": "@refinio/scout.core",
+      "path": "../../one/packages/scout.core"
+    },
+    {
+      "name": "@refinio/source.git",
+      "path": "../../one/packages/source.git"
+    },
+    {
+      "name": "@refinio/ui.theme",
+      "path": "../../one/packages/ui.theme"
     }
   ]
 }

@@ -6,6 +6,7 @@ import type { FaceClusterSummary, SimilarFaceMatch } from '@/lib/cluster-gallery
 import type { FotosCollectionSummary } from '@/lib/fotosCollections';
 import type { FotosHistoryBranchNode } from '@/lib/fotosHistorySettings';
 import { useDeviceSettings, type FotosDeviceSettings } from '@/hooks/useDeviceSettings';
+import { ConnectionInfoSyncSettings } from '@vger/vger.ui/components/device/ConnectionInfoSyncSettings';
 import { writeStoredSidebarTab } from '@/lib/authFlowState';
 import { FotosSettings as FotosSettingsPanel } from './FotosSettings';
 import { FotosTestRunnerPanel } from './FotosTestRunnerPanel';
@@ -2145,6 +2146,7 @@ function SettingsTab({
                     <DevicesSettingsSection
                         name={settings.device.name}
                         settings={deviceSettings}
+                        model={fotosModel}
                         onUpdateName={onUpdateDeviceName}
                         onUpdateSettings={updateDeviceSettings}
                     />
@@ -2163,11 +2165,13 @@ function SettingsTab({
 function DevicesSettingsSection({
     name,
     settings,
+    model,
     onUpdateName,
     onUpdateSettings,
 }: {
     name: string;
     settings: FotosDeviceSettings;
+    model: FotosModel | null;
     onUpdateName: (name: string) => void;
     onUpdateSettings: (updates: Partial<FotosDeviceSettings>) => void;
 }) {
@@ -2188,6 +2192,7 @@ function DevicesSettingsSection({
 
     return (
         <CollapsibleSection label="Devices">
+            {model?.settingsPlan && <ConnectionInfoSyncSettings settings={model.settingsPlan} />}
             <SmallField label="Device name">
                 <input
                     type="text"

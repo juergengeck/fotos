@@ -9,6 +9,9 @@
     "resolveJsonModule": true,
     "moduleResolution": "bundler",
     "paths": {
+      "@vger/vger.ui/native/devices": [
+        "../../one/packages/vger.ui/src/components/device/DevicesManager.native.tsx"
+      ],
       "@/*": [
         "./*"
       ],

@@ -44,7 +44,7 @@ export default function SettingsScreen() {
       style={{ flex: 1, backgroundColor: screenBackground(isDark) }}
       contentContainerStyle={{ padding: 16, gap: 16 }}
     >
-      <NativeDevicesManager devices={model?.devicesPlan} pairing={model?.connectionPlan} />
+      <NativeDevicesManager devices={model?.devicesPlan} pairing={model?.connectionPlan} settings={model?.settingsPlan} />
       <View
         style={{
           backgroundColor: cardBackground(isDark),
