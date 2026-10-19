@@ -29,9 +29,33 @@ test('production app restores a pre-update library, migrates exact sizes, and su
         const page = await browser.newPage();
         const errors=[];
         page.on('pageerror',error=>errors.push(error.message));
+        // Exercise the deployed app's real IndexedDB vault, including migration
+        // before ONE opens, while remote Glue services are unavailable.
+        const legacyCredentials = {email:'restore@fotos.one',secret:'legacy-restore-secret',instanceName:'restore-test'};
+        await page.addInitScript(creds => {
+            if (sessionStorage.getItem('restore-credentials-seeded')) return;
+            localStorage.setItem('fotos_creds',JSON.stringify(creds));
+            sessionStorage.setItem('restore-credentials-seeded','1');
+        },legacyCredentials);
+        await page.route('https://api.glue.one/**',route=>route.abort());
         await page.route('https://fonts.googleapis.com/**',route=>route.fulfill({body:'',contentType:'text/css'}));
-        await page.goto(process.env.FOTOS_RESTORE_TEST_URL ?? `http://127.0.0.1:${server.address().port}/`,{waitUntil:'domcontentloaded'});
-        await page.getByRole('button',{name:'Open photo folder',exact:true}).waitFor({timeout:45000});
+        await page.goto(process.env.FOTOS_RESTORE_TEST_URL ?? `http://127.0.0.1:${server.address().port}/?fotosDebug=1`,{waitUntil:'domcontentloaded'});
+        await Promise.race([
+            page.getByRole('button',{name:'Open photo folder',exact:true}).waitFor({timeout:45000}),
+            page.getByText(/^Startup failed:/).waitFor({timeout:45000}).then(async () => {
+                throw new Error(await page.locator('body').innerText());
+            }),
+        ]);
+        await page.waitForFunction(()=>window.__fotosDebug?.getStatus().initialized);
+        const originalOwner = await page.evaluate(()=>window.__fotosDebug.getStatus().ownerId);
+        const account = await page.evaluate(()=>({
+            legacy:localStorage.getItem('fotos_creds'),
+            index:localStorage.getItem('fotos_accounts'),
+        }));
+        assert.equal(account.legacy,null);
+        assert.ok(!account.index.includes(legacyCredentials.secret));
+        assert.ok(!account.index.includes('"secret"'));
+        assert.equal(JSON.parse(account.index).accounts[0].localIdentity.email,legacyCredentials.email);
         await page.evaluate(async ({image,html})=>{
             const storage=await navigator.storage.getDirectory();
             const library=await storage.getDirectoryHandle('restore-regression',{create:true});
@@ -60,6 +84,7 @@ test('production app restores a pre-update library, migrates exact sizes, and su
         },{image:[...image],html:legacyIndex});
         await page.reload({waitUntil:'domcontentloaded'});
         await page.getByRole('button',{name:'Show images fullscreen',exact:true}).waitFor({timeout:20000});
+        assert.equal(await page.evaluate(()=>window.__fotosDebug.getStatus().ownerId),originalOwner);
         await page.getByText('Scanning one/ folders...', {exact:true}).waitFor({state:'hidden',timeout:20000});
         const migrated=await page.evaluate(async ()=>{
             const library=await (await navigator.storage.getDirectory()).getDirectoryHandle('restore-regression');
