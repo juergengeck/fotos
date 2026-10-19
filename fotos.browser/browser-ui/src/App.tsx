@@ -79,6 +79,7 @@ import { DEBUG_REGISTRATION_TOKEN, DEBUG_REGISTRATION_TTL_MS } from './config';
 import { setFotosRuntimeSnapshot, setFotosRuntimeVisiblePhotos } from './lib/runtimeDiagnostics';
 import { determineAccessibleHashes } from '@refinio/one.core/lib/util/determine-accessible-hashes.js';
 import { commitFotosShareScope } from '@/lib/fotosShareCertificates';
+import {createFotosShareSignatureVerifier} from '@/lib/fotosShareSignature';
 import {FotosShareCommitCoordinator} from '@/lib/fotosShareCommitCoordinator';
 import {getFotosShareTraceSpans, traceFotosSharePhase} from '@/lib/fotosShareTrace';
 import {
@@ -575,17 +576,12 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 // initial trust cache was built. Refresh at this feed-forward
                 // checkpoint before verifying certificate signatures.
                 await fotosModel.leuteModel.trust.refreshCaches();
+                const verifySignature = createFotosShareSignatureVerifier(
+                    fotosModel.leuteModel.trust,
+                    fotosModel.glueModule,
+                );
                 const projected = (await Promise.all(Array.from(ownKnownPersonIds).map(subject => (
-                    projectReceivedFotosShares(subject, async signature => {
-                        try {
-                            if (await fotosModel.leuteModel.trust.verifySignatureWithTrustedKeys(signature as any)) {
-                                return true;
-                            }
-                            return await fotosModel.glueModule?.verifyRegisteredPersonSignature(signature as any) ?? false;
-                        } catch {
-                            return false;
-                        }
-                    })
+                    projectReceivedFotosShares(subject, verifySignature)
                 )))).flat();
                 const unique = Array.from(new Map(projected.map(scope => [scope.certificateIdHash, scope])).values());
                 if (!cancelled) setReceivedShareScopes(unique);
