@@ -8,6 +8,8 @@ import { tmpdir } from 'node:os';
 import path, { dirname, resolve } from 'node:path';
 import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
+import {resolveHeadlessBookEnv} from './fotos-headless-book-env.mjs';
+import {provisionLocalHeadlessAuthority} from './fotos-local-headless-authority.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BROWSER_UI_ROOT = resolve(__dirname, '../..');
@@ -152,14 +154,13 @@ async function waitForPostLoginReady(baseUrl, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-        const response = await fetch(`${baseUrl}/api`);
-        if (response.ok) {
-          const body = await response.json();
-          const handlers = body.handlers ?? [];
-        if (handlers.some(handler => handler.name === 'connection' || handler.name === 'connections')) {
-            return;
-          }
+      const response = await fetch(`${baseUrl}/health`);
+      if (response.ok) {
+        const body = await response.json();
+        if (body.ready === true && body.auth?.postLoginReady === true && body.auth?.ownerSessionReady === true) {
+          return;
         }
+      }
     } catch {
       // Retry until timeout.
     }
@@ -167,7 +168,7 @@ async function waitForPostLoginReady(baseUrl, timeoutMs) {
     await sleep(1_000);
   }
 
-  throw new Error(`Timed out waiting for post-login handlers at ${baseUrl}`);
+  throw new Error(`Timed out waiting for headless post-login readiness at ${baseUrl}`);
 }
 
 async function waitForWsPort(port, timeoutMs) {
@@ -318,6 +319,7 @@ async function main() {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: {
         ...process.env,
+        ...resolveHeadlessBookEnv(HEADLESS_ROOT),
         GLUE_DEBUG_REGISTRATION_TOKEN: debugRegistrationToken,
         NODE_NO_WARNINGS: '1',
       },
@@ -336,6 +338,7 @@ async function main() {
     await waitForWsPort(commPort, START_TIMEOUT_MS);
     await waitForHealth(headlessUrl, START_TIMEOUT_MS);
     await waitForPostLoginReady(headlessUrl, START_TIMEOUT_MS);
+    await provisionLocalHeadlessAuthority(headlessUrl, 'fotos-id-share@test.local', 'fotos-id-share-pass');
 
     try {
       const systemKeyResponse = await fetch(`${headlessUrl}/api/glue/systemPublicKey`);
@@ -353,6 +356,7 @@ async function main() {
       VITE_HEADLESS_URL: headlessUrl,
       VITE_API_URL: headlessUrl,
       VITE_COMM_SERVER_URL: commUrl,
+      VITE_GLUE_DEBUG_REGISTRATION_TOKEN: debugRegistrationToken,
       VITE_GLUE_DEBUG_REGISTRATION_TTL_MS: debugRegistrationTtlMs,
       ...(trustedSystemKeys ? { VITE_TRUSTED_SYSTEM_KEYS: trustedSystemKeys } : {}),
     };
