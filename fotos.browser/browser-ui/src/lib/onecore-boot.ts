@@ -130,17 +130,7 @@ let closePromise: Promise<void> | null = null;
 let runtimeGeneration = 0;
 let publicationIdentity: SHA256IdHash<Person> | null = null;
 
-type BrowserGlueModule = GlueModule & {
-  connectToPeerByKey?: (
-    encKey: string,
-    ownId: string,
-    caps?: string[],
-    remotePersonId?: string,
-  ) => Promise<void>;
-  connectToPeerDirectByKey?: (encKey: string, ownId: string, caps?: string[]) => Promise<void>;
-  disconnectPeerRelayByKey?: (encKey: string, ownId: string, remotePersonId: string) => Promise<void>;
-  shouldAcceptIncomingPeer?: (personId: string, remotePublicKey?: string) => Promise<boolean>;
-};
+type BrowserGlueModule = GlueModule;
 
 async function getLocalInstanceIdForPerson(personId: string): Promise<string> {
   const localInstanceId = await getLocalInstanceOfPerson(personId as any);
@@ -366,9 +356,10 @@ async function initModules(
     // GlueModule — presence and peer connections
     glueModule = new GlueModule(API_BASE, commServerUrl);
     glueModule.enableMailboxPairing = false;
-    // Browser peers must publish their own live route leases so other
-    // fotos.one instances can discover and dial them by publication identity.
-    glueModule.publishOwnPresence = true;
+    // The Glue authority publishes the shared presence manifest from its
+    // authenticated browser connections. A browser writing that same manifest
+    // would replace the authority's peer list with its own single entry.
+    glueModule.publishOwnPresence = false;
 
     // Inject browser platform hooks
     const browserGlueModule = glueModule as BrowserGlueModule;
@@ -387,14 +378,49 @@ async function initModules(
       return () => window.removeEventListener('beforeunload', cb);
     };
     browserGlueModule.getLocalTransportCapabilities = async () => ['webrtc', 'commserver-relay'];
-    // Presence remains a discovery surface. Do not install a second browser
-    // dialer over ConnectionsModel's authenticated endpoint routes.
+    browserGlueModule.connectToPeerByKey = (key, ownId, capabilities, remoteId, relayUrl) =>
+      nextConnectionModule.connectToPeerByKey(key, ownId as any, capabilities, remoteId as any, undefined, relayUrl);
+    browserGlueModule.connectToPeerDirectByKey = (key, ownId, capabilities, remoteId, peerPublicKey) =>
+      nextConnectionModule.connectToPeerDirectByKey(
+        key, ownId as any, capabilities, remoteId as any, peerPublicKey as any,
+      );
+    browserGlueModule.connectToPeerRelayByKey = (key, ownId, remoteId, relayUrl) =>
+      nextConnectionModule.connectToPeerRelayByKey(key, ownId as any, remoteId as any, undefined, relayUrl);
+    browserGlueModule.disconnectPeerRelayByKey = (key, ownId) =>
+      nextConnectionModule.disconnectPeerRelayByKey(key, ownId as any);
+    browserGlueModule.getBestConnectionLaneHint = async personId => {
+      const selection = await nextConnectionModule.getBestConnectionLane({remotePersonId: personId});
+      return selection.selected?.routeKey ? {
+        source: selection.selected.source,
+        routeKey: selection.selected.routeKey,
+        transport: selection.selected.transport,
+        routeId: selection.selected.routeId,
+        relayUrl: selection.selected.relayUrl,
+      } : undefined;
+    };
+    nextConnectionModule.setPeerConnectionDemandProvider({
+      requestPeerConnection: personId => browserGlueModule.requestPeerConnectionWithBestKnownLane(personId),
+      getPeerConnectionState: personId => browserGlueModule.getPeerConnectionState(personId),
+      addPeerConnectionStateListener: listener => browserGlueModule.addPeerConnectionStateListener(listener),
+      getWantedPeerIds: () => browserGlueModule.getWantedPeerIds(),
+      setWantedPeerIds: personIds => browserGlueModule.setWantedPeerIds(personIds),
+      getConnectablePeerIds: () => browserGlueModule.getConnectablePeerIds(),
+      getPeerConnectionDebugState: () => browserGlueModule.getPeerConnectionCoordinatorDebug() as any,
+      getPassiveDirectConnectionDemands: () => browserGlueModule.getPassiveDirectConnectionDemands() as any,
+      getPeerPresenceDebugInfo: personId => browserGlueModule.getPeerPresenceDebugInfo(personId),
+      getPresenceDebugSnapshot: limit => browserGlueModule.getPresenceDebugSnapshot(limit),
+      getPresenceStoredSnapshot: limit => browserGlueModule.getPresenceStoredSnapshot(limit),
+      getPresenceTrace: limit => browserGlueModule.getPresenceTrace(limit),
+    });
 
     // Incoming CHUM admission boundary
     connectionModule.setUnknownPeerIdentityMatcher((remotePersonId, remotePublicKey) => {
       const personId = String(remotePersonId);
       return browserGlueModule.shouldAcceptIncomingPeer?.(personId, remotePublicKey) ?? false;
     });
+    nextConnectionModule.setDirectPeerSyncMatcher((remotePersonId, remotePublicKey) =>
+      browserGlueModule.shouldAcceptIncomingPeer(String(remotePersonId), remotePublicKey),
+    );
 
     registry.register(glueModule);
   }

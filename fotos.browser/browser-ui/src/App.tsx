@@ -38,7 +38,6 @@ import {
     buildAcceptedIncomingSharingPeerIds,
     collectShareLifecyclePersonIds,
     collectSharedPersonIds,
-    shouldAdvertiseSharingIdentity,
 } from '@/lib/fotosSharingPolicy';
 import { isSnapshotEqual, type FotosBreadcrumbSnapshot } from '@/lib/fotosHistorySettings';
 import {
@@ -270,10 +269,12 @@ interface FotosDebugApi {
         transportCapabilities: string[];
         hasVerifiedIdentity: boolean;
     };
-    requestPeerConnection: (personId: string) => {
+    requestPeerConnection: (personId: string) => Promise<{
+        success: boolean;
         requested: boolean;
-        state: string | null;
-    };
+        state?: string | null;
+        error?: string;
+    }>;
     createGalleryShareInvite: () => Promise<{
         url: string;
         pin: string;
@@ -682,13 +683,6 @@ export function App({ fotosModel: initialModel }: AppProps) {
             ...receivedCertificateIssuerIds,
         ])).filter(personId => !ownKnownPersonIds.has(personId)),
         [acceptSharing, contactPersonIds, fotosCollections.sharing, ownKnownPersonIds, receivedCertificateIssuerIds],
-    );
-    const advertiseSharingIdentity = useMemo(
-        () => shouldAdvertiseSharingIdentity({
-            sharing: fotosCollections.sharing,
-            acceptSharing,
-        }),
-        [acceptSharing, fotosCollections.sharing],
     );
     const visiblePhotos = gallery.galleryMode === 'clusters' && gallery.activeClusterId
         ? gallery.clusterPhotos
@@ -1183,10 +1177,8 @@ export function App({ fotosModel: initialModel }: AppProps) {
 
         activeGlueModule.setRouteWantedPeerIds?.(shareLifecyclePersonIds);
         activeGlueModule.setAcceptedIncomingPeerIds?.(acceptedIncomingPeerIds);
-        void activeGlueModule.setOwnPresencePublishingEnabled?.(advertiseSharingIdentity);
     }, [
         acceptedIncomingPeerIds,
-        advertiseSharingIdentity,
         fotosModel?.glueModule,
         shareLifecyclePersonIds,
     ]);
@@ -3364,24 +3356,16 @@ export function App({ fotosModel: initialModel }: AppProps) {
                     hasVerifiedIdentity: presenceService?.hasVerifiedIdentity(personId) ?? false,
                 };
             },
-            requestPeerConnection: (personId: string) => {
+            requestPeerConnection: async (personId: string) => {
                 const activeModel = debugRuntimeRef.current.model;
-                if (!activeModel?.initialized) {
+                if (!activeModel?.initialized || !activeModel.glueModule) {
                     throw new Error('fotos.one glue runtime is not initialized');
                 }
-
-                const glueModuleWithRequest = activeModel.glueModule as {
-                    requestPeerConnection?: (targetPersonId: string) => boolean;
-                    getPeerConnectionState?: (targetPersonId: string) => string | undefined;
-                } | undefined;
-
-                const requested =
-                    typeof glueModuleWithRequest?.requestPeerConnection === 'function'
-                    && glueModuleWithRequest.requestPeerConnection(personId);
-
+                const requested = await activeModel.glueModule.requestPeerConnectionWithBestKnownLane(personId);
                 return {
+                    success: true,
                     requested,
-                    state: glueModuleWithRequest?.getPeerConnectionState?.(personId) ?? null,
+                    state: activeModel.glueModule.getPeerConnectionState(personId) ?? null,
                 };
             },
             createGalleryShareInvite: async () => {

@@ -4,7 +4,6 @@ import {
     buildAcceptedIncomingSharingPeerIds,
     collectShareLifecyclePersonIds,
     collectSharedPersonIds,
-    shouldAdvertiseSharingIdentity,
 } from './fotosSharingPolicy.js';
 
 describe('fotosSharingPolicy', () => {
@@ -65,30 +64,5 @@ describe('fotosSharingPolicy', () => {
             'peer-d',
             'peer-e',
         ]);
-    });
-
-    it('advertises identity when there are explicit shares or acceptSharing is enabled', () => {
-        expect(shouldAdvertiseSharingIdentity({
-            sharing,
-            acceptSharing: false,
-        })).toBe(true);
-        expect(shouldAdvertiseSharingIdentity({
-            sharing: {
-                galleryPersonIds: [],
-                collectionPersonIds: {},
-                clusterPersonIds: {},
-                certificatePersonIds: [],
-            },
-            acceptSharing: true,
-        })).toBe(true);
-        expect(shouldAdvertiseSharingIdentity({
-            sharing: {
-                galleryPersonIds: [],
-                collectionPersonIds: {},
-                clusterPersonIds: {},
-                certificatePersonIds: [],
-            },
-            acceptSharing: false,
-        })).toBe(false);
     });
 });

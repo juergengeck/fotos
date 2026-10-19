@@ -12,6 +12,7 @@ const runtime = vi.hoisted(() => ({
   shutdown: vi.fn(),
   connect: vi.fn(),
   constructed: vi.fn(),
+  glueModule: null as {publishOwnPresence: boolean} | null,
 }));
 
 vi.mock('@refinio/one.models/lib/models/Authenticator/MultiUser.js', () => ({
@@ -68,12 +69,18 @@ vi.mock('@vger/vger.core/modules/ConnectionModule.js', () => ({
     addChumSyncRuntimeObjectTypes() {}
     setManagedOutgoingConnections() {}
     setUnknownPeerIdentityMatcher() {}
+    setDirectPeerSyncMatcher() {}
+    setPeerConnectionDemandProvider() {}
     connectToGlueServer = runtime.connect;
   },
 }));
 vi.mock('@vger/vger.core/plans/ExportPlan.js', () => ({ExportPlan: class {}}));
 vi.mock('@vger/vger.glue', () => ({
-  GlueModule: class { async activateForIdentity() {} },
+  GlueModule: class {
+    publishOwnPresence = true;
+    constructor() { runtime.glueModule = this; }
+    async activateForIdentity() {}
+  },
   ensureCommserverEndpointForPerson: vi.fn(),
 }));
 vi.mock('@refinio/settings.devices', () => ({registerDeviceSettings() {}}));
@@ -106,6 +113,7 @@ describe('Fotos runtime ownership', () => {
     runtime.order = [];
     runtime.instanceId = undefined;
     runtime.syncEnabled = false;
+    runtime.glueModule = null;
     runtime.credentials.mockResolvedValue({creds: {email: 'visitor@fotos.one', secret: 'local-secret', instanceName: 'visitor'}});
     runtime.login.mockResolvedValue(undefined);
     runtime.logout.mockResolvedValue(undefined);
@@ -195,6 +203,7 @@ describe('Fotos runtime ownership', () => {
     runtime.syncEnabled = true;
     const model = await bootFotosModel();
     expect(model.headlessConnected).toBe(true);
+    expect(runtime.glueModule?.publishOwnPresence).toBe(false);
   });
 
   it('ignores a late connection completion from a previous runtime', async () => {

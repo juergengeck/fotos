@@ -47,10 +47,3 @@ export function buildAcceptedIncomingSharingPeerIds(options: {
         ...options.contactPersonIds,
     ]);
 }
-
-export function shouldAdvertiseSharingIdentity(options: {
-    sharing: FotosShareAssignments;
-    acceptSharing: boolean;
-}): boolean {
-    return options.acceptSharing || collectShareLifecyclePersonIds(options.sharing).length > 0;
-}

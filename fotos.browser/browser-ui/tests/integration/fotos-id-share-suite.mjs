@@ -239,25 +239,6 @@ async function resolveShareToken(page, token, timeoutMs = READY_TIMEOUT_MS) {
   }, token, timeoutMs);
 }
 
-async function createGalleryShareInvite(page, timeoutMs = READY_TIMEOUT_MS) {
-  return await evaluateWithDebugApi(page, async () => {
-    return await window.__fotosDebug.createGalleryShareInvite();
-  }, undefined, timeoutMs);
-}
-
-async function acceptGalleryShareInvite(page, pin, timeoutMs = READY_TIMEOUT_MS) {
-  return await evaluateWithDebugApi(page, async targetPin => {
-    return await window.__fotosDebug.acceptGalleryShareInvite(targetPin);
-  }, pin, timeoutMs);
-}
-
-function buildRecipientInviteUrl(inviteUrl, pageLabel) {
-  const url = new URL(inviteUrl);
-  url.searchParams.set('fotosDebug', '1');
-  url.searchParams.set('page', pageLabel);
-  return url.toString();
-}
-
 async function getWantedPeerIds(page, timeoutMs = READY_TIMEOUT_MS) {
   return await evaluateWithDebugApi(page, () => window.__fotosDebug.getWantedPeerIds(), undefined, timeoutMs);
 }
@@ -287,13 +268,13 @@ async function forceRouteKeyConnect(page, personId, keySource = 'advertised', ti
   }, { targetPersonId: personId, source: keySource }, timeoutMs);
 }
 
-async function requestCoordinatorPeerConnection(page, personId, timeoutMs = READY_TIMEOUT_MS) {
-  return await evaluateWithDebugApi(page, targetPersonId => {
+async function requestProductPeerConnection(page, personId, timeoutMs = READY_TIMEOUT_MS) {
+  return await evaluateWithDebugApi(page, async targetPersonId => {
     if (typeof window.__fotosDebug.requestPeerConnection !== 'function') {
       return null;
     }
 
-    return window.__fotosDebug.requestPeerConnection(targetPersonId);
+    return await window.__fotosDebug.requestPeerConnection(targetPersonId);
   }, personId, timeoutMs);
 }
 
@@ -331,53 +312,13 @@ async function requestSinglePeerConnection(page, personId, inspected = null) {
     };
   }
 
-  const coordinatorResult = await requestCoordinatorPeerConnection(page, personId, 10_000);
-  const shouldReturnCoordinatorOnly = (
-    coordinatorResult?.requested
-    && targetState?.state
-    && targetState.state !== 'discovered'
-  );
-  if (shouldReturnCoordinatorOnly) {
-    return {
-      requested: true,
-      strategy: 'coordinator',
-      result: coordinatorResult,
-      connectionInfo,
-      targetState,
-    };
-  }
-
-  const attempts = ['advertised', 'certified'];
-  const errors = [];
-
-  for (const keySource of attempts) {
-    try {
-      const result = await forceRouteKeyConnect(page, personId, keySource, 10_000);
-      return {
-        requested: true,
-        strategy: coordinatorResult?.requested ? 'coordinator+route-key' : 'route-key',
-        keySource,
-        coordinatorResult,
-        result,
-        connectionInfo,
-        targetState,
-      };
-    } catch (error) {
-      const message = getErrorMessage(error);
-      if (!/No (advertised|certified) encryption key available/i.test(message)) {
-        throw error;
-      }
-
-      errors.push(message);
-    }
-  }
-
+  const result = await requestProductPeerConnection(page, personId, 10_000);
   return {
-    requested: false,
-    coordinatorResult,
+    requested: result?.requested === true,
+    strategy: 'connection-plan',
+    result,
     connectionInfo,
     targetState,
-    errors,
   };
 }
 
@@ -519,8 +460,8 @@ function createPeerConnectionRefresher(
     attemptCount += 1;
 
     const settled = await Promise.allSettled([
-      requestPeerConnection(pages[0], page2TargetId),
-      requestPeerConnection(pages[1], page1TargetId),
+      requestPeerConnection(pages[0], page1TargetId),
+      requestPeerConnection(pages[1], page2TargetId),
     ]);
 
     const summary = settled.map((result, index) => {
@@ -1176,7 +1117,7 @@ async function main() {
         const identities = await Promise.all(pages.map(page => getLocalIdentitySnapshot(page, 5_000)));
         const statuses = await Promise.all(pages.map(page => getStatus(page, 5_000)));
         return identities.every(identity => Boolean(identity?.publicationIdentity))
-          && statuses.every(status => Boolean(status?.initialized && status?.isOpen))
+          && statuses.every(status => Boolean(status?.initialized && status?.isOpen && status?.headlessConnected))
           ? { identities, statuses }
           : false;
       },
@@ -1192,20 +1133,8 @@ async function main() {
     report.peerIds.page1 = page1PeerId;
     report.peerIds.page2 = page2PeerId;
 
-    const bootstrapInvite = await createGalleryShareInvite(pages[0]);
-    await pages[1].goto(buildRecipientInviteUrl(bootstrapInvite.url, 'b'), {
-      waitUntil: 'domcontentloaded',
-    });
-    await waitForDebugApi(pages[1], READY_TIMEOUT_MS);
-    await acceptGalleryShareInvite(pages[1], bootstrapInvite.pin);
-    await ensureGalleryOpenWithFixture(pages[1], 'page2', seedFixtures.page2, initialFileNames.page2);
-
-    const acceptedRecipientIdentity = await getLocalIdentitySnapshot(pages[1]);
-    const page1ShareTargetId = acceptedRecipientIdentity?.publicationIdentity;
+    const page1ShareTargetId = page2PeerId;
     const page2ShareTargetId = page1PeerId;
-    if (!page1ShareTargetId) {
-      throw new Error('Missing recipient publication identity after accepting the share');
-    }
     const refreshPeerConnections = createPeerConnectionRefresher(
       pages,
       page1ShareTargetId,
@@ -1215,16 +1144,7 @@ async function main() {
     report.shareTargetIds.page1 = page1ShareTargetId;
     report.shareTargetIds.page2 = page2ShareTargetId;
 
-    await waitForStage(
-      'page1-bootstrap-invite-share',
-      SHARE_TIMEOUT_MS,
-      async () => {
-        const shareState = await getShareState(pages[0], 5_000);
-        return shareStateHasGrantedPeer(shareState, page1ShareTargetId) ? shareState : false;
-      },
-      captureSnapshot,
-    );
-
+    await addGalleryShare(pages[0], displayNames.b, page1ShareTargetId, 'page1-share-by-name');
     await addGalleryShare(pages[1], displayNames.a, page2ShareTargetId, 'page2-share-by-name');
 
     await waitForStage(
@@ -1234,37 +1154,31 @@ async function main() {
         const [
           page1WantedPeerIds,
           page2WantedPeerIds,
-          page1CoordinatorDebug,
-          page2CoordinatorDebug,
+          page1ConnectablePeerIds,
+          page2ConnectablePeerIds,
         ] = await Promise.all([
           getWantedPeerIds(pages[0], 5_000),
           getWantedPeerIds(pages[1], 5_000),
-          getPeerConnectionCoordinatorDebug(pages[0], 5_000),
-          getPeerConnectionCoordinatorDebug(pages[1], 5_000),
+          getConnectablePeerIds(pages[0], 5_000),
+          getConnectablePeerIds(pages[1], 5_000),
         ]);
 
         const page1DemandReady = page1WantedPeerIds.includes(page1ShareTargetId)
-          && page1CoordinatorDebug.some(peer =>
-            peer.personId === page1ShareTargetId && peer.isDemandedPeer,
-          );
+          && page1ConnectablePeerIds.includes(page1ShareTargetId);
         const page2DemandReady = page2WantedPeerIds.includes(page2ShareTargetId)
-          && page2CoordinatorDebug.some(peer =>
-            peer.personId === page2ShareTargetId && peer.isDemandedPeer,
-          );
+          && page2ConnectablePeerIds.includes(page2ShareTargetId);
 
         return page1DemandReady && page2DemandReady
           ? {
               page1WantedPeerIds,
               page2WantedPeerIds,
-              page1CoordinatorDebug,
-              page2CoordinatorDebug,
+              page1ConnectablePeerIds,
+              page2ConnectablePeerIds,
             }
           : false;
       },
       captureSnapshot,
     );
-
-    await refreshPeerConnections({ force: true, label: 'peer-connection' });
 
     await waitForStage(
       'peer-connection',
