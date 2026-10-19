@@ -27,6 +27,7 @@ const ORT_RUNTIME_FILES = [
     'ort-wasm-simd-threaded.wasm',
 ] as const;
 const BUILD_ID = new Date().toISOString();
+const APP_BASE = process.env.VITE_BASE || '/';
 
 function parseOptionalInt(value: string | undefined): number | undefined {
     if (!value) {
@@ -61,7 +62,7 @@ function buildVersionPlugin(buildId: string): Plugin {
         configureServer(server) {
             server.middlewares.use((req, res, next) => {
                 const url = new URL(req.url ?? '/', 'http://localhost');
-                if (url.pathname !== '/version.json') {
+                if (url.pathname !== `${APP_BASE}version.json`) {
                     next();
                     return;
                 }
@@ -82,7 +83,7 @@ function buildVersionPlugin(buildId: string): Plugin {
 }
 
 function ortRuntimePlugin(): Plugin {
-    const routePrefix = '/ort/';
+    const routePrefix = `${APP_BASE}ort/`;
 
     function isKnownRuntimeFile(fileName: string): fileName is typeof ORT_RUNTIME_FILES[number] {
         return ORT_RUNTIME_FILES.includes(fileName as typeof ORT_RUNTIME_FILES[number]);
@@ -267,7 +268,7 @@ function localPhotosPlugin(): Plugin {
 }
 
 export default defineConfig({
-    base: process.env.VITE_BASE || '/',
+    base: APP_BASE,
     clearScreen: false,
     plugins: [
         react(),
@@ -290,16 +291,18 @@ export default defineConfig({
                 name: 'fotos.one',
                 short_name: 'fotos',
                 description: 'Photo management with face recognition',
-                start_url: '/',
+                start_url: APP_BASE,
+                scope: APP_BASE,
+                id: APP_BASE,
                 display: 'standalone',
                 background_color: '#111111',
                 theme_color: '#111111',
                 icons: [
-                    { src: '/cam.svg', sizes: 'any', type: 'image/svg+xml' },
-                    { src: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+                    { src: `${APP_BASE}cam.svg`, sizes: 'any', type: 'image/svg+xml' },
+                    { src: `${APP_BASE}apple-touch-icon.png`, sizes: '180x180', type: 'image/png' },
                 ],
                 share_target: {
-                    action: '/_share',
+                    action: `${APP_BASE}_share`,
                     method: 'POST',
                     enctype: 'multipart/form-data',
                     params: {
@@ -326,11 +329,11 @@ export default defineConfig({
             {find: '@refinio/agent.core', replacement: path.resolve(__dirname, '../../../one/packages/agent.core/src/index.ts')},
             {find: '@refinio/assembly.core', replacement: path.resolve(__dirname, '../../../one/packages/assembly.core/dist')},
             {find: '@vger/vger.core', replacement: path.resolve(__dirname, '../../../one/packages/vger.core/dist')},
-            {find: '@vger/vger.glue', replacement: path.resolve(__dirname, '../../../vger/packages/vger.glue/dist')},
+            {find: '@vger/vger.glue', replacement: path.resolve(__dirname, '../../../one/packages/vger.glue/dist')},
             {find: '@refinio/source.media', replacement: path.resolve(__dirname, '../../../one/packages/source.media/dist')},
             {find: '@refinio/source.core', replacement: path.resolve(__dirname, '../../../one/packages/source.core/dist')},
             {find: '@refinio/media.core', replacement: path.resolve(__dirname, '../../../one/packages/media.core/dist')},
-            {find: '@refinio/recovery.core', replacement: path.resolve(__dirname, '../../../vger/packages/recovery.core/dist')},
+            {find: '@refinio/recovery.core', replacement: path.resolve(__dirname, '../../../one/packages/recovery.core/dist')},
             {find: /^@refinio\/trust\.core\/recipes$/, replacement: path.resolve(__dirname, '../../../one/packages/trust.core/dist/recipes/index.js')},
             {find: '@refinio/trust.core', replacement: path.resolve(__dirname, '../../../one/packages/trust.core/dist')},
             // Stub out Node-only modules that ONE.core dependency tree pulls in

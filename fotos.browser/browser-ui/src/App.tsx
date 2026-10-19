@@ -1,5 +1,8 @@
+import {appPath, appPathname} from '@/lib/appBase';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Impressum } from '@/components/Impressum';
+import { GlassHome } from '@/components/GlassHome';
+import {buildGlassViewUrl, readGlassView, type GlassView} from '@/lib/glassNavigation';
 import { GalleryBreadcrumbs } from '@/components/GalleryBreadcrumbs';
 import { PhotoGrid } from '@/components/PhotoGrid';
 import { Lightbox } from '@/components/Lightbox';
@@ -18,7 +21,7 @@ import { useHeadlessSource } from '@/hooks/useHeadlessSource';
 import { useBreadcrumbHistory } from '@/hooks/useBreadcrumbHistory';
 import { useFotosCollections } from '@/hooks/useFotosCollections';
 import { useSettings } from '@/hooks/useSettings';
-import { shareFile, shareFiles } from '@/lib/platform';
+import { shareFile, shareFiles, canShareFiles } from '@/lib/platform';
 import { UpdatePrompt } from '@/components/UpdatePrompt';
 import {
     DEFAULT_GLUE_CONNECTION_BINDING_ID,
@@ -31,7 +34,7 @@ import { traceHang } from './lib/hangTrace';
 import type { SimilarFaceMatch } from '@/lib/cluster-gallery';
 import { shouldExposeFotosDebugApi } from '@/lib/fotosLiveDiagnostics';
 import { fotosShareController, type FotosShareSnapshot } from '@/lib/fotosShareController';
-import { buildFotosCollectionSummaries } from '@/lib/fotosCollections';
+import { buildFotosCollectionSummaries, type FotosCollectionDefinition } from '@/lib/fotosCollections';
 import {
     buildAcceptedIncomingSharingPeerIds,
     collectShareLifecyclePersonIds,
@@ -398,7 +401,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
     const [headlessUrl, setHeadlessUrl] = useState<string | null>(null);
     const [headlessInput, setHeadlessInput] = useState('');
     const [showHeadlessConnect, setShowHeadlessConnect] = useState(false);
-    const [sidebarTab, setSidebarTab] = useState<SidebarTab>(() => window.location.pathname.replace(/\/$/, '') === '/invites/inviteDevice' ? 'settings' : readStoredSidebarTab() ?? 'browse');
+    const [sidebarTab, setSidebarTab] = useState<SidebarTab>(() => appPathname(window.location.pathname).replace(/\/$/, '') === '/invites/inviteDevice' ? 'settings' : readStoredSidebarTab() ?? 'browse');
     const [sidebarVisible, setSidebarVisible] = useState(true);
     const [sidebarOpenRequest, setSidebarOpenRequest] = useState(0);
     const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -486,6 +489,18 @@ export function App({ fotosModel: initialModel }: AppProps) {
         updateAcceptSharing,
     } = useSettings(fotosModel);
     const fotosCollections = useFotosCollections(fotosModel);
+    const [routeLocation, setRouteLocation] = useState<RouteLocationSnapshot>(getCurrentRouteLocation);
+    const glassView = readGlassView(routeLocation.pathname, routeLocation.search);
+    const navigateGlassView = useCallback((view: GlassView) => {
+        const url = buildGlassViewUrl(window.location.href, view);
+        if (url.href !== window.location.href) window.history.pushState({}, '', url);
+        setRouteLocation({pathname: url.pathname, search: url.search, hash: url.hash});
+    }, []);
+    const favoriteCollection = useMemo<FotosCollectionDefinition>(() => ({
+        id: 'fotos:favorite-photos', name: 'Favorites', photoHashes: fotosCollections.favoriteHashes,
+        clusterIds: [], personIds: [], createdAt: '', updatedAt: '',
+    }), [fotosCollections.favoriteHashes]);
+    const galleryCollections = useMemo(() => [...fotosCollections.collections, favoriteCollection], [fotosCollections.collections, favoriteCollection]);
     const receivedEntries = useMemo(
         () => receivedShareScopes.flatMap(scope => scope.entries),
         [receivedShareScopes],
@@ -495,11 +510,20 @@ export function App({ fotosModel: initialModel }: AppProps) {
         faceAnalyticsEnabled: settings.analysis.faceAnalyticsEnabled,
         semanticSearchEnabled: settings.analysis.semanticSearchEnabled,
         clusterSensitivity: settings.analysis.clusterSensitivity,
-        collections: fotosCollections.collections,
+        collections: galleryCollections,
         receivedEntries,
         onReceivedPhotoError: setIncomingShareError,
         folder: headlessUrl ? headlessFolder : undefined,
     });
+    useEffect(() => {
+        if (glassView === 'favorites') {
+            gallery.setGalleryMode('images');
+            gallery.setActiveClusterId(null);
+            gallery.setActiveCollectionId(favoriteCollection.id);
+        } else if (gallery.activeCollectionId === favoriteCollection.id) {
+            gallery.setActiveCollectionId(null);
+        }
+    }, [glassView, favoriteCollection.id, gallery.activeCollectionId, gallery.setActiveCollectionId, gallery.setActiveClusterId, gallery.setGalleryMode]);
     const scrollRef = useRef<HTMLDivElement>(null);
     // Pending gallery invitations: the sender keeps each token's PIN in memory.
     // Nothing about the PIN is in the link. The gallery is granted only after
@@ -509,7 +533,6 @@ export function App({ fotosModel: initialModel }: AppProps) {
     const certificateBackfilledScopesRef = useRef(new Set<string>());
     const committedShareScopeFingerprintsRef = useRef(new Map<string, string>());
     const legacyFotosAccessRetiredRef = useRef(false);
-    const [routeLocation, setRouteLocation] = useState<RouteLocationSnapshot>(getCurrentRouteLocation);
     const selectedPhotoHashes = selection.photoIds;
     const selectedClusterIds = selection.peopleIds;
     const selectedPhotoHashSet = useMemo(() => new Set(selectedPhotoHashes), [selectedPhotoHashes]);
@@ -1192,10 +1215,22 @@ export function App({ fotosModel: initialModel }: AppProps) {
     }, [gallery, settings.analysis.faceAnalyticsEnabled, showConfirm, updateAnalysis]);
 
     const handleCollectionSelect = useCallback((collectionId: string | null) => {
+        const url = buildGlassViewUrl(window.location.href, 'gallery');
+        if (collectionId) url.searchParams.set('album', collectionId);
+        else url.searchParams.delete('album');
+        if (url.href !== window.location.href) window.history.pushState({}, '', url);
+        setRouteLocation({pathname: url.pathname, search: url.search, hash: url.hash});
         gallery.setGalleryMode('images');
         gallery.setActiveClusterId(null);
         gallery.setActiveCollectionId(collectionId);
     }, [gallery]);
+
+    const albumRouteId = new URLSearchParams(routeLocation.search).get('album');
+    useEffect(() => {
+        if (glassView !== 'gallery') return;
+        if (albumRouteId && !fotosCollections.collections.some(album => album.id === albumRouteId)) return;
+        gallery.setActiveCollectionId(albumRouteId);
+    }, [albumRouteId, glassView, fotosCollections.collections, gallery.setActiveCollectionId]);
 
     const handleClusterSelect = useCallback((clusterId: string | null) => {
         if (clusterId) {
@@ -1936,6 +1971,8 @@ export function App({ fotosModel: initialModel }: AppProps) {
         // An invitation may have been consumed in this same event, before React
         // has rendered the new route. Preserve that canonical URL transition.
         const currentRoute = `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`;
+        if (task) nextUrl.searchParams.set('view', task === 'settings' && readGlassView(nextUrl.pathname, nextUrl.search) === 'profile' ? 'profile' : 'gallery');
+        else if (readGlassView(nextUrl.pathname, nextUrl.search) === 'profile') nextUrl.searchParams.set('view', 'gallery');
         const nextPath = buildPersistentAppTaskPath(nextUrl.pathname, nextUrl.search, task);
         const [nextPathname, nextSearch = ''] = nextPath.split('?');
         nextUrl.pathname = nextPathname;
@@ -2032,7 +2069,18 @@ export function App({ fotosModel: initialModel }: AppProps) {
             const files = await Promise.all(
                 exportablePhotos.map(photo => gallery.folder.readFile(photo.sourcePath)),
             );
-            return await shareFiles(files);
+            if (canShareFiles(files)) return await shareFiles(files);
+            for (const file of files) {
+                const url = URL.createObjectURL(file);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = file.name;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+            }
+            return true;
         } finally {
             setExportingPhotos(false);
         }
@@ -2157,7 +2205,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 label: 'Photos',
                 onClick: gallery.activeCollectionId !== null || gallery.activeTag !== null || trimmedSearchQuery.length > 0 || gallery.searchFace !== null
                     ? () => {
-                        gallery.setActiveCollectionId(null);
+                        handleCollectionSelect(null);
                         gallery.setActiveTag(null);
                         gallery.setSearchQuery('');
                         gallery.setSearchFace(null);
@@ -2218,6 +2266,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
         gallery.activeCollection,
         gallery.activeCollectionId,
         gallery.activeTag,
+        handleCollectionSelect,
         gallery.folder.folderName,
         gallery.galleryMode,
         gallery.searchFace,
@@ -3573,7 +3622,113 @@ export function App({ fotosModel: initialModel }: AppProps) {
         }
     }, [dismissIncomingShareInvite]);
 
+    const controlPane = (
+        <Sidebar
+                        activeTab={sidebarTab}
+                        onTabChange={openSidebarTab}
+                        openRequest={sidebarOpenRequest}
+                        tags={gallery.tags}
+                        activeTag={gallery.activeTag}
+                        onTagClick={gallery.setActiveTag}
+                        browseSummary={gallery.galleryMode === 'clusters'
+                            ? gallery.activeCluster
+                                ? `${gallery.clusterPhotos.length} photos in ${gallery.activeCluster.label}`
+                                : `${gallery.clusters.length} clusters`
+                            : gallery.activeCollection
+                                ? `${visiblePhotos.length} photos in ${gallery.activeCollection.name}`
+                            : `${gallery.totalCount} photos` + (totalDetectedFaces > 0 ? ` · ${totalDetectedFaces} faces` : '')}
+                        searchQuery={gallery.searchQuery}
+                        onSearchChange={gallery.setSearchQuery}
+                        searchResultCount={showClusterGallery ? gallery.clusters.length : visiblePhotos.length}
+                        searchTotalCount={gallery.galleryMode === 'clusters' ? gallery.allClusters.length : gallery.totalCount}
+                        settings={settings}
+                        acceptSharing={acceptSharing}
+                        onUpdateStorage={updateStorage}
+                        onUpdateDisplay={updateDisplay}
+                        onUpdateDeviceName={updateDeviceName}
+                        onUpdateAnalysis={updateAnalysis}
+                        onAcceptSharingChange={updateAcceptSharing}
+                        historyEnabled={breadcrumbHistory.enabled}
+                        historyReady={breadcrumbHistory.ready}
+                        historyCurrentEventId={breadcrumbHistory.currentEventId}
+                        historyBranchTree={breadcrumbHistory.branchTree}
+                        historyVisibleEntryCount={breadcrumbHistory.visibleEntryCount}
+                        historyBranchCount={breadcrumbHistory.branchCount}
+                        onHistoryEnabledChange={breadcrumbHistory.setEnabled}
+                        onHistoryNavigate={breadcrumbHistory.navigateTo}
+                        onHistoryDelete={handleDeleteHistoryEntry}
+                        currentFolderName={gallery.folder.folderName}
+                        folderName={gallery.folder.folderName}
+                        folders={gallery.folder.folders}
+                        onOpenFolder={gallery.folder.openFolder}
+                        onSelectFolder={folderId => {
+                            clearCollectionSelection();
+                            gallery.folder.selectFolder(folderId);
+                        }}
+                        onRemoveFolder={handleRemoveFolder}
+                        onRescan={gallery.folder.rescan}
+                        onReanalyze={canReanalyze ? gallery.folder.reanalyzeFaces : undefined}
+                        canClaimAuthorshipOnIngest={gallery.folder.canClaimAuthorshipOnIngest}
+                        claimAuthorshipOnIngest={gallery.folder.claimAuthorshipOnIngest}
+                        onClaimAuthorshipOnIngestChange={gallery.folder.setClaimAuthorshipOnIngest}
+                        llmComparisonPhoto={comparisonPhoto}
+                        llmComparisonPhotoLabel={comparisonPhotoLabel}
+                        faceSearchActive={gallery.searchFace !== null}
+                        onClearFaceSearch={() => gallery.setSearchFace(null)}
+                        fotosModel={fotosModel}
+                        mobile={glassView !== 'profile' && gallery.folder.isOpen && mobile}
+                        galleryMode={gallery.galleryMode}
+                        onGalleryModeChange={handleGalleryModeChange}
+                        identityReady={Boolean(fotosModel?.publicationIdentity)}
+                        identityLabel={fotosModel?.publicationIdentity ? String(fotosModel.publicationIdentity) : null}
+                        backgroundStatus={headerBackgroundStatus}
+                        onOpenShortcuts={() => setShortcutsOpen(true)}
+                        onClose={!mobile && gallery.folder.isOpen && glassView !== 'profile' ? () => setSidebarVisible(false) : undefined}
+                        collections={collectionSummaries}
+                        activeCollectionId={gallery.activeCollectionId}
+                        onCollectionSelect={handleCollectionSelect}
+                        selectedClusterIds={selectedClusterIds}
+                        onToggleSelectedCluster={clusterId => toggleSelectedClusterId(clusterId)}
+                        onRenameCollection={fotosCollections.renameCollection}
+                        onDeleteCollection={handleDeleteCollection}
+                        clusters={gallery.clusters}
+                        allClusters={gallery.allClusters}
+                        people={gallery.people}
+                        groups={gallery.groups}
+                        similarFaces={gallery.similarFaces}
+                        searchClusters={gallery.searchClusters}
+                        activeClusterId={gallery.activeClusterId}
+                        onClusterSelect={handleClusterSelect}
+                        getFileUrl={gallery.folder.getFileUrl}
+                        onAssociateFaceWithCluster={handleAssociateFaceWithCluster}
+                        onSeparatePersonGroup={handleSeparatePersonGroup}
+                        onOpenSimilarFace={handleOpenSimilarFace}
+                        onDeletePhoto={handleDelete}
+                        onRenameFace={handleRenameFace}
+                        onDeleteFace={handleDeleteFace}
+                        galleryShareInvite={createdShareInvite}
+                        creatingGalleryShareInvite={creatingShareInvite}
+                        onCreateGalleryShareInvite={handleCreateGalleryShareInvite}
+                        onRevokeGalleryShareInvite={handleRevokeGalleryShareInvite}
+                        sharePeerOptions={sharePeerOptions}
+                        gallerySharePersonIds={fotosCollections.sharing.galleryPersonIds}
+                        collectionSharePersonIds={fotosCollections.sharing.collectionPersonIds}
+                        clusterSharePersonIds={fotosCollections.sharing.clusterPersonIds}
+                        receivedShareScopes={receivedShareScopes}
+                        onGalleryShareChange={handleGalleryShareChange}
+                        onCollectionShareChange={handleCollectionShareChange}
+                        onClusterShareChange={handleClusterShareChange}
+                        onClusterContextMenu={handleClusterContextMenu}
+                        onCollectionContextMenu={handleCollectionContextMenu}
+                        showOnboarding={showOnboarding && glassView !== 'profile'}
+                        onDismissOnboarding={handleDismissOnboarding}
+                    />
+    );
+
     const appContent = (() => {
+        if (glassView === 'profile' || (!gallery.folder.isOpen && (sidebarTab === 'settings' || sidebarTab === 'sharing'))) {
+            return <div className="glass-empty-workspace">{controlPane}<Impressum /></div>;
+        }
         // Before the first library exists there is nothing to browse yet. Rescans and
         // later phases stay in the gallery and use its canonical status strip.
         if (progress && !analysisProgress && !gallery.folder.isOpen) {
@@ -3615,7 +3770,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
             return (
                 <div className="h-screen flex flex-col bg-[#111] view-enter">
                     <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-5 p-6 text-center">
-                        <img src="/cam.svg" className="h-40 w-40 invert opacity-15" style={{ objectFit: 'contain' }} />
+                        <img src={appPath('cam.svg')} className="h-40 w-40 invert opacity-15" style={{ objectFit: 'contain' }} />
                         <div className="space-y-2">
                             <div className="text-lg font-medium text-white/82">Downloading shared gallery</div>
                             <p className="max-w-md text-sm leading-relaxed text-white/55">
@@ -3636,7 +3791,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
             return (
                 <div className="h-screen flex flex-col bg-[#111] view-enter">
                     <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-5 p-6 text-center">
-                        <img src="/cam.svg" alt="" className="h-36 w-36 invert opacity-20" />
+                        <img src={appPath('cam.svg')} alt="" className="h-36 w-36 invert opacity-20" />
                         <div className="space-y-2">
                             <h1 className="text-2xl font-semibold text-white/90">Your photos, on your device</h1>
                             <p className="max-w-md text-sm leading-relaxed text-white/60">
@@ -3702,7 +3857,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
 
         return (
             <>
-                <div className="flex h-screen flex-col">
+                <div className="flex h-full min-h-0 flex-col">
                     {/* Portrait mobile: sheet over the grid. Landscape mobile and
                         desktop place the current task panel beside the main pane. */}
                     <div className={`flex min-h-0 flex-1 ${mobile ? 'flex-col landscape:flex-row' : ''}`}>
@@ -3745,7 +3900,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                             : gallery.searchFace !== null
                                                 ? 'No similar faces found'
                                                 : gallery.activeCollectionId
-                                                    ? 'This collection is empty'
+                                                    ? glassView === 'favorites' ? 'Your favorite moments' : 'This collection is empty'
                                                     : gallery.activeTag
                                                         ? 'No photos with this tag'
                                                         : gallery.activeClusterId
@@ -3769,7 +3924,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                             : gallery.searchFace !== null
                                                 ? 'Try with a different face or lower the similarity threshold.'
                                                 : gallery.activeCollectionId
-                                                    ? 'Select photos and add them to this collection from the sidebar.'
+                                                    ? glassView === 'favorites' ? 'Open a photo in Gallery and tap the heart, or select photos and choose Add to favorites.' : 'Select photos and add them to this collection from the sidebar.'
                                                     : gallery.activeTag
                                                         ? 'No photos are tagged with this label yet.'
                                                         : gallery.activeClusterId
@@ -3817,6 +3972,13 @@ export function App({ fotosModel: initialModel }: AppProps) {
                             onAddToCollection={handleAddSelectionToCollection}
                             onShareSelection={handleShareSelection}
                             onExportPhotos={handleExportSelectedPhotos}
+                            onFavoritePhotos={() => {
+                                const hashes = selectedPhotosForCollections.map(photo => photo.hash);
+                                const saved = !hashes.every(hash => fotosCollections.favoriteHashes.includes(hash));
+                                fotosCollections.setFavorites(hashes, saved);
+                                clearCollectionSelection();
+                            }}
+                            allPhotosFavorite={selectedPhotosForCollections.length > 0 && selectedPhotosForCollections.every(photo => fotosCollections.favoriteHashes.includes(photo.hash))}
                             onNamePeople={handleNameSelectedPeople}
                             onGroupPeople={handleGroupSelectedPeople}
                             mergeTargetLabel={gallery.activeClusterId
@@ -3838,118 +4000,90 @@ export function App({ fotosModel: initialModel }: AppProps) {
                     </div>
 
                     {/* Sidebar/task panel */}
-                    {sidebarVisible && <Sidebar
-                        activeTab={sidebarTab}
-                        onTabChange={openSidebarTab}
-                        openRequest={sidebarOpenRequest}
-                        tags={gallery.tags}
-                        activeTag={gallery.activeTag}
-                        onTagClick={gallery.setActiveTag}
-                        browseSummary={gallery.galleryMode === 'clusters'
-                            ? gallery.activeCluster
-                                ? `${gallery.clusterPhotos.length} photos in ${gallery.activeCluster.label}`
-                                : `${gallery.clusters.length} clusters`
-                            : gallery.activeCollection
-                                ? `${visiblePhotos.length} photos in ${gallery.activeCollection.name}`
-                            : `${gallery.totalCount} photos` + (totalDetectedFaces > 0 ? ` · ${totalDetectedFaces} faces` : '')}
-                        searchQuery={gallery.searchQuery}
-                        onSearchChange={gallery.setSearchQuery}
-                        searchResultCount={showClusterGallery ? gallery.clusters.length : visiblePhotos.length}
-                        searchTotalCount={gallery.galleryMode === 'clusters' ? gallery.allClusters.length : gallery.totalCount}
-                        settings={settings}
-                        acceptSharing={acceptSharing}
-                        onUpdateStorage={updateStorage}
-                        onUpdateDisplay={updateDisplay}
-                        onUpdateDeviceName={updateDeviceName}
-                        onUpdateAnalysis={updateAnalysis}
-                        onAcceptSharingChange={updateAcceptSharing}
-                        historyEnabled={breadcrumbHistory.enabled}
-                        historyReady={breadcrumbHistory.ready}
-                        historyCurrentEventId={breadcrumbHistory.currentEventId}
-                        historyBranchTree={breadcrumbHistory.branchTree}
-                        historyVisibleEntryCount={breadcrumbHistory.visibleEntryCount}
-                        historyBranchCount={breadcrumbHistory.branchCount}
-                        onHistoryEnabledChange={breadcrumbHistory.setEnabled}
-                        onHistoryNavigate={breadcrumbHistory.navigateTo}
-                        onHistoryDelete={handleDeleteHistoryEntry}
-                        currentFolderName={gallery.folder.folderName}
-                        folderName={gallery.folder.folderName}
-                        folders={gallery.folder.folders}
-                        onOpenFolder={gallery.folder.openFolder}
-                        onSelectFolder={folderId => {
-                            clearCollectionSelection();
-                            gallery.folder.selectFolder(folderId);
-                        }}
-                        onRemoveFolder={handleRemoveFolder}
-                        onRescan={gallery.folder.rescan}
-                        onReanalyze={canReanalyze ? gallery.folder.reanalyzeFaces : undefined}
-                        canClaimAuthorshipOnIngest={gallery.folder.canClaimAuthorshipOnIngest}
-                        claimAuthorshipOnIngest={gallery.folder.claimAuthorshipOnIngest}
-                        onClaimAuthorshipOnIngestChange={gallery.folder.setClaimAuthorshipOnIngest}
-                        llmComparisonPhoto={comparisonPhoto}
-                        llmComparisonPhotoLabel={comparisonPhotoLabel}
-                        faceSearchActive={gallery.searchFace !== null}
-                        onClearFaceSearch={() => gallery.setSearchFace(null)}
-                        fotosModel={fotosModel}
-                        mobile={mobile}
-                        galleryMode={gallery.galleryMode}
-                        onGalleryModeChange={handleGalleryModeChange}
-                        identityReady={Boolean(fotosModel?.publicationIdentity)}
-                        identityLabel={fotosModel?.publicationIdentity ? String(fotosModel.publicationIdentity) : null}
-                        backgroundStatus={headerBackgroundStatus}
-                        onOpenShortcuts={() => setShortcutsOpen(true)}
-                        onClose={!mobile ? () => setSidebarVisible(false) : undefined}
-                        collections={collectionSummaries}
-                        activeCollectionId={gallery.activeCollectionId}
-                        onCollectionSelect={handleCollectionSelect}
-                        selectedClusterIds={selectedClusterIds}
-                        onToggleSelectedCluster={clusterId => toggleSelectedClusterId(clusterId)}
-                        onRenameCollection={fotosCollections.renameCollection}
-                        onDeleteCollection={handleDeleteCollection}
-                        clusters={gallery.clusters}
-                        allClusters={gallery.allClusters}
-                        people={gallery.people}
-                        groups={gallery.groups}
-                        similarFaces={gallery.similarFaces}
-                        searchClusters={gallery.searchClusters}
-                        activeClusterId={gallery.activeClusterId}
-                        onClusterSelect={handleClusterSelect}
-                        getFileUrl={gallery.folder.getFileUrl}
-                        onAssociateFaceWithCluster={handleAssociateFaceWithCluster}
-                        onSeparatePersonGroup={handleSeparatePersonGroup}
-                        onOpenSimilarFace={handleOpenSimilarFace}
-                        onDeletePhoto={handleDelete}
-                        onRenameFace={handleRenameFace}
-                        onDeleteFace={handleDeleteFace}
-                        galleryShareInvite={createdShareInvite}
-                        creatingGalleryShareInvite={creatingShareInvite}
-                        onCreateGalleryShareInvite={handleCreateGalleryShareInvite}
-                        onRevokeGalleryShareInvite={handleRevokeGalleryShareInvite}
-                        sharePeerOptions={sharePeerOptions}
-                        gallerySharePersonIds={fotosCollections.sharing.galleryPersonIds}
-                        collectionSharePersonIds={fotosCollections.sharing.collectionPersonIds}
-                        clusterSharePersonIds={fotosCollections.sharing.clusterPersonIds}
-                        receivedShareScopes={receivedShareScopes}
-                        onGalleryShareChange={handleGalleryShareChange}
-                        onCollectionShareChange={handleCollectionShareChange}
-                        onClusterShareChange={handleClusterShareChange}
-                        onClusterContextMenu={handleClusterContextMenu}
-                        onCollectionContextMenu={handleCollectionContextMenu}
-                        showOnboarding={showOnboarding}
-                        onDismissOnboarding={handleDismissOnboarding}
-                    />}
+                    {sidebarVisible && controlPane}
                     </div>
                     <Impressum />
                 </div>
 
-                {!showClusterGallery && gallery.selectedIndex !== null && (
+
+            </>
+        );
+    })();
+
+    return (
+        <>
+            <GlassHome
+                view={glassView}
+                entries={gallery.folder.entries}
+                collections={collectionSummaries}
+                getThumbUrl={gallery.folder.getThumbUrl}
+                onNavigate={view => {
+                    gallery.setSelectedIndex(null);
+                    clearCollectionSelection();
+                    if (view === 'gallery' || view === 'favorites') {
+                        gallery.setGalleryMode('images');
+                        gallery.setActiveClusterId(null);
+                        gallery.setActiveCollectionId(view === 'favorites' ? favoriteCollection.id : null);
+                        gallery.setActiveTag(null);
+                        gallery.setSearchFace(null);
+                        gallery.setSearchQuery('');
+                    }
+                    setSidebarTab(view === 'profile' ? 'settings' : 'browse');
+                    setSidebarVisible(true);
+                    setSidebarOpenRequest(request => request + 1);
+                    navigateGlassView(view);
+                }}
+                onUpload={() => {
+                    navigateGlassView('gallery');
+                    setSidebarTab('browse');
+                    gallery.setGalleryMode('images');
+                    gallery.setActiveClusterId(null);
+                    gallery.setActiveCollectionId(null);
+                    gallery.setActiveTag(null);
+                    gallery.setSearchFace(null);
+                    gallery.setSearchQuery('');
+                    gallery.folder.openLocalFiles();
+                }}
+                onOpenFolder={() => {
+                    navigateGlassView('gallery');
+                    setSidebarTab('browse');
+                    gallery.setGalleryMode('images');
+                    gallery.setActiveClusterId(null);
+                    gallery.setActiveCollectionId(null);
+                    gallery.setActiveTag(null);
+                    gallery.setSearchFace(null);
+                    gallery.setSearchQuery('');
+                    gallery.folder.openFolder();
+                }}
+                onAlbum={id => {
+                    handleCollectionSelect(id);
+                    setSidebarTab('browse');
+                    setSidebarVisible(true);
+                }}
+                onCreateAlbum={name => {
+                    const album = fotosCollections.createCollection(name, [], []);
+                    showUndo(`Album “${album.name}” created.`, () => fotosCollections.deleteCollection(album.id));
+                }}
+                onRenameAlbum={album => setRenameState({kind: 'collection', id: album.id, title: 'Rename album', label: 'Album name', initialValue: album.name})}
+                onDeleteAlbum={handleDeleteCollection}
+                onShareAlbum={id => {handleCollectionSelect(id); openSidebarTab('sharing');}}
+                pendingImportCount={pendingImportCount}
+                progressLabel={gallery.folder.importStatus ?? headerBackgroundStatus}
+                importError={gallery.folder.importError}
+                onDismissImportError={() => gallery.folder.dismissImportError?.()}
+            >
+                {appContent}
+            </GlassHome>
+                {!showClusterGallery && gallery.selectedIndex !== null && visiblePhotos[gallery.selectedIndex] && (
                     <Lightbox
                         photos={visiblePhotos}
                         index={gallery.selectedIndex}
                         onIndexChange={(index) => openPhotoRouteIndex(index, { replace: true })}
                         onClose={() => closePhotoRoute({ replace: true })}
                         onDelete={handleDelete}
-                        onExport={mobile ? handleExportPhoto : undefined}
+                        onExport={handleExportPhoto}
+                        isFavorite={fotosCollections.favoriteHashes.includes(visiblePhotos[gallery.selectedIndex]?.hash)}
+                        onToggleFavorite={photo => fotosCollections.setFavorites([photo.hash], !fotosCollections.favoriteHashes.includes(photo.hash))}
                         onFaceSearch={handleFaceSearch}
                         onRenameFace={handleRenameFace}
                         onDeleteFace={handleDeleteFace}
@@ -3959,13 +4093,6 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         mobile={mobile}
                     />
                 )}
-            </>
-        );
-    })();
-
-    return (
-        <>
-            {appContent}
             {incomingShareError && incomingShareStatus === 'connected' ? (
                 <div role="alert" className="fixed left-4 top-4 z-50 max-w-md rounded-lg bg-[#38151b] p-4 text-sm text-white">{incomingShareError}</div>
             ) : null}

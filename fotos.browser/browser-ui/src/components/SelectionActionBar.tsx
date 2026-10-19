@@ -1,5 +1,5 @@
 import {useState} from 'react';
-import {Download, FolderPlus, Share2, Users, X} from 'lucide-react';
+import {Download, FolderPlus, Heart, Share2, Users, X} from 'lucide-react';
 
 interface SelectionActionBarProps {
     photoCount: number;
@@ -16,6 +16,8 @@ interface SelectionActionBarProps {
     onAddToCollection: (collectionId: string) => void;
     onShareSelection: () => void;
     onExportPhotos?: () => Promise<void> | void;
+    onFavoritePhotos?: () => void;
+    allPhotosFavorite?: boolean;
     onNamePeople: (name: string) => Promise<void> | void;
     onGroupPeople: () => void;
     mergeTargetLabel?: string;
@@ -37,6 +39,8 @@ export function SelectionActionBar({
     onAddToCollection,
     onShareSelection,
     onExportPhotos,
+    onFavoritePhotos,
+    allPhotosFavorite,
     onNamePeople,
     onGroupPeople,
     mergeTargetLabel,
@@ -86,6 +90,7 @@ export function SelectionActionBar({
             </div>
 
             <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-white/10 pt-2">
+                {photoCount > 0 && onFavoritePhotos && <button type="button" onClick={onFavoritePhotos} className="flex min-h-11 items-center gap-2 rounded-md bg-white/10 px-3 text-xs text-white/85 hover:bg-white/15"><Heart className="h-4 w-4" fill={allPhotosFavorite ? 'currentColor' : 'none'} />{allPhotosFavorite ? 'Remove from favorites' : 'Add to favorites'}</button>}
                 <button type="button" onClick={onShareSelection} className="flex min-h-11 items-center gap-2 rounded-md bg-[#e94560] px-3 text-xs font-medium text-white hover:bg-[#d13354]">
                     <Share2 className="h-4 w-4" /> Share selection…
                 </button>

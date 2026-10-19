@@ -9,6 +9,8 @@ export interface FotosShareCommitRequest<T> {
     fingerprint: string;
     previousPersonIds: readonly string[];
     nextPersonIds: readonly string[];
+    /** Original recipients before account/device grant expansion. */
+    requestedPersonIds?: readonly string[];
     intent?: 'assignment' | 'refresh';
     operation: (previousPersonIds: readonly string[]) => Promise<T>;
 }
@@ -16,6 +18,7 @@ export interface FotosShareCommitRequest<T> {
 interface DesiredScopeState {
     requestToken: symbol | null;
     personIds: readonly string[];
+    requestedPersonIds?: readonly string[];
 }
 
 function samePersonIds(left: readonly string[], right: readonly string[]): boolean {
@@ -34,6 +37,12 @@ export class FotosShareCommitCoordinator {
     private readonly queues = new Map<string, ScopeCommitQueue>();
     private readonly committedPersonIds = new Map<string, readonly string[]>();
     private readonly desiredScopes = new Map<string, DesiredScopeState>();
+    private readonly committedRequestedPersonIds = new Map<string, readonly string[]>();
+
+    getRequestedPersonIds(scopeKey: string): readonly string[] | undefined {
+        const ids = this.desiredScopes.get(scopeKey)?.requestedPersonIds;
+        return ids ? [...ids] : undefined;
+    }
 
     commit<T>(request: FotosShareCommitRequest<T>): Promise<T | null> {
         const isRefresh = request.intent === 'refresh';
@@ -50,12 +59,14 @@ export class FotosShareCommitCoordinator {
                 this.desiredScopes.set(request.scopeKey, {
                     requestToken: null,
                     personIds: [...request.nextPersonIds],
+                    requestedPersonIds: [...(request.requestedPersonIds ?? request.nextPersonIds)],
                 });
             }
         } else {
             this.desiredScopes.set(request.scopeKey, {
                 requestToken,
                 personIds: [...request.nextPersonIds],
+                requestedPersonIds: [...(request.requestedPersonIds ?? request.nextPersonIds)],
             });
         }
 
@@ -86,6 +97,7 @@ export class FotosShareCommitCoordinator {
                 ?? request.previousPersonIds;
             const result = await request.operation(previousPersonIds);
             this.committedPersonIds.set(request.scopeKey, [...request.nextPersonIds]);
+            this.committedRequestedPersonIds.set(request.scopeKey, [...(request.requestedPersonIds ?? request.nextPersonIds)]);
             return result;
         });
         queue.lastFingerprint = request.fingerprint;
@@ -114,6 +126,7 @@ export class FotosShareCommitCoordinator {
                         ...(this.committedPersonIds.get(request.scopeKey)
                             ?? request.previousPersonIds),
                     ],
+                    requestedPersonIds: this.committedRequestedPersonIds.get(request.scopeKey),
                 });
             }
             throw error;

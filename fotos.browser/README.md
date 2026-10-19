@@ -32,7 +32,60 @@ The web clients and shared Fotos packages are members of the `../one` workspace.
 Use its lockfile and package-manager version for installation. Expo keeps its
 separate vendored install, sourcing ONE-owned packages from `../one/packages`.
 
+## Glass home and existing controls
+
+The home screen uses a personal photo background with Gallery above Albums and
+Favorites, plus Upload Photos and Profile at the bottom. Each destination also
+has direct navigation to the other sections and a back-to-home control.
+
+- Gallery keeps the existing timeline, search, tags, People, sorting, selection,
+  collections, sharing, folder management, and photo viewer. Viewer controls for
+  zoom, rotation, flipping, details, faces, and deletion remain available.
+- Albums manages the existing collections: create, rename, open, share, delete,
+  and undo deletion. Add photos or people through the gallery's selection bar.
+- Favorites uses the same gallery and viewer. Save a photo with its viewer heart
+  or save a selection with Add to favorites. Hearts are persisted in the existing
+  Fotos library settings; favorites from the earlier home screen are migrated.
+- Profile opens the existing identity, storage, Image AI, saved places, and device
+  settings even before a library is selected. The gallery's settings and sharing
+  side panels remain available.
+- Upload Photos imports into the current writable folder or Fotos' local browser
+  storage. Open photo folder retains the existing folder workflow. Pending share
+  target imports, processing status, and import failures are visible in the shell.
+- Export uses native file sharing where available, or downloads the originals.
+
+Destination and album links support refresh and browser Back/Forward. Existing
+photo, settings, sharing, and device invitation links are still recognized.
+
+Run the original and glass UI regressions from `browser-ui` with the dev server
+running:
+
+```bash
+pnpm test
+pnpm typecheck
+pnpm test:integration:fotos-ui
+pnpm test:integration:fotos-glass
+```
+
+The browser suites use the declared Playwright dependency. To run with installed
+Edge on Windows, set `$env:FOTOS_BROWSER_CHANNEL='msedge'` in PowerShell first.
+Screenshots and test reports are saved under `tests/integration/reports/`.
+
 ## Deploy
+
+The `konrad` branch has its own deployment at `https://fotos.one/konrad/`.
+It uses the `fotos-konrad` Worker and a route limited to `/konrad*`; the existing
+Pages deployment at the site root is managed separately.
+
+From `fotos.browser`, sign in with `npx --yes wrangler@4.151.2 login`, then run:
+
+```bash
+node deploy-konrad.mjs
+```
+
+`build-konrad.mjs` prepares `_deploy-konrad/` with the `/konrad/` asset and service
+worker scope. Oversized WASM files are stored compressed and served at their
+original URLs by the Worker. `node --test konrad-worker.test.mjs` checks routing.
 
 ```bash
 cd /Users/gecko/src/fotos/fotos.browser

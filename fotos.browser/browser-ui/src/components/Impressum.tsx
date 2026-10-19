@@ -1,3 +1,4 @@
+import {appPath} from '@/lib/appBase';
 import { useEffect, useRef, useState } from 'react';
 
 export function Impressum() {
@@ -42,7 +43,7 @@ export function Impressum() {
                 <span className="inline-flex items-center gap-1.5">
                     powered by{' '}
                     <a href="https://refinio.net" target="_blank" rel="noopener" className="flex min-h-11 items-center rounded-md px-2 hover:bg-white/5 hover:text-white/60 transition-colors">
-                        <img src="/refinio-logo.svg" alt="REFINIO" className="h-3.5 opacity-50 hover:opacity-80 transition-opacity inline" />
+                        <img src={appPath('refinio-logo.svg')} alt="REFINIO" className="h-3.5 opacity-50 hover:opacity-80 transition-opacity inline" />
                     </a>
                 </span>
                 <button ref={triggerRef} onClick={() => setOpen(true)} className="min-h-11 rounded-md px-2 hover:bg-white/5 hover:text-white/60 transition-colors">

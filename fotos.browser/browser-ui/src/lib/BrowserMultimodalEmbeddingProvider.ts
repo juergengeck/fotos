@@ -1,9 +1,10 @@
+import {appPath} from './appBase';
 type ModelStatus = 'unloaded' | 'downloading' | 'loading' | 'ready' | 'error';
 type MultimodalEmbeddingModel = 'clip-vit-base-patch32';
 
 const ORT_WASM_PATHS = {
-    mjs: '/ort/ort-wasm-simd-threaded.mjs',
-    wasm: '/ort/ort-wasm-simd-threaded.wasm',
+    mjs: appPath('ort/ort-wasm-simd-threaded.mjs'),
+    wasm: appPath('ort/ort-wasm-simd-threaded.wasm'),
 } as const;
 
 function l2Normalize(values: ArrayLike<number>): number[] {

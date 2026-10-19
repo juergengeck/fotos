@@ -32,6 +32,33 @@ function commit<T>(params: {
 }
 
 describe('FotosShareCommitCoordinator', () => {
+    it('keeps original recipients separate from expanded grants for concurrent invitations', async () => {
+        const coordinator = new FotosShareCommitCoordinator();
+        const pending = deferred<void>();
+        const first = coordinator.commit({
+            scopeKey: 'gallery:main', fingerprint: 'a', previousPersonIds: [],
+            nextPersonIds: ['device-a', 'account-a'], requestedPersonIds: ['account-a'],
+            operation: async () => {await pending.promise; return 'a';},
+        });
+        expect(coordinator.getRequestedPersonIds('gallery:main')).toEqual(['account-a']);
+        const next = [...coordinator.getRequestedPersonIds('gallery:main')!, 'account-b'];
+        const second = coordinator.commit({
+            scopeKey: 'gallery:main', fingerprint: 'ab', previousPersonIds: [],
+            nextPersonIds: ['device-a', 'account-a', 'account-b'], requestedPersonIds: next,
+            operation: async () => 'ab',
+        });
+        expect(coordinator.getRequestedPersonIds('gallery:main')).toEqual(['account-a', 'account-b']);
+        pending.resolve();
+        await Promise.all([first, second]);
+        expect(coordinator.getRequestedPersonIds('gallery:main')).toEqual(['account-a', 'account-b']);
+    });
+
+    it('restores committed original recipients after a failed assignment', async () => {
+        const coordinator = new FotosShareCommitCoordinator();
+        await coordinator.commit({scopeKey: 'gallery:main', fingerprint: 'a', previousPersonIds: [], nextPersonIds: ['device-a'], requestedPersonIds: ['account-a'], operation: async () => 'a'});
+        await expect(coordinator.commit({scopeKey: 'gallery:main', fingerprint: 'b', previousPersonIds: ['device-a'], nextPersonIds: ['device-b'], requestedPersonIds: ['account-b'], operation: async () => {throw new Error('offline');}})).rejects.toThrow('offline');
+        expect(coordinator.getRequestedPersonIds('gallery:main')).toEqual(['account-a']);
+    });
     it('runs one commit for concurrent requests with the same scope fingerprint', async () => {
         const coordinator = new FotosShareCommitCoordinator();
         const pending = deferred<string>();

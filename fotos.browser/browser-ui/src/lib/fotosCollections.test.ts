@@ -8,6 +8,7 @@ import {
     buildFotosCollectionSummary,
     collectionMatchesPhoto,
     deserializeFotosLibraryState,
+    serializeFotosLibraryState,
     replaceFotosCollectionSelection,
 } from './fotosCollections';
 
@@ -69,6 +70,18 @@ describe('deserializeFotosLibraryState', () => {
                 certificatePersonIds: ['person-a', 'person-b', 'person-c', 'person-d'],
             },
         });
+    });
+});
+
+describe('favorite library state', () => {
+    it('preserves favorites through serialization and removes invalid duplicates', () => {
+        const state = deserializeFotosLibraryState({favoriteHashes: ['photo-1', 'photo-1', ' photo-2 ', 3, '']});
+        expect(state.favoriteHashes).toEqual(['photo-1', 'photo-2']);
+        expect(deserializeFotosLibraryState(serializeFotosLibraryState(state)).favoriteHashes).toEqual(['photo-1', 'photo-2']);
+    });
+    it('distinguishes an explicit empty favorites list from older library state', () => {
+        expect(deserializeFotosLibraryState({}).favoriteHashes).toBeUndefined();
+        expect(deserializeFotosLibraryState({favoriteHashes: []}).favoriteHashes).toEqual([]);
     });
 });
 

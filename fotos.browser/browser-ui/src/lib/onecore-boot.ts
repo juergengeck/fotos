@@ -1,4 +1,5 @@
 import { registerDeviceSettings } from '@refinio/settings.devices';
+import {APP_BASE} from './appBase';
 import { createLocalDevicesPlan, type DevicesPlan } from '@refinio/device.core';
 /**
  * ONE.core boot module for fotos.browser.
@@ -267,7 +268,7 @@ async function initModules(
   if (syncEnabled && publicationIdentity) {
     const nextConnectionModule = new ConnectionModule(
       commServerUrl,
-      window.location.origin,
+      window.location.origin + APP_BASE.replace(/\/$/, ''),
       undefined,
       API_BASE,
     );

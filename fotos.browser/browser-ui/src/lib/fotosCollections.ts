@@ -27,6 +27,7 @@ export interface FotosLibraryState {
     version: 1;
     collections: FotosCollectionDefinition[];
     sharing: FotosShareAssignments;
+    favoriteHashes?: string[];
 }
 
 export interface FotosCollectionSummary extends FotosCollectionDefinition {
@@ -187,6 +188,9 @@ export function normalizeFotosLibraryState(value: unknown): FotosLibraryState {
             || left.id.localeCompare(right.id),
         ),
         sharing: normalizeShareAssignments(candidate.sharing),
+        ...(Array.isArray(candidate.favoriteHashes) ? {
+            favoriteHashes: uniqueStrings(candidate.favoriteHashes.filter((item): item is string => typeof item === 'string')),
+        } : {}),
     };
 }
 
@@ -228,6 +232,7 @@ export function saveFotosLibraryState(
 
 export function isFotosLibraryStateEmpty(state: FotosLibraryState): boolean {
     return state.collections.length === 0
+        && !state.favoriteHashes?.length
         && state.sharing.galleryPersonIds.length === 0
         && Object.keys(state.sharing.collectionPersonIds).length === 0
         && Object.keys(state.sharing.clusterPersonIds).length === 0

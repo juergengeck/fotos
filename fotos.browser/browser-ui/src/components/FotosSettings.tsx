@@ -1,3 +1,4 @@
+import {appPathname} from '@/lib/appBase';
 import { DevicesManager } from '@vger/vger.ui/components/device/DevicesManager';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Shield, ExternalLink, Check, KeyRound, GripVertical, X, Loader2, LogOut, Key } from 'lucide-react';
@@ -788,7 +789,7 @@ export function FotosSettings({
 
     return (
         <>
-        <CollapsibleSection label="Devices" defaultOpen={window.location.pathname.replace(/\/$/, '') === '/invites/inviteDevice'}>
+        <CollapsibleSection label="Devices" defaultOpen={appPathname(window.location.pathname).replace(/\/$/, '') === '/invites/inviteDevice'}>
             <DevicesManager devices={model?.devicesPlan} pairing={model?.connectionModule?.connectionPlan} />
         </CollapsibleSection>
         <CollapsibleSection label="fotos id">

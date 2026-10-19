@@ -1,4 +1,5 @@
 import {useEffect, useMemo, useState} from 'react';
+import {APP_BASE} from '@/lib/appBase';
 
 interface RunnerStep {
     id: string;
@@ -73,7 +74,7 @@ export function FotosTestRunnerPanel() {
             const response = await fetch('/__fotos-tests/run', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({profile, baseUrl: `${window.location.origin}/`}),
+                body: JSON.stringify({profile, baseUrl: `${window.location.origin}${APP_BASE}`}),
             });
             const value = await response.json();
             if (!response.ok) {

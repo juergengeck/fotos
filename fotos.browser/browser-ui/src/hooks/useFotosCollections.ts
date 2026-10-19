@@ -29,9 +29,18 @@ export function useFotosCollections(
     model: FotosModel | null,
     storageKey = FOTOS_LIBRARY_STATE_STORAGE_KEY,
 ) {
-    const [libraryState, setLibraryState] = useState<FotosLibraryState>(() =>
-        loadFotosLibraryState(globalThis.localStorage, storageKey),
-    );
+    const [libraryState, setLibraryState] = useState<FotosLibraryState>(() => {
+        const state = loadFotosLibraryState(globalThis.localStorage, storageKey);
+        // Preserve hearts saved by the first glass home screen.
+        if (state.favoriteHashes === undefined) {
+            try {
+                const legacy = JSON.parse(localStorage.getItem('fotos.favorite-hashes') ?? 'null');
+                if (Array.isArray(legacy)) state.favoriteHashes = legacy.filter((value): value is string => typeof value === 'string');
+            } catch { /* Ignore malformed legacy storage. */ }
+        }
+        saveFotosLibraryState(state, globalThis.localStorage, storageKey);
+        return state;
+    });
 
     useEffect(() => {
         if (!model?.settingsPlan) {
@@ -54,7 +63,7 @@ export function useFotosCollections(
                 const { values } = await model.settingsPlan.getSection({
                     moduleId: FOTOS_SETTINGS_MODULE_ID,
                 });
-                const remoteState = readLibraryStateFromSection(values);
+                let remoteState = readLibraryStateFromSection(values);
                 const localState = loadFotosLibraryState(globalThis.localStorage, storageKey);
 
                 if (isFotosLibraryStateEmpty(remoteState) && !isFotosLibraryStateEmpty(localState)) {
@@ -68,6 +77,13 @@ export function useFotosCollections(
                     return;
                 }
 
+                if (remoteState.favoriteHashes === undefined && localState.favoriteHashes !== undefined) {
+                    remoteState = {...remoteState, favoriteHashes: localState.favoriteHashes};
+                    await model.settingsPlan.updateSection({
+                        moduleId: FOTOS_SETTINGS_MODULE_ID,
+                        values: {[FOTOS_LIBRARY_STATE_FIELD]: serializeFotosLibraryState(remoteState)},
+                    });
+                }
                 applyState(remoteState);
             } catch (error) {
                 console.warn('[fotos.collections] Failed to load library state from SettingsPlan:', error);
@@ -259,8 +275,19 @@ export function useFotosCollections(
         }));
     }, [persist]);
 
+    const setFavorites = useCallback((hashes: readonly string[], saved: boolean) => {
+        persist(current => ({
+            ...current,
+            favoriteHashes: saved
+                ? [...(current.favoriteHashes ?? []), ...hashes]
+                : (current.favoriteHashes ?? []).filter(hash => !hashes.includes(hash)),
+        }));
+    }, [persist]);
+
     return {
         libraryState,
+        favoriteHashes: libraryState.favoriteHashes ?? [],
+        setFavorites,
         collections: libraryState.collections,
         sharing: libraryState.sharing,
         createCollection,

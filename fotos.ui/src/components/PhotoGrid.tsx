@@ -89,6 +89,11 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
     // Keyboard navigation
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
+            if (e.defaultPrevented || !gridRef.current?.getClientRects().length) return;
+            // The gallery stays mounted behind the home, albums and viewer.
+            // Its shortcuts must not steal focus or actions from an open dialog.
+            if (Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"][aria-modal="true"]')).some(dialog => dialog.getClientRects().length > 0)) return;
+            if (e.target instanceof HTMLElement && e.target.closest('button, a, select, [contenteditable="true"]') && !gridRef.current.contains(e.target)) return;
             if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
             const total = photos.length;
             if (total === 0) return;

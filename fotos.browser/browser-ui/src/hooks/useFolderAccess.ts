@@ -1,3 +1,4 @@
+import {appPath, SHARE_TARGET_CACHE} from '@/lib/appBase';
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { fromByteArray as toBase64, toByteArray as fromBase64 } from 'base64-js';
 import type { PhotoEntry, ExifData, FaceInfo, SemanticInfo } from '@/types/fotos';
@@ -1196,6 +1197,9 @@ export interface FolderAccess {
     ingestProgress: IngestProgress | null;
     /** Shared files waiting for a destination choice */
     pendingImportCount: number;
+    importError?: string | null;
+    importStatus?: string | null;
+    dismissImportError?: () => void;
     /** Whether running in mobile/PWA lightweight mode */
     mobile: boolean;
     /** Whether this source can locally claim authorship when ingesting. */
@@ -1590,15 +1594,15 @@ async function loadSharedFiles(): Promise<File[] | null> {
     }
 
     try {
-        const cache = await caches.open('fotos-share');
-        const countResp = await cache.match('/_shared/count');
+        const cache = await caches.open(SHARE_TARGET_CACHE);
+        const countResp = await cache.match(appPath('_shared/count'));
         if (!countResp) return null;
         const count = parseInt(await countResp.text(), 10);
         if (!count || count <= 0) return null;
 
         const files: File[] = [];
         for (let i = 0; i < count; i++) {
-            const resp = await cache.match(`/_shared/${i}`);
+            const resp = await cache.match(appPath(`_shared/${i}`));
             if (!resp) continue;
             const blob = await resp.blob();
             const name = resp.headers.get('X-Filename') || `shared-${i}.jpg`;
@@ -1616,7 +1620,7 @@ async function clearSharedFiles(): Promise<void> {
     }
 
     try {
-        await caches.delete('fotos-share');
+        await caches.delete(SHARE_TARGET_CACHE);
     } catch {
         // Ignore cache cleanup failures so imports still complete.
     }
@@ -1684,6 +1688,9 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     const [loading, setLoading] = useState(false);
     const [ingestProgress, setIngestProgress] = useState<IngestProgress | null>(null);
     const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
+    const [importError, setImportError] = useState<string | null>(null);
+    const [importStatus, setImportStatus] = useState<string | null>(null);
+    const dismissImportError = useCallback(() => setImportError(null), []);
     const [claimAuthorshipOnIngest, setClaimAuthorshipOnIngest] = useState(true);
     const rootHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
     const foldersRef = useRef<ManagedFolderRecord[]>([]);
@@ -2793,16 +2800,22 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             return;
         }
 
+        setImportError(null);
+        setImportStatus(`Saving ${files.length} selected file${files.length === 1 ? '' : 's'} on this device…`);
         try {
             const imported = await importFilesIntoLibrary(files, 'local-picker', {
                 requestPermission: false,
                 allowPicker: false,
+                useAppLocalFolder: true,
             });
             if (!imported) {
-                console.warn('[openFolder] No writable local destination was available for imported photos.');
+                setImportError('Photos could not be saved on this device. Open a writable photo folder, then try again.');
             }
         } catch (err) {
             console.warn('[openFolder] Failed to import mobile photos:', err);
+            setImportError(`Could not import photos: ${err instanceof Error ? err.message : String(err)}`);
+        } finally {
+            setImportStatus(null);
         }
     }, [importFilesIntoLibrary]);
 
@@ -2810,6 +2823,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     // input.click() when the handler is async, causing the photo picker to
     // silently refuse to open (requiring multiple taps).
     const openFallbackInput = useCallback((options: { directory: boolean }) => {
+        setImportError(null);
         // Reuse a persistent hidden file input so Safari treats it as a
         // trusted element.  Creating a fresh <input> on every tap is unreliable
         // in iOS Safari standalone/PWA mode.
@@ -2844,8 +2858,13 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         input.onchange = () => {
             void handleFallbackFiles(input);
         };
-        input.click();
-        return true;
+        try {
+            input.click();
+            return true;
+        } catch (error) {
+            setImportError(`Could not open photo selection: ${error instanceof Error ? error.message : String(error)}`);
+            return false;
+        }
     }, [handleFallbackFiles]);
 
     const openLocalFiles = useCallback(() => openFallbackInput({ directory: false }), [openFallbackInput]);
@@ -2902,11 +2921,12 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     }, [mobile, openFromHandle, resolveImportDestination]);
 
     const openFolder = useCallback(() => {
+        setImportError(null);
         if (pendingImport?.files.length) {
             void importFilesIntoLibrary(pendingImport.files, pendingImport.source, {
                 requestPermission: true,
                 allowPicker: true,
-            });
+            }).catch(error => setImportError(`Could not save shared photos: ${error instanceof Error ? error.message : String(error)}`));
             return;
         }
 
@@ -2925,8 +2945,10 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                         label: preference.label ?? handle.name,
                         preference,
                     });
-                } catch {
-                    // User cancelled the directory picker.
+                } catch (error) {
+                    if (!(error instanceof DOMException && error.name === 'AbortError')) {
+                        setImportError(`Could not open photo folder: ${error instanceof Error ? error.message : String(error)}`);
+                    }
                 }
             })();
             return;
@@ -3943,6 +3965,9 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         loading,
         ingestProgress,
         pendingImportCount: pendingImport?.files.length ?? 0,
+        importError,
+        importStatus,
+        dismissImportError,
         mobile,
         canClaimAuthorshipOnIngest: true,
         claimAuthorshipOnIngest,

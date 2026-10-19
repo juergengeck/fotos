@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, RotateCcw, FlipHorizontal, FlipVertical, Trash2, Maximize, Minimize, X, Download, Info } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, RotateCcw, FlipHorizontal, FlipVertical, Trash2, Maximize, Minimize, X, Download, Info, Heart } from 'lucide-react';
 import type { PhotoEntry } from '@/types/fotos';
 import type { FaceClusterSummary } from '@/lib/cluster-gallery';
 import { EMBEDDING_DIM } from '@refinio/fotos.core';
@@ -18,6 +18,8 @@ interface LightboxProps {
     onClose: () => void;
     onDelete?: (hash: string) => void;
     onExport?: (photo: PhotoEntry) => Promise<void> | void;
+    isFavorite?: boolean;
+    onToggleFavorite?: (photo: PhotoEntry) => void;
     onFaceSearch?: (embedding: Float32Array) => void;
     onRenameFace?: (clusterId: string, name: string) => Promise<void> | void;
     onDeleteFace?: (clusterId: string) => void;
@@ -58,7 +60,7 @@ function clampPan(
     };
 }
 
-export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onExport, onFaceSearch, onRenameFace, onDeleteFace, people, onAssociateFace, getFileUrl, mobile }: LightboxProps) {
+export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onExport, onFaceSearch, onRenameFace, onDeleteFace, people, onAssociateFace, getFileUrl, mobile, isFavorite, onToggleFavorite }: LightboxProps) {
     const photo = photos[index];
     const mediaKind = getMediaPlaybackKind(photo.name, photo.mimeType);
     const [fullscreen, setFullscreen] = useState(false);
@@ -714,6 +716,11 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
         >
             <div className="flex-1 min-w-0 relative">
                 {viewport}
+                {onToggleFavorite && <button
+                    onClick={() => onToggleFavorite(photo)}
+                    className="absolute top-4 left-4 z-30 flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-black/70 text-white backdrop-blur-sm"
+                    aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'} aria-pressed={isFavorite}
+                ><Heart size={20} fill={isFavorite ? 'currentColor' : 'none'} /></button>}
                 <button
                     onClick={(event) => {
                         event.stopPropagation();
@@ -828,7 +835,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, onDelete, onEx
                                         className="flex items-center gap-2 text-xs text-emerald-300/70 hover:text-emerald-200 transition-colors"
                                     >
                                         <Download className="w-3.5 h-3.5" />
-                                        Export to Photos
+                                        {mobile ? 'Export to Photos' : 'Export photo'}
                                     </button>
                                 )}
                                 {onDelete && (

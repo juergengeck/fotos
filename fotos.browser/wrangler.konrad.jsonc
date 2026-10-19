@@ -1,0 +1,14 @@
+{
+  "name": "fotos-konrad",
+  "main": "konrad-worker.mjs",
+  "compatibility_date": "2026-10-19",
+  "workers_dev": false,
+  "routes": [{"pattern": "fotos.one/konrad*", "zone_name": "fotos.one"}],
+  "assets": {
+    "directory": "./_deploy-konrad",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "html_handling": "none",
+    "not_found_handling": "none"
+  }
+}

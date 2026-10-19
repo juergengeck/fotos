@@ -1,13 +1,11 @@
 #!/usr/bin/env node
 
-import {existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {dirname, resolve} from 'node:path';
-import {fileURLToPath, pathToFileURL} from 'node:url';
+import {fileURLToPath} from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const browserUiRoot = resolve(here, '../..');
-const repoRoot = resolve(browserUiRoot, '../..');
-const sharedVgerRoot = resolve(repoRoot, '../vger');
 const baseUrl = process.env.FOTOS_QA_URL || 'http://127.0.0.1:5188/';
 const artifactDir = process.env.FOTOS_QA_ARTIFACT_DIR || resolve(here, 'reports/ui-latest');
 const fixturePaths = [
@@ -41,23 +39,8 @@ async function runStep(id, title, run) {
   }
 }
 
-function resolvePnpmPlaywright() {
-  const pnpmRoot = resolve(sharedVgerRoot, 'node_modules/.pnpm');
-  if (!existsSync(pnpmRoot)) return null;
-  const match = readdirSync(pnpmRoot).find(name => name === 'playwright' || name.startsWith('playwright@'));
-  if (!match) return null;
-  const entry = resolve(pnpmRoot, match, 'node_modules/playwright/index.js');
-  return existsSync(entry) ? entry : null;
-}
-
 async function loadPlaywright() {
-  try {
-    return await import('playwright');
-  } catch {
-    const fallback = resolvePnpmPlaywright();
-    if (!fallback) throw new Error('Playwright is unavailable; install it in the shared vger workspace');
-    return await import(pathToFileURL(fallback).href);
-  }
+  return await import('playwright');
 }
 
 function mimeType(filePath) {
@@ -123,9 +106,9 @@ async function runDesktop(browser) {
   const names = fixturePaths.map((filePath, index) => `qa-desktop-${index + 1}${filePath.endsWith('.png') ? '.png' : '.jpg'}`);
   try {
     await runStep('cold-start', 'Cold start and intake affordances', async () => {
-      await page.goto(new URL('?fotosDebug=1&qa=desktop', baseUrl).toString(), {waitUntil: 'domcontentloaded'});
+      await page.goto(new URL('?view=gallery&fotosDebug=1&qa=desktop', baseUrl).toString(), {waitUntil: 'domcontentloaded'});
       await expectOne(page.getByRole('heading', {name: 'Your photos, on your device'}), 'landing heading');
-      await expectOne(page.getByRole('button', {name: 'Open Photo Folder'}), 'intake button');
+      await expectOne(page.locator('.glass-library-content').getByRole('button', {name: 'Open Photo Folder'}), 'intake button');
       await expectOne(page.getByRole('button', {name: 'Advanced: connect to server'}), 'headless connection affordance');
       await clickOne(page.getByRole('button', {name: 'Impressum'}), 'legal notice');
       await expectOne(page.getByRole('dialog'), 'legal notice dialog');
@@ -135,7 +118,7 @@ async function runDesktop(browser) {
 
     await runStep('intake', 'Seeded folder intake and product-state projection', async () => {
       const seededNames = await seedDirectoryPicker(page, 'desktop');
-      await clickOne(page.getByRole('button', {name: 'Open Photo Folder'}), 'open seeded photo folder');
+      await clickOne(page.locator('.glass-library-content').getByRole('button', {name: 'Open Photo Folder'}), 'open seeded photo folder');
       const gallery = await waitForGallery(page, seededNames.length);
       for (const name of seededNames) await expectOne(page.getByRole('button', {name: `Open ${name}`}), `photo ${name}`);
       return {folderName: gallery.folderName, totalCount: gallery.totalCount, names: seededNames};
@@ -263,7 +246,7 @@ async function runMobile(browser) {
   const page = await context.newPage();
   try {
     await runStep('mobile-sheet', 'Mobile intake and bottom-sheet navigation', async () => {
-      await page.goto(new URL('?fotosDebug=1&qa=mobile', baseUrl).toString(), {waitUntil: 'domcontentloaded'});
+      await page.goto(new URL('?view=gallery&fotosDebug=1&qa=mobile', baseUrl).toString(), {waitUntil: 'domcontentloaded'});
       const fileChooserPromise = page.waitForEvent('filechooser');
       await clickOne(page.getByRole('button', {name: /select photos/i}), 'mobile intake');
       const fileChooser = await fileChooserPromise;
@@ -289,7 +272,7 @@ async function main() {
   mkdirSync(artifactDir, {recursive: true});
   const playwrightModule = await loadPlaywright();
   const playwright = playwrightModule.default ?? playwrightModule;
-  const browser = await playwright.chromium.launch({headless: process.env.HEADLESS !== 'false'});
+  const browser = await playwright.chromium.launch({headless: process.env.HEADLESS !== 'false', ...(process.env.FOTOS_BROWSER_CHANNEL ? {channel: process.env.FOTOS_BROWSER_CHANNEL} : {})});
   const startedAt = new Date().toISOString();
   try {
     await runDesktop(browser);

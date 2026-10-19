@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
 import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
+import {APP_BASE, appPath, SHARE_TARGET_CACHE} from './lib/appBase';
 
 declare const self: ServiceWorkerGlobalScope;
 
@@ -15,7 +16,7 @@ self.addEventListener('activate', (event: ExtendableEvent) => {
 // ── Share Target: intercept POST to /_share ──────────────────────────
 self.addEventListener('fetch', (event: FetchEvent) => {
     const url = new URL(event.request.url);
-    if (url.pathname === '/_share' && event.request.method === 'POST') {
+    if (url.pathname === appPath('_share') && event.request.method === 'POST') {
         event.respondWith(handleShareTarget(event));
     }
 });
@@ -25,7 +26,7 @@ async function handleShareTarget(event: FetchEvent): Promise<Response> {
     const files = formData.getAll('photos') as File[];
 
     if (files.length > 0) {
-        const cache = await caches.open('fotos-share');
+        const cache = await caches.open(SHARE_TARGET_CACHE);
         // Clear previous share
         const existing = await cache.keys();
         await Promise.all(existing.map(k => cache.delete(k)));
@@ -39,12 +40,12 @@ async function handleShareTarget(event: FetchEvent): Promise<Response> {
                     'X-Size': String(file.size),
                 },
             });
-            await cache.put(`/_shared/${i}`, response);
+            await cache.put(appPath(`_shared/${i}`), response);
         }
-        await cache.put('/_shared/count', new Response(String(files.length)));
+        await cache.put(appPath('_shared/count'), new Response(String(files.length)));
     }
 
-    return Response.redirect('/?share=1', 303);
+    return Response.redirect(new URL(`${APP_BASE}?share=1`, self.location.origin).href, 303);
 }
 
 // Skip waiting when told by the app
