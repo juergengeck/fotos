@@ -17,6 +17,14 @@ const mockRecoverWithPrivateKeyViaPopup = vi.hoisted(() => vi.fn());
 const mockRegisterPasskeyViaPopup = vi.hoisted(() => vi.fn());
 const mockSignOwnershipProof = vi.hoisted(() => vi.fn());
 
+const mockGlueSignIn = vi.hoisted(() => vi.fn());
+
+vi.mock('@/lib/fotosGlueLogin', () => ({
+  getFotosGlueLogin: () => ({ signIn: mockGlueSignIn }),
+}));
+
+vi.mock('@vger/vger.ui/components/device/DevicesManager', () => ({ DevicesManager: () => null }));
+
 vi.mock('react', async () => {
   const actual = await vi.importActual<typeof import('react')>('react');
   return {
@@ -70,7 +78,7 @@ vi.mock('../config.js', () => ({
   API_BASE: 'https://api.fotos.one',
 }));
 
-import { FotosSettings } from './FotosSettings.tsx';
+import { FotosSettings, GlueAccountSignIn } from './FotosSettings.tsx';
 
 const REACT_FRAGMENT = Symbol.for('react.fragment');
 
@@ -201,6 +209,7 @@ describe('FotosSettings identity flows', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseCallback.mockImplementation((callback: unknown) => callback);
+    mockGlueSignIn.mockReset();
     mockQueueAuthenticationContinuation.mockReset();
     mockClearPendingAuthenticationContinuation.mockReset();
     mockHasPendingAuthenticationContinuation.mockReturnValue(false);
@@ -277,6 +286,43 @@ describe('FotosSettings identity flows', () => {
     } else {
       globalThis.window = originalWindow;
     }
+  });
+
+  it('opens the verified Glue account and reloads after explicit sign-in', async () => {
+    mockGlueSignIn.mockResolvedValue(undefined);
+    setupHookState({ stateValues: [false, null] });
+    const tree = renderNodes(GlueAccountSignIn({loginHint: '  Alice@glue.one  '}));
+    await findButtonByText(tree, 'glue.one').props.onClick();
+    expect(mockGlueSignIn).toHaveBeenCalledWith({ loginHint: 'Alice@glue.one', signal: expect.any(AbortSignal) });
+    expect(window.location.reload).toHaveBeenCalledTimes(1);
+  });
+  it('places the Glue action beside the login field', () => {
+    const {tree} = renderSettings([]);
+    const row = findHostNode(tree, node => node.type === 'div'
+      && node.children.some(child => child.type === 'input' && child.props.id === 'fotos-login')
+      && Boolean(findHostNode(node.children, child => child.type === 'button'
+        && child.props['aria-label'] === 'Sign in with glue.one')));
+    expect(row).toBeDefined();
+    expect(row?.props.className).toContain('flex');
+  });
+
+  it('shows a verification failure without reloading the current local account', async () => {
+    mockGlueSignIn.mockRejectedValue(new Error('Invalid Glue signature'));
+    setupHookState({ stateValues: [false, null] });
+    const tree = renderNodes(GlueAccountSignIn({}));
+    await findButtonByText(tree, 'glue.one').props.onClick();
+    expect(stateSetters[1]).toHaveBeenCalledWith('Invalid Glue signature');
+    expect(window.location.reload).not.toHaveBeenCalled();
+  });
+
+  it('cancels the pending Glue sign-in and keeps its running button disabled', async () => {
+    const controller = new AbortController();
+    setupHookState({ stateValues: [true, null], refValues: [{ current: controller }] });
+    const tree = renderNodes(GlueAccountSignIn({}));
+    expect(findHostNode(tree, node => node.type === 'button' && node.props['aria-label'] === 'Sign in with glue.one')?.props.disabled).toBe(true);
+    findButtonByText(tree, 'Cancel sign-in').props.onClick();
+    expect(controller.signal.aborted).toBe(true);
+    expect(window.location.reload).not.toHaveBeenCalled();
   });
 
   it('prepares the identity, queues continuation, and reloads before first authentication', async () => {

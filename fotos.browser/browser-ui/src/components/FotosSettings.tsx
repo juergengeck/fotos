@@ -15,6 +15,7 @@ import { resolveGlueCertificationState } from '@/lib/glueCertification';
 import { classifyGlueFailure, toGlueHandle, type AuthLoginWarning } from '@/lib/authLoginBridge';
 import { runFotosRecoveryFlow } from '@/lib/fotosIdRecovery';
 import { API_BASE } from '../config.js';
+import { getFotosGlueLogin } from '@/lib/fotosGlueLogin';
 
 import { ChevronDown } from 'lucide-react';
 
@@ -62,6 +63,40 @@ function isIdentityInputError(message: string): boolean {
         || message.startsWith('User ID')
         || message.startsWith('Current identity')
         || message.startsWith('Authentication is still preparing')
+    );
+}
+
+export function GlueAccountSignIn({ disabled = false, loginHint }: { disabled?: boolean; loginHint?: string }) {
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const request = useRef<AbortController | null>(null);
+    useEffect(() => () => request.current?.abort(), []);
+    const signIn = async () => {
+        if (request.current) return;
+        const controller = new AbortController();
+        request.current = controller;
+        setBusy(true);
+        setError(null);
+        try {
+            await getFotosGlueLogin().signIn({ loginHint: loginHint?.trim() || undefined, signal: controller.signal });
+            window.location.reload();
+        } catch (cause) {
+            setError(cause instanceof Error ? cause.message : 'Glue login failed');
+        } finally {
+            request.current = null;
+            setBusy(false);
+        }
+    };
+    return (
+        <div className="shrink-0 max-w-[10rem] space-y-2">
+            <button type="button" onClick={signIn} disabled={busy || disabled}
+                aria-label="Sign in with glue.one"
+                className="px-2.5 py-2 rounded-md bg-white/10 text-xs text-white/80 disabled:opacity-50">
+                {busy ? <Loader2 aria-label="Signing in with glue.one" className="w-3.5 h-3.5 animate-spin" /> : 'glue.one'}
+            </button>
+            {busy && <button type="button" onClick={() => request.current?.abort()} className="text-xs text-white/60">Cancel sign-in</button>}
+            {error && <p role="alert" className="text-xs text-red-300">{error}</p>}
+        </div>
     );
 }
 
@@ -793,28 +828,23 @@ export function FotosSettings({
         </CollapsibleSection>
         <CollapsibleSection label="fotos id">
             <div className="space-y-2">
+                <div className="space-y-1">
+                    <label htmlFor="fotos-login" className="block px-2.5 text-xs text-white/55 uppercase tracking-wider">
+                        Login
+                    </label>
+                    <div className="flex items-start gap-2">
+                        <input id="fotos-login" type="text" autoComplete="username" value={draftDisplayName}
+                            onChange={event => setDraftDisplayName(event.target.value)} placeholder="Your name on glue.one"
+                            disabled={authenticating || recoveringWithFotos || recoveringWithPrivateKey}
+                            className="min-w-0 flex-1 px-2.5 py-2 bg-white/5 border border-white/10 rounded-md text-xs text-white/70 placeholder:text-white/55 focus:outline-none focus:border-white/20" />
+                        <GlueAccountSignIn loginHint={draftDisplayName}
+                            disabled={authenticating || recoveringWithFotos || recoveringWithPrivateKey} />
+                    </div>
+                    {requestedIdentity && <div className="px-2.5 text-xs text-white/55">{requestedIdentity}</div>}
+                </div>
                 {/* ── Not authenticated yet ── */}
                 {!authenticated && (
                     <>
-                        <div className="space-y-1">
-                            <label className="block px-2.5 text-xs text-white/55 uppercase tracking-wider">
-                                User ID
-                            </label>
-                            <input
-                                type="text"
-                                value={draftDisplayName}
-                                onChange={event => setDraftDisplayName(event.target.value)}
-                                placeholder="Your name on glue.one"
-                                disabled={authenticating || recoveringWithFotos || recoveringWithPrivateKey}
-                                className="w-full px-2.5 py-2 bg-white/5 border border-white/10 rounded-md text-xs text-white/70 placeholder:text-white/55 focus:outline-none focus:border-white/20"
-                            />
-                            {requestedIdentity && (
-                                <div className="px-2.5 text-xs text-white/55">
-                                    {requestedIdentity}
-                                </div>
-                            )}
-                        </div>
-
                         <div className="px-2.5 py-2 bg-white/5 rounded-md text-xs text-white/55 leading-relaxed">
                             {authenticationDescription}
                         </div>

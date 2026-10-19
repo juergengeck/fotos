@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   ACCOUNTS_KEY,
@@ -9,6 +9,8 @@ import {
   SESSION_ACTIVE_ACCOUNT_KEY,
   SESSION_KEY,
   resolveFotosBootCreds,
+  resolveFotosBootAccount,
+  selectFotosGlueAccount,
 } from './fotosBootCreds';
 
 function createStorageMock(seed: Record<string, string> = {}): Storage {
@@ -170,4 +172,65 @@ describe('fotosBootCreds', () => {
     expect(selected.sessionScoped).toBe(true);
     expect(sessionStorage.getItem(SESSION_ACTIVE_ACCOUNT_KEY)).toBe(created.accountId);
   });
+  it('reopens the same Glue subject using only a sealed vault credential', async () => {
+    const local = resolveFotosBootCreds();
+    const subject = 'a'.repeat(64);
+    const vault = { read: async (issuer: string, identity: string) => `${issuer}:${identity}:sealed-secret` };
+    const id = selectFotosGlueAccount(subject);
+    const first = await resolveFotosBootAccount({ vault });
+    sessionStorage.clear();
+    const reopened = await resolveFotosBootAccount({ vault });
+    expect(reopened.creds).toEqual(first.creds);
+    expect(reopened.accountId).toBe(id);
+    expect(reopened.storageDirectory).toBe(`fotos.one.storage.${id}`);
+    expect(reopened.creds.email).toBe(`glue:${subject}`);
+    expect(reopened.storageDirectory).not.toBe(local.storageDirectory);
+    const index = JSON.parse(localStorage.getItem(ACCOUNTS_KEY)!);
+    expect(index.accounts.find((account: { id: string }) => account.id === id)).not.toHaveProperty('creds');
+    expect(localStorage.getItem(ACCOUNTS_KEY)).not.toContain('sealed-secret');
+    expect(localStorage.getItem(PERSISTENT_KEY)).toBe(JSON.stringify(local.creds));
+    expect((await resolveFotosBootAccount({ vault, accountSelector: local.accountId })).creds).toEqual(local.creds);
+  });
+
+  it('does not switch a selected local account when unlocking a Glue account fails', async () => {
+    const local = resolveFotosBootCreds();
+    const id = selectFotosGlueAccount('b'.repeat(64));
+    resolveFotosBootCreds({ accountSelector: local.accountId });
+    const before = localStorage.getItem(ACCOUNTS_KEY);
+    const vault = { read: async () => { throw new Error('Vault unavailable'); } };
+    await expect(resolveFotosBootAccount({ vault, accountSelector: id })).rejects.toThrow('Vault unavailable');
+    expect(sessionStorage.getItem(SESSION_ACTIVE_ACCOUNT_KEY)).toBe(local.accountId);
+    expect(localStorage.getItem(ACCOUNTS_KEY)).toBe(before);
+    expect(resolveFotosBootCreds().creds).toEqual(local.creds);
+  });
+
+  it('refuses to mint a replacement credential when reopening a saved Glue account', async () => {
+    const subject = 'e'.repeat(64);
+    selectFotosGlueAccount(subject);
+    const vault = {read: vi.fn().mockResolvedValue(undefined)};
+    await expect(resolveFotosBootAccount({vault})).rejects.toThrow('saved Glue account credential');
+    expect(vault.read).toHaveBeenCalledWith('https://glue.one', subject);
+  });
+
+  it('opens existing local accounts without touching the Glue vault', async () => {
+    const local = resolveFotosBootCreds();
+    const vault = { read: async () => { throw new Error('Must stay offline'); } };
+    expect((await resolveFotosBootAccount({ vault })).creds).toEqual(local.creds);
+  });
+
+  it('rolls back account selection if saving the active account fails', () => {
+    const local = resolveFotosBootCreds();
+    const before = localStorage.getItem(ACCOUNTS_KEY);
+    const setItem = localStorage.setItem.bind(localStorage);
+    const saved = vi.spyOn(localStorage, 'setItem').mockImplementation((key, value) => {
+      if (key === ACTIVE_ACCOUNT_KEY && value !== local.accountId) throw new Error('Storage full');
+      setItem(key, value);
+    });
+    expect(() => selectFotosGlueAccount('d'.repeat(64))).toThrow('Storage full');
+    expect(localStorage.getItem(ACCOUNTS_KEY)).toBe(before);
+    expect(localStorage.getItem(ACTIVE_ACCOUNT_KEY)).toBe(local.accountId);
+    expect(sessionStorage.getItem(SESSION_ACTIVE_ACCOUNT_KEY)).toBeNull();
+    saved.mockRestore();
+  });
+
 });

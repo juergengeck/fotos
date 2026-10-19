@@ -24,7 +24,8 @@ export interface FotosBootCredResolution {
 
 interface StoredFotosAccount {
   id: string;
-  creds: FotosBootCreds;
+  creds?: FotosBootCreds;
+  glueSubject?: string;
   storageDirectory?: string;
   createdAt: string;
   updatedAt: string;
@@ -108,20 +109,22 @@ function normalizeAccount(value: unknown): StoredFotosAccount | null {
   const candidate = value as Partial<StoredFotosAccount>;
   const id = typeof candidate.id === 'string' ? candidate.id.trim() : '';
   const creds = normalizeCreds(candidate.creds);
+  const glueSubject = typeof candidate.glueSubject === 'string'
+    && /^[a-fA-F0-9]{64}$/.test(candidate.glueSubject) ? candidate.glueSubject : undefined;
   const createdAt = typeof candidate.createdAt === 'string' ? candidate.createdAt : new Date().toISOString();
   const updatedAt = typeof candidate.updatedAt === 'string' ? candidate.updatedAt : createdAt;
   const storageDirectory = typeof candidate.storageDirectory === 'string'
     ? candidate.storageDirectory.trim()
     : '';
 
-  if (!id || !creds) {
+  if (!id || (!creds && !glueSubject) || (glueSubject && id !== `glue-${glueSubject}`)) {
     return null;
   }
 
   return {
     id,
-    creds,
-    storageDirectory: storageDirectory || storageDirectoryForAccount(id),
+    ...(glueSubject ? { glueSubject } : { creds: creds! }),
+    storageDirectory: glueSubject ? storageDirectoryForAccount(id) : storageDirectory || storageDirectoryForAccount(id),
     createdAt,
     updatedAt,
   };
@@ -205,7 +208,7 @@ function persistCreds(creds: FotosBootCreds): boolean {
   }
 }
 
-function createStoredAccount(accountId = createAccountId()): StoredFotosAccount {
+function createStoredAccount(accountId = createAccountId()): StoredFotosAccount & { creds: FotosBootCreds } {
   const now = new Date().toISOString();
   return {
     id: accountId,
@@ -270,9 +273,10 @@ export function resolveFotosBootCreds(options: {
     if (!requested) {
       throw new Error(`Unknown fotos account selector: ${requestedAccount}`);
     }
+    const creds = requireLocalCreds(requested);
     setSessionActiveAccountId(requested.id);
     return {
-      creds: requested.creds,
+      creds,
       accountId: requested.id,
       persistent: true,
       sessionScoped: true,
@@ -286,7 +290,7 @@ export function resolveFotosBootCreds(options: {
     const sessionAccount = findAccount(sessionAccountId);
     if (sessionAccount) {
       return {
-        creds: sessionAccount.creds,
+        creds: requireLocalCreds(sessionAccount),
         accountId: sessionAccount.id,
         persistent: true,
         sessionScoped: true,
@@ -301,7 +305,7 @@ export function resolveFotosBootCreds(options: {
     const activeAccount = findAccount(activeAccountId);
     if (activeAccount) {
       return {
-        creds: activeAccount.creds,
+        creds: requireLocalCreds(activeAccount),
         accountId: activeAccount.id,
         persistent: true,
         sessionScoped: false,
@@ -315,7 +319,7 @@ export function resolveFotosBootCreds(options: {
   if (indexedLegacy) {
     setPersistedActiveAccountId(indexedLegacy.id);
     return {
-      creds: indexedLegacy.creds,
+      creds: requireLocalCreds(indexedLegacy),
       accountId: indexedLegacy.id,
       persistent: true,
       sessionScoped: false,
@@ -373,4 +377,68 @@ export function resolveFotosBootCreds(options: {
     source: 'visitor-created',
     storageDirectory: DEFAULT_STORAGE_DIRECTORY,
   };
+}
+
+function requireLocalCreds(account: StoredFotosAccount): FotosBootCreds {
+  if (account.glueSubject || !account.creds) {
+    throw new Error('Glue accounts must be opened with the browser credential vault');
+  }
+  return account.creds;
+}
+
+/** Public metadata only. The credential remains sealed in auth.core's IndexedDB vault. */
+export function selectFotosGlueAccount(subject: string): string {
+  if (!/^[a-fA-F0-9]{64}$/.test(subject)) throw new Error('Invalid Glue account subject');
+  const id = `glue-${subject}`;
+  const previous = findAccount(id);
+  if (previous && previous.glueSubject !== subject) throw new Error('Glue account conflicts with an existing local account');
+  const now = new Date().toISOString();
+  const account: StoredFotosAccount = {
+    id, glueSubject: subject, storageDirectory: storageDirectoryForAccount(id),
+    createdAt: previous?.createdAt ?? now, updatedAt: now,
+  };
+  // Keep selection atomic from the caller's point of view if Web Storage fails.
+  const oldIndex = localStorage.getItem(ACCOUNTS_KEY);
+  const oldActive = localStorage.getItem(ACTIVE_ACCOUNT_KEY);
+  const oldSession = sessionStorage.getItem(SESSION_ACTIVE_ACCOUNT_KEY);
+  try {
+    if (!upsertAccount(account)) throw new Error('Unable to save Glue account');
+    localStorage.setItem(ACTIVE_ACCOUNT_KEY, id);
+    sessionStorage.setItem(SESSION_ACTIVE_ACCOUNT_KEY, id);
+  } catch (error) {
+    for (const [storage, key, value] of [
+      [localStorage, ACCOUNTS_KEY, oldIndex],
+      [localStorage, ACTIVE_ACCOUNT_KEY, oldActive],
+      [sessionStorage, SESSION_ACTIVE_ACCOUNT_KEY, oldSession],
+    ] as const) {
+      try { if (value === null) storage.removeItem(key); else storage.setItem(key, value); } catch {}
+    }
+    throw error;
+  }
+  return id;
+}
+
+/** Local startup never contacts Glue; existing Glue accounts only unlock their local vault. */
+export async function resolveFotosBootAccount(options: {
+  accountSelector?: string | null;
+  vault: { read(issuer: string, subject: string): Promise<string | undefined> };
+}): Promise<FotosBootCredResolution> {
+  const requested = options.accountSelector?.trim();
+  const sessionAccountId = getSessionActiveAccountId();
+  const persistedAccountId = getPersistedActiveAccountId();
+  const account = requested ? findAccount(requested)
+    : (sessionAccountId ? findAccount(sessionAccountId) : null)
+      ?? (persistedAccountId ? findAccount(persistedAccountId) : null);
+  if (account?.glueSubject) {
+    const secret = await options.vault.read('https://glue.one', account.glueSubject);
+    if (!secret) throw new Error('The saved Glue account credential is unavailable on this device');
+    if (requested) setSessionActiveAccountId(account.id);
+    return {
+      creds: { email: `glue:${account.glueSubject}`, secret, instanceName: 'fotos-glue' },
+      accountId: account.id, persistent: true,
+      sessionScoped: Boolean(requested || (sessionAccountId === account.id)), source: 'persistent',
+      storageDirectory: storageDirectoryForAccount(account.id),
+    };
+  }
+  return resolveFotosBootCreds({ accountSelector: options.accountSelector });
 }

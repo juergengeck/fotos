@@ -52,7 +52,7 @@ import { registerFotosHistorySettings } from './fotosHistorySettings.js';
 import { registerFotosSettings } from './fotosSettings.js';
 import { fotosContentRules } from './fotosSyncRules.js';
 import { API_BASE, COMM_SERVER_URL } from '../config.js';
-import { resolveFotosBootCreds } from './fotosBootCreds.js';
+import { getFotosGlueLogin } from './fotosGlueLogin.js';
 import { resolveGluePublicationIdentity } from './glueIdentityState.js';
 import {
   FotosOneCoreRecipes,
@@ -389,25 +389,7 @@ export async function bootFotosModel(
     throw new Error('[fotos.one] bootFotosModel called but ONE.core is already initialized');
   }
 
-  // Check for ONE Auth redirect return
-  let accountSelector: string | null = null;
-  try {
-    const params = new URLSearchParams(window.location.search);
-    accountSelector = params.get('fotosAccount');
-    const oneToken = params.get('one_token');
-    if (oneToken || accountSelector) {
-      // Clean URL immediately
-      const cleanUrl = new URL(window.location.href);
-      cleanUrl.searchParams.delete('one_token');
-      cleanUrl.searchParams.delete('fotosAccount');
-      window.history.replaceState({}, '', cleanUrl.toString());
-    }
-    if (oneToken) {
-      // Store for later use
-      sessionStorage.setItem('one_auth_token', oneToken);
-    }
-  } catch {}
-
+  onStatus?.('opening account');
   const {
     creds: { email, secret, instanceName },
     accountId,
@@ -415,7 +397,7 @@ export async function bootFotosModel(
     persistent: credentialsPersisted,
     sessionScoped,
     storageDirectory,
-  } = resolveFotosBootCreds({ accountSelector });
+  } = await getFotosGlueLogin().resolveBoot();
 
   const one = new MultiUser({
     directory: storageDirectory,
