@@ -576,7 +576,10 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 // initial trust cache was built. Refresh at this feed-forward
                 // checkpoint before verifying certificate signatures.
                 await fotosModel.leuteModel.trust.refreshCaches();
-                const verifySignature = createFotosShareSignatureVerifier(fotosModel.leuteModel.trust);
+                const verifySignature = createFotosShareSignatureVerifier(
+                    fotosModel.leuteModel.trust,
+                    fotosModel.glueModule,
+                );
                 const projected = (await Promise.all(Array.from(ownKnownPersonIds).map(subject => (
                     projectReceivedFotosShares(subject, verifySignature)
                 )))).flat();
