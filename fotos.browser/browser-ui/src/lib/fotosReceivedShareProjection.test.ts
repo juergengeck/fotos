@@ -1,4 +1,5 @@
-import {describe, expect, it, vi} from 'vitest';
+import {afterEach, describe, expect, it, vi} from 'vitest';
+import {createFotosShareSignatureVerifier} from './fotosShareSignature.js';
 import {
     createActiveFotosShareCertificate,
     createFotosShareCertificateChain,
@@ -60,6 +61,7 @@ function depsFor(options?: {badSignature?: boolean; missingManifest?: boolean}):
 }
 
 describe('projectReceivedFotosShares', () => {
+    afterEach(() => vi.unstubAllGlobals());
     it('keeps the causally newer revocation when an older active version arrives later', async () => {
         const projection = await projectReceivedFotosShares(
             subject,
@@ -101,6 +103,63 @@ describe('projectReceivedFotosShares', () => {
         expect(reopened[0]?.entries).toEqual(before[0]?.entries);
         expect(reopened[0]?.entries).toHaveLength(2);
     });
+
+    it.each(['disabled', 'pending'] as const)(
+        'reprojects stored accepted shares using native local trust with networking %s',
+        async network => {
+            const deps = depsFor();
+            deps.listLatestCertificateChains = vi.fn(async () => [
+                {hash: 'active-chain-hash', idHash: 'stable-chain-id', timestamp: 1},
+            ]);
+            // Native trust admission is the dependency boundary here. PIN
+            // acceptance persists its Profile/TrustKeysCertificate upstream;
+            // projection reads the already stored chain, signature and entries.
+            const trust = {
+                verifySignatureWithTrustedKeys: vi.fn(async (signature: {issuer: string; valid?: boolean}) => (
+                    signature.issuer === issuer && signature.valid === true
+                )),
+            };
+            const verify = createFotosShareSignatureVerifier(trust);
+            const before = await projectReceivedFotosShares(subject, verify, deps);
+            const fetch = vi.fn(() => network === 'disabled'
+                ? Promise.reject(new Error('network disabled'))
+                : new Promise<Response>(() => {}));
+            vi.stubGlobal('fetch', fetch);
+
+            const reopened = await projectReceivedFotosShares(subject, verify, deps);
+
+            expect(reopened).toEqual(before);
+            expect(reopened[0]).toMatchObject({status: 'active', verified: true, photoCount: 2});
+            expect(reopened[0]?.entries.map(entry => entry.contentHash))
+                .toEqual(['content-entry-a', 'content-entry-b']);
+            expect(trust.verifySignatureWithTrustedKeys).toHaveBeenCalledTimes(2);
+            expect(fetch).not.toHaveBeenCalled();
+        },
+        1_000,
+    );
+
+    it.each(['untrusted', 'unavailable'] as const)(
+        'keeps a locally %s signer visibly invalid without fetching registrar approval',
+        async state => {
+            const deps = depsFor();
+            const fetch = vi.fn(() => new Promise<Response>(() => {}));
+            vi.stubGlobal('fetch', fetch);
+            const verifySignatureWithTrustedKeys = vi.fn(async () => {
+                if (state === 'unavailable') throw new Error('No local signer trust evidence');
+                return false;
+            });
+
+            const projection = await projectReceivedFotosShares(subject,
+                createFotosShareSignatureVerifier({verifySignatureWithTrustedKeys}), deps);
+
+            expect(projection[0]).toMatchObject({status: 'invalid', verified: false, entries: []});
+            expect(projection[0]?.invalidReason).toContain('signature');
+            expect(deps.getManifest).not.toHaveBeenCalled();
+            expect(deps.getEntry).not.toHaveBeenCalled();
+            expect(fetch).not.toHaveBeenCalled();
+        },
+        1_000,
+    );
 
     it('never loads photo content through an unverified certificate', async () => {
         const deps = depsFor();
