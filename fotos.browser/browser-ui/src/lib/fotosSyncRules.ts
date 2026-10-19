@@ -4,6 +4,7 @@ import {
     buildFotosShareCertificateId,
     buildFotosShareCertificateChainId,
     buildFotosShareManifestId,
+    buildFotosSharePinProofId,
 } from '@refinio/fotos.core';
 
 type SyncRule = typeof contentRules extends Map<string, infer Value> ? Value : never;
@@ -306,6 +307,22 @@ export function canImportFotosShareCertificateChain(context: SyncContextLike, ob
     );
 }
 
+export function canImportFotosSharePinProof(context: SyncContextLike, obj?: object): boolean {
+    if (!allowsExplicitFotosShare(context) || !obj) return false;
+    const proof = obj as ImportedObject;
+    if (isIdOnlyObject(proof, new Set(['$type$', 'id']), 'id', MAX_PATH_LENGTH)) {
+        return String(proof.id).startsWith('fotos-share-pin-proof:v1:');
+    }
+    return proof.$version$ === 'v1'
+        && isStringWithinBounds(proof.token, MAX_REFERENCE_LENGTH)
+        && isStringWithinBounds(proof.sender, MAX_REFERENCE_LENGTH)
+        && isStringWithinBounds(proof.prover, MAX_REFERENCE_LENGTH)
+        && typeof proof.pin === 'string'
+        && /^\d{4}$/.test(proof.pin)
+        && isStringWithinBounds(proof.createdAt, MAX_TIMESTAMP_LENGTH)
+        && proof.id === buildFotosSharePinProofId(proof.token, proof.prover);
+}
+
 export function canImportFotosMediaVariant(context: SyncContextLike, obj?: object): boolean {
     if (!allowsExplicitFotosShare(context) || !obj) {
         return false;
@@ -419,6 +436,7 @@ const fotosShareCertificateChainRule = fotosImportRule(
     'FotosShareCertificateChain',
     canImportFotosShareCertificateChain,
 );
+const fotosSharePinProofRule = fotosImportRule('FotosSharePinProof', canImportFotosSharePinProof);
 const fotosMediaVariantRule = fotosImportRule('FotosMediaVariant', canImportFotosMediaVariant);
 const fotosAuthenticityAttestationRule = fotosImportRule(
     'FotosAuthenticityAttestation',
@@ -433,6 +451,7 @@ fotosContentRules.set('FotosEntry', fotosEntryRule);
 fotosContentRules.set('FotosShareManifest', fotosShareManifestRule);
 fotosContentRules.set('FotosShareCertificate', fotosShareCertificateRule);
 fotosContentRules.set('FotosShareCertificateChain', fotosShareCertificateChainRule);
+fotosContentRules.set('FotosSharePinProof', fotosSharePinProofRule);
 fotosContentRules.set('FotosMediaVariant', fotosMediaVariantRule);
 fotosContentRules.set('FotosMediaLocator', fotosMediaLocatorRule);
 fotosContentRules.set('FotosAuthenticityAttestation', fotosAuthenticityAttestationRule);

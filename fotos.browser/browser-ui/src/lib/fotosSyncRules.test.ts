@@ -9,6 +9,7 @@ import {
     canImportFotosShareCertificate,
     canImportFotosShareCertificateChain,
     canImportFotosShareManifest,
+    canImportFotosSharePinProof,
     canImportFotosMediaLocator,
     canImportFotosMediaVariant,
     fotosContentRules,
@@ -19,6 +20,17 @@ const LOW_TRUST_CONTEXT = {
 };
 
 describe('fotosSyncRules', () => {
+    it('accepts a paired guest PIN proof only with a bound sender and prover', () => {
+        const proof = {
+            $type$: 'FotosSharePinProof', $version$: 'v1',
+            id: 'fotos-share-pin-proof:v1:invite-token:guest',
+            token: 'invite-token', sender: 'sender', prover: 'guest',
+            pin: '4821', createdAt: '2026-10-19T13:00:00.000Z',
+        };
+        expect(canImportFotosSharePinProof(LOW_TRUST_CONTEXT, proof)).toBe(true);
+        expect(canImportFotosSharePinProof(LOW_TRUST_CONTEXT, {...proof, prover: 'other'})).toBe(false);
+        expect(canImportFotosSharePinProof(LOW_TRUST_CONTEXT, {...proof, pin: '48xx'})).toBe(false);
+    });
     it('admits the fotos manifest singleton for low-trust peers', () => {
         expect(canImportFotosManifest(LOW_TRUST_CONTEXT, {
             $type$: 'FotosManifest',

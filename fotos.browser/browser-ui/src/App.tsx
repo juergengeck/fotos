@@ -26,6 +26,7 @@ import {
     DEFAULT_GLUE_CONNECTION_BINDING_ID,
 } from '@glueone/glue.core';
 import { getFaceCount, resolveProgressDisplay } from '@refinio/fotos.ui';
+import {trustPairingKeys} from '@refinio/connection.core/services/PairingTrustService.js';
 import type { PhotoEntry } from '@refinio/fotos.ui';
 import type { FotosModel } from './lib/onecore-boot';
 import { setModelUpdater } from './lib/onecore-boot';
@@ -577,7 +578,10 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 const projected = (await Promise.all(Array.from(ownKnownPersonIds).map(subject => (
                     projectReceivedFotosShares(subject, async signature => {
                         try {
-                            return await fotosModel.leuteModel.trust.verifySignatureWithTrustedKeys(signature as any);
+                            if (await fotosModel.leuteModel.trust.verifySignatureWithTrustedKeys(signature as any)) {
+                                return true;
+                            }
+                            return await fotosModel.glueModule?.verifyRegisteredPersonSignature(signature as any) ?? false;
                         } catch {
                             return false;
                         }
@@ -1169,7 +1173,6 @@ export function App({ fotosModel: initialModel }: AppProps) {
         const activeGlueModule = fotosModel?.glueModule as (FotosModel['glueModule'] & {
             setRouteWantedPeerIds?: (personIds: string[]) => void;
             setAcceptedIncomingPeerIds?: (personIds: string[]) => void;
-            setOwnPresencePublishingEnabled?: (enabled: boolean) => Promise<void>;
         }) | null;
         if (!activeGlueModule) {
             return;
@@ -1838,6 +1841,21 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 ) as FotosSharePinProof,
             },
         );
+        // PIN pairing authenticates the exact sender Person. Persist the
+        // sender's signing key as local trust evidence so their signed share
+        // certificate remains verifiable after this invitation is consumed.
+        const pairedKeys = await trustPairingKeys(
+            fotosModel.leuteModel.trust,
+            true,
+            localPersonId,
+            getInstanceIdHash(),
+            incomingShareInvite.senderPersonId,
+            undefined,
+            incomingShareInvite.pairingInvitation.token,
+        );
+        if (!pairedKeys.success) {
+            throw new Error('The sender signing key is not available yet. Try accepting the invitation again.');
+        }
         setIncomingShareStatus('connected');
         window.history.replaceState(window.history.state, '', clearIncomingShareUrl(window.location.href));
         setRouteLocation(getCurrentRouteLocation());
