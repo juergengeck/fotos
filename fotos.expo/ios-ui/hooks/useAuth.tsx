@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useModel } from './ModelContext';
+import {clearGlueSession} from '../services/glue-login';
 
 export interface UseAuthReturn {
   isAuthenticated: boolean;
@@ -82,6 +83,7 @@ export function useAuth(): UseAuthReturn {
 
     try {
       console.log('[useAuth] Logging out...');
+      await clearGlueSession();
       await model.one.logout();
       setIsAuthenticated(false);
       setIsLoading(false);

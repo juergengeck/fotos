@@ -375,6 +375,10 @@
     {
       "name": "@refinio/ui.theme",
       "path": "../../one/packages/ui.theme"
+    },
+    {
+      "name": "@glueone/auth.core",
+      "path": "../../one/packages/auth.core"
     }
   ]
 }

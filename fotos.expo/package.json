@@ -16,7 +16,8 @@
     "vendor:pack": "node scripts/vendor-pack.js",
     "vendor:clean": "node scripts/vendor-clean.js",
     "vendor:prune-installed": "node scripts/vendor-prune-installed.js",
-    "vendor:setup": "pnpm run vendor:pack && pnpm run vendor:prune-installed && pnpm install --ignore-workspace"
+    "vendor:setup": "pnpm run vendor:pack && pnpm run vendor:prune-installed && pnpm install --ignore-workspace",
+    "test:auth": "vitest run ios-ui/hooks/useGlueLogin.test.ts ios-ui/components/GlueLoginField.test.ts ios-ui/services/glue-login.test.ts ios-ui/hooks/useAuth.glue-session.test.ts"
   },
   "dependencies": {
     "@dr.pogodin/react-native-fs": "^2.36.2",
@@ -160,12 +161,15 @@
     "@refinio/module.core": "file:./vendor/refinio-module.core-0.1.0.tgz",
     "@refinio/scout.core": "file:./vendor/refinio-scout.core-0.1.0.tgz",
     "@refinio/source.git": "file:./vendor/refinio-source.git-0.1.0.tgz",
-    "@refinio/ui.theme": "file:./vendor/refinio-ui.theme-0.1.0.tgz"
+    "@refinio/ui.theme": "file:./vendor/refinio-ui.theme-0.1.0.tgz",
+    "@glueone/auth.core": "file:vendor/glueone-auth.core-1.0.0.tgz",
+    "expo-web-browser": "~15.0.11"
   },
   "devDependencies": {
     "@refinio/one.core-expo": "file:./vendor/refinio-one.core-expo-0.1.0.tgz",
     "@types/react": "19.1.10",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.4"
   },
   "overrides": {
     "@refinio/agent.builder": "file:./vendor/refinio-agent.builder-0.1.0.tgz",
@@ -261,7 +265,8 @@
     "@refinio/module.core": "file:./vendor/refinio-module.core-0.1.0.tgz",
     "@refinio/scout.core": "file:./vendor/refinio-scout.core-0.1.0.tgz",
     "@refinio/source.git": "file:./vendor/refinio-source.git-0.1.0.tgz",
-    "@refinio/ui.theme": "file:./vendor/refinio-ui.theme-0.1.0.tgz"
+    "@refinio/ui.theme": "file:./vendor/refinio-ui.theme-0.1.0.tgz",
+    "@glueone/auth.core": "file:./vendor/glueone-auth.core-1.0.0.tgz"
   },
   "pnpm": {
     "overrides": {
@@ -358,7 +363,8 @@
       "@refinio/module.core": "file:./vendor/refinio-module.core-0.1.0.tgz",
       "@refinio/scout.core": "file:./vendor/refinio-scout.core-0.1.0.tgz",
       "@refinio/source.git": "file:./vendor/refinio-source.git-0.1.0.tgz",
-      "@refinio/ui.theme": "file:./vendor/refinio-ui.theme-0.1.0.tgz"
+      "@refinio/ui.theme": "file:./vendor/refinio-ui.theme-0.1.0.tgz",
+      "@glueone/auth.core": "file:./vendor/glueone-auth.core-1.0.0.tgz"
     }
   }
 }

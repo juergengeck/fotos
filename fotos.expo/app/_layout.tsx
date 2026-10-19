@@ -13,6 +13,9 @@ import { StatusBar } from 'expo-status-bar';
 import { Model, ModelProvider, getModel, setGlobalModel } from '../ios-ui';
 import { installCommServerGuard } from '../src/install-commserver-guard';
 import { palette } from '../src/theme';
+import {useGlueLogin} from '../ios-ui/hooks/useGlueLogin';
+import {GlueLoginField} from '../ios-ui/components/GlueLoginField';
+import {restoreGlueSession, clearGlueSession} from '../ios-ui/services/glue-login';
 
 const COMM_SERVER_URL = 'wss://api.glue.one/comm';
 
@@ -21,9 +24,12 @@ installCommServerGuard();
 interface LoginProps {
   busy: boolean;
   onLogin: (username: string, password: string) => Promise<void>;
+  onGlueLogin: (localName: string, secret: string) => Promise<void>;
 }
 
-function LoginScreen({ busy, onLogin }: LoginProps) {
+function LoginScreen({ busy: localBusy, onLogin, onGlueLogin }: LoginProps) {
+  const glue = useGlueLogin(onGlueLogin);
+  const busy = localBusy || glue.busy;
   const [username, setUsername] = useState('demo');
   const [password, setPassword] = useState('demo');
   const [error, setError] = useState<string | null>(null);
@@ -69,7 +75,8 @@ function LoginScreen({ busy, onLogin }: LoginProps) {
             <Text style={{ fontSize: 13, fontWeight: '600', color: palette.textMuted }}>
               Identity
             </Text>
-            <TextInput
+            <GlueLoginField busy={glue.busy} disabled={busy} onPress={() => { setError(null); void glue.signIn(username); }}>
+              <TextInput
               value={username}
               onChangeText={setUsername}
               editable={!busy}
@@ -87,6 +94,7 @@ function LoginScreen({ busy, onLogin }: LoginProps) {
                 backgroundColor: palette.surfaceMuted,
               }}
             />
+            </GlueLoginField>
           </View>
           <View style={{ gap: 8 }}>
             <Text style={{ fontSize: 13, fontWeight: '600', color: palette.textMuted }}>
@@ -112,7 +120,7 @@ function LoginScreen({ busy, onLogin }: LoginProps) {
           </View>
         </View>
 
-        {error ? (
+        {error || glue.error ? (
           <View
             style={{
               borderRadius: 16,
@@ -122,9 +130,11 @@ function LoginScreen({ busy, onLogin }: LoginProps) {
               padding: 14,
             }}
           >
-            <Text style={{ color: palette.danger, fontSize: 14 }}>{error}</Text>
+            <Text style={{ color: palette.danger, fontSize: 14 }}>{error || glue.error}</Text>
           </View>
         ) : null}
+
+        {glue.canCancel && <Pressable testID="expo-glue-cancel" onPress={glue.cancel}><Text style={{color: palette.text}}>Cancel Glue sign-in</Text></Pressable>}
 
         <Pressable
           onPress={submit}
@@ -141,7 +151,7 @@ function LoginScreen({ busy, onLogin }: LoginProps) {
             <ActivityIndicator color="#ffffff" />
           ) : (
             <Text style={{ color: '#ffffff', fontSize: 16, fontWeight: '700' }}>
-              Sign In
+              Sign in locally
             </Text>
           )}
         </Pressable>
@@ -156,31 +166,13 @@ function useAppInit() {
   const [authenticated, setAuthenticated] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const loginInFlight = useRef(false);
+  const [loginBusy, setLoginBusy] = useState(false);
   const mountedRef = useRef(true);
 
-  useEffect(() => {
-    installCommServerGuard();
-
-    const existingModel = getModel();
-    if (existingModel) {
-      setModel(existingModel);
-      setAuthenticated(existingModel.initialized);
-      setInitializing(false);
-      return () => {
-        mountedRef.current = false;
-      };
-    }
-    setInitializing(false);
-
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
 
   const ensureModel = useCallback(() => {
-    if (model) {
-      return model;
-    }
+    const existingModel = model ?? getModel();
+    if (existingModel) return existingModel;
 
     const nextModel = new Model(COMM_SERVER_URL);
     nextModel.onOneModelsReady(() => {
@@ -202,33 +194,71 @@ function useAppInit() {
     return nextModel;
   }, [model]);
 
+  const startupRestore = useRef<Promise<void> | null>(null);
+  useEffect(() => {
+    mountedRef.current = true;
+    installCommServerGuard();
+    if (!startupRestore.current) {
+      startupRestore.current = (async () => {
+        const existingModel = getModel();
+        if (existingModel?.initialized) {
+          setModel(existingModel);
+          setAuthenticated(true);
+          return;
+        }
+        if (existingModel) setModel(existingModel);
+        await restoreGlueSession(async (localName, secret) => {
+          if (!mountedRef.current) return;
+          const activeModel = ensureModel();
+          // Reopening must never create a new account when local data is missing.
+          await activeModel.one.login(localName, secret, localName);
+        });
+      })();
+    }
+    void startupRestore.current.catch(err => {
+      if (mountedRef.current) setError(err instanceof Error ? err.message : String(err));
+    }).finally(() => {
+      if (mountedRef.current) setInitializing(false);
+    });
+    return () => { mountedRef.current = false; };
+  }, [ensureModel]);
+
   const login = useCallback(async (username: string, password: string) => {
     if (loginInFlight.current) {
       return;
     }
 
     loginInFlight.current = true;
+    setLoginBusy(true);
     try {
       const activeModel = ensureModel();
       const email = username.includes('@') ? username : `${username}@fotos.one`;
       await activeModel.one.loginOrRegister(email, password, email);
+      await clearGlueSession();
     } finally {
       loginInFlight.current = false;
+      setLoginBusy(false);
     }
   }, [ensureModel]);
 
+  const glueLogin = useCallback(async (localName: string, secret: string) => {
+    const activeModel = ensureModel();
+    await activeModel.one.loginOrRegister(localName, secret, localName);
+  }, [ensureModel]);
+
   return {
+    glueLogin,
     model,
     initializing,
     authenticated,
     error,
     login,
-    loginInFlight: loginInFlight.current,
+    loginInFlight: loginBusy,
   };
 }
 
 export default function RootLayout() {
-  const { model, initializing, authenticated, error, login, loginInFlight } = useAppInit();
+  const { model, initializing, authenticated, error, login, glueLogin, loginInFlight } = useAppInit();
 
   if (error) {
     return (
@@ -274,7 +304,7 @@ export default function RootLayout() {
     return (
       <>
         <StatusBar style="dark" />
-        <LoginScreen busy={loginInFlight} onLogin={login} />
+        <LoginScreen busy={loginInFlight} onLogin={login} onGlueLogin={glueLogin} />
       </>
     );
   }
