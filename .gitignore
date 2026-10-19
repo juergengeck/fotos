@@ -3,6 +3,7 @@ node_modules/
 dist/
 _deploy/
 _deploy-konrad/
+_deploy-konrad-worker/
 .wrangler/
 *.log
 *.tgz

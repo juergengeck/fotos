@@ -23,7 +23,7 @@ export default {
                 headers.set('Content-Type', 'application/wasm');
                 headers.set('Content-Encoding', 'gzip');
                 headers.set('Cache-Control', 'public, max-age=31536000, immutable');
-                return new Response(packed.body, {status: packed.status, headers});
+                return new Response(packed.body, {status: packed.status, headers, encodeBody: 'manual'});
             }
         }
 
