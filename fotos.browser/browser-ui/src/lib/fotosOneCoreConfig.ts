@@ -23,12 +23,13 @@ import {
   AllReverseMaps as TrustCoreReverseMaps,
   AllReverseMapsForIdObjects as TrustCoreReverseMapsForIdObjects,
 } from '@refinio/trust.core/recipes';
+import { PersonalTrustRecipes, PersonalTrustReverseMaps } from '@refinio/trust.me/recipes';
 import { CubeCoreRecipes } from '@refinio/cube.core/recipes/index.js';
 import { CHAT_CORE_RECIPES } from '@refinio/chat.core/recipes/index.js';
 import { ConnectionPhoneBookRecipes } from '@refinio/connection.core/recipes';
 import { SettingsRecipes } from '@refinio/settings.core';
 import { FotosRecipes } from '../../../../fotos.core/src/recipes/FotosRecipes.js';
-import { SourceCoreRecipes } from '../../../../../one/packages/source.core/dist/recipes/index.js';
+import { SourceCoreRecipes } from '@refinio/source.core/recipes';
 
 type ReverseMapDefinitions = Iterable<readonly [string, ReadonlySet<string>]>;
 
@@ -53,6 +54,7 @@ export const FotosOneCoreRecipes: Recipe[] = [
   ...PresenceRecipes,
   ...TimeTrieRecipes,
   ...TrustCoreRecipes,
+  ...PersonalTrustRecipes,
   ...CubeCoreRecipes,
   ...SettingsRecipes,
   ...DeviceCoreRecipes,
@@ -69,6 +71,7 @@ export const FotosReverseMaps = mergeReverseMapDefinitions(
   ReverseMapsStable,
   ReverseMapsExperimental,
   TrustCoreReverseMaps,
+  new Map(PersonalTrustReverseMaps),
   AssemblyCoreReverseMaps,
   new Map([
     ['FotosShareCertificate', new Set(['subject', 'issuer'])],

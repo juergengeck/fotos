@@ -319,25 +319,9 @@ export default defineConfig({
     resolve: {
         alias: [
             {find: '@', replacement: path.resolve(__dirname, './src')},
-            {find: '@refinio/fotos.ui', replacement: path.resolve(__dirname, '../../fotos.ui/src/index.ts')},
-            {find: '@refinio/local.core/BrowserMultimodalEmbeddingProvider.js', replacement: path.resolve(__dirname, '../../../one/packages/local.core/dist/BrowserEmbeddingProvider.js')},
             {find: /^@refinio\/agent\.core\/(.*)\.js$/, replacement: path.resolve(__dirname, '../../../one/packages/agent.core/src/$1.ts')},
             {find: /^@refinio\/agent\.core\/(.*)$/, replacement: path.resolve(__dirname, '../../../one/packages/agent.core/src/$1')},
             {find: '@refinio/agent.core', replacement: path.resolve(__dirname, '../../../one/packages/agent.core/src/index.ts')},
-            {find: '@refinio/assembly.core', replacement: path.resolve(__dirname, '../../../one/packages/assembly.core/dist')},
-            {find: '@vger/vger.core', replacement: path.resolve(__dirname, '../../../one/packages/vger.core/dist')},
-            {find: '@vger/vger.glue', replacement: path.resolve(__dirname, '../../../one/packages/vger.glue/dist')},
-            // Resolve source.media's public entry points without requiring generated dist files.
-            {find: /^@refinio\/source\.media\/services$/, replacement: path.resolve(__dirname, '../../../one/packages/source.media/src/services/index.ts')},
-            {find: /^@refinio\/source\.media\/types$/, replacement: path.resolve(__dirname, '../../../one/packages/source.media/src/types/index.ts')},
-            {find: /^@refinio\/source\.media\/(.*)\.js$/, replacement: path.resolve(__dirname, '../../../one/packages/source.media/src/$1.ts')},
-            {find: /^@refinio\/source\.media\/(.*)$/, replacement: path.resolve(__dirname, '../../../one/packages/source.media/src/$1')},
-            {find: '@refinio/source.media', replacement: path.resolve(__dirname, '../../../one/packages/source.media/src/index.ts')},
-            {find: '@refinio/source.core', replacement: path.resolve(__dirname, '../../../one/packages/source.core/dist')},
-            {find: '@refinio/media.core', replacement: path.resolve(__dirname, '../../../one/packages/media.core/dist')},
-            {find: '@refinio/recovery.core', replacement: path.resolve(__dirname, '../../../one/packages/recovery.core/dist')},
-            {find: /^@refinio\/trust\.core\/recipes$/, replacement: path.resolve(__dirname, '../../../one/packages/trust.core/dist/recipes/index.js')},
-            {find: '@refinio/trust.core', replacement: path.resolve(__dirname, '../../../one/packages/trust.core/dist')},
             // Stub out Node-only modules that ONE.core dependency tree pulls in
             {find: '@anthropic-ai/sdk', replacement: path.resolve(__dirname, './src/stubs/empty.ts')},
             {find: '@whiskeysockets/baileys', replacement: path.resolve(__dirname, './src/stubs/empty.ts')},

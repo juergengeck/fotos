@@ -6,11 +6,9 @@ export default defineConfig({
         __APP_BUILD_ID__: JSON.stringify('current-build'),
     },
     resolve: {
+        dedupe: ['react', 'react-dom', '@refinio/one.core', '@refinio/one.models'],
         alias: [
-            {find: '@refinio/media.core', replacement: path.resolve(__dirname, '../../../one/packages/media.core/dist')},
             {find: '@', replacement: path.resolve(__dirname, 'src')},
-            {find: '@refinio/fotos.ui', replacement: path.resolve(__dirname, '../../fotos.ui/src/index.ts')},
-            {find: '@refinio/recovery.core', replacement: path.resolve(__dirname, '../../../one/packages/recovery.core/dist')},
         ],
     },
     test: {

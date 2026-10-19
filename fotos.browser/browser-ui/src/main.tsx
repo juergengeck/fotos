@@ -178,7 +178,7 @@ if (!cryptoSupport.supported) {
             );
         })
         .catch((err) => {
-            statusEl.textContent = `Boot failed: ${err.message}`;
+            statusEl.textContent = `Startup failed: ${err.message}\nLocal data is still stored on this device. Reload to retry.`;
             traceHang('boot-failed', { message: err.message });
             console.error('[fotos] boot failed:', err);
         });

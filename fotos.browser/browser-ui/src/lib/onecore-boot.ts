@@ -28,6 +28,10 @@ import { ChatModule } from '@vger/vger.core/modules/ChatModule.js';
 import { JournalModule } from '@vger/vger.core/modules/JournalModule.js';
 import { IndexModule } from '@vger/vger.core/modules/IndexModule.js';
 import { TrustModule } from '@vger/vger.core/modules/TrustModule.js';
+import { IssuerKeyLifecycleModule } from '@refinio/trust.core/modules/IssuerKeyLifecycleModule.js';
+import { InstanceAuthorityModule } from '@refinio/trust.core/modules/InstanceAuthorityModule.js';
+import { PersonalTrustModule } from '@refinio/trust.me/modules/PersonalTrustModule.js';
+import { preparePersonalTrustStorage } from '@refinio/trust.me/services';
 import { ConnectionModule } from '@vger/vger.core/modules/ConnectionModule.js';
 import { GlueModule, ensureCommserverEndpointForPerson } from '@vger/vger.glue';
 import { ExportPlan } from '@vger/vger.core/plans/ExportPlan.js';
@@ -44,9 +48,10 @@ import {
 } from '@refinio/settings.core';
 
 // ONE.core instance helpers
-import { getInstanceIdHash, getInstanceOwnerIdHash } from '@refinio/one.core/lib/instance.js';
+import { closeInstance, getInstanceIdHash, getInstanceOwnerIdHash } from '@refinio/one.core/lib/instance.js';
 import { storeVersionedObject } from '@refinio/one.core/lib/storage-versioned-objects.js';
 import { getLocalInstanceOfPerson } from '@refinio/one.models/lib/misc/instance.js';
+import { onChumImportBatch } from '@refinio/one.core/lib/chum-sync.js';
 
 import { registerFotosHistorySettings } from './fotosHistorySettings.js';
 import { registerFotosSettings } from './fotosSettings.js';
@@ -119,7 +124,10 @@ export interface FotosModel {
 // ---------------------------------------------------------------------------
 
 let oneInstance: MultiUser | null = null;
-let glueModuleInstance: GlueModule | null = null;
+let registryInstance: ModuleRegistry | null = null;
+let bootPromise: Promise<FotosModel> | null = null;
+let closePromise: Promise<void> | null = null;
+let runtimeGeneration = 0;
 let publicationIdentity: SHA256IdHash<Person> | null = null;
 
 type BrowserGlueModule = GlueModule & {
@@ -155,6 +163,56 @@ export function setModelUpdater(
   updater: ((fn: (prev: FotosModel | null) => FotosModel | null) => void) | null,
 ): void {
   modelUpdater = updater;
+}
+
+/** Drain the module graph while ONE storage is still available. */
+function closeFotosRuntime(): Promise<void> {
+  if (closePromise) return closePromise;
+  // Invalidate connection completions before the first asynchronous teardown.
+  runtimeGeneration++;
+  const one = oneInstance;
+  const registry = registryInstance;
+  const closing = (async () => {
+    const failures: unknown[] = [];
+    try {
+      await registry?.shutdownAll();
+    } catch (error) {
+      failures.push(error);
+    }
+    let loggedOut = false;
+    try {
+      if (one?.authState.currentState === 'logged_in') {
+        await one.logout();
+        loggedOut = true;
+      }
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      // initInstance can open storage and unlock keys before publishing its ID.
+      // An interrupted login (or logout listener) still belongs to this runtime.
+      if (!loggedOut && (one || getInstanceIdHash())) closeInstance();
+    } catch (error) {
+      failures.push(error);
+    } finally {
+      oneInstance = null;
+      registryInstance = null;
+      publicationIdentity = null;
+      modelUpdater?.(prev => prev ? { ...prev, initialized: false, headlessConnected: false } : null);
+      modelUpdater = null;
+    }
+    if (failures.length) throw new AggregateError(failures, '[fotos.one] Runtime shutdown failed');
+  })().finally(() => {
+    if (closePromise === closing) closePromise = null;
+  });
+  closePromise = closing;
+  return closing;
+}
+
+export async function shutdownFotosModel(): Promise<void> {
+  // A boot owns storage until it either returns a complete graph or cleans up.
+  await bootPromise?.catch(() => undefined);
+  await closeFotosRuntime();
 }
 
 // ---------------------------------------------------------------------------
@@ -206,6 +264,7 @@ async function getConfiguredPublicationIdentity(
 async function initModules(
   one: MultiUser,
   commServerUrl: string,
+  generation: number,
 ): Promise<FotosModel> {
   registerSubscriptionSettings();
   registerDeviceSettings();
@@ -226,6 +285,7 @@ async function initModules(
 
   // ModuleRegistry: CoreModule -> JournalModule -> ChatModule -> IndexModule -> TrustModule -> ConnectionModule -> GlueModule
   const registry = new ModuleRegistry();
+  registryInstance = registry;
   registry.setStorageFunction(storeVersionedObject);
 
   const exportPlan = new ExportPlan();
@@ -234,6 +294,9 @@ async function initModules(
   const chatModule = new ChatModule();
   const indexModule = new IndexModule();
   const trustModule = new TrustModule();
+  const issuerKeyLifecycleModule = new IssuerKeyLifecycleModule();
+  const instanceAuthorityModule = new InstanceAuthorityModule();
+  const personalTrustModule = new PersonalTrustModule();
   let connectionModule: ConnectionModuleType | null = null;
   let connectionModuleWithFotos: (ConnectionModuleType & {
     connectToGlueServer?: (personId: SHA256IdHash<Person>) => Promise<void>;
@@ -247,11 +310,14 @@ async function initModules(
     get topicModel() { return coreModule.topicModel; },
     get connectionsModel() { return connectionModule?.connectionsModel ?? null; },
     get ownerId() { return getInstanceOwnerIdHash(); },
+    get instanceId() { return getInstanceIdHash(); },
     get initialized() { return true; },
     getInfo() { return { initialized: true, ownerId: getInstanceOwnerIdHash() }; },
   };
   registry.supply('OneCore', oneCore);
-  registry.supply('SyncRules', fotosContentRules);
+  // Trust modules compose rules with owner-bound handlers for this runtime.
+  registry.supply('SyncRules', new Map(fotosContentRules));
+  registry.supply('PostStoreImportBatch', onChumImportBatch);
   registry.supply('SettingsPlan', settingsPlan);
   registry.supply('DevicesPlan', devicesPlan);
   registry.supply('ExportPlan', exportPlan);
@@ -260,6 +326,9 @@ async function initModules(
   registry.register(chatModule);
   registry.register(indexModule);
   registry.register(trustModule);
+  registry.register(issuerKeyLifecycleModule);
+  registry.register(instanceAuthorityModule);
+  registry.register(personalTrustModule);
 
   let glueModule: GlueModule | null = null;
 
@@ -289,16 +358,12 @@ async function initModules(
       fotosTrustFilter?: (remotePersonId: SHA256IdHash<Person>) => Promise<boolean>;
     };
     connectionModuleWithFotos.fotosTrustFilter = async (remotePersonId: SHA256IdHash<Person>) => {
-      const trustLevel = (await trustModule.trustModel.getTrustLevel(remotePersonId) ?? 'unknown') as TrustLevel;
+      const trustLevel = (await trustModule.trustModel.getTrustLevelById(remotePersonId) ?? 'unknown') as TrustLevel;
       return trustLevel !== 'ignore' && TRUST_LEVEL_ORDER[trustLevel] >= TRUST_LEVEL_ORDER.low;
     };
     registry.register(connectionModule);
 
     // GlueModule — presence and peer connections
-    if (glueModuleInstance) {
-      await glueModuleInstance.shutdown();
-      glueModuleInstance = null;
-    }
     glueModule = new GlueModule(API_BASE, commServerUrl);
     glueModule.enableMailboxPairing = false;
     // Browser peers must publish their own live route leases so other
@@ -335,28 +400,13 @@ async function initModules(
   }
 
   await registry.initAll();
-  glueModuleInstance = glueModule;
 
   // Post-init: extract models
   const leuteModel = coreModule.leuteModel;
   const connectionsModel = connectionModule?.connectionsModel ?? null;
   publicationIdentity = (await getConfiguredPublicationIdentity(settingsPlan, ownerId)).publicationIdentity;
 
-  if (syncEnabled && publicationIdentity && glueModule && connectionModuleWithFotos) {
-    registry.supply('GlueOwnerId', String(publicationIdentity));
-    registry.supply('PublicationIdentity', String(publicationIdentity));
-    await ensureCommserverEndpointForPerson(leuteModel, publicationIdentity, commServerUrl);
-    await glueModule.activateForIdentity(String(publicationIdentity));
-
-    connectionModuleWithFotos.connectToGlueServer?.(publicationIdentity).then(() => {
-      modelUpdater?.(prev => prev ? { ...prev, headlessConnected: true } : null);
-    }).catch((err: unknown) =>
-      console.warn('[fotos.one] glue server auto-connect failed:', err));
-  }
-
-  console.log('[fotos.one] ModuleRegistry initialized');
-
-  return {
+  const model: FotosModel = {
     initialized: true,
     headlessConnected: false,
     one,
@@ -371,6 +421,25 @@ async function initModules(
     devicesPlan,
     glueModule,
   };
+
+  if (syncEnabled && publicationIdentity && glueModule && connectionModuleWithFotos) {
+    registry.supply('GlueOwnerId', String(publicationIdentity));
+    registry.supply('PublicationIdentity', String(publicationIdentity));
+    await ensureCommserverEndpointForPerson(leuteModel, publicationIdentity, commServerUrl);
+    await glueModule.activateForIdentity(String(publicationIdentity));
+
+    connectionModuleWithFotos.connectToGlueServer?.(publicationIdentity).then(() => {
+      if (generation !== runtimeGeneration || oneInstance !== one) return;
+      // Preserve a completion that arrives before React installs its updater.
+      model.headlessConnected = true;
+      modelUpdater?.(prev => prev ? { ...prev, headlessConnected: true } : null);
+    }).catch((err: unknown) =>
+      console.warn('[fotos.one] glue server auto-connect failed:', err));
+  }
+
+  console.log('[fotos.one] ModuleRegistry initialized');
+
+  return model;
 }
 
 // ---------------------------------------------------------------------------
@@ -382,52 +451,68 @@ async function initModules(
  * Generates visitor credentials on first visit and persists them for future boots.
  * Returns a FotosModel with initialized modules and federation.
  */
-export async function bootFotosModel(
+export function bootFotosModel(
   onStatus?: (status: string) => void,
 ): Promise<FotosModel> {
-  if (oneInstance) {
-    throw new Error('[fotos.one] bootFotosModel called but ONE.core is already initialized');
+  if (oneInstance || bootPromise) {
+    return Promise.reject(new Error('[fotos.one] bootFotosModel called but ONE.core is already initialized or opening'));
   }
 
-  onStatus?.('opening account');
-  const {
-    creds: { email, secret, instanceName },
-    accountId,
-    source: credentialSource,
-    persistent: credentialsPersisted,
-    sessionScoped,
-    storageDirectory,
-  } = await getFotosGlueLogin().resolveBoot();
-
-  const one = new MultiUser({
-    directory: storageDirectory,
-    recipes: FotosOneCoreRecipes,
-    reverseMaps: FotosReverseMaps as never,
-    reverseMapsForIdObjects: FotosReverseMapsForIdObjects as never,
+  const opening = openFotosModel(onStatus).finally(() => {
+    if (bootPromise === opening) bootPromise = null;
   });
-  oneInstance = one;
+  bootPromise = opening;
+  return opening;
+}
 
-  console.log('[fotos.one] Boot credentials:', {
-    source: credentialSource,
-    persistent: credentialsPersisted,
-    sessionScoped,
-    accountId,
-    storageDirectory,
-    email,
-    instanceName,
-  });
-
-  onStatus?.('opening storage');
+async function openFotosModel(onStatus?: (status: string) => void): Promise<FotosModel> {
+  await closePromise;
+  const generation = ++runtimeGeneration;
   try {
-    await one.loginOrRegister(email, secret, instanceName);
-  } catch (loginError) {
-    console.error('[fotos.one] Login failed:', loginError);
-    onStatus?.('login failed — see console');
-    throw loginError;
-  }
-  console.log('[fotos.one] ONE.core booted:', email);
+    onStatus?.('opening account');
+    const {
+      creds: { email, secret, instanceName },
+      accountId,
+      source: credentialSource,
+      persistent: credentialsPersisted,
+      sessionScoped,
+      storageDirectory,
+    } = await getFotosGlueLogin().resolveBoot();
 
-  onStatus?.('initializing');
-  const result = await initModules(one, COMM_SERVER_URL);
-  return result;
+    const one = new MultiUser({
+      directory: storageDirectory,
+      recipes: FotosOneCoreRecipes,
+      reverseMaps: FotosReverseMaps as never,
+      reverseMapsForIdObjects: FotosReverseMapsForIdObjects as never,
+    });
+    oneInstance = one;
+
+    console.log('[fotos.one] Boot credentials:', {
+      source: credentialSource,
+      persistent: credentialsPersisted,
+      sessionScoped,
+      accountId,
+      storageDirectory,
+      email,
+      instanceName,
+    });
+
+    onStatus?.('opening storage');
+    await one.loginOrRegister(email, secret, instanceName);
+    console.log('[fotos.one] ONE.core booted:', email);
+
+    // Existing instances restore their persisted reverse maps. Enable the new
+    // trust indexes before any trust owner can author its first native state.
+    await preparePersonalTrustStorage();
+    onStatus?.('initializing');
+    return await initModules(one, COMM_SERVER_URL, generation);
+  } catch (error) {
+    onStatus?.('startup failed — local data remains on this device');
+    try {
+      await closeFotosRuntime();
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], '[fotos.one] Startup and cleanup failed');
+    }
+    throw error;
+  }
 }

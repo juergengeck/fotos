@@ -12,6 +12,8 @@ describe('Fotos ONE.core runtime configuration', () => {
 
     expect(recipeNames).toContain('IomRouteObservation');
     expect(recipeNames).toContain('CurrentInstanceConnection');
+    expect(recipeNames).toContain('PersonalTrustState');
+    expect(recipeNames).toContain('OwnerCredentialTrustProjection');
   });
 
   it('keeps every property when reverse-map packages overlap', () => {

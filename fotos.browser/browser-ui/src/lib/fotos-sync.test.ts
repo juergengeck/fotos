@@ -65,6 +65,10 @@ vi.mock('@refinio/one.core/lib/storage-versioned-objects.js', () => ({
     },
 }));
 
+vi.mock('@refinio/one.core/lib/chum-sync.js', () => ({
+    onChumObjectImported: { addListener: vi.fn(() => () => undefined) },
+}));
+
 vi.mock('@refinio/one.core/lib/storage-blob.js', () => ({
     storeArrayBufferAsBlob: storeArrayBufferAsBlobMock,
     readBlobAsArrayBuffer: vi.fn(),

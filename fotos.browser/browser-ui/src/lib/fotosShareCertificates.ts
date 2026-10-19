@@ -7,7 +7,7 @@ import {
 } from '@refinio/one.core/lib/storage-versioned-objects.js';
 import {calculateIdHashOfObj} from '@refinio/one.core/lib/util/object.js';
 import {
-    determineChildren,
+    determineChildrenFromHash,
     type ChildObject,
 } from '@refinio/one.core/lib/util/determine-children.js';
 import type {SHA256Hash, SHA256IdHash} from '@refinio/one.core/lib/util/type-checks.js';
@@ -50,7 +50,7 @@ const defaultDeps: FotosShareCertificateDeps = {
     setAccess: async entries => {
         await createAccess(entries as any);
     },
-    resolveEntryChildren: hash => determineChildren(hash),
+    resolveEntryChildren: hash => determineChildrenFromHash(hash),
 };
 
 export interface CommitFotosShareScopeParams {

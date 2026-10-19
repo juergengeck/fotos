@@ -613,7 +613,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
             ) void refresh();
         });
         const unsubscribeImportBatch = onChumImportBatch.addListener(event => {
-            if ([...event.batch.materialized, ...event.batch.advancedFrontiers].some(imported => (
+            if (event.batch.imported.some(imported => (
                 imported.kind === 'object'
                 && (
                     imported.type === 'FotosShareCertificate'
@@ -1651,7 +1651,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
             if (event.imported.kind === 'object') onProofImported(event.imported.type);
         });
         const unsubscribeImportBatch = onChumImportBatch.addListener(event => {
-            if ([...event.batch.materialized, ...event.batch.advancedFrontiers].some(imported => (
+            if (event.batch.imported.some(imported => (
                 imported.kind === 'object' && imported.type === 'FotosSharePinProof'
             ))) void checkPendingGalleryPinProofs();
         });
