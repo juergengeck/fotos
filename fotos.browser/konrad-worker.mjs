@@ -12,7 +12,7 @@ export default {
         if (!['GET', 'HEAD'].includes(request.method)) return new Response('Method Not Allowed', {status: 405});
 
         let response = await env.ASSETS.fetch(request);
-        // Keep oversized WASM runtimes available within Cloudflare's per-file limit.
+        // Store WASM compressed to keep uploads small and within the per-file limit.
         // The browser decodes this gzip response before WebAssembly compilation.
         if (response.status === 404 && url.pathname.endsWith('.wasm')) {
             const compressed = new URL(url);
@@ -22,7 +22,7 @@ export default {
                 const headers = new Headers(packed.headers);
                 headers.set('Content-Type', 'application/wasm');
                 headers.set('Content-Encoding', 'gzip');
-                headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+                headers.set('Cache-Control', url.pathname.startsWith(`${PREFIX}/assets/`) ? 'public, max-age=31536000, immutable' : 'no-cache');
                 return new Response(packed.body, {status: packed.status, headers, encodeBody: 'manual'});
             }
         }

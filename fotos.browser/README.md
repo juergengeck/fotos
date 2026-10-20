@@ -84,7 +84,7 @@ node deploy-konrad.mjs
 ```
 
 `build-konrad.mjs` prepares `_deploy-konrad/` with the `/konrad/` asset and service
-worker scope. Oversized WASM files are stored compressed and served at their
+worker scope. WASM files are stored compressed and served losslessly at their
 original URLs by the Worker. `node --test konrad-worker.test.mjs` checks routing.
 
 ```bash

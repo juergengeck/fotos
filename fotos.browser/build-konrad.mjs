@@ -1,9 +1,9 @@
-import {cp, mkdir, readdir, readFile, rm, stat, writeFile} from 'node:fs/promises';
+import {cp, mkdir, readFile, rm, writeFile} from 'node:fs/promises';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createRequire} from 'node:module';
 import {spawnSync} from 'node:child_process';
-import {gzipSync} from 'node:zlib';
+import {packWasmFiles} from './konrad-assets.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ui = join(here, 'browser-ui');
@@ -27,18 +27,5 @@ const headers = await readFile(join(app, '_headers'), 'utf8');
 await rm(join(app, '_headers'));
 await writeFile(join(target, '_headers'), headers.replace(/^\//gm, '/konrad/'));
 
-async function packLargeFiles(directory) {
-    for (const entry of await readdir(directory, {withFileTypes: true})) {
-        const file = join(directory, entry.name);
-        if (entry.isDirectory()) await packLargeFiles(file);
-        else if ((await stat(file)).size > 25 * 1024 * 1024) {
-            if (!file.endsWith('.wasm')) throw new Error(`Asset exceeds Cloudflare's file limit: ${file}`);
-            const compressed = gzipSync(await readFile(file), {level: 9});
-            if (compressed.length > 25 * 1024 * 1024) throw new Error(`Compressed asset still exceeds file limit: ${file}`);
-            await writeFile(`${file}.gz`, compressed);
-            await rm(file);
-        }
-    }
-}
-await packLargeFiles(app);
+await packWasmFiles(app);
 console.log(`Konrad deployment prepared at ${target}`);
