@@ -3643,6 +3643,17 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                 Open a library to start browsing. Fotos keeps your originals in place and does not upload them to a cloud photo service.
                             </p>
                         </div>
+                        {gallery.folder.pendingFolderNames.length > 0 && (
+                            <div className="max-w-md space-y-3 text-sm text-white/70">
+                                <p>Your library is remembered. Allow folder access to reopen {gallery.folder.pendingFolderNames.join(', ')}.</p>
+                                <button
+                                    onClick={() => void gallery.folder.reopenSavedFolders()}
+                                    className="min-h-11 rounded-lg border border-white/20 px-6 py-3 text-sm text-white hover:bg-white/10"
+                                >
+                                    Reopen saved library
+                                </button>
+                            </div>
+                        )}
                         {pendingImportCount > 0 && (
                             <div className="w-full max-w-lg rounded-2xl border border-[#e94560]/30 bg-[#2b0f16]/80 px-4 py-3 text-sm text-white/80 shadow-[0_16px_40px_rgba(0,0,0,0.25)]">
                                 {pendingImportCount} shared photo{pendingImportCount === 1 ? ' is' : 's are'} ready to be stored locally.
@@ -3709,6 +3720,17 @@ export function App({ fotosModel: initialModel }: AppProps) {
                     {/* Main content area */}
                     <div className="flex-1 min-w-0 min-h-0 relative">
                         <div ref={scrollRef} className={`h-full overflow-y-auto hide-scrollbar ${mobile ? 'pb-20 landscape:pb-0' : ''}`}>
+                            {gallery.folder.pendingFolderNames.length > 0 && (
+                                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#111] px-4 py-3 text-sm text-white/70">
+                                    <span>Allow folder access to reopen {gallery.folder.pendingFolderNames.join(', ')}.</span>
+                                    <button
+                                        onClick={() => void gallery.folder.reopenSavedFolders()}
+                                        className="min-h-11 rounded-lg border border-white/20 px-4 text-white hover:bg-white/10"
+                                    >
+                                        Reopen saved library
+                                    </button>
+                                </div>
+                            )}
                             {showBreadcrumbs ? (
                                 <GalleryBreadcrumbs items={breadcrumbItems} summary={breadcrumbSummary} />
                             ) : null}

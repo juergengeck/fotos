@@ -298,6 +298,8 @@ export function useHeadlessSource(headlessUrl: string | null): FolderAccess {
 
     return {
         initializationComplete,
+        pendingFolderNames: [],
+        reopenSavedFolders: async () => {},
         isOpen,
         surface,
         surfaceProfile,

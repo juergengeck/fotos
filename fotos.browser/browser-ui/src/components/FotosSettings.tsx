@@ -11,7 +11,7 @@ import {
 } from '@/lib/authFlowState';
 import { ensureConfiguredGlueIdentity } from '@/lib/glueIdentity';
 import { resolveGlueIdentityState } from '@/lib/glueIdentityState';
-import { resolveGlueCertificationState } from '@/lib/glueCertification';
+import { forgetGlueCertification, rememberGlueCertification, resolveGlueCertificationState } from '@/lib/glueCertification';
 import { classifyGlueFailure, toGlueHandle, type AuthLoginWarning } from '@/lib/authLoginBridge';
 import { runFotosRecoveryFlow } from '@/lib/fotosIdRecovery';
 import { API_BASE } from '../config.js';
@@ -142,7 +142,6 @@ export function FotosSettings({
                 }
             } catch {
                 if (cancelled) return;
-                setPublicationIdentity(null);
                 setCertState('ephemeral');
                 setCertValidUntil(null);
                 setPasskeyCount(null);
@@ -202,6 +201,7 @@ export function FotosSettings({
         cert?: { validUntil?: unknown } | null,
         options?: { closeIdentityEditor?: boolean },
     ): Promise<void> => {
+        await rememberGlueCertification(nextPublicationIdentity, nextDisplayName, cert);
         setCertState('certified');
         setPublicationIdentity(nextPublicationIdentity);
         setDisplayName(nextDisplayName);
@@ -713,6 +713,7 @@ export function FotosSettings({
                 moduleId: 'glue',
                 values: { syncEnabled: false },
             });
+            if (publicationIdentity) forgetGlueCertification(publicationIdentity);
             setFedCMLoginStatus('logged-out');
             clearPendingAuthenticationContinuation();
             setShowAuthenticationHint(false);
@@ -720,7 +721,7 @@ export function FotosSettings({
         } catch (err) {
             setAuthError((err as Error).message);
         }
-    }, [model?.settingsPlan]);
+    }, [model?.settingsPlan, publicationIdentity]);
 
     const openIdentityEditor = useCallback(() => {
         setDraftDisplayName(displayName ?? '');

@@ -1174,6 +1174,9 @@ async function rebuildPersistedClusterStateFromEntries(
 export interface FolderAccess {
     /** Initial persisted-source restoration has completed. */
     initializationComplete: boolean;
+    /** Remembered folders awaiting renewed browser access. */
+    pendingFolderNames: string[];
+    reopenSavedFolders: () => Promise<void>;
     /** Whether a folder is currently open */
     isOpen: boolean;
     /** Current product surface */
@@ -1319,9 +1322,17 @@ function sanitizeFolderSegment(value: string | null | undefined, fallback: strin
 
 async function savePreference(key: string, value: unknown): Promise<void> {
     const db = await openPrefsDB();
-    const tx = db.transaction(IDB_STORE, 'readwrite');
-    tx.objectStore(IDB_STORE).put(value, key);
-    db.close();
+    try {
+        await new Promise<void>((resolve, reject) => {
+            const tx = db.transaction(IDB_STORE, 'readwrite');
+            tx.oncomplete = () => resolve();
+            tx.onabort = () => reject(tx.error ?? new Error('Could not save photo folder'));
+            tx.onerror = () => reject(tx.error);
+            tx.objectStore(IDB_STORE).put(value, key);
+        });
+    } finally {
+        db.close();
+    }
 }
 
 async function loadPreference<T>(key: string): Promise<T | null> {
@@ -1480,16 +1491,17 @@ async function saveLastFolderPreference(preference: PersistedFolderPreference): 
     await savePreference(IDB_LAST_FOLDER_KEY, preference);
 }
 
-async function saveManagedFolderPreferences(records: readonly ManagedFolderRecord[]): Promise<void> {
+async function saveManagedFolderPreferences(
+    records: readonly ManagedFolderRecord[],
+    unopened: readonly PersistedManagedFolder[] = [],
+): Promise<void> {
+    const preferences = records.map(record => ({
+        id: record.id,
+        preference: { ...record.preference, label: record.label },
+    }));
     await savePreference(
         IDB_FOLDERS_KEY,
-        records.map(record => ({
-            id: record.id,
-            preference: {
-                ...record.preference,
-                label: record.label,
-            },
-        })),
+        [...unopened.filter(folder => !records.some(record => record.id === folder.id)), ...preferences],
     );
 }
 
@@ -1673,6 +1685,8 @@ export interface UseFolderAccessOptions {
 
 export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAccess {
     const [initializationComplete, setInitializationComplete] = useState(false);
+    const [pendingFolderNames, setPendingFolderNames] = useState<string[]>([]);
+    const unopenedFoldersRef = useRef<PersistedManagedFolder[]>([]);
     const clusterSensitivity = options.clusterSensitivity ?? DEFAULT_CLUSTER_SENSITIVITY;
     const faceAnalyticsEnabled = options.faceAnalyticsEnabled ?? false;
     const semanticSearchEnabled = options.semanticSearchEnabled ?? false;
@@ -2662,7 +2676,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             nextRecord,
         ];
         applyManagedFolders(nextRecords);
-        void saveManagedFolderPreferences(nextRecords).catch(() => {});
+        await saveManagedFolderPreferences(nextRecords, unopenedFoldersRef.current);
         void saveLastFolderPreference(nextRecord.preference).catch(() => {});
     }, [
         applyManagedFolders,
@@ -2718,14 +2732,36 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         return true;
     }, [openFromHandle, resolveImportDestination]);
 
+    const reopenSavedFolders = useCallback(async () => {
+        for (const managed of [...unopenedFoldersRef.current]) {
+            try {
+                const handle = await resolveFolderPreference(managed.preference, true);
+                if (!handle) continue;
+                await openFromHandle(handle, {
+                    id: managed.id,
+                    label: managed.preference.label ?? handle.name,
+                    preference: managed.preference,
+                });
+                unopenedFoldersRef.current = unopenedFoldersRef.current.filter(folder => folder.id !== managed.id);
+            } catch (error) {
+                console.warn('[fotos] Could not reopen saved folder:', error);
+            }
+        }
+        setPendingFolderNames(unopenedFoldersRef.current.map(folder => folder.preference.label ?? 'Photo folder'));
+    }, [openFromHandle]);
+
     // Restore the last persistent folder on mount (runs once).
     const restoredRef = useRef(false);
     useEffect(() => {
         if (restoredRef.current) return;
         restoredRef.current = true;
         loadManagedFolderPreferences().then(async (managedPreferences) => {
-            if (managedPreferences.length > 0) {
-                for (const managed of managedPreferences) {
+            const preference = managedPreferences.length === 0 ? await loadLastFolderPreference() : null;
+            unopenedFoldersRef.current = managedPreferences.length > 0
+                ? managedPreferences
+                : preference ? [{ id: createManagedFolderId(), preference }] : [];
+            for (const managed of [...unopenedFoldersRef.current]) {
+                try {
                     const handle = await resolveFolderPreference(managed.preference, false);
                     if (!handle) {
                         continue;
@@ -2735,19 +2771,14 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                         label: managed.preference.label ?? handle.name,
                         preference: managed.preference,
                     });
+                    unopenedFoldersRef.current = unopenedFoldersRef.current.filter(folder => folder.id !== managed.id);
+                } catch (error) {
+                    console.warn('[fotos] Could not restore saved folder:', error);
                 }
-                return;
             }
-
-            const preference = await loadLastFolderPreference();
-            if (!preference) return;
-            const handle = await resolveFolderPreference(preference, false);
-            if (!handle) return;
-            await openFromHandle(handle, {
-                label: preference.label ?? handle.name,
-                preference,
-            });
-        }).catch(() => {}).finally(() => setInitializationComplete(true));
+            setPendingFolderNames(unopenedFoldersRef.current.map(folder => folder.preference.label ?? 'Photo folder'));
+        }).catch(error => console.warn('[fotos] Could not load saved folders:', error))
+            .finally(() => setInitializationComplete(true));
     }, [openFromHandle]);
 
     // Handle incoming Web Share Target files (runs once on mount)
@@ -2957,7 +2988,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             },
         ];
         applyManagedFolders(nextRecords);
-        void saveManagedFolderPreferences(nextRecords).catch(() => {});
+        void saveManagedFolderPreferences(nextRecords, unopenedFoldersRef.current).catch(() => {});
         void saveLastFolderPreference(target.preference).catch(() => {});
     }, [applyManagedFolders]);
 
@@ -2994,7 +3025,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         clusterThresholdRef.current = null;
         semanticPassPromiseRef.current = null;
         applyManagedFolders(nextRecords);
-        void saveManagedFolderPreferences(nextRecords).catch(() => {});
+        void saveManagedFolderPreferences(nextRecords, unopenedFoldersRef.current).catch(() => {});
         const nextCurrent = nextRecords.find(record => record.isCurrent) ?? null;
         if (nextCurrent) {
             void saveLastFolderPreference(nextCurrent.preference).catch(() => {});
@@ -3017,7 +3048,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             clusterThresholdRef.current = null;
             semanticPassPromiseRef.current = null;
             applyManagedFolders(restoredRecords);
-            void saveManagedFolderPreferences(restoredRecords).catch(() => {});
+            void saveManagedFolderPreferences(restoredRecords, unopenedFoldersRef.current).catch(() => {});
             if (removed.isCurrent) {
                 void saveLastFolderPreference(removed.preference).catch(() => {});
             }
@@ -3044,7 +3075,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                     : record
             ));
             applyManagedFolders(nextRecords);
-            void saveManagedFolderPreferences(nextRecords).catch(() => {});
+            void saveManagedFolderPreferences(nextRecords, unopenedFoldersRef.current).catch(() => {});
             syncPhotosToOneCore(found, handle, {
                 claimAuthorship: claimAuthorshipOnIngest,
             }).catch(err =>
@@ -3081,7 +3112,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             : foldersRef.current;
         if (ownerFolder) {
             applyManagedFolders(nextRecords);
-            void saveManagedFolderPreferences(nextRecords).catch(() => {});
+            void saveManagedFolderPreferences(nextRecords, unopenedFoldersRef.current).catch(() => {});
         } else {
             setEntries(folderRemaining);
         }
@@ -3932,6 +3963,8 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
 
     return {
         initializationComplete,
+        pendingFolderNames,
+        reopenSavedFolders,
         isOpen,
         surface,
         surfaceProfile,

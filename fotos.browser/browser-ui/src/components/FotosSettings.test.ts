@@ -44,6 +44,8 @@ vi.mock('@/lib/glueIdentityState', () => ({
 
 vi.mock('@/lib/glueCertification', () => ({
   resolveGlueCertificationState: vi.fn(),
+  rememberGlueCertification: vi.fn().mockResolvedValue(undefined),
+  forgetGlueCertification: vi.fn(),
 }));
 
 vi.mock('@/lib/authLoginBridge', () => ({

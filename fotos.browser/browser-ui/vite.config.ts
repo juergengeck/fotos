@@ -326,11 +326,11 @@ export default defineConfig({
             {find: '@refinio/agent.core', replacement: path.resolve(__dirname, '../../../one/packages/agent.core/src/index.ts')},
             {find: '@refinio/assembly.core', replacement: path.resolve(__dirname, '../../../one/packages/assembly.core/dist')},
             {find: '@vger/vger.core', replacement: path.resolve(__dirname, '../../../one/packages/vger.core/dist')},
-            {find: '@vger/vger.glue', replacement: path.resolve(__dirname, '../../../vger/packages/vger.glue/dist')},
+            {find: '@vger/vger.glue', replacement: path.resolve(__dirname, '../../../one/packages/vger.glue/dist')},
             {find: '@refinio/source.media', replacement: path.resolve(__dirname, '../../../one/packages/source.media/dist')},
             {find: '@refinio/source.core', replacement: path.resolve(__dirname, '../../../one/packages/source.core/dist')},
             {find: '@refinio/media.core', replacement: path.resolve(__dirname, '../../../one/packages/media.core/dist')},
-            {find: '@refinio/recovery.core', replacement: path.resolve(__dirname, '../../../vger/packages/recovery.core/dist')},
+            {find: '@refinio/recovery.core', replacement: path.resolve(__dirname, '../../../one/packages/recovery.core/dist')},
             {find: /^@refinio\/trust\.core\/recipes$/, replacement: path.resolve(__dirname, '../../../one/packages/trust.core/dist/recipes/index.js')},
             {find: '@refinio/trust.core', replacement: path.resolve(__dirname, '../../../one/packages/trust.core/dist')},
             // Stub out Node-only modules that ONE.core dependency tree pulls in

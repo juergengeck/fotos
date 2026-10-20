@@ -23,6 +23,52 @@ interface ResolveGlueCertificationOptions {
     resolvePublicSignKeyHex?: (personId: SHA256IdHash<Person>) => Promise<string>;
 }
 
+const CERTIFICATION_STORAGE_KEY = 'fotos.glue.certifications';
+
+function readSavedCertificates(): Record<string, any> {
+    try {
+        const saved = JSON.parse(localStorage.getItem(CERTIFICATION_STORAGE_KEY) ?? '{}');
+        return saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {};
+    } catch {
+        return {};
+    }
+}
+
+function saveCertificate(personId: string, cert: unknown): void {
+    try {
+        const saved = readSavedCertificates();
+        if (cert) saved[personId] = cert;
+        else delete saved[personId];
+        localStorage.setItem(CERTIFICATION_STORAGE_KEY, JSON.stringify(saved));
+    } catch {
+        // Storage may be disabled; the current login can still complete.
+    }
+}
+
+function certificateMatches(cert: any, identity: string, publicKeyHex: string, now: number): boolean {
+    const validUntil = parseValidUntil(cert?.validUntil);
+    return cert?.claims?.identity === identity
+        && cert?.subjectPublicKey === publicKeyHex
+        && validUntil !== null && validUntil > now;
+}
+
+/** Remember the popup result for this local identity, without changing its keys or library. */
+export async function rememberGlueCertification(
+    personId: SHA256IdHash<Person>,
+    displayName: string,
+    cert: unknown,
+    resolvePublicSignKeyHex = getLocalPublicSignKeyHex,
+): Promise<void> {
+    const publicKeyHex = await resolvePublicSignKeyHex(personId);
+    if (certificateMatches(cert, `${toGlueHandle(displayName)}@glue.one`, publicKeyHex, Date.now())) {
+        saveCertificate(personId, cert);
+    }
+}
+
+export function forgetGlueCertification(personId: SHA256IdHash<Person>): void {
+    saveCertificate(personId, null);
+}
+
 export async function getLocalPublicSignKeyHex(
     personId: SHA256IdHash<Person>,
 ): Promise<string> {
@@ -94,10 +140,26 @@ export async function resolveGlueCertificationState({
     }
 
     const expectedIdentity = `${glueHandle}@glue.one`;
-    const response = await fetchImpl(
-        `${apiBase}/api/registration/certByPublicKey/${encodeURIComponent(publicKeyHex)}`,
-    );
+    const savedCert = readSavedCertificates()[publicationIdentity];
+    const savedState: GlueCertificationState = certificateMatches(savedCert, expectedIdentity, publicKeyHex, now)
+        ? {
+            certState: 'certified',
+            certValidUntil: new Date(parseValidUntil(savedCert.validUntil)!).toLocaleDateString(),
+            publicKeyHex,
+        }
+        : { certState: 'anchored', certValidUntil: null, publicKeyHex };
+
+    let response: Response;
+    try {
+        response = await fetchImpl(
+            `${apiBase}/api/registration/certByPublicKey/${encodeURIComponent(publicKeyHex)}`,
+        );
+    } catch {
+        return savedState;
+    }
+    if (response.status >= 500) return savedState;
     if (!response.ok) {
+        forgetGlueCertification(publicationIdentity);
         return {
             certState: 'anchored',
             certValidUntil: null,
@@ -108,6 +170,7 @@ export async function resolveGlueCertificationState({
     const body = await response.json().catch(() => null);
     const cert = readCert(body);
     if (cert?.claims?.identity !== expectedIdentity) {
+        forgetGlueCertification(publicationIdentity);
         return {
             certState: 'anchored',
             certValidUntil: null,
@@ -117,6 +180,9 @@ export async function resolveGlueCertificationState({
 
     const validUntil = parseValidUntil(cert?.validUntil);
     if (validUntil !== null && validUntil > now) {
+        if (certificateMatches(cert, expectedIdentity, publicKeyHex, now)) {
+            saveCertificate(publicationIdentity, cert);
+        }
         return {
             certState: 'certified',
             certValidUntil: new Date(validUntil).toLocaleDateString(),
@@ -124,6 +190,7 @@ export async function resolveGlueCertificationState({
         };
     }
 
+    forgetGlueCertification(publicationIdentity);
     return {
         certState: 'anchored',
         certValidUntil: null,
