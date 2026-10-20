@@ -48,18 +48,24 @@ try {
     const page = await context.newPage();
     await page.goto(`${baseUrl}?fotosDebug=1`);
     await page.waitForFunction(() => Boolean(window.__fotosDebug));
-    await page.evaluate(bytesBase64 => window.__api('fotos-qa', 'importPhotoFixture', {
-        name: 'remember-me.png', mimeType: 'image/png', bytesBase64,
-    }), fixture.toString('base64'));
     const before = await page.evaluate(() => ({
         creds: localStorage.getItem('fotos_creds'),
         ownerId: window.__fotosDebug.getStatus().ownerId,
     }));
-    await page.getByRole('button', { name: /^settings$/i }).click();
+    await page.getByRole('button', { name: 'Log in with Glue', exact: true }).click();
+    await page.getByRole('button', { name: 'Close login', exact: true }).click();
+    assert.equal(await page.getByPlaceholder('Your name on glue.one').count(), 0);
+    await page.getByRole('button', { name: 'Log in with Glue', exact: true }).click();
     await page.getByPlaceholder('Your name on glue.one').fill('Remember Me');
     await page.getByRole('button', { name: 'Prepare authentication', exact: true }).click();
     await page.getByRole('button', { name: 'Authenticate', exact: true }).waitFor({ timeout: 45_000 });
+    assert.equal((await page.evaluate(() => window.__fotosDebug.getGalleryState())).isOpen, false);
+    console.log('PASS: a fresh instance can start login and resume after preparation without a photo folder');
+    await page.evaluate(bytesBase64 => window.__api('fotos-qa', 'importPhotoFixture', {
+        name: 'remember-me.png', mimeType: 'image/png', bytesBase64,
+    }), fixture.toString('base64'));
     await waitForGallery(page, 1);
+    await page.getByRole('button', { name: /^settings$/i }).click();
     await page.getByRole('button', { name: 'Authenticate', exact: true }).click();
     await page.getByRole('button', { name: 'Change user ID', exact: true }).waitFor();
     const identity = await page.evaluate(() => window.__api('fotos-qa', 'getIdentity'));

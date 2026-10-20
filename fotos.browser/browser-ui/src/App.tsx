@@ -4,6 +4,7 @@ import { GalleryBreadcrumbs } from '@/components/GalleryBreadcrumbs';
 import { PhotoGrid } from '@/components/PhotoGrid';
 import { Lightbox } from '@/components/Lightbox';
 import { Sidebar, type SidebarTab } from '@/components/Sidebar';
+import { FotosSettings } from '@/components/FotosSettings';
 import { ConfirmModal } from '@/components/ConfirmModal';
 import { ContextMenu } from '@/components/ContextMenu';
 import { RenameModal } from '@/components/RenameModal';
@@ -60,7 +61,7 @@ import {
     resolveGlueIdentityState,
 } from '@/lib/glueIdentityState';
 import { resolveTokenToPersonId, type SharePeerOption } from '@/components/ShareWithField';
-import { readStoredSidebarTab } from '@/lib/authFlowState';
+import { hasPendingAuthenticationContinuation, readStoredSidebarTab } from '@/lib/authFlowState';
 import {
     createFotosShareInvite,
     isFotosShareInviteExpired,
@@ -398,6 +399,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
     const [headlessUrl, setHeadlessUrl] = useState<string | null>(null);
     const [headlessInput, setHeadlessInput] = useState('');
     const [showHeadlessConnect, setShowHeadlessConnect] = useState(false);
+    const [welcomeLoginOpen, setWelcomeLoginOpen] = useState(() => hasPendingAuthenticationContinuation());
     const [sidebarTab, setSidebarTab] = useState<SidebarTab>(() => window.location.pathname.replace(/\/$/, '') === '/invites/inviteDevice' ? 'settings' : readStoredSidebarTab() ?? 'browse');
     const [sidebarVisible, setSidebarVisible] = useState(true);
     const [sidebarOpenRequest, setSidebarOpenRequest] = useState(0);
@@ -3635,8 +3637,9 @@ export function App({ fotosModel: initialModel }: AppProps) {
         if (!gallery.folder.isOpen) {
             return (
                 <div className="h-screen flex flex-col bg-[#111] view-enter">
-                    <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-5 p-6 text-center">
-                        <img src="/cam.svg" alt="" className="h-36 w-36 invert opacity-20" />
+                    <div className="flex-1 min-h-0 overflow-y-auto">
+                    <div className="flex min-h-full flex-col items-center justify-center gap-5 p-6 text-center">
+                        <img src="/cam.svg" alt="" className={`${welcomeLoginOpen ? 'h-16 w-16' : 'h-36 w-36'} shrink-0 invert opacity-20`} />
                         <div className="space-y-2">
                             <h1 className="text-2xl font-semibold text-white/90">Your photos, on your device</h1>
                             <p className="max-w-md text-sm leading-relaxed text-white/60">
@@ -3659,12 +3662,34 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                 {pendingImportCount} shared photo{pendingImportCount === 1 ? ' is' : 's are'} ready to be stored locally.
                             </div>
                         )}
-                        <button
-                            onClick={gallery.folder.openFolder}
-                            className="min-h-11 rounded-lg bg-[#e94560] px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-[#d13354] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff9db0]"
-                        >
-                            {primaryIntakeActionLabel}
-                        </button>
+                        <div className="flex flex-wrap justify-center gap-3">
+                            <button
+                                onClick={gallery.folder.openFolder}
+                                className="min-h-11 rounded-lg bg-[#e94560] px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-[#d13354] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff9db0]"
+                            >
+                                {primaryIntakeActionLabel}
+                            </button>
+                            <button
+                                onClick={() => setWelcomeLoginOpen(open => !open)}
+                                aria-expanded={welcomeLoginOpen}
+                                aria-controls="welcome-login"
+                                className="min-h-11 rounded-lg border border-white/20 px-6 py-3 text-sm font-medium text-white/85 transition-colors hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff9db0]"
+                            >
+                                {welcomeLoginOpen ? 'Close login' : 'Log in with Glue'}
+                            </button>
+                        </div>
+
+                        {welcomeLoginOpen && (
+                            <section id="welcome-login" aria-labelledby="welcome-login-title" className="w-full max-w-sm space-y-4 rounded-xl border border-white/10 bg-white/[0.03] p-5 text-left">
+                                <h2 id="welcome-login-title" className="text-base font-medium text-white/90">Log in with Glue</h2>
+                                <FotosSettings
+                                    model={fotosModel}
+                                    acceptSharing={acceptSharing}
+                                    onAcceptSharingChange={updateAcceptSharing}
+                                    authenticationOnly
+                                />
+                            </section>
+                        )}
 
                         {import.meta.env.DEV && (!showHeadlessConnect ? (
                             <button
@@ -3705,6 +3730,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         <p className="max-w-md text-center text-xs text-white/55">
                             {primaryIntakeSummary}
                         </p>
+                    </div>
                     </div>
                     <Impressum />
                 </div>

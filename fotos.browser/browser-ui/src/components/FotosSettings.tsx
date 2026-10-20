@@ -40,6 +40,7 @@ interface FotosSettingsProps {
     model: FotosModel | null;
     acceptSharing: boolean;
     onAcceptSharingChange: (enabled: boolean) => void;
+    authenticationOnly?: boolean;
 }
 
 function setFedCMLoginStatus(status: 'logged-in' | 'logged-out') {
@@ -69,6 +70,7 @@ export function FotosSettings({
     model,
     acceptSharing,
     onAcceptSharingChange,
+    authenticationOnly = false,
 }: FotosSettingsProps) {
     const [syncEnabled, setSyncEnabled] = useState(false);
     const [displayName, setDisplayName] = useState<string | null>(null);
@@ -789,9 +791,9 @@ export function FotosSettings({
 
     return (
         <>
-        <CollapsibleSection label="Devices" defaultOpen={window.location.pathname.replace(/\/$/, '') === '/invites/inviteDevice'}>
+        {!authenticationOnly && <CollapsibleSection label="Devices" defaultOpen={window.location.pathname.replace(/\/$/, '') === '/invites/inviteDevice'}>
             <DevicesManager devices={model?.devicesPlan} pairing={model?.connectionModule?.connectionPlan} />
-        </CollapsibleSection>
+        </CollapsibleSection>}
         <CollapsibleSection label="fotos id">
             <div className="space-y-2">
                 {/* ── Not authenticated yet ── */}
@@ -804,6 +806,8 @@ export function FotosSettings({
                             <input
                                 type="text"
                                 value={draftDisplayName}
+                                aria-label="Glue user ID"
+                                autoFocus={authenticationOnly}
                                 onChange={event => setDraftDisplayName(event.target.value)}
                                 placeholder="Your name on glue.one"
                                 disabled={authenticating || recoveringWithFotos || recoveringWithPrivateKey}
@@ -1064,7 +1068,7 @@ export function FotosSettings({
                     <div className="px-2.5 text-xs text-red-400/70">{authError}</div>
                 )}
 
-                <label className={`flex items-start gap-2 rounded-md border px-2.5 py-2 ${
+                {!authenticationOnly && <label className={`flex items-start gap-2 rounded-md border px-2.5 py-2 ${
                     sharingToggleDisabled
                         ? 'border-white/8 bg-white/[0.03]'
                         : 'border-white/10 bg-white/5'
@@ -1087,7 +1091,7 @@ export function FotosSettings({
                             </p>
                         )}
                     </div>
-                </label>
+                </label>}
 
                 {/* Learn more — always visible */}
                 <a
