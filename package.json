@@ -1,0 +1,16 @@
+{
+  "name": "fotos-workspace",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "clean": "turbo run clean"
+  },
+  "devDependencies": {
+    "turbo": "2.6.1",
+    "typescript": "catalog:"
+  }
+}

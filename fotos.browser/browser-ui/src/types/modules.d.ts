@@ -1,7 +1,7 @@
 /// <reference path="../../../../../one/packages/one.core/@OneObjectInterfaces.d.ts" />
 /// <reference path="../../../../../one/packages/one.models/@OneObjectInterfaces.d.ts" />
 /// <reference path="../../../../../one/packages/vger.core/@OneObjectInterfaces.d.ts" />
-/// <reference path="../../../../../one/packages/glue.core/src/recipes/@OneObjectInterfaces.d.ts" />
+/// <reference types="@glueone/glue.core" />
 /// <reference path="../../../../../one/packages/assembly.core/src/types/Assembly.ts" />
 
 declare module '*?worker&url' {

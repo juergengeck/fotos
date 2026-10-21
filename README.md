@@ -24,14 +24,22 @@ developed there. Packages still owned by VGER come from `../vger`.
 `../one-experimental` remains the base for Flexibel only. Fotos does not use it as a
 dependency, build, test, or deployment source.
 
-Install the web clients and shared Fotos packages through the ONE workspace:
+Install web clients and shared Fotos packages from this repository. Build the
+required shared ONE packages in their owning `../one` workspace first, then:
 
 ```bash
-cd ../one
-ONNXRUNTIME_NODE_INSTALL=skip corepack pnpm install --frozen-lockfile
+ONNXRUNTIME_NODE_INSTALL=skip corepack pnpm install
+corepack pnpm --filter @refinio/fotos.core build
 corepack pnpm --filter @one/fotos.browser.ui build
 corepack pnpm --filter @one/fotos.browser.ui test
 ```
+
+After the initial lockfile is generated, use `pnpm install --frozen-lockfile`.
+Cross-repository dependencies use ordinary `file:` installations. Reinstall after
+rebuilding a changed producer so the installed files reflect its current output.
+The root manages the six local web/shared/deployment packages with pnpm and Turbo;
+it never includes packages from another Git repository. Library consumers install
+the internal peers declared by `@refinio/fotos.core` explicitly.
 
 Expo retains its separate vendored installation (`fotos.expo/.vendorrc.json`).
 The `fotos.browser` wrapper is not a workspace member because it still declares

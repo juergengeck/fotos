@@ -19,3 +19,6 @@ settings.core
 trie.core
 trust.core
 vger
+
+# Turbo task cache
+.turbo/

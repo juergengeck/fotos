@@ -28,8 +28,8 @@ cd ../fotos/fotos.browser/browser-ui
 pnpm dev          # http://localhost:5188
 ```
 
-The web clients and shared Fotos packages are members of the `../one` workspace.
-Use its lockfile and package-manager version for installation. Expo keeps its
+The web clients and shared Fotos packages are members of the Fotos workspace.
+Install from the Fotos repository root using its lockfile and package-manager version. Expo keeps its
 separate vendored install, sourcing ONE-owned packages from `../one/packages`.
 
 ## Deploy
