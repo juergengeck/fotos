@@ -30,11 +30,13 @@ interface LoginProps {
 function LoginScreen({ busy: localBusy, onLogin, onGlueLogin }: LoginProps) {
   const glue = useGlueLogin(onGlueLogin);
   const busy = localBusy || glue.busy;
-  const [username, setUsername] = useState('demo');
-  const [password, setPassword] = useState('demo');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const canLoginLocally = username.trim().length > 0 && password.length > 0;
 
   const submit = useCallback(async () => {
+    if (!username.trim() || !password) return;
     setError(null);
     try {
       await onLogin(username.trim(), password);
@@ -77,23 +79,26 @@ function LoginScreen({ busy: localBusy, onLogin, onGlueLogin }: LoginProps) {
             </Text>
             <GlueLoginField busy={glue.busy} disabled={busy} onPress={() => { setError(null); void glue.signIn(username); }}>
               <TextInput
-              value={username}
-              onChangeText={setUsername}
-              editable={!busy}
-              autoCapitalize="none"
-              autoCorrect={false}
-              placeholder="demo"
-              style={{
-                borderWidth: 1,
-                borderColor: palette.border,
-                borderRadius: 16,
-                paddingHorizontal: 16,
-                paddingVertical: 14,
-                fontSize: 16,
-                color: palette.text,
-                backgroundColor: palette.surfaceMuted,
-              }}
-            />
+                testID="expo-login-identity"
+                accessibilityLabel="Identity"
+                value={username}
+                onChangeText={setUsername}
+                editable={!busy}
+                autoCapitalize="none"
+                autoCorrect={false}
+                clearButtonMode="while-editing"
+                placeholder="Your username"
+                style={{
+                  borderWidth: 1,
+                  borderColor: palette.border,
+                  borderRadius: 16,
+                  paddingHorizontal: 16,
+                  paddingVertical: 14,
+                  fontSize: 16,
+                  color: palette.text,
+                  backgroundColor: palette.surfaceMuted,
+                }}
+              />
             </GlueLoginField>
           </View>
           <View style={{ gap: 8 }}>
@@ -101,11 +106,13 @@ function LoginScreen({ busy: localBusy, onLogin, onGlueLogin }: LoginProps) {
               Secret
             </Text>
             <TextInput
+              testID="expo-login-secret"
+              accessibilityLabel="Secret"
               value={password}
               onChangeText={setPassword}
               editable={!busy}
               secureTextEntry
-              placeholder="demo"
+              placeholder="Local account secret"
               style={{
                 borderWidth: 1,
                 borderColor: palette.border,
@@ -137,14 +144,18 @@ function LoginScreen({ busy: localBusy, onLogin, onGlueLogin }: LoginProps) {
         {glue.canCancel && <Pressable testID="expo-glue-cancel" onPress={glue.cancel}><Text style={{color: palette.text}}>Cancel Glue sign-in</Text></Pressable>}
 
         <Pressable
+          testID="expo-local-login"
+          accessibilityRole="button"
           onPress={submit}
-          disabled={busy}
+          disabled={busy || !canLoginLocally}
+          accessibilityState={{disabled: busy || !canLoginLocally}}
           style={{
             borderRadius: 16,
             backgroundColor: palette.accent,
             alignItems: 'center',
             justifyContent: 'center',
             minHeight: 52,
+            opacity: busy || !canLoginLocally ? 0.6 : 1,
           }}
         >
           {busy ? (

@@ -59,7 +59,6 @@ const NODE_ONLY_MODULES = [
 ];
 const nodeOnlyStub = path.resolve(projectRoot, 'stubs/node-only-stub.js');
 const WORKSPACE_PREFIX_ALIASES = {
-  '@vger/vger.core/': path.resolve(oneRoot, 'packages/vger.core/src/'),
   '@vger/vger.ui/': path.resolve(oneRoot, 'packages/vger.ui/src/'),
   '@refinio/coding.core/': path.resolve(oneRoot, 'packages/coding.core/src/'),
   '@refinio/fotos.core/': path.resolve(fotosRoot, 'fotos.core/src/'),
@@ -71,7 +70,6 @@ const WORKSPACE_PREFIX_ALIASES = {
 };
 const WORKSPACE_EXACT_ALIASES = {
   '@vger/vger.ui/native/devices': path.resolve(oneRoot, 'packages/vger.ui/src/components/device/DevicesManager.native.tsx'),
-  '@vger/vger.core': path.resolve(oneRoot, 'packages/vger.core/src/index.ts'),
   '@vger/vger.ui': path.resolve(oneRoot, 'packages/vger.ui'),
   '@refinio/coding.core': path.resolve(oneRoot, 'packages/coding.core/src/index.ts'),
   '@refinio/fotos.core': path.resolve(fotosRoot, 'fotos.core/src/index.ts'),
@@ -102,7 +100,8 @@ const VENDORED_SINGLETON_SCOPES = [
 ];
 
 function shouldResolveFromExpoVendor(moduleName) {
-  return VENDORED_SINGLETON_SCOPES.some(scope => moduleName.startsWith(scope));
+  return moduleName === '@vger/vger.core' || moduleName.startsWith('@vger/vger.core/')
+    || VENDORED_SINGLETON_SCOPES.some(scope => moduleName.startsWith(scope));
 }
 
 function resolveFromExpoVendor(context, moduleName, platform) {
@@ -120,7 +119,6 @@ config.resolver.extraNodeModules = {
   ...config.resolver.extraNodeModules,
   crypto: path.resolve(projectRoot, 'shims/crypto.js'),
   '@vger/vger.ui': path.resolve(oneRoot, 'packages/vger.ui'),
-  '@vger/vger.core': path.resolve(oneRoot, 'packages/vger.core/src'),
   '@glueone/glue.core': path.resolve(oneRoot, 'packages/glue.core'),
   '@refinio/one.core-expo': path.resolve(oneRoot, 'packages/one.core-expo'),
   '@refinio/one.core-expo/load-expo': path.resolve(oneRoot, 'packages/one.core-expo/src/load-expo.ts'),

@@ -1465,7 +1465,7 @@ packages:
     resolution: {integrity: sha512-9vch9WqxjaaA+1o9Ur8pOgIGbCYLjRReOUel23A6lOpD1syptgjtkORevvNmldJ5kGXQL29onQUqI5Ltz0s3bQ==}
 
   '@glueone/auth.core@file:vendor/glueone-auth.core-1.0.0.tgz':
-    resolution: {integrity: sha512-Q/+heXPA5VI+vJbtzKZGpMYHI1MKIVjAKFf7lB4O39RrByY0hsRKn76dFuiyeKSlEudcypWZ6IKrqTBPI9LY/A==, tarball: file:vendor/glueone-auth.core-1.0.0.tgz}
+    resolution: {integrity: sha512-m3h8Ay59D4X+zbj23OAC/xr6LeVFUjDb+2QGjydlPF3D+iJilLoZsIzowWOSzLhmMWGq922On3/zHJs4Six/lA==, tarball: file:vendor/glueone-auth.core-1.0.0.tgz}
     version: 1.0.0
     peerDependencies:
       '@glueone/glue.core': '*'

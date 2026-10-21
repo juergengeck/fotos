@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useModel } from './ModelContext';
-import { createP2PTopic } from '@refinio/chat.core/services/P2PTopicService';
+import { createP2PTopic } from '@refinio/chat.core/services/P2PTopicService.js';
 
 export interface Contact {
   id: string;

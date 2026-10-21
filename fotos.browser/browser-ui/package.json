@@ -9,6 +9,8 @@
     "build": "vite build",
     "test:integration:fotos-share": "node ./scripts/fotos-browser-sync-dev-integration.mjs",
     "test:integration:fotos-ui": "node ./tests/integration/fotos-ui-flow-suite.mjs",
+    "test:integration:glue-login": "node ./tests/integration/run-fotos-glue-login.mjs",
+    "test:live:glue-login": "node ./tests/integration/fotos-glue-live-probe.mjs",
     "test:integration:fotos-id-share": "bash ./tests/integration/test-fotos-id-share.sh",
     "test:integration:fotos-adhoc-gallery-share": "bash ./tests/integration/test-fotos-adhoc-gallery-share.sh",
     "test:live:fotos-share": "node ./scripts/fotos-live-integration.mjs",
