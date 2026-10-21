@@ -13,6 +13,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { deriveKeyFromPhotos, deriveRecoveryKeyCandidatesFromPhotos } from '@/lib/photo-key-derivation.js';
 import { uint8arrayToHexString } from '@refinio/one.core/lib/util/arraybuffer-to-and-from-hex-string.js';
+import { nameToIdentity } from '@glueone/glue.core/registration/identity.js';
 import {
   selectExpectedRecoveryCandidate,
   signRecoveryPayload,
@@ -34,11 +35,6 @@ function isOriginAllowed(origin: string): boolean {
   if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
   if (/^https?:\/\/192\.168\.\d+\.\d+(:\d+)?$/.test(origin)) return true;
   return false;
-}
-
-/** Normalize display name → glue.one identity (e.g. "Alice" → "alice@glue.one"). */
-function nameToIdentity(displayName: string): string {
-  return displayName.toLowerCase().replace(/[^a-z0-9]/g, '') + '@glue.one';
 }
 
 type PopupPhase = 'waiting' | 'setup' | 'done' | 'error';
@@ -352,7 +348,7 @@ function FotosIdSetupForm(props: {
       setNameStatus('idle');
       return;
     }
-    const localPart = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const localPart = nameToIdentity(name).slice(0, -'@glue.one'.length);
     if (localPart.length < 2) {
       setNameStatus('idle');
       return;
@@ -389,7 +385,7 @@ function FotosIdSetupForm(props: {
 
     if (checkTimerRef.current) clearTimeout(checkTimerRef.current);
 
-    const localPart = value.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const localPart = nameToIdentity(value).slice(0, -'@glue.one'.length);
     if (localPart.length >= 2) {
       checkTimerRef.current = setTimeout(() => checkNameAvailability(value), 400);
     }
@@ -406,7 +402,7 @@ function FotosIdSetupForm(props: {
       return;
     }
 
-    const localPart = initialDisplayName.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const localPart = nameToIdentity(initialDisplayName).slice(0, -'@glue.one'.length);
     if (localPart.length >= 2) {
       checkTimerRef.current = setTimeout(() => checkNameAvailability(initialDisplayName), 0);
     }

@@ -46,6 +46,31 @@ describe('Fotos Glue session', () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
+  it('selects each verified subject independently of full account names and the optional hint', async () => {
+    const accountNames = [
+      'gecko@glue.one', 'gecko@other.one',
+      'alice-smith@glue.one', 'alicesmith@glue.one',
+      'a+b@glue.one', 'ab@glue.one',
+    ];
+    const auth = { login: vi.fn(), resume: vi.fn() };
+    const session = createFotosGlueLoginSession(auth, localVault);
+    for (const [index, displayName] of accountNames.entries()) {
+      const personId = (index + 1).toString(16).repeat(64);
+      const secret = await localVault.getOrCreate('https://glue.one', personId);
+      auth.login.mockResolvedValue({
+        localName: `glue:${personId}`, secret,
+        identity: { personId, displayName, pubkey: 'verified-key', authenticatedAt: 1 },
+      });
+      await session.signIn({ loginHint: 'different optional prefill' });
+      const account = await resolveFotosBootCreds({ vault: localVault });
+      expect(account.accountId).toBe(`glue-${personId}`);
+      expect(account.creds).toMatchObject({ email: `glue:${personId}`, secret });
+    }
+    expect(auth.login.mock.calls).toEqual(accountNames.map(() => [{ loginHint: 'different optional prefill' }]));
+    const savedAccounts = JSON.parse(localStorage.getItem(ACCOUNTS_KEY)!);
+    expect(savedAccounts.accounts).toHaveLength(accountNames.length);
+  });
+
   it('preserves the visitor account when verification fails', async () => {
     const local = await resolveFotosBootCreds({ vault: localVault });
     const before = localStorage.getItem(ACCOUNTS_KEY);

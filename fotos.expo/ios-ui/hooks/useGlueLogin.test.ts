@@ -17,6 +17,30 @@ import {useGlueLogin} from './useGlueLogin';
 beforeEach(() => {harness.ref.current = null; harness.setters.length = 0; harness.cleanup = undefined; harness.login.mockReset(); harness.remember.mockReset(); harness.prepare.mockReset(); harness.prepare.mockReturnValue(harness.remember);});
 afterEach(() => {harness.cleanup?.();});
 describe('Expo Glue login UI state', () => {
+  it('opens distinct verified subjects even when their account names differ from the hint', async () => {
+    const accountNames = [
+      'gecko@glue.one', 'gecko@other.one',
+      'alice-smith@glue.one', 'alicesmith@glue.one',
+      'a+b@glue.one', 'ab@glue.one',
+    ];
+    const onLogin = vi.fn(async () => {});
+    const hook = useGlueLogin(onLogin);
+    for (const [index, displayName] of accountNames.entries()) {
+      const personId = (index + 1).toString(16).repeat(64);
+      const secret = `secret-${index}`;
+      harness.login.mockResolvedValue({
+        localName: `glue:${personId}`, secret,
+        identity: { personId, displayName, pubkey: 'verified-key', authenticatedAt: 1 },
+      });
+      await hook.signIn('different optional prefill');
+      expect(onLogin).toHaveBeenLastCalledWith(`glue:${personId}`, secret);
+      expect(harness.remember).toHaveBeenLastCalledWith(personId);
+    }
+    expect(onLogin).toHaveBeenCalledTimes(accountNames.length);
+    expect(harness.login.mock.calls.every(([options]) => options.loginHint === 'different optional prefill')).toBe(true);
+    expect(harness.setters[1]!.mock.calls).toEqual(accountNames.map(() => [null]));
+  });
+
   it('shows progress and logs in using only verified subject credentials', async () => {
     const onLogin = vi.fn(async () => {});
     harness.login.mockResolvedValue({localName: 'glue:verified-subject', secret: 'random-local-secret', identity: {personId: 'verified-subject'}});

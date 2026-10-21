@@ -221,7 +221,12 @@ describe('FotosIdPopup', () => {
     expect(stateSetters[0]).toHaveBeenCalledTimes(1);
   });
 
-  it('creates a fotos id proof from the derived key and returns it to the opener', async () => {
+  it.each([
+    ['Alice', 'alice@glue.one'],
+    ['gecko@glue.one', 'gecko@glue.one'],
+    ['Alice-Smith@glue.one', 'alice-smith@glue.one'],
+    ['AliceSmith', 'alicesmith@glue.one'],
+  ])('creates a proof for the canonical account %s', async (displayName, identity) => {
     const opener = { postMessage: vi.fn() };
     globalThis.window = {
       opener,
@@ -239,10 +244,10 @@ describe('FotosIdPopup', () => {
     const stateValues = [
       'setup',
       'create',
-      'Alice',
+      displayName,
       null,
       'photos',
-      'Alice',
+      displayName,
       'idle',
       null,
       [{ file: mockFile, thumbnailUrl: 'blob:photo-1' }],
@@ -267,7 +272,7 @@ describe('FotosIdPopup', () => {
           current: {
             requestId: 'request-create',
             mode: 'create',
-            displayName: 'Alice',
+            displayName,
             personId: 'person-1',
             personPublicKey: 'glue-public-key-1',
             challengeId: 'challenge-id-1',
@@ -302,6 +307,10 @@ describe('FotosIdPopup', () => {
       passphrase: 'secret-passphrase',
     });
     expect(signRecoveryPayload).toHaveBeenCalledWith(
+      expect.stringContaining(`"identity":${JSON.stringify(identity)}`),
+      expect.anything(),
+    );
+    expect(signRecoveryPayload).toHaveBeenCalledWith(
       expect.stringContaining('"action":"register"'),
       expect.objectContaining({ publicKey: new Uint8Array([9, 9, 9]) }),
     );
@@ -312,10 +321,10 @@ describe('FotosIdPopup', () => {
         success: true,
         data: {
           mode: 'create',
-          identity: 'alice@glue.one',
-          displayName: 'Alice',
+          identity,
+          displayName,
           publicKey: 'fotos-public-key-1',
-          claimPayload: expect.stringContaining('"identity":"alice@glue.one"'),
+          claimPayload: expect.stringContaining(JSON.stringify(identity)),
           signature: 'claim-signature-1',
         },
       },
@@ -323,7 +332,12 @@ describe('FotosIdPopup', () => {
     );
   });
 
-  it('re-derives the fotos recovery key and signs the recovery claim for the opener', async () => {
+  it.each([
+    ['Alice', 'alice@glue.one'],
+    ['gecko@glue.one', 'gecko@glue.one'],
+    ['Alice-Smith@glue.one', 'alice-smith@glue.one'],
+    ['AliceSmith', 'alicesmith@glue.one'],
+  ])('recovers a proof for the canonical account %s', async (displayName, identity) => {
     const opener = { postMessage: vi.fn() };
     globalThis.window = {
       opener,
@@ -341,10 +355,10 @@ describe('FotosIdPopup', () => {
     const stateValues = [
       'setup',
       'recover',
-      'Alice',
+      displayName,
       null,
       'photos',
-      'Alice',
+      displayName,
       'idle',
       null,
       [{ file: mockFile, thumbnailUrl: 'blob:photo-1' }],
@@ -369,7 +383,7 @@ describe('FotosIdPopup', () => {
           current: {
             requestId: 'request-recover',
             mode: 'recover',
-            displayName: 'Alice',
+            displayName,
             personId: 'person-1',
             personPublicKey: 'glue-public-key-1',
             challengeId: 'challenge-id-1',
@@ -417,6 +431,10 @@ describe('FotosIdPopup', () => {
       expect.any(Array),
     );
     expect(signRecoveryPayload).toHaveBeenCalledWith(
+      expect.stringContaining(`"identity":${JSON.stringify(identity)}`),
+      expect.anything(),
+    );
+    expect(signRecoveryPayload).toHaveBeenCalledWith(
       expect.stringContaining('"action":"recover"'),
       expect.objectContaining({
         publicKey: new Uint8Array([7, 7, 7]),
@@ -429,8 +447,8 @@ describe('FotosIdPopup', () => {
         success: true,
         data: {
           mode: 'recover',
-          identity: 'alice@glue.one',
-          displayName: 'Alice',
+          identity,
+          displayName,
           publicKey: 'expected-fotos-key-1',
           claimPayload: expect.stringContaining('"challengeId":"challenge-id-1"'),
           signature: 'claim-signature-2',
