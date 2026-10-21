@@ -4,7 +4,7 @@ import { getDefaultKeys } from '@refinio/one.core/lib/keychain/keychain.js';
 import { getPublicKeys } from '@refinio/one.core/lib/keychain/key-storage-public.js';
 import { uint8arrayToHexString } from '@refinio/one.core/lib/util/arraybuffer-to-and-from-hex-string.js';
 import { API_BASE } from '../config.js';
-import { toGlueHandle } from './authLoginBridge';
+import { nameToIdentity } from '@glueone/glue.core/registration/identity.js';
 
 export type GlueCertificationLevel = 'ephemeral' | 'anchored' | 'certified';
 
@@ -73,8 +73,8 @@ export async function resolveGlueCertificationState({
         };
     }
 
-    const glueHandle = toGlueHandle(trimmedDisplayName);
-    if (!glueHandle) {
+    const expectedIdentity = nameToIdentity(trimmedDisplayName);
+    if (expectedIdentity === '@glue.one') {
         return {
             certState: 'anchored',
             certValidUntil: null,
@@ -93,7 +93,6 @@ export async function resolveGlueCertificationState({
         };
     }
 
-    const expectedIdentity = `${glueHandle}@glue.one`;
     const response = await fetchImpl(
         `${apiBase}/api/registration/certByPublicKey/${encodeURIComponent(publicKeyHex)}`,
     );
