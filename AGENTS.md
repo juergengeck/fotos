@@ -22,5 +22,6 @@
 
 - Run `corepack pnpm install` at this repository root after manually building required shared packages in `../one`. Use `--frozen-lockfile` once the owning lock is available. Cross-repository dependencies are ordinary `file:` installations; reinstall after changing producer output.
 - Run `corepack pnpm build`, `corepack pnpm typecheck`, and `corepack pnpm test` for the local Turbo graph, or select the owning package with `--filter`. Source-only `fotos.ui` has checks and no transpilation step.
+- Build caching remains disabled until Sources includes upstream package hashes in task inputs. Copied `file:` dependencies can change without changing local source or lockfiles; refresh installed producers before running the uncached builds.
 - Expo retains its separate vendored installation and frozen lock. The legacy `fotos.browser` wrapper remains excluded because `one.fotos` no longer exists; use `@one/fotos.browser.ui`.
 - When package-boundary-guard is installed locally, apply it and its shared package-rules.md artifact when creating packages or changing internal package relationships.
