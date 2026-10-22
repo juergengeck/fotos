@@ -253,7 +253,7 @@ export function Sidebar({
                 )}
 
                 {/* Floating bottom tab bar (mobile portrait only) */}
-                <div className="fixed bottom-0 left-0 right-0 h-14 bg-[#0d0d0d]/95 backdrop-blur-md border-t border-white/10 z-50 flex justify-around items-center px-4 landscape:hidden">
+                <div className="fotos-mobile-menu fixed bottom-0 left-0 right-0 h-14 bg-[#0d0d0d]/95 backdrop-blur-md border-t border-white/10 z-50 flex justify-around items-center px-4 landscape:hidden">
                     <TabBtnIcon active={tab === 'browse' && mobileSheetState !== 'collapsed'} onClick={() => handleTabClick('browse')} label="Browse" icon="browse" />
                     <TabBtnIcon active={tab === 'sharing' && mobileSheetState !== 'collapsed'} onClick={() => handleTabClick('sharing')} label="Sharing" icon="sharing" />
                     <TabBtnIcon active={tab === 'settings' && mobileSheetState !== 'collapsed'} onClick={() => handleTabClick('settings')} label="Settings" icon="settings" />
@@ -261,7 +261,7 @@ export function Sidebar({
 
                 <aside 
                     className={`
-                        fixed bottom-14 left-0 right-0 bg-[#0d0d0d] border-t border-white/10 rounded-t-2xl z-40 transition-all duration-300 ease-out flex flex-col
+                        fotos-submenu fixed bottom-14 left-0 right-0 bg-[#0d0d0d] border-t border-white/10 rounded-t-2xl z-40 transition-all duration-300 ease-out flex flex-col
                         landscape:static landscape:w-64 landscape:h-full landscape:border-t-0 landscape:border-l landscape:rounded-none landscape:translate-y-0 landscape:opacity-100 landscape:pointer-events-auto
                         ${mobileSheetState === 'collapsed'
                             ? 'h-0 border-t-0 opacity-0 pointer-events-none translate-y-10'
@@ -433,7 +433,7 @@ export function Sidebar({
     return (
         <>
         <aside className={`
-            ${tab === 'browse' ? 'w-64' : 'w-[min(34rem,48vw)]'} h-full min-h-0 overflow-hidden flex flex-col bg-[#0d0d0d] border-l border-white/10 shrink-0
+            fotos-submenu ${tab === 'browse' ? 'w-64' : 'w-[min(34rem,48vw)]'} h-full min-h-0 overflow-hidden flex flex-col bg-[#0d0d0d] border-l border-white/10 shrink-0
         `}>
             <ControlPaneHeader
                 folderName={folderName ?? 'Photos'}
@@ -618,6 +618,7 @@ function TabBtnIcon({
         <button
             type="button"
             onClick={onClick}
+            aria-pressed={active}
             className={`flex flex-col items-center justify-center flex-1 h-full py-1 text-xs font-semibold transition-colors ${
                 active ? 'text-[#e94560]' : 'text-white/55 hover:text-white/60'
             }`}
@@ -629,7 +630,7 @@ function TabBtnIcon({
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
-    return <div className="text-xs text-white/55 uppercase tracking-wider font-medium">{children}</div>;
+    return <div className="fotos-menu-heading text-xs text-white/55 uppercase tracking-wider font-medium">{children}</div>;
 }
 
 function CollapsibleSection({
@@ -649,7 +650,8 @@ function CollapsibleSection({
             <div className="flex items-center justify-between gap-2">
                 <button
                     onClick={() => setOpen(o => !o)}
-                    className="flex min-w-0 flex-1 items-center gap-1 text-xs text-white/55 uppercase tracking-wider font-medium hover:text-white/55 transition-colors"
+                    aria-expanded={open}
+                    className="fotos-menu-heading flex min-w-0 flex-1 items-center gap-1 text-xs text-white/55 uppercase tracking-wider font-medium hover:text-white/55 transition-colors"
                 >
                     <ChevronDown className={`w-3 h-3 transition-transform ${open ? '' : '-rotate-90'}`} />
                     {label}
@@ -1960,13 +1962,14 @@ function SettingsTab({
 
     return (
         <div className="flex flex-col -m-3 min-h-0">
-            {/* Sticky pill navigation */}
+            {/* Sticky section navigation */}
             <div className="sticky top-0 z-10 bg-[#0d0d0d] border-b border-white/8 px-3 py-2">
                 <div className="flex gap-1 overflow-x-auto scrollbar-none" aria-label="Settings sections">
                     {settingsSections.map(section => (
                         <button
                             key={section.id}
                             onClick={() => scrollToSection(section.id)}
+                            aria-current={activeSection === section.id ? 'location' : undefined}
                             className={`shrink-0 text-xs font-medium px-2.5 py-1 rounded-full transition-colors ${
                                 activeSection === section.id
                                     ? 'bg-white/10 text-white/80'

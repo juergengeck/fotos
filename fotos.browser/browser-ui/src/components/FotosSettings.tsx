@@ -25,7 +25,8 @@ function CollapsibleSection({ label, defaultOpen = true, children }: { label: st
         <div>
             <button
                 onClick={() => setOpen(o => !o)}
-                className="flex w-full items-center gap-1 text-xs text-white/55 uppercase tracking-wider font-medium hover:text-white/55 transition-colors"
+                aria-expanded={open}
+                className="fotos-menu-heading flex w-full items-center gap-1 text-xs text-white/55 uppercase tracking-wider font-medium hover:text-white/55 transition-colors"
             >
                 <ChevronDown className={`w-3 h-3 transition-transform ${open ? '' : '-rotate-90'}`} />
                 {label}
