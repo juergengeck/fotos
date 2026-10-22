@@ -22,3 +22,6 @@ vger
 
 # Turbo task cache
 .turbo/
+/.sources/
+/.sources.local.conf
+/sources/

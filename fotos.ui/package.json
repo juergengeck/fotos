@@ -19,11 +19,11 @@
     "vitest": "catalog:",
     "@refinio/fotos.core": "workspace:*",
     "react": "catalog:",
-    "@refinio/meaning.core": "file:../../one/packages/meaning.core",
-    "@refinio/one.core": "file:../../one/packages/one.core",
-    "@refinio/trust.core": "file:../../one/packages/trust.core",
-    "@refinio/trie.core": "file:../../one/packages/trie.core",
-    "@refinio/one.models": "file:../../one/packages/one.models"
+    "@refinio/meaning.core": "file:../sources/one/packages/meaning.core",
+    "@refinio/one.core": "file:../sources/one/packages/one.core",
+    "@refinio/trust.core": "file:../sources/one/packages/trust.core",
+    "@refinio/trie.core": "file:../sources/one/packages/trie.core",
+    "@refinio/one.models": "file:../sources/one/packages/one.models"
   },
   "peerDependencies": {
     "@refinio/fotos.core": "*",
