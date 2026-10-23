@@ -3,27 +3,43 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "./dist/index.js",
+  "main": "./src/index.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./components/*.js": {
+      "types": "./src/components/*.tsx",
+      "default": "./src/components/*.tsx"
     },
     "./components/*": {
-      "types": "./dist/components/*.d.ts",
-      "import": "./dist/components/*.js"
+      "types": "./src/components/*.tsx",
+      "default": "./src/components/*.tsx"
+    },
+    "./hooks/*.js": {
+      "types": "./src/hooks/*.ts",
+      "default": "./src/hooks/*.ts"
     },
     "./hooks/*": {
-      "types": "./dist/hooks/*.d.ts",
-      "import": "./dist/hooks/*.js"
+      "types": "./src/hooks/*.ts",
+      "default": "./src/hooks/*.ts"
+    },
+    "./lib/*.js": {
+      "types": "./src/lib/*.ts",
+      "default": "./src/lib/*.ts"
     },
     "./lib/*": {
-      "types": "./dist/lib/*.d.ts",
-      "import": "./dist/lib/*.js"
+      "types": "./src/lib/*.ts",
+      "default": "./src/lib/*.ts"
+    },
+    "./types/*.js": {
+      "types": "./src/types/*.ts",
+      "default": "./src/types/*.ts"
     },
     "./types/*": {
-      "types": "./dist/types/*.d.ts",
-      "import": "./dist/types/*.js"
+      "types": "./src/types/*.ts",
+      "default": "./src/types/*.ts"
     }
   },
   "peerDependencies": {
@@ -32,8 +48,12 @@
   "devDependencies": {
     "@types/react": "^19.2.14"
   },
-  "types": "./dist/index.d.ts",
+  "types": "./src/index.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.json"
-  }
+    "build": "pnpm pack --pack-destination dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "files": [
+    "src"
+  ]
 }
