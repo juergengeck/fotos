@@ -225,7 +225,7 @@ export default defineConfig({
         react(),
         viteStaticCopy({targets: [
             {
-                src: normalizePath(path.join(path.dirname(require.resolve('@refinio/agent.browser/workers/local-llm.worker.js')), '*')),
+                src: normalizePath(path.join(path.dirname(require.resolve('@refinio/agent.browser/workers/local-llm.worker.js')), '*.{js,wasm}')),
                 dest: '__vger_local_model_artifacts__/runtime/agent-browser/0.1.0/wasm',
             },
             {
