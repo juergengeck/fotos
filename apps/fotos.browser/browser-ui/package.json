@@ -151,6 +151,7 @@
     "@refinio/qa.core": "file:../../../sources/one/packages/qa.core",
     "@refinio/qa.protocol": "file:../../../sources/one/packages/qa.protocol",
     "@refinio/instrumentation.core": "file:../../../sources/one/packages/instrumentation.core",
-    "vite-plugin-static-copy": "2.3.2"
+    "vite-plugin-static-copy": "2.3.2",
+    "@refinio/cube.contracts": "file:../../../sources/one/packages/cube.contracts"
   }
 }

@@ -8,6 +8,7 @@ export default {
         './index.html',
         './src/**/*.{js,ts,jsx,tsx}',
         path.join(path.dirname(require.resolve('@refinio/fotos.ui')), '**/*.{js,ts,jsx,tsx}'),
+        path.join(path.dirname(require.resolve('@vger/vger.ui')), '**/*.{js,mjs,ts,tsx}'),
     ],
     theme: {
         extend: {
