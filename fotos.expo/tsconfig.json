@@ -16,22 +16,22 @@
         "./*"
       ],
       "@refinio/fotos.core": [
-        "../fotos.core/src/index.ts"
+        "../packages/fotos.core/src/index.ts"
       ],
       "@refinio/fotos.core/*": [
-        "../fotos.core/src/*"
+        "../packages/fotos.core/src/*"
       ],
       "@refinio/fotos.ui": [
-        "../fotos.ui/src/index.ts"
+        "../packages/fotos.ui/src/index.ts"
       ],
       "@refinio/fotos.ui/*": [
-        "../fotos.ui/src/*"
+        "../packages/fotos.ui/src/*"
       ],
       "@refinio/fotos.gallery": [
-        "../fotos.gallery/src/index.ts"
+        "../packages/fotos.gallery/src/index.ts"
       ],
       "@refinio/fotos.gallery/*": [
-        "../fotos.gallery/src/*"
+        "../packages/fotos.gallery/src/*"
       ]
     }
   },

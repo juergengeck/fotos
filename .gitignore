@@ -4,7 +4,7 @@ dist/
 _deploy/
 *.log
 *.tgz
-fotos.browser/browser-ui/tests/integration/reports/
+apps/fotos.browser/browser-ui/tests/integration/reports/
 
 # Local dependency shims for sibling VGER/ONE packages
 auth.core
@@ -19,3 +19,9 @@ settings.core
 trie.core
 trust.core
 vger
+
+# Turbo task cache
+.turbo/
+/.sources/
+/.sources.local.conf
+/sources/
