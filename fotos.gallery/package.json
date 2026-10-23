@@ -50,7 +50,7 @@
   },
   "types": "./src/index.ts",
   "scripts": {
-    "build": "pnpm pack --pack-destination dist",
+    "build": "pnpm typecheck && pnpm pack --pack-destination dist",
     "typecheck": "tsc --noEmit"
   },
   "files": [
