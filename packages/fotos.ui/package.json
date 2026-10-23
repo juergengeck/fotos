@@ -1,0 +1,32 @@
+{
+  "name": "@refinio/fotos.ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./types/*": "./src/types/*",
+    "./lib/*": "./src/lib/*"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "@refinio/fotos.core": "workspace:*",
+    "react": "catalog:",
+    "@refinio/meaning.core": "file:../../sources/one/packages/meaning.core",
+    "@refinio/one.core": "file:../../sources/one/packages/one.core",
+    "@refinio/trust.core": "file:../../sources/one/packages/trust.core",
+    "@refinio/trie.core": "file:../../sources/one/packages/trie.core",
+    "@refinio/one.models": "file:../../sources/one/packages/one.models"
+  },
+  "peerDependencies": {
+    "@refinio/fotos.core": "*",
+    "react": "19.1.0"
+  }
+}
