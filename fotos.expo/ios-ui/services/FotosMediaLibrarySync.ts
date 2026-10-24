@@ -7,6 +7,7 @@ import {
     createFotosMediaLocator,
     createFotosMediaVariant,
     normalizeImageBytesForContentHash,
+    recordFotosAcquisition,
     type FotosEntry,
     type FotosManifest,
     type FotosMediaLocator,
@@ -17,6 +18,8 @@ import {
     createMediaSource,
     createMediaSourceEntry,
 } from '../../../../one/packages/source.media/src/services/MediaSourceService.js';
+import {storeArrayBufferAsBlob} from '@refinio/one.core/lib/storage-blob.js';
+import type {Person} from '@refinio/one.core/lib/recipes.js';
 import type { SHA256Hash, SHA256IdHash } from '@refinio/one.core/lib/util/type-checks.js';
 import {
     deleteFotosShareInboxBatch,
@@ -51,6 +54,7 @@ interface FotosMediaLibrarySyncDeps {
     getObjectByIdHash: (idHash: string) => Promise<VersionedObjectLookup>;
     storeVersionedObject: (obj: object) => Promise<StoredVersionedObject>;
     getInstanceId: () => string | undefined;
+    getOwnerId: () => string | undefined;
 }
 
 export interface FotosPhotoLibrarySyncIssue {
@@ -487,6 +491,7 @@ export class FotosMediaLibrarySync {
             const entryIdHash = await this.deps.calculateIdHashOfObj(entry as object) as SHA256IdHash<FotosEntry>;
             const existingEntry = await this.readVersionedObject<FotosEntry>(entryIdHash);
 
+            const originalBlob = await storeArrayBufferAsBlob(bytes);
             const originalVariant = createFotosMediaVariant({
                 contentHash,
                 family: entryIdHash,
@@ -497,6 +502,7 @@ export class FotosMediaLibrarySync {
                 height: entry.exifHeight,
                 createdAt: entry.capturedAt ?? entry.updatedAt,
                 label: asset.filename,
+                blob: originalBlob.hash,
             });
             const variantResult = await this.deps.storeVersionedObject(originalVariant as object);
             const locatorResult = await this.storeLocalLocator(
@@ -521,8 +527,23 @@ export class FotosMediaLibrarySync {
                 variants: mergedVariants,
             };
 
+            const observer = this.deps.getOwnerId();
+            if (!observer) throw new Error('Fotos acquisition requires the local owner identity');
+            mergedEntry.acquisitionObservations = new Set([
+                ...(existingEntry?.acquisitionObservations ?? []),
+                await recordFotosAcquisition({
+                    observer: observer as SHA256IdHash<Person>,
+                    originalVariant: variantResult.hash as SHA256Hash<FotosMediaVariant>,
+                    context: {
+                        acquiredAt: Date.now(), surface: 'mobile-library', source: asset.id,
+                        ...(entry.capturedAt ? {reportedCaptureTime: entry.capturedAt} : {}),
+                        ...(entry.exifCamera ? {reportedCamera: entry.exifCamera} : {}),
+                        ...(entry.exifGpsLat !== undefined ? {reportedGpsLat: entry.exifGpsLat} : {}),
+                        ...(entry.exifGpsLon !== undefined ? {reportedGpsLon: entry.exifGpsLon} : {}),
+                    },
+                }),
+            ]);
             const entryResult = await this.deps.storeVersionedObject(mergedEntry as object);
-            await this.addEntryToManifest(entryResult.hash as SHA256Hash<FotosEntry>);
             await appendFotosDeviceBookContent(this.deps, {
                 deviceId: this.deps.getInstanceId() ?? 'ios',
                 role: 'mobile',
@@ -533,6 +554,7 @@ export class FotosMediaLibrarySync {
                 locators: [locatorResult.hash],
             });
             await appendMediaBookContent(this.deps, {
+                author: observer as SHA256IdHash<Person>,
                 deviceId: this.deps.getInstanceId() ?? 'ios',
                 sourceIdHashes: [sourceState.sourceIdHash],
                 entryIdHashes: [sourceState.entryIdHash],
@@ -544,6 +566,7 @@ export class FotosMediaLibrarySync {
                 ],
             });
 
+            await this.addEntryToManifest(entryResult.hash as SHA256Hash<FotosEntry>);
             return {
                 status: 'synced',
                 result: {
@@ -577,13 +600,13 @@ export class FotosMediaLibrarySync {
                     streamId: contentHash,
                     mime,
                     size: bytes.byteLength,
-                    capturedAt: timestampOrNow(item.createdAt),
                     updatedAt: timestampOrNow(item.createdAt),
                 };
 
                 const entryIdHash = await this.deps.calculateIdHashOfObj(entry as object) as SHA256IdHash<FotosEntry>;
                 const existingEntry = await this.readVersionedObject<FotosEntry>(entryIdHash);
 
+                const originalBlob = await storeArrayBufferAsBlob(bytes);
                 const originalVariant = createFotosMediaVariant({
                     contentHash,
                     family: entryIdHash,
@@ -592,6 +615,7 @@ export class FotosMediaLibrarySync {
                     byteSize: entry.size,
                     createdAt: entry.capturedAt,
                     label: item.originalName,
+                    blob: originalBlob.hash,
                 });
                 const variantResult = await this.deps.storeVersionedObject(originalVariant as object);
                 const deviceId = this.deps.getInstanceId();
@@ -624,8 +648,17 @@ export class FotosMediaLibrarySync {
                     variants: mergedVariants,
                 };
 
+                const observer = this.deps.getOwnerId();
+                if (!observer) throw new Error('Fotos acquisition requires the local owner identity');
+                mergedEntry.acquisitionObservations = new Set([
+                    ...(existingEntry?.acquisitionObservations ?? []),
+                    await recordFotosAcquisition({
+                        observer: observer as SHA256IdHash<Person>,
+                        originalVariant: variantResult.hash as SHA256Hash<FotosMediaVariant>,
+                        context: {acquiredAt: Date.now(), surface: 'shared-file', source: item.fileUri},
+                    }),
+                ]);
                 const entryResult = await this.deps.storeVersionedObject(mergedEntry as object);
-                await this.addEntryToManifest(entryResult.hash as SHA256Hash<FotosEntry>);
                 await appendFotosDeviceBookContent(this.deps, {
                     deviceId: deviceId ?? 'ios',
                     role: 'mobile',
@@ -636,6 +669,7 @@ export class FotosMediaLibrarySync {
                     locators: [locatorResult.hash as SHA256Hash<FotosMediaLocator>],
                 });
                 await appendMediaBookContent(this.deps, {
+                    author: observer as SHA256IdHash<Person>,
                     deviceId: deviceId ?? 'ios',
                     sourceIdHashes: [sourceState.sourceIdHash],
                     entryIdHashes: [sourceState.entryIdHash],
@@ -647,6 +681,7 @@ export class FotosMediaLibrarySync {
                     ],
                 });
 
+                await this.addEntryToManifest(entryResult.hash as SHA256Hash<FotosEntry>);
                 syncedEntries.push({
                     locator: item.fileUri,
                     contentHash,
@@ -732,11 +767,6 @@ export class FotosMediaLibrarySync {
             title: params.filename,
             summary: `${CURRENT_PLATFORM} media library asset`,
             contentHash: params.contentHash,
-            metadata: {
-                platform: CURRENT_PLATFORM,
-                updatedAt: params.updatedAt ?? null,
-            },
-            updatedAt: params.updatedAt ? Date.parse(params.updatedAt) || undefined : undefined,
         });
         const storedEntry = await this.deps.storeVersionedObject(sourceEntry as object);
         return {
@@ -770,12 +800,6 @@ export class FotosMediaLibrarySync {
             title: params.filename,
             summary: `${CURRENT_PLATFORM} shared import`,
             contentHash: params.contentHash,
-            metadata: {
-                batchId: params.batchId,
-                platform: CURRENT_PLATFORM,
-                updatedAt: params.updatedAt ?? null,
-            },
-            updatedAt: params.updatedAt ? Date.parse(params.updatedAt) || undefined : undefined,
         });
         const storedEntry = await this.deps.storeVersionedObject(sourceEntry as object);
         return {
@@ -789,8 +813,9 @@ export class FotosMediaLibrarySync {
         try {
             const existing = await this.deps.getObjectByIdHash(idHash);
             return existing.obj as T;
-        } catch {
-            return null;
+        } catch (error) {
+            if (error instanceof Error && error.name === 'FileNotFoundError') return null;
+            throw error;
         }
     }
 

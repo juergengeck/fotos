@@ -56,7 +56,8 @@
     "@refinio/one.core": "workspace:*",
     "@refinio/trust.core": "workspace:*",
     "@refinio/trie.core": "workspace:*",
-    "exifreader": "^4.37.0"
+    "exifreader": "^4.37.0",
+    "@refinio/provenance.core": "workspace:*"
   },
   "devDependencies": {
     "@refinio/sync.core": "workspace:*",

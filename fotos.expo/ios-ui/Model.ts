@@ -1071,6 +1071,7 @@ export default class Model {
                 getObjectByIdHash: async (idHash) => await getObjectByIdHash(idHash as any),
                 storeVersionedObject: async (obj) => await storeVersionedObject(obj as any) as any,
                 getInstanceId: () => this.instanceId,
+                getOwnerId: () => this.ownerId,
             });
         }
 

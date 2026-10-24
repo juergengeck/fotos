@@ -1,3 +1,6 @@
+import {getInstanceOwnerIdHash} from '@refinio/one.core/lib/instance.js';
+import type {ProvenanceLimits} from '@refinio/provenance.core';
+import {recordFotosAcquisition, traceFotosAcquisitions} from './media-acquisition.js';
 import type {BLOB} from '@refinio/one.core/lib/recipes.js';
 import type {SHA256Hash, SHA256IdHash} from '@refinio/one.core/lib/util/type-checks.js';
 import {calculateIdHashOfObj} from '@refinio/one.core/lib/util/object.js';
@@ -26,7 +29,7 @@ export class FotosFileSystem {
 
     /** Calculate the stable root used for both browsing and IdAccess sharing. */
     async getRootId(): Promise<SHA256IdHash<FotosManifest>> {
-        return calculateIdHashOfObj({$type$: 'FotosManifest', id: this.manifestId});
+        return calculateIdHashOfObj<Pick<FotosManifest, '$type$' | 'id'>>({$type$: 'FotosManifest', id: this.manifestId});
     }
 
     /** Create a new local manifest only when the configured root is absent. */
@@ -95,6 +98,7 @@ export class FotosFileSystem {
         if (item) return {
             mode: 0o100444, size: item.entry.size,
             contentHash: item.entry.contentHash, metadataHash: item.hash, mimeType: item.entry.mime,
+            acquisitionObservations: [...item.entry.acquisitionObservations ?? []],
         };
         if (path !== '/' && !entries.some(item => item.path.startsWith(path + '/'))) {
             throw new Error(`Fotos path does not exist: ${path}`);
@@ -110,6 +114,14 @@ export class FotosFileSystem {
         const item = (await this.entries()).find(item => item.path === path);
         if (!item) throw new Error(`Fotos file does not exist: ${path}`);
         return readFotosOriginal(item.entry, this.resolveOriginal);
+    }
+
+    /** Explain acquisition evidence from the selected manifest entry. */
+    async getProvenance(path: string, limits: ProvenanceLimits) {
+        path = this.path(path);
+        const item = (await this.entries()).find(item => item.path === path);
+        if (!item) throw new Error(`Fotos file does not exist: ${path}`);
+        return traceFotosAcquisitions(item.entry, limits);
     }
 
     /** Read a bounded part of the original file. */
@@ -148,6 +160,19 @@ export class FotosFileSystem {
                 contentHash, family, role: 'original', mime, byteSize: content.byteLength, blob,
             }));
             entry.variants = new Set([variant.hash]);
+            const observer = getInstanceOwnerIdHash();
+            if (!observer) throw new Error('Fotos acquisition requires the local owner identity');
+            const previous = await getObjectByIdHash(family).catch(error => {
+                if (error instanceof Error && error.name === 'FileNotFoundError') return undefined;
+                throw error;
+            });
+            entry.acquisitionObservations = new Set([
+                ...(previous?.obj.acquisitionObservations ?? []),
+                await recordFotosAcquisition({
+                    observer, originalVariant: variant.hash,
+                    context: {acquiredAt: Date.now(), surface: 'filesystem', source: name},
+                }),
+            ]);
             const stored = await storeVersionedObject(entry);
             const {obj} = await this.readManifest();
             await storeVersionedObject({...obj, entries: new Set([...obj.entries, stored.hash])});

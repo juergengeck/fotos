@@ -114,6 +114,7 @@ describe('buildFotosShareSnapshot', () => {
                     updatedAt: '2024-01-01T00:00:00.000Z',
                     faceCount: 0,
                     hasThumb: true,
+                    acquisitionObservationHashes: [],
                 }],
                 resolvedAttestations: [{
                     attestationHash: 'auth-hash',

@@ -104,6 +104,7 @@ vi.mock('@refinio/one.core/lib/storage-unversioned-objects.js', () => ({
 
 vi.mock('@refinio/one.core/lib/util/object.js', () => ({
     calculateIdHashOfObj: mocks.calculateIdHashOfObj,
+    calculateHashOfObj: vi.fn(async () => 'a'.repeat(64)),
 }));
 
 vi.mock('@refinio/connection.core/helpers/ensure-versioned-id-object.js', () => ({
@@ -117,6 +118,7 @@ import {
     grantFotosDeviceBookAccess,
     revokeLegacyFotosManifestAccess,
     resetFotosManifestGrantStateForTests,
+    readFotosManifestSnapshot,
 } from './fotos-manifest.js';
 
 describe('grantFotosAccess', () => {
@@ -279,4 +281,16 @@ describe('grantFotosAccess', () => {
             authenticityAttestations: expect.any(Set),
         }));
     });
+});
+
+
+it('exposes the persisted acquisition observation roots in the owning manifest query', async () => {
+    mocks.getObjectByIdHash.mockResolvedValue({hash: 'manifest-version-hash', obj: {
+        $type$: 'FotosManifest', id: 'fotos', entries: new Set(['entry-hash']), authenticityAttestations: new Set(),
+    }} as any);
+    mocks.getObject.mockResolvedValue({
+        $type$: 'FotosEntry', contentHash: 'photo', sourcePath: 'photo.jpg',
+        acquisitionObservations: new Set(['observation-b', 'observation-a']),
+    } as any);
+    expect((await readFotosManifestSnapshot()).resolvedEntries[0].acquisitionObservationHashes).toEqual(['observation-a', 'observation-b']);
 });
