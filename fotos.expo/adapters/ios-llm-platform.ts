@@ -9,6 +9,7 @@
  */
 
 import type { LLMPlatform, LLMModelResidencyStatus, ChatMessage, LocalChatOptions } from '@vger/vger.core/services/llm-platform.js';
+import type { AIPlanEventEmitter, AIDefaultModelChangedPayload } from '@refinio/agent.core/services/ai-plan-events.js';
 import { Events } from '@vger/vger.core/events';
 import { emitAIEvent } from '../ios-ui/events/AIEventTypes';
 import { AVAILABLE_MODELS, type LocalModelPlan } from '../ios-ui/modules/LocalModelModule';
@@ -20,7 +21,7 @@ function mapIOSModelState(status: 'not_installed' | 'downloading' | 'installed' 
   return status;
 }
 
-export class IOSLLMPlatform implements LLMPlatform {
+export class IOSLLMPlatform implements LLMPlatform, AIPlanEventEmitter {
   // LocalModelPlan is injected after module initialization
   private localModelPlan: LocalModelPlan | null = null;
 
@@ -118,6 +119,14 @@ export class IOSLLMPlatform implements LLMPlatform {
    */
   emitThinkingStatus(topicId: string, status: string): void {
     emitAIEvent(Events.LLM_STATUS, { topicId, status });
+  }
+
+  emitDefaultModelChanged(payload: AIDefaultModelChangedPayload): void {
+    emitAIEvent(Events.AI_DEFAULT_MODEL_CHANGED, payload);
+  }
+
+  emitContactsUpdated(): void {
+    emitAIEvent(Events.CONTACTS_UPDATED, {});
   }
 
   /**
