@@ -8,7 +8,10 @@ for (const [name, browserType] of [['chromium', chromium], ['webkit', webkit]]) 
     const server = await createServer({
         configFile: false, root: process.cwd(), logLevel: 'error',
         cacheDir: 'node_modules/.vite-fullscreen-gallery-test',
-        resolve: {alias: {'@refinio/media.core': path.resolve(process.cwd(), '../../../one/packages/media.core/dist')}},
+        resolve: {alias: {
+            '@': path.resolve(process.cwd(), 'src'),
+            '@refinio/media.core': path.resolve(process.cwd(), '../../../one/packages/media.core/dist'),
+        }},
         esbuild: {jsx: 'automatic'},
         server: {port: 0}, optimizeDeps: {noDiscovery: true, include: ['react', 'react-dom/client', 'react/jsx-runtime', 'react/jsx-dev-runtime', 'lucide-react']},
         plugins: [{name: 'fullscreen-fixture', configureServer(server) {
@@ -73,12 +76,12 @@ for (const [name, browserType] of [['chromium', chromium], ['webkit', webkit]]) 
         await page.getByRole('button', {name: 'Show images fullscreen', exact: true}).click();
         await page.getByRole('button', {name: 'Exit fullscreen images', exact: true}).waitFor();
         await page.waitForFunction(() => {
-            const img = document.querySelector('[data-photo-index="0"] img');
+            const img = document.querySelector('[data-photo-index="0"]')?.parentElement?.querySelector('img');
             return img?.complete && img.naturalWidth > 0 && getComputedStyle(img).opacity === '1';
         });
         const stream = page.locator('[data-fullscreen-gallery]');
         assert.equal(await stream.locator('section').count(), 2);
-        assert.equal(await stream.locator('[data-photo-index="0"] span').count(), 0, 'Loaded image has no filename caption overlay');
+        assert.equal(await stream.locator('[data-photo-index="0"]').locator('..').locator('span').count(), 0, 'Loaded image has no filename caption overlay');
         const bounds = await page.getByRole('button', {name: 'Open image-0.jpg', exact: true}).boundingBox();
         assert.equal(bounds.width, 1000);
         assert.ok(Math.abs(bounds.height - 1000 * 2 / 3) < 1, 'Uncropped image keeps its natural aspect ratio');

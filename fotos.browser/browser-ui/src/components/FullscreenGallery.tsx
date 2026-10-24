@@ -1,6 +1,7 @@
-import {useEffect, useRef, useState, type RefObject} from 'react';
+import {useCallback, useEffect, useRef, useState, type RefObject} from 'react';
 import {Image, Maximize2, Minimize2} from 'lucide-react';
 import {getMediaPlaybackKind} from '@refinio/media.core/media-types';
+import {InlineMediaPlayer} from './InlineMediaPlayer.js';
 import type {PhotoEntry} from '@/types/fotos';
 
 interface FullscreenGalleryProps {
@@ -13,6 +14,11 @@ interface FullscreenGalleryProps {
 
 /** Glue's immersive stream: full-width, uncropped media without grid gutters. */
 export function FullscreenGallery({dayGroups, scrollRef, getThumbUrl, getFileUrl, onPhotoClick}: FullscreenGalleryProps) {
+    const [playingHash, setPlayingHash] = useState<string | null>(null);
+    const stopPlayback = useCallback(() => setPlayingHash(null), []);
+    useEffect(() => {
+        if (!dayGroups.some(group => group.photos.some(photo => photo.hash === playingHash))) stopPlayback();
+    }, [dayGroups, playingHash, stopPlayback]);
     let flatIndex = 0;
     return (
         <main data-fullscreen-gallery="true" aria-label="Fullscreen images">
@@ -29,7 +35,10 @@ export function FullscreenGallery({dayGroups, scrollRef, getThumbUrl, getFileUrl
                                 scrollRef={scrollRef}
                                 getThumbUrl={getThumbUrl}
                                 getFileUrl={getFileUrl}
-                                onOpen={() => onPhotoClick(startIndex + index)}
+                                onOpen={() => { stopPlayback(); onPhotoClick(startIndex + index); }}
+                                playing={playingHash === photo.hash}
+                                onPlay={() => setPlayingHash(photo.hash)}
+                                onStop={stopPlayback}
                             />
                         ))}
                     </section>
@@ -39,15 +48,18 @@ export function FullscreenGallery({dayGroups, scrollRef, getThumbUrl, getFileUrl
     );
 }
 
-function FullscreenPhoto({photo, index, scrollRef, getThumbUrl, getFileUrl, onOpen}: {
+function FullscreenPhoto({photo, index, scrollRef, getThumbUrl, getFileUrl, onOpen, playing, onPlay, onStop}: {
     photo: PhotoEntry;
     index: number;
     scrollRef: RefObject<HTMLElement | null>;
     getThumbUrl: FullscreenGalleryProps['getThumbUrl'];
     getFileUrl: FullscreenGalleryProps['getFileUrl'];
     onOpen: () => void;
+    playing: boolean;
+    onPlay: () => void;
+    onStop: () => void;
 }) {
-    const cardRef = useRef<HTMLButtonElement>(null);
+    const cardRef = useRef<HTMLDivElement>(null);
     const [src, setSrc] = useState<string | null>(null);
     const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
     const [failedSrc, setFailedSrc] = useState<string | null>(null);
@@ -67,7 +79,7 @@ function FullscreenPhoto({photo, index, scrollRef, getThumbUrl, getFileUrl, onOp
         // Fetch originals only near the viewport; large libraries stay scrollable
         // without opening every source file when the stream first mounts.
         const loadOriginal = () => {
-            if (originalRequested || mediaKind === 'video' || !photo.sourcePath) return;
+            if (originalRequested || mediaKind !== 'image' || !photo.sourcePath) return;
             originalRequested = true;
             void getFileUrl(photo.sourcePath).then(url => {
                 if (cancelled) return;
@@ -88,19 +100,27 @@ function FullscreenPhoto({photo, index, scrollRef, getThumbUrl, getFileUrl, onOp
         };
     }, [getFileUrl, getThumbUrl, mediaKind, photo, scrollRef]);
 
+    useEffect(() => {
+        if (!playing || typeof IntersectionObserver === 'undefined') return;
+        const observer = new IntersectionObserver(entries => {
+            if (entries.some(entry => !entry.isIntersecting)) onStop();
+        }, {root: scrollRef.current});
+        if (cardRef.current) observer.observe(cardRef.current);
+        return () => observer.disconnect();
+    }, [playing, onStop, scrollRef]);
+
     const width = photo.exif?.width;
     const height = photo.exif?.height;
     return (
-        <button
+        <div
             ref={cardRef}
-            type="button"
-            data-photo-index={index}
-            onClick={onOpen}
-            aria-label={`Open ${photo.name}`}
             title={photo.name}
             className="relative block w-full cursor-zoom-in overflow-hidden border-0 bg-[#151515] p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[#e94560]"
             style={{aspectRatio: !loaded || failed ? width && height ? `${width} / ${height}` : '1 / 1' : undefined}}
         >
+            <button type="button" data-photo-index={index} onClick={onOpen}
+                aria-label={`Open ${photo.name}`}
+                className="absolute inset-0 z-10 w-full border-0 bg-transparent p-0 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#e94560]" />
             {src && !failed && (
                 <img
                     key={src}
@@ -117,7 +137,25 @@ function FullscreenPhoto({photo, index, scrollRef, getThumbUrl, getFileUrl, onOp
                     {photo.name}
                 </span>
             )}
-        </button>
+            {playing && (
+                <div className="absolute inset-0 z-20" data-inline-playback>
+                    <InlineMediaPlayer photo={photo} getFileUrl={getFileUrl} />
+                </div>
+            )}
+            {mediaKind !== 'image' && (
+                <div className="absolute right-2 top-2 z-30 flex gap-2" data-media-controls onKeyDown={event => { if (event.key !== 'Escape') event.stopPropagation(); }}>
+                    <button type="button" aria-label={`${playing ? 'Stop' : 'Play'} ${photo.name}`}
+                        onClick={playing ? onStop : onPlay}
+                        className="min-h-11 min-w-11 rounded bg-black/80 px-3 py-2 text-sm text-white focus-visible:ring-2 focus-visible:ring-white">
+                        {playing ? 'Stop' : 'Play'}
+                    </button>
+                    <button type="button" aria-label={`Open viewer: ${photo.name}`} onClick={onOpen}
+                        className="min-h-11 min-w-11 rounded bg-black/80 px-3 py-2 text-sm text-white focus-visible:ring-2 focus-visible:ring-white">
+                        Open viewer
+                    </button>
+                </div>
+            )}
+        </div>
     );
 }
 

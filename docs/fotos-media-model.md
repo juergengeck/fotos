@@ -47,6 +47,13 @@ opening the original uses timed playback with pause, seeking, and looping.
 MP4, WebM, and MOV imports use the browser's video decoder and native controls.
 Codec support for those containers depends on the browser.
 
+Grid cards and the full-screen stream keep timed media as static posters until
+the user chooses Play. Video uses native inline controls; GIF playback uses the
+same worker-backed player as the lightbox, with pause, seeking, and looping.
+Each gallery owns one active card. Stop, opening the viewer, switching cards,
+entering selection, leaving the viewport, or unmounting releases its player.
+Open viewer remains a separate action, so playback keeps the browsing context.
+
 Format classification and GIF frame decoding belong to the shared ONE owner,
 `../one/packages/media.core` (`media-types` and `gif` exports). Fotos owns the
 browser thumbnail generation and player presentation. GIF frame timing and
