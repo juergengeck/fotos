@@ -10,6 +10,7 @@ Product docs:
 Packages:
 
 - `fotos.browser` - browser/PWA client for fotos.one
+- `fotos.fire` - dedicated native Fire TV gallery and slideshow client
 - `fotos.core` - shared gallery, face, and recipe logic
 - `fotos.headless` - split headless deployment, Fotos skills, and semantic batch tooling for `spark` + `schweiz`
 - `fotos.html` - portable HTML fallback app and media-view plugin for `vger.html` / `glue.browser`, meant to live in `one/` folders when `fotos.browser` is unavailable

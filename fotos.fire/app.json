@@ -1,0 +1,53 @@
+{
+  "expo": {
+    "name": "fotos.one",
+    "slug": "fotos-fire",
+    "scheme": "fotosfire",
+    "version": "0.1.0",
+    "orientation": "landscape",
+    "icon": "../fotos.expo/assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "android": {
+      "package": "one.fotos.fire",
+      "adaptiveIcon": {
+        "foregroundImage": "../fotos.expo/assets/adaptive-icon.png",
+        "backgroundColor": "#111111"
+      },
+      "blockedPermissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_AUDIO",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ]
+    },
+    "plugins": [
+      [
+        "@react-native-tvos/config-tv",
+        {
+          "isTV": true,
+          "androidTVBanner": "./assets/tv-banner.png"
+        }
+      ],
+      "expo-secure-store",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "../fotos.expo/assets/splash-icon.png",
+          "imageWidth": 160,
+          "resizeMode": "contain",
+          "backgroundColor": "#111111"
+        }
+      ]
+    ],
+    "extra": {
+      "commServerUrl": "wss://api.glue.one/comm",
+      "webUrl": "https://fotos.one"
+    }
+  }
+}
