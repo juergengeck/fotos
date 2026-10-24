@@ -1,4 +1,10 @@
+// @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest';
+import {File as NodeFile, Blob as NodeBlob} from 'node:buffer';
+import {webcrypto as crypto} from 'node:crypto';
+
+const File = NodeFile as unknown as typeof globalThis.File;
+const Blob = NodeBlob as unknown as typeof globalThis.Blob;
 import { copyFilesToDirectory, hashImageFile, ingestDirectory, isImportableMediaFile } from './browserIngest';
 
 vi.mock('./mediaThumbnail.js', () => ({
@@ -47,7 +53,7 @@ class MemoryDirectoryHandle {
         }
 
         if (!options.create) {
-            throw new Error(`Directory not found: ${name}`);
+            throw new DOMException(`Directory not found: ${name}`, 'NotFoundError');
         }
 
         const next = new MemoryDirectoryHandle(name);
@@ -65,7 +71,7 @@ class MemoryDirectoryHandle {
         }
 
         if (!options.create) {
-            throw new Error(`File not found: ${name}`);
+            throw new DOMException(`File not found: ${name}`, 'NotFoundError');
         }
 
         const next = new MemoryFileHandle(name);
@@ -145,5 +151,45 @@ describe('media import identity', () => {
         const expected = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
         expect(await hashImageFile(file)).toBe(expected);
         expect(await hashImageFile(new File([bytes, 'another frame'], 'animation.gif'))).not.toBe(expected);
+    });
+});
+
+
+describe('reingest analysis retention', () => {
+    it('keeps accepted face identities and semantic data without invoking detection again', async () => {
+        const root = new MemoryDirectoryHandle('library');
+        const source = new File(['original movie'], 'clip.mp4', {type: 'video/mp4'});
+        const original = new MemoryFileHandle(source.name);
+        original.content = source;
+        root.files.set(source.name, original);
+        await ingestDirectory(root as unknown as FileSystemDirectoryHandle);
+        const index = root.directories.get('one')!.files.get('index.html')!;
+        // Use an image row on the second pass to exercise the inline face worker.
+        original.content = new File(['image bytes'], 'family.jpg', {type: 'image/jpeg'});
+        root.files.delete(source.name);
+        root.files.set('family.jpg', original);
+        const hash = await hashImageFile(await original.getFile());
+        index.content = `<table><tr class="fs-entry" data-content-hash="${hash}" data-face-count="1" data-face-names="Ada" data-face-cluster-hashes="cluster" data-face-person-ids="person-ada" data-semantic-model-id="model" data-semantic-embedding="AAABAA=="></tr></table>`;
+        const analyze = vi.fn(async () => ({dataAttrs: {'face-count': '0'}, cropBlobs: []}));
+        await ingestDirectory(root as unknown as FileSystemDirectoryHandle, undefined, {analyze});
+        expect(analyze).not.toHaveBeenCalled();
+        const saved = String(index.content);
+        expect(saved).toContain('data-face-names="Ada"');
+        expect(saved).toContain('data-face-person-ids="person-ada"');
+        expect(saved).toContain('data-semantic-model-id="model"');
+        expect(saved).toContain('data-face-count="1"');
+    });
+
+    it('does not overwrite the index if reading preserved metadata fails', async () => {
+        const root = new MemoryDirectoryHandle('library');
+        const source = new MemoryFileHandle('clip.mp4');
+        source.content = new File(['movie'], 'clip.mp4', {type: 'video/mp4'});
+        root.files.set(source.name, source);
+        const one = await root.getDirectoryHandle('one', {create: true});
+        const index = await one.getFileHandle('index.html', {create: true});
+        index.content = 'accepted metadata';
+        vi.spyOn(index, 'getFile').mockRejectedValueOnce(new DOMException('Permission denied', 'NotAllowedError'));
+        await expect(ingestDirectory(root as unknown as FileSystemDirectoryHandle)).rejects.toThrow('Permission denied');
+        expect(index.content).toBe('accepted metadata');
     });
 });

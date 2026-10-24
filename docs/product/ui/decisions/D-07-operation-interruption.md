@@ -2,6 +2,7 @@
 
 Status: Resolved for v1
 Date: 2026-08-02
+Updated: 2026-10-23
 Owners: fotos product and engineering
 
 ## Decision
@@ -21,8 +22,10 @@ cancel or pause operation.
 - Face and semantic worker clients can terminate their worker, but termination does
   not reject outstanding requests. Terminating mid-pass can therefore leave callers
   waiting on unresolved promises.
-- Reanalysis clears persisted results before rebuilding them. Cancelling between
-  those steps would require an explicit resumable checkpoint or transactional restore.
+- Reanalysis now keeps each photo's accepted results while computing a replacement.
+  Candidate face crops use new paths; validated metadata commits before the visible
+  result changes. Failed work retains the previous results, and ambiguous face
+  matching retains named/person annotations by rejecting that replacement visibly.
 - Current progress state has no operation identity, terminal cancellation state, or
   durable resume cursor.
 
@@ -40,3 +43,7 @@ cancel or pause operation.
 The trustworthy-operations implementation removes deceptive progress and keeps
 background work visible without adding controls whose data-safety semantics do not
 yet exist.
+
+The retention fix does not add a durable operation cursor or promise pause/resume.
+An interruption can leave completed photo replacements committed while other
+photos retain their previous analysis. Reopening reads those accepted results.

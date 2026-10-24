@@ -99,6 +99,9 @@ Implemented in the first slice:
 - collection creation, membership additions, unshared collection deletion, and
   selection-scope materialization have a time-bounded undo toast in a lane that moves
   above the selection action bar.
+- reanalysis retains accepted face/semantic results until a valid per-photo
+  replacement commits, uses new crop paths, preserves named/person annotations,
+  and reports inference or write failures visibly; rescans keep saved analysis.
 - product text below 12px was removed, low-contrast muted text was raised to a readable
   floor, product controls receive a 44px activation box, and selection now uses sky blue
   rather than the coral primary/destructive family.
