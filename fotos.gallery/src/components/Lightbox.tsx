@@ -53,6 +53,8 @@ export interface LightboxProps<T extends GalleryEntry = GalleryEntry> {
   getTitle?: (entry: T) => string | null
   /** Optional sidebar content shown in a Fotos-style details panel */
   renderSidebar?: (entry: T) => ReactNode
+  /** Full conversation panel, shown by default in place of photo details. */
+  renderConversation?: (entry: T) => ReactNode
   /** Optional extra chrome rendered to the left of the built-in close button */
   renderTopRight?: (entry: T) => ReactNode
 }
@@ -338,6 +340,7 @@ export function Lightbox<T extends GalleryEntry = GalleryEntry>({
   getPreview,
   getTitle,
   renderSidebar,
+  renderConversation,
   renderTopRight,
 }: LightboxProps<T>) {
   const entry = items[index]
@@ -365,8 +368,9 @@ export function Lightbox<T extends GalleryEntry = GalleryEntry>({
   const [compactLayout, setCompactLayout] = useState(
     () => typeof window !== 'undefined' && window.innerWidth < COMPACT_BREAKPOINT_PX,
   )
-  const hasSidebar = Boolean(renderSidebar)
+  const hasSidebar = Boolean(renderSidebar || renderConversation)
   const [sidebarOpen, setSidebarOpen] = useState(() => hasSidebar && !compactLayout)
+  const [showDetails, setShowDetails] = useState(false)
 
   const applyTransform = (
     nextScale: number,
@@ -590,7 +594,8 @@ export function Lightbox<T extends GalleryEntry = GalleryEntry>({
   const actualScale = getActualPixelsScale(naturalSize, stageRef.current)
   const scalePercent = getActualScalePercent(scale, naturalSize, stageRef.current)
   const sidebarVisible = hasSidebar && sidebarOpen
-  const showFloatingControls = compactLayout || !sidebarVisible
+  const conversationVisible = sidebarVisible && Boolean(renderConversation) && !showDetails
+  const showFloatingControls = compactLayout || !sidebarVisible || conversationVisible
   const stageBottomPadding = hasSidebar
     ? (showFloatingControls
       ? 'calc(env(safe-area-inset-bottom, 0px) + 92px)'
@@ -787,7 +792,7 @@ export function Lightbox<T extends GalleryEntry = GalleryEntry>({
     }
   }
 
-  const sidebarContent = hasSidebar ? (
+  const detailsContent = (
     <>
       <div
         style={{
@@ -858,7 +863,21 @@ export function Lightbox<T extends GalleryEntry = GalleryEntry>({
         {renderSidebar?.(entry)}
       </div>
     </>
-  ) : null
+  )
+
+  const sidebarContent = (
+    <>
+      {renderConversation && (
+        <div
+          hidden={!conversationVisible}
+          style={{ display: conversationVisible ? 'flex' : 'none', flex: 1, minHeight: 0, flexDirection: 'column' }}
+        >
+          {renderConversation(entry)}
+        </div>
+      )}
+      {(!renderConversation || showDetails) && detailsContent}
+    </>
+  )
 
   return (
     <div
@@ -903,12 +922,37 @@ export function Lightbox<T extends GalleryEntry = GalleryEntry>({
             }}
           >
             {renderTopRight?.(entry)}
-            {hasSidebar && (
+            {renderConversation && (
               <button
                 type="button"
-                onClick={() => setSidebarOpen(open => !open)}
-                aria-label={sidebarVisible ? 'Hide details' : 'Show details'}
-                title={sidebarVisible ? 'Hide details' : 'Show details'}
+                onClick={() => {
+                  setSidebarOpen(!conversationVisible)
+                  setShowDetails(false)
+                }}
+                aria-label={conversationVisible ? 'Hide comments' : 'Show comments'}
+                title={conversationVisible ? 'Hide comments' : 'Show comments'}
+                aria-pressed={conversationVisible}
+                style={roundChromeButtonStyle()}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z" />
+                </svg>
+              </button>
+            )}
+            {renderSidebar && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (renderConversation) {
+                    setShowDetails(!showDetails || !sidebarVisible)
+                    setSidebarOpen(true)
+                  } else {
+                    setSidebarOpen(open => !open)
+                  }
+                }}
+                aria-label={sidebarVisible && !conversationVisible ? 'Hide details' : 'Show details'}
+                title={sidebarVisible && !conversationVisible ? 'Hide details' : 'Show details'}
+                aria-pressed={sidebarVisible && !conversationVisible}
                 style={roundChromeButtonStyle()}
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1087,41 +1131,34 @@ export function Lightbox<T extends GalleryEntry = GalleryEntry>({
             </div>
           )}
 
-          {compactLayout && sidebarVisible && (
-            <aside
-              style={{
+        </div>
+
+        {hasSidebar && (
+          <aside
+            hidden={!sidebarVisible}
+            style={{
+              minHeight: 0,
+              display: sidebarVisible ? 'flex' : 'none',
+              flexDirection: 'column',
+              background: '#0d0d0d',
+              flexShrink: 0,
+              ...(compactLayout ? {
                 position: 'absolute',
                 left: 12,
                 right: 12,
                 bottom: 'calc(env(safe-area-inset-bottom, 0px) + 84px)',
                 maxHeight: 'min(42vh, 360px)',
-                display: 'flex',
-                flexDirection: 'column',
-                background: '#0d0d0d',
                 border: '1px solid rgba(255,255,255,0.12)',
                 borderRadius: 20,
                 overflow: 'hidden',
                 boxShadow: '0 20px 48px rgba(0,0,0,0.42)',
                 zIndex: 4,
-              }}
-            >
-              {sidebarContent}
-            </aside>
-          )}
-        </div>
-
-        {!compactLayout && sidebarVisible && (
-          <aside
-            style={{
-              width: 320,
-              maxWidth: 'min(34vw, 360px)',
-              height: '100%',
-              minHeight: 0,
-              display: 'flex',
-              flexDirection: 'column',
-              background: '#0d0d0d',
-              borderLeft: '1px solid rgba(255,255,255,0.1)',
-              flexShrink: 0,
+              } : {
+                width: 320,
+                maxWidth: 'min(34vw, 360px)',
+                height: '100%',
+                borderLeft: '1px solid rgba(255,255,255,0.1)',
+              }),
             }}
           >
             {sidebarContent}
