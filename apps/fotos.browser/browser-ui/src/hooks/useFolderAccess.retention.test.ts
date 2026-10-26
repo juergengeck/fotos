@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import {beforeEach, describe, expect, it, vi} from 'vitest';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {EMBEDDING_DIM, FaceClusterDimension, facesToDataAttrs} from '@refinio/fotos.core';
 import {File as NodeFile} from 'node:buffer';
 import {hashImageFile} from '@/lib/browserIngest';
@@ -11,7 +11,7 @@ vi.mock('react', () => ({
     useCallback: (value: unknown) => value, useMemo: (factory: () => unknown) => factory(), useEffect: () => {},
 }));
 vi.mock('@/lib/fotos-sync', () => ({
-    syncPhotosToOneCore: vi.fn(), listenForFotosUpdates: vi.fn(), extractFaceDataFromEntry: vi.fn(), extractThumbUrlFromEntry: vi.fn(), writeFaceCropsToFilesystem: vi.fn(),
+    syncPhotosToOneCore: vi.fn(async () => undefined), listenForFotosUpdates: vi.fn(), extractFaceDataFromEntry: vi.fn(), extractThumbUrlFromEntry: vi.fn(), writeFaceCropsToFilesystem: vi.fn(),
 }));
 vi.mock('@/lib/platform', () => ({isMobile: () => false}));
 vi.mock('@/lib/hangTrace', () => ({traceHang: vi.fn()}));
@@ -57,7 +57,7 @@ async function fixture(options: {missingRow?: boolean; faceFailure?: boolean; se
     }));
     const handle = {name: 'library', getFileHandle, getDirectoryHandle: async () => handle, removeEntry: vi.fn()} as unknown as FileSystemDirectoryHandle;
     const photos = options.secondPhoto ? [photo, {...photo, hash: 'photo2', sourcePath: 'second.jpg', name: 'second.jpg'}] : [photo];
-    const folder = {id: 'folder', label: 'library', entries: photos, handle, isCurrent: true};
+    const folder = {id: 'folder', label: 'library', entries: photos, handle, preference: {kind: 'handle', handle, label: 'library'}, isCurrent: true};
     const analyze = vi.fn(async () => {
         expect(html).toContain('data-face-count="1"'); // No destructive pre-clear before inference.
         expect(photo.faces).toBe(faces);
@@ -86,6 +86,7 @@ async function fixture(options: {missingRow?: boolean; faceFailure?: boolean; se
 
 describe('useFolderAccess retained reanalysis', () => {
     beforeEach(() => vi.clearAllMocks());
+    afterEach(() => vi.unstubAllGlobals());
 
     it('forces fresh face and semantic results while retaining saved user identities', async () => {
         const test = await fixture();
@@ -143,6 +144,53 @@ describe('useFolderAccess retained reanalysis', () => {
         expect(test.error()).toContain('Face analysis changed');
         const saved = new DOMParser().parseFromString(test.html(), 'text/html');
         expect(saved.querySelector('[data-stream-id="photo"]')?.getAttribute('data-face-names')).toBe('Unknown;Ada');
+    });
+
+    it('analyzes a folder opened during another face pass without importing the first folder clusters', async () => {
+        const test = await fixture();
+        const embeddingA = Array.from({length: EMBEDDING_DIM}, (_, index) => index === 0 ? 1 : 0);
+        const embeddingB = Array.from({length: EMBEDDING_DIM}, (_, index) => index === 1 ? 1 : 0);
+        const result = (embedding: number[]) => ({dataAttrs: facesToDataAttrs({faces: [
+            {detection: {bbox: [0, 0, 40, 40] as [number, number, number, number], score: 0.99, landmarks: []}, embedding},
+        ]}), cropBlobs: []});
+        let release!: () => void;
+        const pending = new Promise<void>(resolve => {release = resolve;});
+        test.analyze.mockImplementationOnce(async () => {await pending; return result(embeddingA);})
+            .mockResolvedValueOnce(result(embeddingB));
+        const first = test.access.reanalyzeFaces();
+        await vi.waitFor(() => expect(test.analyze).toHaveBeenCalledOnce());
+
+        const source = new NodeFile(['another image'], 'other.jpg') as unknown as File;
+        const hash = await hashImageFile(source);
+        let html = `<html><body><table><tr class="fs-entry" data-stream-id="other" data-content-hash="${hash}" data-mime="image/jpeg" data-size-bytes="13"><td class="fs-name">other.jpg</td><td class="fs-faces"></td></tr></table></body></html>`;
+        let clusters = '';
+        const other = {
+            kind: 'directory', name: 'other',
+            getDirectoryHandle: async () => other,
+            entries: async function* () {},
+            getFileHandle: async (name: string, options?: {create?: boolean}) => {
+                if (name === 'clusters.json' && !clusters && !options?.create) throw new DOMException('Missing clusters', 'NotFoundError');
+                return {
+                    getFile: async () => name === 'index.html' ? {text: async () => html} : name === 'clusters.json' ? {text: async () => clusters} : source,
+                    createWritable: async () => ({write: async (value: string) => {if (name === 'index.html') html = value; else clusters = value;}, close: async () => {}}),
+                };
+            },
+        } as unknown as FileSystemDirectoryHandle;
+        vi.stubGlobal('indexedDB', {open: () => {
+            const request = {result: {transaction: () => ({objectStore: () => ({put: () => {}})}), close: () => {}}, onsuccess: () => {}};
+            queueMicrotask(() => request.onsuccess());
+            return request;
+        }});
+        vi.stubGlobal('showDirectoryPicker', vi.fn(async () => other));
+        await test.access.chooseSharedGalleryDestination();
+        release();
+        await first;
+        await vi.waitFor(() => expect(test.livePhotos().find(photo => photo.hash === 'other')?.faces?.count).toBe(1), {timeout: 5000});
+        await vi.waitFor(() => expect(clusters).not.toBe(''));
+        expect(JSON.parse(clusters).clusters.flatMap((cluster: {members: unknown[]}) => cluster.members))
+            .toEqual([{photoHash: 'other', faceIndex: 0}]);
+        expect(html).toContain('data-face-count="1"');
+        expect(test.html()).toContain('data-face-names="Ada"');
     });
 
     it('publishes each successful annotation row before a later row fails, and retains it on replacement', async () => {

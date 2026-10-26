@@ -1738,7 +1738,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     const facePassProgressRef = useRef<{ total: number; current: number; fileName?: string } | null>(null);
     const semanticWorkerRef = useRef<ReturnType<typeof createSemanticWorker> | null>(null);
     const semanticPassPromiseRef = useRef<Promise<void> | null>(null);
-    const facePassPromiseRef = useRef<Promise<void> | null>(null);
+    const facePassPromiseRef = useRef<{handle: FileSystemDirectoryHandle; promise: Promise<void>} | null>(null);
     // Persistent hidden file input for mobile photo selection — reused across
     // openFolder calls to avoid iOS Safari PWA issues with dynamic elements.
     const mobileInputRef = useRef<HTMLInputElement | null>(null);
@@ -2145,21 +2145,27 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                     || cluster.centroid.some((value, index) => Math.abs(value - cached.centroid[index]) > 1e-6);
             }) || accepted.getClusterCount() !== stored.dim.getClusterCount();
             if (stale) await saveClusterState(handle, accepted);
-            clusterDimRef.current = accepted;
-            clusterThresholdRef.current = threshold;
+            if (rootHandleRef.current === handle) {
+                clusterDimRef.current = accepted;
+                clusterThresholdRef.current = threshold;
+            }
             return {dim: accepted, entries: photos};
         }
 
         if (!hasClusterableFaces) {
             const dim = new FaceClusterDimension(threshold);
-            clusterDimRef.current = dim;
-            clusterThresholdRef.current = threshold;
+            if (rootHandleRef.current === handle) {
+                clusterDimRef.current = dim;
+                clusterThresholdRef.current = threshold;
+            }
             return {dim, entries: photos};
         }
 
         const rebuilt = await rebuildClustersFromEntries(handle, photos, threshold);
-        clusterDimRef.current = rebuilt.dim;
-        clusterThresholdRef.current = threshold;
+        if (rootHandleRef.current === handle) {
+            clusterDimRef.current = rebuilt.dim;
+            clusterThresholdRef.current = threshold;
+        }
         return rebuilt;
     }, [rebuildClustersFromEntries]);
 
@@ -2227,8 +2233,12 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         photos: PhotoEntry[],
         force = false,
     ): Promise<void> => {
-        if (facePassPromiseRef.current) return facePassPromiseRef.current;
+        const active = facePassPromiseRef.current;
+        if (active?.handle === handle && !force) return active.promise;
         const promise = (async () => {
+            // Another folder owns its failures; its completion still releases
+            // the shared worker for this folder's independently requested pass.
+            if (active) await active.promise.catch(() => {});
             const pending = photos.filter(photo => (force || photo.faces === undefined)
                 && photo.sourcePath && (!photo.mimeType || photo.mimeType.startsWith('image/')));
             if (pending.length === 0) return;
@@ -2236,7 +2246,8 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             setIngestProgress({phase: 'preparing-faces', current: 0, total: pending.length, statusLabel: 'Starting face analytics...'});
             try {
                 const worker = await getFaceWorker();
-                let dim = clusterDimRef.current ?? (await ensureClusterDimension(handle, photos, clusterThreshold)).dim;
+                let dim = (rootHandleRef.current === handle ? clusterDimRef.current : null)
+                    ?? (await ensureClusterDimension(handle, photos, clusterThreshold)).dim;
                 const failures: string[] = [];
                 for (let index = 0; index < pending.length; index++) {
                     const photo = pending[index];
@@ -2272,7 +2283,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                             persist: attrs => updateIndexHtmlFaceData(handle, photo, attrs),
                             publish: (faces, nextDimension) => {
                                 dim = nextDimension;
-                                clusterDimRef.current = dim;
+                                if (rootHandleRef.current === handle) clusterDimRef.current = dim;
                                 publishAnalysis(photo, {faces});
                             },
                         });
@@ -2297,9 +2308,9 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                 setIngestProgress(null);
             }
         })().finally(() => {
-            if (facePassPromiseRef.current === promise) facePassPromiseRef.current = null;
+            if (facePassPromiseRef.current?.promise === promise) facePassPromiseRef.current = null;
         });
-        facePassPromiseRef.current = promise;
+        facePassPromiseRef.current = {handle, promise};
         return promise;
     }, [clusterThreshold, currentAnalysisPhoto, ensureClusterDimension, getFaceWorker, publishAnalysis]);
 
@@ -3084,7 +3095,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
 
         // Await the current owner before forcing a replacement; resetting its
         // promise would admit overlapping writers over the same saved results.
-        await Promise.all([facePassPromiseRef.current, semanticPassPromiseRef.current]);
+        await Promise.all([facePassPromiseRef.current?.promise, semanticPassPromiseRef.current]);
         setError(null);
         const currentEntries = targetEntries.map(currentAnalysisPhoto);
         const failures: unknown[] = [];
