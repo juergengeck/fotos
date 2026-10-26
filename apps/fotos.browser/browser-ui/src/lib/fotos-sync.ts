@@ -60,7 +60,7 @@ import {
     readMediaBook,
 } from '@refinio/source.media/services';
 import {hashImageFile} from './browserIngest.js';
-import {recordFotosAcquisition} from '../../../../fotos.core/src/media-acquisition.js';
+import {recordFotosAcquisition} from '@refinio/fotos.core';
 
 export interface SyncPhotosToOneCoreOptions {
     claimAuthorship?: boolean;

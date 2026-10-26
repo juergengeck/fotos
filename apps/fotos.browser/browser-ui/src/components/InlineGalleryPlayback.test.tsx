@@ -48,7 +48,9 @@ describe.each(['grid', 'fullscreen'] as const)('%s inline playback', surface => 
         vi.stubGlobal('cancelAnimationFrame', vi.fn());
         vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
         vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {});
-        vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+        vi.spyOn(HTMLCanvasElement.prototype as {
+            getContext(contextId: '2d'): CanvasRenderingContext2D | null;
+        }, 'getContext').mockReturnValue({
             createImageData: () => ({data: new Uint8ClampedArray(4)}), putImageData: vi.fn(),
         } as unknown as CanvasRenderingContext2D);
         vi.mocked(decodeGifInWorker).mockResolvedValue({width: 1, height: 1, loopCount: 0, durationMs: 200,

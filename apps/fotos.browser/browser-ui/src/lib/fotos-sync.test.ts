@@ -84,8 +84,6 @@ vi.mock('@refinio/one.core/lib/storage-unversioned-objects.js', () => ({
     getObjectWithType: getObjectWithTypeMock,
 }));
 
-vi.mock('../../../../fotos.core/src/media-acquisition.js', () => ({recordFotosAcquisition: recordFotosAcquisitionMock}));
-
 vi.mock('./browserIngest.js', () => ({
     hashImageFile: hashImageFileMock,
 }));
@@ -107,6 +105,7 @@ vi.mock('./fotos-manifest.js', () => ({
 
 vi.mock('@refinio/fotos.core', async importOriginal => ({
     ...await importOriginal<typeof import('@refinio/fotos.core')>(),
+    recordFotosAcquisition: recordFotosAcquisitionMock,
     EMBEDDING_DIM: 512,
     facesToDataAttrs: vi.fn(() => ({})),
 }));

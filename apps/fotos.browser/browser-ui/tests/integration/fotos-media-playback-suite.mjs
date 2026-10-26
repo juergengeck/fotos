@@ -2,6 +2,7 @@ import {mkdtemp, readFile, realpath, rm, writeFile, mkdir} from 'node:fs/promise
 import {tmpdir} from 'node:os';
 import {dirname, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {createRequire} from 'node:module';
 import {createServer} from 'vite';
 import {chromium} from 'playwright';
 
@@ -9,6 +10,7 @@ const testDirectory = dirname(fileURLToPath(import.meta.url));
 const uiRoot = resolve(testDirectory, '../..');
 const sourceRoot = resolve(uiRoot, 'src');
 const oneRoot = resolve(uiRoot, '../../../sources/one');
+const fotosUiEntry = createRequire(resolve(uiRoot, 'package.json')).resolve('@refinio/fotos.ui');
 const harnessRoot = await realpath(await mkdtemp(resolve(tmpdir(), 'fotos-media-playback-')));
 
 function generatedAnimatedGif() {
@@ -155,13 +157,13 @@ const server = await createServer({
             {find: 'react', replacement: resolve(uiRoot, 'node_modules/react')},
             {find: 'react-dom', replacement: resolve(uiRoot, 'node_modules/react-dom')},
             {find: 'lucide-react', replacement: resolve(uiRoot, 'node_modules/lucide-react')},
-            {find: '@refinio/fotos.ui', replacement: resolve(uiRoot, '../../fotos.ui/src/index.ts')},
+            {find: '@refinio/fotos.ui', replacement: fotosUiEntry},
         ],
     },
     server: {
         host: '127.0.0.1',
         port: 0,
-        fs: {allow: [harnessRoot, resolve(uiRoot, '../..'), oneRoot]},
+        fs: {allow: [harnessRoot, resolve(uiRoot, '../../..'), oneRoot]},
     },
 });
 

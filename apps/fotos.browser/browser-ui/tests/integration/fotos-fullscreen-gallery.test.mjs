@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import {test} from 'node:test';
 import {chromium, webkit} from 'playwright';
 import {createServer} from 'vite';
