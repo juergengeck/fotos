@@ -124,6 +124,27 @@ describe('useFolderAccess retained reanalysis', () => {
         expect(test.clusterState().clusters[0].personName).toBe('Grace');
     });
 
+    it('refuses an association for a visible face whose analysis is replaced before the edit commits', async () => {
+        const test = await fixture();
+        const embeddingA = Array.from({length: EMBEDDING_DIM}, (_, index) => index === 0 ? 1 : 0);
+        const embeddingB = Array.from({length: EMBEDDING_DIM}, (_, index) => index === 1 ? 1 : 0);
+        test.analyze.mockResolvedValueOnce({dataAttrs: facesToDataAttrs({faces: [
+            {detection: {bbox: [80, 0, 120, 40], score: 0.99, landmarks: []}, embedding: embeddingB},
+            {detection: {bbox: [0, 0, 40, 40], score: 0.99, landmarks: []}, embedding: embeddingA},
+        ]}), cropBlobs: []});
+        let association: Promise<void> | undefined;
+        test.onNextIndexWrite(() => {
+            association = test.access.associateFaceWithCluster('photo', 0, 'chosen-cluster');
+        });
+        await test.access.reanalyzeFaces();
+        await association;
+        expect(test.livePhoto().faces?.clusterIds).not.toContain('chosen-cluster');
+        expect(test.livePhoto().faces?.names).toEqual(['Unknown', 'Ada']);
+        expect(test.error()).toContain('Face analysis changed');
+        const saved = new DOMParser().parseFromString(test.html(), 'text/html');
+        expect(saved.querySelector('[data-stream-id="photo"]')?.getAttribute('data-face-names')).toBe('Unknown;Ada');
+    });
+
     it('publishes each successful annotation row before a later row fails, and retains it on replacement', async () => {
         const test = await fixture({secondPhoto: true, failIndexWrite: 2});
         await expect(test.access.renameFace('photo:0', 'Grace')).rejects.toThrow('Second row write denied');

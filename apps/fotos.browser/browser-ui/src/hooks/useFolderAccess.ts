@@ -3391,110 +3391,118 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         photoHash: string,
         faceIndex: number,
         clusterId: string,
-    ) => queueFaceMetadataMutation(async () => {
-        const currentEntries = entriesRef.current;
-        const handle = rootHandleRef.current;
-        if (!handle) throw new Error('No folder open');
-
-        const affectedEntries: PhotoEntry[] = [];
-        let updatedTargetName = findClusterNameInEntries(currentEntries, clusterId);
-        const updatedTargetPersonId = findClusterPersonIdInEntries(currentEntries, clusterId);
-        let changed = false;
-
-        const nextEntries = currentEntries.map(entry => {
-            const faces = entry.faces;
-            if (!faces) {
-                return entry;
+    ) => {
+        const selectedHandle = rootHandleRef.current;
+        const selectedFaces = entriesRef.current.find(entry => entry.hash === photoHash)?.faces;
+        return queueFaceMetadataMutation(async () => {
+            const currentEntries = entriesRef.current;
+            const handle = rootHandleRef.current;
+            if (!handle) throw new Error('No folder open');
+            if (handle !== selectedHandle || currentEntries.find(entry => entry.hash === photoHash)?.faces !== selectedFaces) {
+                setError('Face analysis changed. Select the face again.');
+                return;
             }
 
-            const clusterIds = faces.clusterIds
-                ? [...faces.clusterIds]
-                : Array.from({ length: faces.count }, () => '');
-            const names = faces.names
-                ? [...faces.names]
-                : Array.from({ length: faces.count }, () => 'Unknown');
-            const personIds = faces.personIds
-                ? [...faces.personIds]
-                : Array.from({ length: faces.count }, () => '');
+            const affectedEntries: PhotoEntry[] = [];
+            let updatedTargetName = findClusterNameInEntries(currentEntries, clusterId);
+            const updatedTargetPersonId = findClusterPersonIdInEntries(currentEntries, clusterId);
+            let changed = false;
 
-            while (clusterIds.length < faces.count) {
-                clusterIds.push('');
-            }
-            while (names.length < faces.count) {
-                names.push('Unknown');
-            }
-            while (personIds.length < faces.count) {
-                personIds.push('');
-            }
-
-            let entryChanged = false;
-
-            if (entry.hash === photoHash) {
-                if (faceIndex < 0 || faceIndex >= faces.count) {
-                    throw new Error(`Face index out of range for ${photoHash}:${faceIndex}`);
+            const nextEntries = currentEntries.map(entry => {
+                const faces = entry.faces;
+                if (!faces) {
+                    return entry;
                 }
 
-                if (clusterIds[faceIndex] !== clusterId) {
-                    clusterIds[faceIndex] = clusterId;
-                    entryChanged = true;
-                    changed = true;
+                const clusterIds = faces.clusterIds
+                    ? [...faces.clusterIds]
+                    : Array.from({ length: faces.count }, () => '');
+                const names = faces.names
+                    ? [...faces.names]
+                    : Array.from({ length: faces.count }, () => 'Unknown');
+                const personIds = faces.personIds
+                    ? [...faces.personIds]
+                    : Array.from({ length: faces.count }, () => '');
+
+                while (clusterIds.length < faces.count) {
+                    clusterIds.push('');
+                }
+                while (names.length < faces.count) {
+                    names.push('Unknown');
+                }
+                while (personIds.length < faces.count) {
+                    personIds.push('');
                 }
 
-                const currentName = normalizeClusterName(names[faceIndex]);
-                updatedTargetName = updatedTargetName ?? currentName;
-                const nextName = updatedTargetName ?? 'Unknown';
-                if (names[faceIndex] !== nextName) {
-                    names[faceIndex] = nextName;
-                    entryChanged = true;
-                    changed = true;
-                }
+                let entryChanged = false;
 
-                const nextPersonId = updatedTargetPersonId ?? '';
-                if ((personIds[faceIndex] ?? '') !== nextPersonId) {
-                    personIds[faceIndex] = nextPersonId;
-                    entryChanged = true;
-                    changed = true;
-                }
-            } else if (updatedTargetName) {
-                for (let index = 0; index < clusterIds.length; index++) {
-                    if (clusterIds[index] !== clusterId || names[index] === updatedTargetName) {
-                        continue;
+                if (entry.hash === photoHash) {
+                    if (faceIndex < 0 || faceIndex >= faces.count) {
+                        throw new Error(`Face index out of range for ${photoHash}:${faceIndex}`);
                     }
-                    names[index] = updatedTargetName;
-                    entryChanged = true;
-                    changed = true;
+
+                    if (clusterIds[faceIndex] !== clusterId) {
+                        clusterIds[faceIndex] = clusterId;
+                        entryChanged = true;
+                        changed = true;
+                    }
+
+                    const currentName = normalizeClusterName(names[faceIndex]);
+                    updatedTargetName = updatedTargetName ?? currentName;
+                    const nextName = updatedTargetName ?? 'Unknown';
+                    if (names[faceIndex] !== nextName) {
+                        names[faceIndex] = nextName;
+                        entryChanged = true;
+                        changed = true;
+                    }
+
+                    const nextPersonId = updatedTargetPersonId ?? '';
+                    if ((personIds[faceIndex] ?? '') !== nextPersonId) {
+                        personIds[faceIndex] = nextPersonId;
+                        entryChanged = true;
+                        changed = true;
+                    }
+                } else if (updatedTargetName) {
+                    for (let index = 0; index < clusterIds.length; index++) {
+                        if (clusterIds[index] !== clusterId || names[index] === updatedTargetName) {
+                            continue;
+                        }
+                        names[index] = updatedTargetName;
+                        entryChanged = true;
+                        changed = true;
+                    }
                 }
+
+                if (!entryChanged) {
+                    return entry;
+                }
+
+                const updated = {
+                    ...entry,
+                    faces: {
+                        ...faces,
+                        clusterIds,
+                        names,
+                        personIds,
+                    },
+                };
+                affectedEntries.push(updated);
+                return updated;
+            });
+
+            if (!changed) {
+                return;
             }
 
-            if (!entryChanged) {
-                return entry;
+            for (const entry of affectedEntries) {
+                await updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry));
+                publishAnalysis(entry, {faces: entry.faces});
             }
 
-            const updated = {
-                ...entry,
-                faces: {
-                    ...faces,
-                    clusterIds,
-                    names,
-                    personIds,
-                },
-            };
-            affectedEntries.push(updated);
-            return updated;
+            clusterDimRef.current = await rebuildPersistedClusterStateFromEntries(handle, nextEntries, clusterThreshold);
+            clusterThresholdRef.current = clusterThreshold;
         });
-
-        if (!changed) {
-            return;
-        }
-
-        for (const entry of affectedEntries) {
-            await updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry));
-            publishAnalysis(entry, {faces: entry.faces});
-        }
-
-        clusterDimRef.current = await rebuildPersistedClusterStateFromEntries(handle, nextEntries, clusterThreshold);
-        clusterThresholdRef.current = clusterThreshold;
-    }), [clusterThreshold, publishAnalysis]);
+    }, [clusterThreshold, publishAnalysis]);
 
     const mergeFaceClusters = useCallback(async (
         targetClusterId: string,
