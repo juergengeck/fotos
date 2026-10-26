@@ -5,10 +5,10 @@ const { withNativeWind } = require('nativewind/metro');
 
 module.exports = function createFotosMetroConfig(projectRoot) {
 const config = getDefaultConfig(projectRoot);
-const workspaceRoot = path.resolve(projectRoot, '../..');
+const workspaceRoot = path.resolve(projectRoot, '../../..');
 const vgerRoot = path.resolve(workspaceRoot, 'vger');
 const oneRoot = path.resolve(workspaceRoot, 'one');
-const fotosRoot = path.resolve(projectRoot, '..');
+const fotosRoot = path.resolve(projectRoot, '../..');
 
 config.watchFolders = [vgerRoot, oneRoot, fotosRoot];
 

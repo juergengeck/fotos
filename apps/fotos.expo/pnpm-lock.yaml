@@ -508,8 +508,8 @@ importers:
         specifier: 15.12.1
         version: 15.12.1(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0)
       react-native-udp-ios:
-        specifier: file:../../vger/packages/react-native-udp-ios/react-native-udp-ios-1.0.0.tgz
-        version: file:../../vger/packages/react-native-udp-ios/react-native-udp-ios-1.0.0.tgz(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0)
+        specifier: file:../../../vger/packages/react-native-udp-ios/react-native-udp-ios-1.0.0.tgz
+        version: file:../../../vger/packages/react-native-udp-ios/react-native-udp-ios-1.0.0.tgz(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0)
       react-native-web:
         specifier: ~0.21.0
         version: 0.21.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -538,8 +538,8 @@ importers:
         specifier: ^5.1.2
         version: 5.1.2
       '@refinio/provenance.core':
-        specifier: link:../../one/packages/provenance.core
-        version: link:../../one/packages/provenance.core
+        specifier: link:../../../one/packages/provenance.core
+        version: link:../../../one/packages/provenance.core
     devDependencies:
       '@types/react':
         specifier: 19.1.10
@@ -6232,8 +6232,8 @@ packages:
       react: '*'
       react-native: '*'
 
-  react-native-udp-ios@file:../../vger/packages/react-native-udp-ios/react-native-udp-ios-1.0.0.tgz:
-    resolution: {integrity: sha512-QhuEulpHNqFJdvOkz6nz3r4mUPwWeoJEC1WkxbVdfIXrFy4A01Tem0Eg7hR8YE4mNyTQVwCB8xXW5HA9yaml4Q==, tarball: file:../../vger/packages/react-native-udp-ios/react-native-udp-ios-1.0.0.tgz}
+  react-native-udp-ios@file:../../../vger/packages/react-native-udp-ios/react-native-udp-ios-1.0.0.tgz:
+    resolution: {integrity: sha512-QhuEulpHNqFJdvOkz6nz3r4mUPwWeoJEC1WkxbVdfIXrFy4A01Tem0Eg7hR8YE4mNyTQVwCB8xXW5HA9yaml4Q==, tarball: file:../../../vger/packages/react-native-udp-ios/react-native-udp-ios-1.0.0.tgz}
     version: 1.0.0
     engines: {node: '>=18'}
     peerDependencies:
@@ -14003,7 +14003,7 @@ snapshots:
       react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0)
       warn-once: 0.1.1
 
-  react-native-udp-ios@file:../../vger/packages/react-native-udp-ios/react-native-udp-ios-1.0.0.tgz(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0):
+  react-native-udp-ios@file:../../../vger/packages/react-native-udp-ios/react-native-udp-ios-1.0.0.tgz(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0):
     dependencies:
       react: 19.1.0
       react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0)

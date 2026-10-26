@@ -131,11 +131,11 @@
     "@refinio/source.git": "file:../fotos.expo/vendor/refinio-source.git-0.1.0.tgz",
     "@refinio/ui.theme": "file:../fotos.expo/vendor/refinio-ui.theme-0.1.0.tgz",
     "@glueone/auth.core": "file:../fotos.expo/vendor/glueone-auth.core-1.0.0.tgz",
-    "@refinio/provenance.core": "link:../../one/packages/provenance.core",
+    "@refinio/provenance.core": "link:../../../one/packages/provenance.core",
     "@react-native-tvos/config-tv": "0.1.5",
     "expo-keep-awake": "~15.0.8",
     "qrcode": "1.5.4",
-    "@refinio/fotos.core": "link:../fotos.core"
+    "@refinio/fotos.core": "link:../../packages/fotos.core"
   },
   "devDependencies": {
     "@refinio/one.core-expo": "file:../fotos.expo/vendor/refinio-one.core-expo-0.1.0.tgz",

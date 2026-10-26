@@ -10,7 +10,7 @@ Product docs:
 Layout:
 
 - `apps/fotos.browser` - browser/PWA client for fotos.one
-- `fotos.fire` - incoming native Fire TV client; selected vendor bootstrap is pending
+- `apps/fotos.fire` - incoming native Fire TV client; selected vendor bootstrap is pending
 - `packages/fotos.core` - shared gallery, face, and recipe logic
 - `packages/fotos.headless` - split headless deployment, Fotos skills, and semantic batch tooling for `spark` + `schweiz`
 - `apps/fotos.html` - portable HTML fallback app and media-view plugin for `vger.html` / `glue.browser`, meant to live in `one/` folders when `fotos.browser` is unavailable
@@ -42,7 +42,7 @@ The root manages the six local web/shared/deployment packages with pnpm and Turb
 it never includes packages from another Git repository. Library consumers install
 the internal peers declared by `@refinio/fotos.core` explicitly.
 
-Expo retains its separate vendored installation (`fotos.expo/.vendorrc.json`).
+Expo retains its separate vendored installation (`apps/fotos.expo/.vendorrc.json`).
 The `fotos.browser` wrapper is not a workspace member because it still declares
 the legacy `one.fotos` dependency; use `@one/fotos.browser.ui` for web development.
 
@@ -55,7 +55,7 @@ or documentation called those routes.
 
 Fire TV checks are explicitly deferred in [Fotos issue 2](https://github.com/juergengeck/fotos/issues/2):
 the new target's frozen pnpm 10 installation requires the exact ignored archives
-in `fotos.expo/vendor`, which are unavailable. Preserve the declared vendor and
+in `apps/fotos.expo/vendor`, which are unavailable. Preserve the declared vendor and
 patch contracts; do not substitute same-version archives or regenerate a baseline.
 Its existing standalone layout/lock is an unqualified migration gap pending those
 inputs, not an approved workspace-policy exception. Native install, typechecking,

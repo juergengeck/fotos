@@ -177,8 +177,8 @@ importers:
         specifier: file:../fotos.expo/vendor/refinio-filer.core-0.1.0.tgz
         version: file:../fotos.expo/vendor/refinio-filer.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)
       '@refinio/fotos.core':
-        specifier: link:../fotos.core
-        version: link:../fotos.core
+        specifier: link:../../packages/fotos.core
+        version: link:../../packages/fotos.core
       '@refinio/group.core':
         specifier: file:../fotos.expo/vendor/refinio-group.core-0.1.0.tgz
         version: file:../fotos.expo/vendor/refinio-group.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)
@@ -273,8 +273,8 @@ importers:
         specifier: file:../fotos.expo/vendor/refinio-prompt.core-0.1.0.tgz
         version: file:../fotos.expo/vendor/refinio-prompt.core-0.1.0.tgz(@refinio/llm.one@file:../fotos.expo/vendor/refinio-llm.one-0.1.0.tgz(@refinio/filer.core@file:../fotos.expo/vendor/refinio-filer.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/source.core@file:../fotos.expo/vendor/refinio-source.core-0.1.0.tgz(@refinio/assembly.core@file:../fotos.expo/vendor/refinio-assembly.core-1.0.0.tgz(1b2b51315a70cb1ebeec2804e79435d0))(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/trust.pdf@file:../fotos.expo/vendor/refinio-trust.pdf-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))))(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)
       '@refinio/provenance.core':
-        specifier: link:../../one/packages/provenance.core
-        version: link:../../one/packages/provenance.core
+        specifier: link:../../../one/packages/provenance.core
+        version: link:../../../one/packages/provenance.core
       '@refinio/rss.core':
         specifier: file:../fotos.expo/vendor/refinio-rss.core-0.1.0.tgz
         version: file:../fotos.expo/vendor/refinio-rss.core-0.1.0.tgz(@refinio/settings.core@file:../fotos.expo/vendor/refinio-settings.core-0.1.0.tgz(4f44e81a13810ae29b7c0a2706fe8784))
@@ -8912,7 +8912,7 @@ snapshots:
       '@refinio/assembly.core': file:../fotos.expo/vendor/refinio-assembly.core-1.0.0.tgz(1b2b51315a70cb1ebeec2804e79435d0)
       '@refinio/cube.core': file:../fotos.expo/vendor/refinio-cube.core-0.1.0.tgz(@refinio/meaning.core@file:../fotos.expo/vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/one.models@file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))(@refinio/trie.core@file:../fotos.expo/vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))
       '@refinio/filer.core': file:../fotos.expo/vendor/refinio-filer.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)
-      '@refinio/fotos.core': link:../fotos.core
+      '@refinio/fotos.core': link:../../packages/fotos.core
       '@refinio/one.core': file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz
       '@refinio/one.models': file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)
       '@refinio/transport.core': file:../fotos.expo/vendor/refinio-transport.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/one.models@file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))

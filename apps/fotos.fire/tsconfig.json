@@ -9,16 +9,16 @@
     "moduleResolution": "bundler",
     "paths": {
       "@refinio/fotos.core": [
-        "../fotos.core/src/index.ts"
+        "../../packages/fotos.core/src/index.ts"
       ],
       "@refinio/fotos.core/*": [
-        "../fotos.core/src/*"
+        "../../packages/fotos.core/src/*"
       ],
       "@refinio/fotos.core/shared-filesystem": [
-        "../fotos.core/src/shared-fotos-file-system.ts"
+        "../../packages/fotos.core/src/shared-fotos-file-system.ts"
       ],
       "@refinio/fotos.core/filesystem": [
-        "../fotos.core/src/fotos-file-system.ts"
+        "../../packages/fotos.core/src/fotos-file-system.ts"
       ]
     }
   },

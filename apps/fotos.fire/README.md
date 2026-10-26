@@ -8,13 +8,13 @@ this TV.
 
 The app uses Expo 54, the matching React Native TV fork, and the same vendored ONE
 package generation as `../fotos.expo`. Shared platform sources belong to
-`../../one/packages`; `one-experimental` is not a dependency. Metro resolution is
+`../../sources/one/packages`; `one-experimental` is not a dependency. Metro resolution is
 shared with the phone app while each target uses its own React Native installation.
 
 ## Build and install
 
 Requires Node 20.19.4+, pnpm, Java 17, the Android SDK, and the prepared
-`fotos.expo/vendor` archives used by the current mobile runtime. Dependencies
+`../fotos.expo/vendor` archives used by the current mobile runtime. Dependencies
 reference that sibling directory directly; no TV-specific vendor copy is needed.
 From this folder:
 

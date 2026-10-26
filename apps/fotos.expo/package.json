@@ -117,7 +117,7 @@
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
     "react-native-svg": "15.12.1",
-    "react-native-udp-ios": "file:../../vger/packages/react-native-udp-ios/react-native-udp-ios-1.0.0.tgz",
+    "react-native-udp-ios": "file:../../../vger/packages/react-native-udp-ios/react-native-udp-ios-1.0.0.tgz",
     "react-native-web": "~0.21.0",
     "react-native-worklets": "0.5.1",
     "react-native-zeroconf": "^0.13.0",
@@ -164,7 +164,7 @@
     "@refinio/ui.theme": "file:./vendor/refinio-ui.theme-0.1.0.tgz",
     "@glueone/auth.core": "file:vendor/glueone-auth.core-1.0.0.tgz",
     "expo-web-browser": "~15.0.11",
-    "@refinio/provenance.core": "link:../../one/packages/provenance.core"
+    "@refinio/provenance.core": "link:../../../one/packages/provenance.core"
   },
   "devDependencies": {
     "@refinio/one.core-expo": "file:./vendor/refinio-one.core-expo-0.1.0.tgz",

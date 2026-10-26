@@ -10,28 +10,28 @@
     "moduleResolution": "bundler",
     "paths": {
       "@vger/vger.ui/native/devices": [
-        "../../one/packages/vger.ui/src/components/device/DevicesManager.native.tsx"
+        "../../../one/packages/vger.ui/src/components/device/DevicesManager.native.tsx"
       ],
       "@/*": [
         "./*"
       ],
       "@refinio/fotos.core": [
-        "../packages/fotos.core/src/index.ts"
+        "../../packages/fotos.core/src/index.ts"
       ],
       "@refinio/fotos.core/*": [
-        "../packages/fotos.core/src/*"
+        "../../packages/fotos.core/src/*"
       ],
       "@refinio/fotos.ui": [
-        "../packages/fotos.ui/src/index.ts"
+        "../../packages/fotos.ui/src/index.ts"
       ],
       "@refinio/fotos.ui/*": [
-        "../packages/fotos.ui/src/*"
+        "../../packages/fotos.ui/src/*"
       ],
       "@refinio/fotos.gallery": [
-        "../packages/fotos.gallery/src/index.ts"
+        "../../packages/fotos.gallery/src/index.ts"
       ],
       "@refinio/fotos.gallery/*": [
-        "../packages/fotos.gallery/src/*"
+        "../../packages/fotos.gallery/src/*"
       ]
     }
   },

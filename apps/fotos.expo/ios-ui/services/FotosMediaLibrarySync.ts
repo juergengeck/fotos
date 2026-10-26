@@ -17,7 +17,7 @@ import {
     appendMediaBookContent,
     createMediaSource,
     createMediaSourceEntry,
-} from '../../../../one/packages/source.media/src/services/MediaSourceService.js';
+} from '../../../../../one/packages/source.media/src/services/MediaSourceService.js';
 import {storeArrayBufferAsBlob} from '@refinio/one.core/lib/storage-blob.js';
 import type {Person} from '@refinio/one.core/lib/recipes.js';
 import type { SHA256Hash, SHA256IdHash } from '@refinio/one.core/lib/util/type-checks.js';

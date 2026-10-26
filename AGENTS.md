@@ -73,7 +73,7 @@ Git-pinned bootstrap and cache qualification must cover this expanded closure.
 
 Fire TV checks are explicitly deferred in [Fotos issue 2](https://github.com/juergengeck/fotos/issues/2):
 the new target's frozen pnpm 10 installation requires the exact ignored archives
-in `fotos.expo/vendor`, which are unavailable. Preserve the declared vendor and
+in `apps/fotos.expo/vendor`, which are unavailable. Preserve the declared vendor and
 patch contracts; do not substitute same-version archives or regenerate a baseline.
 Its existing standalone layout/lock is an unqualified migration gap pending those
 inputs, not an approved workspace-policy exception. Native install, typechecking,
@@ -83,13 +83,13 @@ tests alone do not establish those results.
 ## Remaining Expo and Fire TV package migration
 
 The excluded Expo target has 97 unmanaged vendor references, and Fire TV has 96.
-Both still live outside `apps/` and the repository workspace, with separate locks;
+Both now live under `apps/` but remain outside the repository workspace, with separate locks;
 neither target has completed the shared metadata, layout or workspace policy.
 Preserving the existing archives and patches does not waive those requirements.
 Fire TV issue 2 defers its unavailable native checks only.
 
 Remaining work is to establish the platform baseline with the exact required
-archives, then move the targets under `apps/`, reconcile their installation with
+archives, then reconcile their installation with
 the owning root workspace/lock and Turbo, replace unmanaged foreign vendor
 references with Sources-managed owner packages, and verify Metro resolution
 through public exports and concrete providers. Preserve selected external
