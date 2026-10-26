@@ -51,7 +51,8 @@ Sources project lock. Use sequential stages outside `sources run`/`sources task`
 For clean release checkouts use the Sources selected-closure bootstrap guidance;
 activation and installation are separate and immediate-owner Git pins apply.
 
-Expo retains its separate vendored installation and frozen lock. The legacy
+Expo retains its separate vendored installation and frozen lock as an unqualified
+migration baseline, not an approved package-policy exception. The legacy
 `fotos.browser` wrapper remains excluded because `one.fotos` no longer exists;
 use `@one/fotos.browser.ui`. Existing broader migration failures remain visible.
 
@@ -78,3 +79,21 @@ Its existing standalone layout/lock is an unqualified migration gap pending thos
 inputs, not an approved workspace-policy exception. Native install, typechecking,
 APK and physical Fire TV qualification remain outstanding; the existing navigation
 tests alone do not establish those results.
+
+## Remaining Expo and Fire TV package migration
+
+The excluded Expo target has 97 unmanaged vendor references, and Fire TV has 96.
+Both still live outside `apps/` and the repository workspace, with separate locks;
+neither target has completed the shared metadata, layout or workspace policy.
+Preserving the existing archives and patches does not waive those requirements.
+Fire TV issue 2 defers its unavailable native checks only.
+
+Remaining work is to establish the platform baseline with the exact required
+archives, then move the targets under `apps/`, reconcile their installation with
+the owning root workspace/lock and Turbo, replace unmanaged foreign vendor
+references with Sources-managed owner packages, and verify Metro resolution
+through public exports and concrete providers. Preserve selected external
+versions, native patches and platform contracts throughout. Expo is also missing
+96 required vendor archives in this checkout; its native install/types/build and
+physical-device checks are unqualified. Do not regenerate or substitute archives
+to claim either baseline or the policy migration passes.

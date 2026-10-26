@@ -133,7 +133,9 @@
     "@refinio/agent.browser": "file:../../../sources/vger/packages/agent.browser",
     "@refinio/agent.code": "file:../../../sources/one/packages/agent.code",
     "quickjs-emscripten": "0.31.0",
-    "@refinio/provenance.core": "file:../../../sources/one/packages/provenance.core"
+    "@refinio/provenance.core": "file:../../../sources/one/packages/provenance.core",
+    "@refinio/chat.archive": "file:../../../sources/one/packages/chat.archive",
+    "@refinio/chat.baileys": "file:../../../sources/one/packages/chat.baileys"
   },
   "devDependencies": {
     "@types/qrcode": "catalog:",

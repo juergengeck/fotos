@@ -52,16 +52,16 @@ importers:
         version: 4.0.1
       '@refinio/agent.browser':
         specifier: file:../../../sources/vger/packages/agent.browser
-        version: file:sources/vger/packages/agent.browser(@refinio/agent.code@file:sources/one/packages/agent.code)(@refinio/agent.core@file:sources/one/packages/agent.core(rjxfsehigy2u2ovnztj5yqupkq))(@refinio/cube.contracts@file:sources/one/packages/cube.contracts(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/local.core@file:sources/one/packages/local.core(@huggingface/transformers@4.0.1)(@refinio/settings.core@file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0))(onnxruntime-web@1.24.2)(phonemizer@1.2.1))(@refinio/matching.core@file:sources/one/packages/matching.core(@refinio/one.core@file:sources/one/packages/one.core))(@vger/vger.core@file:sources/one/packages/vger.core(vcw7552n6uh2e4dgp6ijhf6y44))(quickjs-emscripten@0.31.0)
+        version: file:sources/vger/packages/agent.browser(@refinio/agent.code@file:sources/one/packages/agent.code)(@refinio/agent.core@file:sources/one/packages/agent.core(glgcdmtau2oprsq7spz3zdfgge))(@refinio/cube.contracts@file:sources/one/packages/cube.contracts(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/local.core@file:sources/one/packages/local.core(@huggingface/transformers@4.0.1)(@refinio/settings.core@file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0))(onnxruntime-web@1.24.2)(phonemizer@1.2.1))(@refinio/matching.core@file:sources/one/packages/matching.core(@refinio/one.core@file:sources/one/packages/one.core))(@vger/vger.core@file:sources/one/packages/vger.core(dxifhroqvmayxos6bwfjrgqzvu))(quickjs-emscripten@0.31.0)
       '@refinio/agent.builder':
         specifier: file:../../../sources/one/packages/agent.builder
-        version: file:sources/one/packages/agent.builder(@refinio/agent.core@file:sources/one/packages/agent.core(rjxfsehigy2u2ovnztj5yqupkq))(@refinio/settings.core@file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0))
+        version: file:sources/one/packages/agent.builder(@refinio/agent.core@file:sources/one/packages/agent.core(glgcdmtau2oprsq7spz3zdfgge))(@refinio/settings.core@file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0))
       '@refinio/agent.code':
         specifier: file:../../../sources/one/packages/agent.code
         version: file:sources/one/packages/agent.code
       '@refinio/agent.core':
         specifier: file:../../../sources/one/packages/agent.core
-        version: file:sources/one/packages/agent.core(rjxfsehigy2u2ovnztj5yqupkq)
+        version: file:sources/one/packages/agent.core(glgcdmtau2oprsq7spz3zdfgge)
       '@refinio/api':
         specifier: file:../../../sources/one/packages/refinio.api
         version: file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu)
@@ -77,9 +77,15 @@ importers:
       '@refinio/calendar.core':
         specifier: file:../../../sources/one/packages/calendar.core
         version: file:sources/one/packages/calendar.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trie.core@file:sources/one/packages/trie.core(@refinio/one.core@file:sources/one/packages/one.core))
+      '@refinio/chat.archive':
+        specifier: file:../../../sources/one/packages/chat.archive
+        version: file:sources/one/packages/chat.archive(@refinio/module.core@file:sources/one/packages/module.core(zmrucxlxbt66htjhggyljykzbm))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))
+      '@refinio/chat.baileys':
+        specifier: file:../../../sources/one/packages/chat.baileys
+        version: file:sources/one/packages/chat.baileys(@refinio/module.core@file:sources/one/packages/module.core(zmrucxlxbt66htjhggyljykzbm))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(@whiskeysockets/baileys@6.7.24(bufferutil@4.0.9)(sharp@0.34.5)(utf-8-validate@6.0.5))
       '@refinio/chat.core':
         specifier: file:../../../sources/one/packages/chat.core
-        version: file:sources/one/packages/chat.core(6rjwo7zsuyzmztpi5v7eauhbty)
+        version: file:sources/one/packages/chat.core(2thwucvv6x6qbd2otqwh3razle)
       '@refinio/chat.media':
         specifier: file:../../../sources/one/packages/chat.media
         version: file:sources/one/packages/chat.media(@refinio/media.core@file:sources/one/packages/media.core(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))
@@ -91,7 +97,7 @@ importers:
         version: file:sources/one/packages/connection.core(aulaat7c5qd7tz53tjp3urqxki)
       '@refinio/contact.core':
         specifier: file:../../../sources/one/packages/contact.core
-        version: file:sources/one/packages/contact.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(@refinio/trust.core@file:sources/one/packages/trust.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5)))
+        version: file:sources/one/packages/contact.core(@refinio/api@file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(@refinio/trust.core@file:sources/one/packages/trust.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5)))
       '@refinio/cube.core':
         specifier: file:../../../sources/one/packages/cube.core
         version: file:sources/one/packages/cube.core(@refinio/cube.contracts@file:sources/one/packages/cube.contracts(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/meaning.core@file:sources/one/packages/meaning.core(@refinio/cube.contracts@file:sources/one/packages/cube.contracts(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(@refinio/trie.core@file:sources/one/packages/trie.core(@refinio/one.core@file:sources/one/packages/one.core))
@@ -166,7 +172,7 @@ importers:
         version: file:sources/one/packages/memory.refinement
       '@refinio/module.core':
         specifier: file:../../../sources/one/packages/module.core
-        version: file:sources/one/packages/module.core(3uuqczr7s4mhij6kvxchogg5hq)
+        version: file:sources/one/packages/module.core(zmrucxlxbt66htjhggyljykzbm)
       '@refinio/one.core':
         specifier: file:../../../sources/one/packages/one.core
         version: file:sources/one/packages/one.core
@@ -178,13 +184,13 @@ importers:
         version: file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5)
       '@refinio/orchestration.ai':
         specifier: file:../../../sources/one/packages/orchestration.ai
-        version: file:sources/one/packages/orchestration.ai(@refinio/agent.core@file:sources/one/packages/agent.core(rjxfsehigy2u2ovnztj5yqupkq))(@refinio/api@file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/orchestration.core@file:sources/one/packages/orchestration.core(x4fwn5kmv76xybbbmns75h6ovm))(@refinio/vger.agent@file:sources/one/packages/vger.agent(l37hooqgk7w6lsavqczmh6v2bu))(@refinio/workflow.core@file:sources/one/packages/workflow.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core))
+        version: file:sources/one/packages/orchestration.ai(@refinio/agent.core@file:sources/one/packages/agent.core(glgcdmtau2oprsq7spz3zdfgge))(@refinio/api@file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/orchestration.core@file:sources/one/packages/orchestration.core(wl5foweo4y77f26xqn4wut523a))(@refinio/vger.agent@file:sources/one/packages/vger.agent(5vv5fnmmbepiwiy5efc7jikyuq))(@refinio/workflow.core@file:sources/one/packages/workflow.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core))
       '@refinio/orchestration.core':
         specifier: file:../../../sources/one/packages/orchestration.core
-        version: file:sources/one/packages/orchestration.core(x4fwn5kmv76xybbbmns75h6ovm)
+        version: file:sources/one/packages/orchestration.core(wl5foweo4y77f26xqn4wut523a)
       '@refinio/orchestration.worker':
         specifier: file:../../../sources/one/packages/orchestration.worker
-        version: file:sources/one/packages/orchestration.worker(@refinio/orchestration.core@file:sources/one/packages/orchestration.core(x4fwn5kmv76xybbbmns75h6ovm))(@refinio/vger.agent@file:sources/one/packages/vger.agent(l37hooqgk7w6lsavqczmh6v2bu))(@refinio/worker.core@file:sources/one/packages/worker.core)
+        version: file:sources/one/packages/orchestration.worker(@refinio/orchestration.core@file:sources/one/packages/orchestration.core(wl5foweo4y77f26xqn4wut523a))(@refinio/vger.agent@file:sources/one/packages/vger.agent(5vv5fnmmbepiwiy5efc7jikyuq))(@refinio/worker.core@file:sources/one/packages/worker.core)
       '@refinio/package.fs':
         specifier: file:../../../sources/one/packages/package.fs
         version: file:sources/one/packages/package.fs(@refinio/one.core@file:sources/one/packages/one.core)
@@ -211,7 +217,7 @@ importers:
         version: file:sources/one/packages/rule.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/verification.core@file:sources/one/packages/verification.core(@refinio/one.core@file:sources/one/packages/one.core))
       '@refinio/rule.vger':
         specifier: file:../../../sources/one/packages/rule.vger
-        version: file:sources/one/packages/rule.vger(4scsc5l7fzhqqhveearhzrbb2u)
+        version: file:sources/one/packages/rule.vger(r5nfbraabuytqqowzbo3fyid2a)
       '@refinio/saliency.core':
         specifier: file:../../../sources/one/packages/saliency.core
         version: file:sources/one/packages/saliency.core
@@ -301,7 +307,7 @@ importers:
         version: file:sources/one/packages/txt.core(ooiuu6tv4dtvyrctxvhlmx67om)
       '@refinio/ui.core':
         specifier: file:../../../sources/one/packages/ui.core
-        version: file:sources/one/packages/ui.core(ztei2eub733ep6n6nb7goulogm)
+        version: file:sources/one/packages/ui.core(wgqqddxmc6c4qufeibky7rptsu)
       '@refinio/ui.theme':
         specifier: file:../../../sources/one/packages/ui.theme
         version: file:sources/one/packages/ui.theme
@@ -310,7 +316,7 @@ importers:
         version: file:sources/one/packages/verification.core(@refinio/one.core@file:sources/one/packages/one.core)
       '@refinio/vger.agent':
         specifier: file:../../../sources/one/packages/vger.agent
-        version: file:sources/one/packages/vger.agent(l37hooqgk7w6lsavqczmh6v2bu)
+        version: file:sources/one/packages/vger.agent(5vv5fnmmbepiwiy5efc7jikyuq)
       '@refinio/worker.core':
         specifier: file:../../../sources/one/packages/worker.core
         version: file:sources/one/packages/worker.core
@@ -325,19 +331,19 @@ importers:
         version: 11.0.0
       '@vger/auth.login':
         specifier: file:../../../sources/vger/packages/auth.login
-        version: file:sources/vger/packages/auth.login(@glueone/auth.core@file:sources/one/packages/auth.core(74ermwycsbmctz7xxwuwyrgc4i))(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/api@file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu))(@vger/vger.core@file:sources/one/packages/vger.core(vcw7552n6uh2e4dgp6ijhf6y44))
+        version: file:sources/vger/packages/auth.login(@glueone/auth.core@file:sources/one/packages/auth.core(74ermwycsbmctz7xxwuwyrgc4i))(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/api@file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu))(@vger/vger.core@file:sources/one/packages/vger.core(dxifhroqvmayxos6bwfjrgqzvu))
       '@vger/vger.core':
         specifier: file:../../../sources/one/packages/vger.core
-        version: file:sources/one/packages/vger.core(vcw7552n6uh2e4dgp6ijhf6y44)
+        version: file:sources/one/packages/vger.core(dxifhroqvmayxos6bwfjrgqzvu)
       '@vger/vger.glue':
         specifier: file:../../../sources/one/packages/vger.glue
-        version: file:sources/one/packages/vger.glue(rhofivjjh3vpxrk3z2wr7vkyy4)
+        version: file:sources/one/packages/vger.glue(hkatdhnlb44twezhf2lwalgux4)
       '@vger/vger.txt.ui':
         specifier: file:../../../sources/one/packages/vger.txt.ui
-        version: file:sources/one/packages/vger.txt.ui(@refinio/source.documents@file:sources/one/packages/source.documents(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core))))(@refinio/txt.core@file:sources/one/packages/txt.core(ooiuu6tv4dtvyrctxvhlmx67om))(@refinio/ui.core@file:sources/one/packages/ui.core(ztei2eub733ep6n6nb7goulogm))(@vger/vger.core@file:sources/one/packages/vger.core(vcw7552n6uh2e4dgp6ijhf6y44))(react@19.1.0)
+        version: file:sources/one/packages/vger.txt.ui(@refinio/source.documents@file:sources/one/packages/source.documents(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core))))(@refinio/txt.core@file:sources/one/packages/txt.core(ooiuu6tv4dtvyrctxvhlmx67om))(@refinio/ui.core@file:sources/one/packages/ui.core(wgqqddxmc6c4qufeibky7rptsu))(@vger/vger.core@file:sources/one/packages/vger.core(dxifhroqvmayxos6bwfjrgqzvu))(react@19.1.0)
       '@vger/vger.ui':
         specifier: file:../../../sources/one/packages/vger.ui
-        version: file:sources/one/packages/vger.ui(ykpa3zu4wrr3gcld26tv3e27nm)
+        version: file:sources/one/packages/vger.ui(ibhc5zzxjczznfrsc2ob5btmoi)
       base64-js:
         specifier: ^1.5.1
         version: 1.5.1
@@ -383,7 +389,7 @@ importers:
         version: file:sources/one/packages/instrumentation.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core)))
       '@refinio/qa.core':
         specifier: file:../../../sources/one/packages/qa.core
-        version: file:sources/one/packages/qa.core(ap2limvczzvqr4moji7ahogppy)
+        version: file:sources/one/packages/qa.core(ulqyz4xlbswza4anioqdjbd5mi)
       '@refinio/qa.protocol':
         specifier: file:../../../sources/one/packages/qa.protocol
         version: file:sources/one/packages/qa.protocol
@@ -437,10 +443,10 @@ importers:
         version: file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4)
       '@refinio/agent.builder':
         specifier: file:../../sources/one/packages/agent.builder
-        version: file:sources/one/packages/agent.builder(@refinio/agent.core@file:sources/one/packages/agent.core(rjxfsehigy2u2ovnztj5yqupkq))(@refinio/settings.core@file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0))
+        version: file:sources/one/packages/agent.builder(@refinio/agent.core@file:sources/one/packages/agent.core(glgcdmtau2oprsq7spz3zdfgge))(@refinio/settings.core@file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0))
       '@refinio/agent.core':
         specifier: file:../../sources/one/packages/agent.core
-        version: file:sources/one/packages/agent.core(rjxfsehigy2u2ovnztj5yqupkq)
+        version: file:sources/one/packages/agent.core(glgcdmtau2oprsq7spz3zdfgge)
       '@refinio/api':
         specifier: file:../../sources/one/packages/refinio.api
         version: file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu)
@@ -453,9 +459,15 @@ importers:
       '@refinio/browser.core':
         specifier: file:../../sources/one/packages/browser.core
         version: file:sources/one/packages/browser.core(@refinio/api@file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu))(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)
+      '@refinio/chat.archive':
+        specifier: file:../../sources/one/packages/chat.archive
+        version: file:sources/one/packages/chat.archive(@refinio/module.core@file:sources/one/packages/module.core(zmrucxlxbt66htjhggyljykzbm))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))
+      '@refinio/chat.baileys':
+        specifier: file:../../sources/one/packages/chat.baileys
+        version: file:sources/one/packages/chat.baileys(@refinio/module.core@file:sources/one/packages/module.core(zmrucxlxbt66htjhggyljykzbm))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(@whiskeysockets/baileys@6.7.24(bufferutil@4.0.9)(sharp@0.34.5)(utf-8-validate@6.0.5))
       '@refinio/chat.core':
         specifier: file:../../sources/one/packages/chat.core
-        version: file:sources/one/packages/chat.core(6rjwo7zsuyzmztpi5v7eauhbty)
+        version: file:sources/one/packages/chat.core(2thwucvv6x6qbd2otqwh3razle)
       '@refinio/chat.media':
         specifier: file:../../sources/one/packages/chat.media
         version: file:sources/one/packages/chat.media(@refinio/media.core@file:sources/one/packages/media.core(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))
@@ -467,7 +479,7 @@ importers:
         version: file:sources/one/packages/connection.core(aulaat7c5qd7tz53tjp3urqxki)
       '@refinio/contact.core':
         specifier: file:../../sources/one/packages/contact.core
-        version: file:sources/one/packages/contact.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(@refinio/trust.core@file:sources/one/packages/trust.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5)))
+        version: file:sources/one/packages/contact.core(@refinio/api@file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(@refinio/trust.core@file:sources/one/packages/trust.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5)))
       '@refinio/cube.core':
         specifier: file:../../sources/one/packages/cube.core
         version: file:sources/one/packages/cube.core(@refinio/cube.contracts@file:sources/one/packages/cube.contracts(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/meaning.core@file:sources/one/packages/meaning.core(@refinio/cube.contracts@file:sources/one/packages/cube.contracts(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(@refinio/trie.core@file:sources/one/packages/trie.core(@refinio/one.core@file:sources/one/packages/one.core))
@@ -542,7 +554,7 @@ importers:
         version: file:sources/one/packages/memory.refinement
       '@refinio/module.core':
         specifier: file:../../sources/one/packages/module.core
-        version: file:sources/one/packages/module.core(3uuqczr7s4mhij6kvxchogg5hq)
+        version: file:sources/one/packages/module.core(zmrucxlxbt66htjhggyljykzbm)
       '@refinio/one.core':
         specifier: file:../../sources/one/packages/one.core
         version: file:sources/one/packages/one.core
@@ -554,13 +566,13 @@ importers:
         version: file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5)
       '@refinio/orchestration.ai':
         specifier: file:../../sources/one/packages/orchestration.ai
-        version: file:sources/one/packages/orchestration.ai(@refinio/agent.core@file:sources/one/packages/agent.core(rjxfsehigy2u2ovnztj5yqupkq))(@refinio/api@file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/orchestration.core@file:sources/one/packages/orchestration.core(x4fwn5kmv76xybbbmns75h6ovm))(@refinio/vger.agent@file:sources/one/packages/vger.agent(l37hooqgk7w6lsavqczmh6v2bu))(@refinio/workflow.core@file:sources/one/packages/workflow.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core))
+        version: file:sources/one/packages/orchestration.ai(@refinio/agent.core@file:sources/one/packages/agent.core(glgcdmtau2oprsq7spz3zdfgge))(@refinio/api@file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/orchestration.core@file:sources/one/packages/orchestration.core(wl5foweo4y77f26xqn4wut523a))(@refinio/vger.agent@file:sources/one/packages/vger.agent(5vv5fnmmbepiwiy5efc7jikyuq))(@refinio/workflow.core@file:sources/one/packages/workflow.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core))
       '@refinio/orchestration.core':
         specifier: file:../../sources/one/packages/orchestration.core
-        version: file:sources/one/packages/orchestration.core(x4fwn5kmv76xybbbmns75h6ovm)
+        version: file:sources/one/packages/orchestration.core(wl5foweo4y77f26xqn4wut523a)
       '@refinio/orchestration.worker':
         specifier: file:../../sources/one/packages/orchestration.worker
-        version: file:sources/one/packages/orchestration.worker(@refinio/orchestration.core@file:sources/one/packages/orchestration.core(x4fwn5kmv76xybbbmns75h6ovm))(@refinio/vger.agent@file:sources/one/packages/vger.agent(l37hooqgk7w6lsavqczmh6v2bu))(@refinio/worker.core@file:sources/one/packages/worker.core)
+        version: file:sources/one/packages/orchestration.worker(@refinio/orchestration.core@file:sources/one/packages/orchestration.core(wl5foweo4y77f26xqn4wut523a))(@refinio/vger.agent@file:sources/one/packages/vger.agent(5vv5fnmmbepiwiy5efc7jikyuq))(@refinio/worker.core@file:sources/one/packages/worker.core)
       '@refinio/package.fs':
         specifier: file:../../sources/one/packages/package.fs
         version: file:sources/one/packages/package.fs(@refinio/one.core@file:sources/one/packages/one.core)
@@ -584,7 +596,7 @@ importers:
         version: file:sources/one/packages/rule.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/verification.core@file:sources/one/packages/verification.core(@refinio/one.core@file:sources/one/packages/one.core))
       '@refinio/rule.vger':
         specifier: file:../../sources/one/packages/rule.vger
-        version: file:sources/one/packages/rule.vger(4scsc5l7fzhqqhveearhzrbb2u)
+        version: file:sources/one/packages/rule.vger(r5nfbraabuytqqowzbo3fyid2a)
       '@refinio/saliency.core':
         specifier: file:../../sources/one/packages/saliency.core
         version: file:sources/one/packages/saliency.core
@@ -671,7 +683,7 @@ importers:
         version: file:sources/one/packages/txt.core(ooiuu6tv4dtvyrctxvhlmx67om)
       '@refinio/ui.core':
         specifier: file:../../sources/one/packages/ui.core
-        version: file:sources/one/packages/ui.core(ztei2eub733ep6n6nb7goulogm)
+        version: file:sources/one/packages/ui.core(wgqqddxmc6c4qufeibky7rptsu)
       '@refinio/ui.theme':
         specifier: file:../../sources/one/packages/ui.theme
         version: file:sources/one/packages/ui.theme
@@ -680,7 +692,7 @@ importers:
         version: file:sources/one/packages/verification.core(@refinio/one.core@file:sources/one/packages/one.core)
       '@refinio/vger.agent':
         specifier: file:../../sources/one/packages/vger.agent
-        version: file:sources/one/packages/vger.agent(l37hooqgk7w6lsavqczmh6v2bu)
+        version: file:sources/one/packages/vger.agent(5vv5fnmmbepiwiy5efc7jikyuq)
       '@refinio/worker.core':
         specifier: file:../../sources/one/packages/worker.core
         version: file:sources/one/packages/worker.core
@@ -692,13 +704,13 @@ importers:
         version: file:sources/one/packages/workspace.core(@refinio/coding.core@file:sources/one/packages/coding.core(6qradznpgpgonw4zt5r6ds477m))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.agent@file:sources/one/packages/source.agent(monqr2iqfyahb5d57iegt4tqnq))(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core)))(@refinio/workflow.core@file:sources/one/packages/workflow.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core))
       '@vger/vger.core':
         specifier: file:../../sources/one/packages/vger.core
-        version: file:sources/one/packages/vger.core(vcw7552n6uh2e4dgp6ijhf6y44)
+        version: file:sources/one/packages/vger.core(dxifhroqvmayxos6bwfjrgqzvu)
       '@vger/vger.txt.ui':
         specifier: file:../../sources/one/packages/vger.txt.ui
-        version: file:sources/one/packages/vger.txt.ui(@refinio/source.documents@file:sources/one/packages/source.documents(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core))))(@refinio/txt.core@file:sources/one/packages/txt.core(ooiuu6tv4dtvyrctxvhlmx67om))(@refinio/ui.core@file:sources/one/packages/ui.core(ztei2eub733ep6n6nb7goulogm))(@vger/vger.core@file:sources/one/packages/vger.core(vcw7552n6uh2e4dgp6ijhf6y44))(react@19.1.0)
+        version: file:sources/one/packages/vger.txt.ui(@refinio/source.documents@file:sources/one/packages/source.documents(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core))))(@refinio/txt.core@file:sources/one/packages/txt.core(ooiuu6tv4dtvyrctxvhlmx67om))(@refinio/ui.core@file:sources/one/packages/ui.core(wgqqddxmc6c4qufeibky7rptsu))(@vger/vger.core@file:sources/one/packages/vger.core(dxifhroqvmayxos6bwfjrgqzvu))(react@19.1.0)
       '@vger/vger.ui':
         specifier: file:../../sources/one/packages/vger.ui
-        version: file:sources/one/packages/vger.ui(fe2jpbitvyxqmydzauig55zo6i)
+        version: file:sources/one/packages/vger.ui(jvbfl7qb725x5mpcgaibij4slu)
       lucide-react:
         specifier: ^0.554.0
         version: 0.554.0(react@19.1.0)
@@ -1464,6 +1476,19 @@ packages:
     resolution: {integrity: sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg==}
     engines: {node: '>=6.9.0'}
 
+  '@borewit/text-codec@0.2.2':
+    resolution: {integrity: sha512-DDaRehssg1aNrH4+2hnj1B7vnUGEjU6OIlyRdkMd0aUdIUvKXrJfXsy8LVtXAy7DRvYVluWbMspsRhz2lcW0mQ==}
+
+  '@cacheable/memory@2.2.0':
+    resolution: {integrity: sha512-CTLKqLItRCEixEAewD3/j9DB3/o96gpTPD4eJ1v+DGOlxZRZncRQkGYqqnAGCscYd6RNeXfGeiuCphsPtqyIfQ==}
+
+  '@cacheable/node-cache@1.7.6':
+    resolution: {integrity: sha512-6Omk2SgNnjtxB5f/E6bTIWIt5xhdpx39fGNRQgU9lojvRxU68v+qY+SXXLsp3ZGukqoPjsK21wZ6XABFr/Ge3A==}
+    engines: {node: '>=18'}
+
+  '@cacheable/utils@2.5.0':
+    resolution: {integrity: sha512-buipgOVDkkPXNR5+xBpDw7Zk2n1EvU7qBJCNUcL7rhQ//kfpOXPAvQ511Os0vpLYJ1pZnvudNytkQt2hst3wqA==}
+
   '@csstools/color-helpers@5.1.0':
     resolution: {integrity: sha512-S11EXWJyy0Mz5SYvRmY8nJYTFFd1LCNV+7cXyAgQtOOuzb4EsgfqDufL+9esx72/eLhsRdGZwaldu/h+E4t4BA==}
     engines: {node: '>=18'}
@@ -1855,6 +1880,18 @@ packages:
       '@refinio/trie.core': '*'
       '@refinio/trust.core': '*'
 
+  '@hapi/boom@10.0.1':
+    resolution: {integrity: sha512-ERcCZaEjdH3OgSJlyjVk8pHIFeus91CjKP3v+MpgBNp5IvGzP2l/bRiD78nqYcKPaZdbKkK5vDBVPd2ohHBlsA==}
+
+  '@hapi/boom@9.1.4':
+    resolution: {integrity: sha512-Ls1oH8jaN1vNsqcaHVYJrKmgMcKsC1wcp8bujvXrHaAqD2iDYq3HoOwsxwo09Cuda5R5nC0o0IxlrlTuvPuzSw==}
+
+  '@hapi/hoek@11.0.7':
+    resolution: {integrity: sha512-HV5undWkKzcB4RZUusqOpcgxOaq6VOAH7zhhIr2g3G8NF/MlFO75SjOr2NfuSx0Mh40+1FqCkagKLJRykUWoFQ==}
+
+  '@hapi/hoek@9.3.0':
+    resolution: {integrity: sha512-/c6rf4UJlmHlC9b5BaNvzAcFv7HZ2QHaV0D4/HNlBdvFnvQq8RI4kYdhyPCl7Xj+oWvTWQ8ujhqS53LIgAe6KQ==}
+
   '@hono/node-server@1.19.9':
     resolution: {integrity: sha512-vHL6w3ecZsky+8P5MD+eFfaGTyCeOHUIFYMGpQGbrBTSmNNoxv0if69rEZ5giu36weC5saFuznL411gRX7bJDw==}
     engines: {node: '>=18.14.1'}
@@ -2061,6 +2098,15 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
+  '@keyv/bigmap@1.3.1':
+    resolution: {integrity: sha512-WbzE9sdmQtKy8vrNPa9BRnwZh5UF4s1KTmSK0KUVLo3eff5BlQNNWDnFOouNpKfPKDnms9xynJjsMYjMaT/aFQ==}
+    engines: {node: '>= 18'}
+    peerDependencies:
+      keyv: ^5.6.0
+
+  '@keyv/serialize@1.1.1':
+    resolution: {integrity: sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA==}
+
   '@leichtgewicht/ip-codec@2.0.5':
     resolution: {integrity: sha512-Vo+PSpZG2/fmgmiNzYK9qWRh8h/CHrwD0mo1h1DzL4yzHNSfWYujGTYsWGreD000gcgmZ7K4Ys6Tx9TxtsKdDw==}
 
@@ -2169,6 +2215,9 @@ packages:
 
   '@pdf-lib/upng@1.0.1':
     resolution: {integrity: sha512-dQK2FUMQtowVP00mtIksrlZhdFXQZPC+taih1q4CvPZ5vqdxR/LKBaFg0oAfzd1GlHZXXSPdQfzQnt+ViGvEIQ==}
+
+  '@pinojs/redact@0.4.0':
+    resolution: {integrity: sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg==}
 
   '@protobufjs/aspromise@1.1.2':
     resolution: {integrity: sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ==}
@@ -2875,6 +2924,21 @@ packages:
       '@refinio/one.core': '*'
       '@refinio/trie.core': '*'
 
+  '@refinio/chat.archive@file:sources/one/packages/chat.archive':
+    resolution: {directory: sources/one/packages/chat.archive, type: directory}
+    peerDependencies:
+      '@refinio/module.core': '*'
+      '@refinio/one.core': '*'
+      '@refinio/one.models': '*'
+
+  '@refinio/chat.baileys@file:sources/one/packages/chat.baileys':
+    resolution: {directory: sources/one/packages/chat.baileys, type: directory}
+    peerDependencies:
+      '@refinio/module.core': '*'
+      '@refinio/one.core': '*'
+      '@refinio/one.models': '*'
+      '@whiskeysockets/baileys': ^6.7.0
+
   '@refinio/chat.core@file:sources/one/packages/chat.core':
     resolution: {directory: sources/one/packages/chat.core, type: directory}
     peerDependencies:
@@ -2943,6 +3007,7 @@ packages:
   '@refinio/contact.core@file:sources/one/packages/contact.core':
     resolution: {directory: sources/one/packages/contact.core, type: directory}
     peerDependencies:
+      '@refinio/api': '*'
       '@refinio/one.core': '*'
       '@refinio/one.models': '*'
       '@refinio/trust.core': '*'
@@ -3249,6 +3314,8 @@ packages:
   '@refinio/rule.vger@file:sources/one/packages/rule.vger':
     resolution: {directory: sources/one/packages/rule.vger, type: directory}
     peerDependencies:
+      '@refinio/api': '*'
+      '@refinio/assembly.core': '*'
       '@refinio/one.core': '*'
       '@refinio/one.models': '*'
       '@refinio/rule.core': '*'
@@ -3256,6 +3323,11 @@ packages:
       '@refinio/trust.core': '*'
       '@refinio/txt.core': '*'
       '@refinio/verification.core': '*'
+    peerDependenciesMeta:
+      '@refinio/api':
+        optional: true
+      '@refinio/assembly.core':
+        optional: true
 
   '@refinio/saliency.core@file:sources/one/packages/saliency.core':
     resolution: {directory: sources/one/packages/saliency.core, type: directory}
@@ -3460,11 +3532,15 @@ packages:
       '@refinio/memory.core': '*'
       '@refinio/one.core': '*'
       '@refinio/one.models': '*'
+      '@refinio/transport.core': '*'
       '@refinio/trust.core': '*'
       '@refinio/trust.me': '*'
       '@refinio/workflow.core': '*'
       '@vger/vger.core': '*'
       react: '>=19.1.0 <20'
+    peerDependenciesMeta:
+      '@refinio/transport.core':
+        optional: true
 
   '@refinio/ui.theme@file:sources/one/packages/ui.theme':
     resolution: {directory: sources/one/packages/ui.theme, type: directory}
@@ -3706,6 +3782,13 @@ packages:
     resolution: {integrity: sha512-4BAffykYOgO+5nzBWYwE3W90sBgLJoUPRWWcL8wlyiM8IB8ipJz3UMJ9KXQd1RKQXpKp8Tutn80HZtWsu2u76w==}
     engines: {node: '>=10'}
 
+  '@tokenizer/inflate@0.4.1':
+    resolution: {integrity: sha512-2mAv+8pkG6GIZiF1kNg1jAjh27IDxEPKwdGul3snfztFerfPGI1LjDezZp3i7BElXompqEtPmoPx6c2wgtWsOA==}
+    engines: {node: '>=18'}
+
+  '@tokenizer/token@0.3.0':
+    resolution: {integrity: sha512-OvjF+z51L3ov0OyAU0duzsYuvO01PH7x4t6DJx+guahgTnBHkhJdG7soQeTSFLWN3efnHyibZ4Z8l2EuWwJN3A==}
+
   '@trickfilm400/rollup-plugin-off-main-thread@3.0.0-pre1':
     resolution: {integrity: sha512-/67zpWDBLV+oYAEL682s1ktXL0HgqX76f6gaVGkGnVZlBbm1zd0v4Bz8MFF2GGhoX9rvfq3KSQHubFHwa6w6/Q==}
     engines: {node: '>=12'}
@@ -3857,9 +3940,13 @@ packages:
       '@refinio/api': '*'
       '@refinio/assembly.core': '*'
       '@refinio/browser.core': '*'
+      '@refinio/chat.archive': '*'
+      '@refinio/chat.baileys': '*'
       '@refinio/chat.core': '*'
       '@refinio/coding.core': '*'
       '@refinio/connection.core': '*'
+      '@refinio/cube.core': '*'
+      '@refinio/device.core': '*'
       '@refinio/group.core': '*'
       '@refinio/job.core': '*'
       '@refinio/knowledge.core': '*'
@@ -3870,6 +3957,7 @@ packages:
       '@refinio/llm.qwen': '*'
       '@refinio/matching.core': '*'
       '@refinio/mcp.core': '*'
+      '@refinio/meaning.core': '*'
       '@refinio/meme.core': '*'
       '@refinio/memory.core': '*'
       '@refinio/memory.refinement': '*'
@@ -3927,6 +4015,7 @@ packages:
       '@refinio/api': '*'
       '@refinio/assembly.core': '*'
       '@refinio/calendar.core': '*'
+      '@refinio/chat.core': '*'
       '@refinio/connection.core': '*'
       '@refinio/one.core': '*'
       '@refinio/one.models': '*'
@@ -3934,6 +4023,9 @@ packages:
       '@refinio/source.core': '*'
       '@refinio/trust.core': '*'
       '@vger/vger.core': '*'
+    peerDependenciesMeta:
+      '@refinio/chat.core':
+        optional: true
 
   '@vger/vger.txt.ui@file:sources/one/packages/vger.txt.ui':
     resolution: {directory: sources/one/packages/vger.txt.ui, type: directory}
@@ -4028,6 +4120,22 @@ packages:
   '@webgpu/types@0.1.69':
     resolution: {integrity: sha512-RPmm6kgRbI8e98zSD3RVACvnuktIja5+yLgDAkTmxLr90BEwdTXRQWNLF3ETTTyH/8mKhznZuN5AveXYFEsMGQ==}
 
+  '@whiskeysockets/baileys@6.7.24':
+    resolution: {integrity: sha512-Ljq7si+gsNIE9d5dP69E99TTQp+BxxPgitWvmZMXExGc1Ctr0SCDLFZmxRLUDC5HB0/Itw5uk+HJeBONrLP99Q==}
+    engines: {node: '>=20.0.0'}
+    peerDependencies:
+      audio-decode: ^2.1.3
+      jimp: ^1.6.0
+      link-preview-js: ^3.0.0
+      sharp: '*'
+    peerDependenciesMeta:
+      audio-decode:
+        optional: true
+      jimp:
+        optional: true
+      link-preview-js:
+        optional: true
+
   '@xmldom/xmldom@0.8.11':
     resolution: {integrity: sha512-cQzWCtO6C8TQiYl1ruKNn2U6Ao4o4WBBcbL61yJl84x+j5sOWWFU9X7DpND8XZG3daDppSsigMdfAIl2upQBRw==}
     engines: {node: '>=10.0.0'}
@@ -4036,6 +4144,10 @@ packages:
   '@xmldom/xmldom@0.9.12':
     resolution: {integrity: sha512-5AXjrcMClTryPe9LgZrygpB1lj7s0S9E0+W+AHaVKAVyHanafK86iPSvG5xHVSp/jC+VH1UXu0TAEmY279xH7A==}
     engines: {node: '>=14.6'}
+
+  abort-controller@3.0.0:
+    resolution: {integrity: sha512-h8lQ8tacZYnR3vNQTgibj+tODHI5/+l06Au2Pcriv/Gmet0eaj4TwWH41sO9wnHDiQsEj19q0drzdWdeAHtweg==}
+    engines: {node: '>=6.5'}
 
   accepts@1.3.8:
     resolution: {integrity: sha512-PYAthTa2m2VKxuvSD3DPC/Gy+U+sOA1LAuT8mkmRuvw+NACSaeXEQ+NHcVF7rONl6qcaxV3Uuemwawk+7+SJLw==}
@@ -4056,6 +4168,10 @@ packages:
   adm-zip@0.5.18:
     resolution: {integrity: sha512-ufJnssQGbxzLNS1Ho9bCtX4rQKCCvoVuDLHoJyc3F9dOGDB4BkWs2Ci0kv53lqocAEQ/Cbi+I2XCsNYGqVYqng==}
     engines: {node: '>=12.0'}
+
+  agent-base@6.0.2:
+    resolution: {integrity: sha512-RZNwNclF7+MS/8bDg70amg32dyeZGZxiDuQmZxKLAlQjr3jGyLx+4Kkk58UO7D2QdgFIQCovuSuZESne6RG6XQ==}
+    engines: {node: '>= 6.0.0'}
 
   agent-base@7.1.4:
     resolution: {integrity: sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==}
@@ -4165,6 +4281,9 @@ packages:
     resolution: {integrity: sha512-hsU18Ae8CDTR6Kgu9DYf0EbCr/a5iGL0rytQDobUcdpYOKokk8LEjVphnXkDkgpi0wYVsqrXuP0bZxJaTqdgoA==}
     engines: {node: '>= 0.4'}
 
+  async-mutex@0.5.0:
+    resolution: {integrity: sha512-1A94B18jkJ3DYq284ohPxoXbfTA5HsQ7/Mf4DEhcyLx3Bz27Rh59iScbB6EPiP+B+joue6YCxcMXSbFC1tZKwA==}
+
   async@3.2.6:
     resolution: {integrity: sha512-htCUDlxyyCLMgaM3xXg0C0LW2xqfuQ6p05pCEIsXuyQ+a1koYKTuBMzRNwmybfLgvJDMd0r1LTn4+E0Ti6C2AA==}
 
@@ -4174,6 +4293,10 @@ packages:
   at-least-node@1.0.0:
     resolution: {integrity: sha512-+q/t7Ekv1EDY2l6Gda6LLiX14rU9TV20Wa3ofeQmwPFZbOMo9DXrLbOjFaaclkXKWidIaopwAObQDqwWtGUjqg==}
     engines: {node: '>= 4.0.0'}
+
+  atomic-sleep@1.0.0:
+    resolution: {integrity: sha512-kNOjDqAh7px0XWNI+4QbzoiR/nTkHAWNud2uvnJquD1/x5a7EQZMJT0AczqK0Qn67oY/TTQ1LbUKajZpp3I9tQ==}
+    engines: {node: '>=8.0.0'}
 
   autoprefixer@10.6.1:
     resolution: {integrity: sha512-cL1Qz6ADZhcEbny/8HPfe99J6HhNoYtpX2LFLIbhgGE7Q1hlQVkYFdetDN7Id3KiQxhDrHwzlHr/YQCnZ8+xSA==}
@@ -4191,6 +4314,9 @@ packages:
 
   aws4@1.13.2:
     resolution: {integrity: sha512-lHe62zvbTB5eEABUVi/AwVh0ZKY9rMMDhmm+eeyuuUQbQ3+J+fONVQOZyj+DdrvD4BY33uYniyRJ4UJIaSKAfw==}
+
+  axios@1.20.0:
+    resolution: {integrity: sha512-r8aOh8j9cGKpgQAqpzrUHnSIc6a59Y3Xf/cv8sy1DrHCkZHzQGEuoq1tARk6qSyDdtQGSDgpb9kFlruzPvrgwg==}
 
   babel-plugin-polyfill-corejs2@0.4.15:
     resolution: {integrity: sha512-hR3GwrRwHUfYwGfrisXPIDP3JcYfBrW7wKE7+Au6wDYl7fm/ka1NEII6kORzxNU556JjfidZeBsO10kYvtV1aw==}
@@ -4389,6 +4515,9 @@ packages:
     resolution: {integrity: sha512-v+p6ongsrp0yTGbJXjgxPow2+DL93DASP4kXCDKb8/bwRtt9OEF3whggkkDkGNzgcWy2XaF4a8nZglC7uElscg==}
     engines: {node: '>=8'}
 
+  cacheable@2.5.0:
+    resolution: {integrity: sha512-60cyAOytib/OzBw1JNSoSV/boK1AtHryDIjvVBk7XbN4ugfkM3+Sry7fEjNgPMGgOjuaZPAp8ruZ0Cxafwyq9g==}
+
   call-bind-apply-helpers@1.0.2:
     resolution: {integrity: sha512-Sp1ablJ0ivDkSzjcaJdxEunN5/XvksFJ2sMBFfq6x0ryhQV/2b/KwFe21cMpmHtPOSij8K99/wSfoEuTObmuMQ==}
     engines: {node: '>= 0.4'}
@@ -4577,6 +4706,10 @@ packages:
     resolution: {integrity: sha512-nTjqfcBFEipKdXCv4YDQWCfmcLZKm81ldF0pAopTvyrFGVbcR6P/VAAd5G7N+0tTr8QqiU0tFadD6FK4NtJwOA==}
     engines: {node: '>= 0.6'}
 
+  content-type@2.1.0:
+    resolution: {integrity: sha512-mj7UPXE0jaqaOsukNZRUEfEi2AcL7C/vwmwcHV0O97eO1E1pxBZuyjlZrx5seTaNBg1U6+o35wpa35Qfcc+7ag==}
+    engines: {node: '>=18'}
+
   convert-source-map@2.0.0:
     resolution: {integrity: sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==}
 
@@ -4644,6 +4777,9 @@ packages:
 
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
+
+  curve25519-js@0.0.4:
+    resolution: {integrity: sha512-axn2UMEnkhyDUPWOwVKBMVIzSQy2ejH2xRGy1wq81dqRwApXfIzfbE3hIX0ZRFBIihf/KDqK158DLwESu4AK1w==}
 
   dashdash@1.14.1:
     resolution: {integrity: sha512-jRFi8UDGo6j+odZiEpjazZaWqEal3w/basFjQHQEwVtZJGDpxbH1MeYluwCS8Xq5wmLJooDlMgvVarmWfGM44g==}
@@ -4951,6 +5087,10 @@ packages:
     resolution: {integrity: sha512-aIL5Fx7mawVa300al2BnEE4iNvo1qETxLrPI/o05L7z6go7fCw1J6EQmbK4FmJ2AS7kgVF/KEZWufBfdClMcPg==}
     engines: {node: '>= 0.6'}
 
+  event-target-shim@5.0.1:
+    resolution: {integrity: sha512-i/2XbnSz/uxRCU6+NdVJgKWDTM427+MqYbkQzD321DuCQJUqOuJKIA0IM2+W2xtYHdKOmZ4dR6fExsd4SXL+WQ==}
+    engines: {node: '>=6'}
+
   events@3.3.0:
     resolution: {integrity: sha512-mQw+2fkQbALzQ7V0MY0IqdnXNOeTtP4r0lN9z7AAawCXgqea7bDii20AYrIBrFd/Hx0M2Ocz6S111CaFkUcb0Q==}
     engines: {node: '>=0.8.x'}
@@ -5091,6 +5231,10 @@ packages:
   fast-json-stable-stringify@2.1.0:
     resolution: {integrity: sha512-lhd/wF+Lk98HZoTCtlVraHtfh5XYijIjalXck7saUtuanSDyLMxnHhSXEDJqHxD7msR8D0uCmqlkwjCV8xvwHw==}
 
+  fast-redact@3.5.0:
+    resolution: {integrity: sha512-dwsoQlS7h9hMeYUq1W++23NDcBLV4KqONnITDV9DjfS3q1SgDGVrBdvvTLUotWtPSD7asWDV9/CmsZPy8Hf70A==}
+    engines: {node: '>=6'}
+
   fast-uri@3.1.0:
     resolution: {integrity: sha512-iPeeDKJSWf4IEOasVVrknXpaBV0IApz/gp7S2bb7Z4Lljbl2MGJRqInZiUrQwV16cpzw/D3S5j5Julj/gT52AA==}
 
@@ -5143,6 +5287,10 @@ packages:
   fflate@0.8.2:
     resolution: {integrity: sha512-cPJU47OaAoCbg0pBvzsgpTPhmhqI5eJjh/JIu8tPj5q+T7iLvW/JAYUqmE7KOB4R1ZyEhzBaIQpQpardBF5z8A==}
 
+  file-type@21.3.4:
+    resolution: {integrity: sha512-Ievi/yy8DS3ygGvT47PjSfdFoX+2isQueoYP1cntFW1JLYAuS4GD7NUPGg4zv2iZfV52uDyk5w5Z0TdpRS6Q1g==}
+    engines: {node: '>=20'}
+
   filelist@1.0.6:
     resolution: {integrity: sha512-5giy2PkLYY1cP39p17Ech+2xlpTRL9HLspOfEgm0L6CwBXBTgsK5ou0JtzYuepxkaQ/tvhCFIJ5uXo0OrM2DxA==}
 
@@ -5176,6 +5324,15 @@ packages:
   flow-enums-runtime@0.0.6:
     resolution: {integrity: sha512-3PYnM29RFXwvAN6Pc/scUfkI7RwhQ/xqyLUyPNlXUp9S40zI8nup9tUSrTLSVnWGBN38FNiGWbwZOB6uR4OGdw==}
 
+  follow-redirects@1.16.2:
+    resolution: {integrity: sha512-/kVP2U8z596Ia0gwFrwyIeo74ta5aVmSeU1FfAUMAmcEP5EP7zydmag3SLiN64NaRKef3lxsq7i/g7ltJQDGow==}
+    engines: {node: '>=4.0'}
+    peerDependencies:
+      debug: '*'
+    peerDependenciesMeta:
+      debug:
+        optional: true
+
   fontfaceobserver@2.3.0:
     resolution: {integrity: sha512-6FPvD/IVyT4ZlNe7Wcn5Fb/4ChigpucKYSvD6a+0iMoLn2inpo711eyIcKjmDtE5XNcgAkSH9uN/nfAeZzHEfg==}
 
@@ -5193,6 +5350,10 @@ packages:
   form-data@2.3.3:
     resolution: {integrity: sha512-1lLKB2Mu3aGP1Q/2eCOx0fNbRMe7XdwktwOruhfqqd0rIJWwN4Dh+E3hrPSlDCXnSR7UtZ1N38rVXm+6+MEhJQ==}
     engines: {node: '>= 0.12'}
+
+  form-data@4.0.6:
+    resolution: {integrity: sha512-vKatAh4SlVfgbv+YtmhiRjhEMJsYpsG1Y2rMQtR+SVSbytsSD1YGzDIcrAJmdFec88u/+VoGmxnl+80gL1tRCQ==}
+    engines: {node: '>= 6'}
 
   formdata-polyfill@4.0.10:
     resolution: {integrity: sha512-buewHzMvYL29jdeQTVILecSaZKnt/RJWjoZCF5OW60Z67/GmSLBkOFM7qh1PI3zFNtJbaZL5eQu1vLfazOwj4g==}
@@ -5380,6 +5541,10 @@ packages:
   hash.js@1.1.7:
     resolution: {integrity: sha512-taOaskGt4z4SOANNseOviYDvjEJinIkRgmp7LbKP2YTTmVxWBl87s/uzK9r+44BclBSp2X7K1hqeNfz9JbBeXA==}
 
+  hashery@1.5.1:
+    resolution: {integrity: sha512-iZyKG96/JwPz1N55vj2Ie2vXbhu440zfUfJvSwEqEbeLluk7NnapfGqa7LH0mOsnDxTF85Mx8/dyR6HfqcbmbQ==}
+    engines: {node: '>=20'}
+
   hasown@2.0.4:
     resolution: {integrity: sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==}
     engines: {node: '>= 0.4'}
@@ -5425,6 +5590,12 @@ packages:
     resolution: {integrity: sha512-NekXntS5M94pUfiVZ8oXXK/kkri+5WpX2/Ik+LVsl+uvw+soj4roXIsPqO+XsWrAw20mOzaXOZf3Q7PfB9A/IA==}
     engines: {node: '>=16.9.0'}
 
+  hookified@1.15.1:
+    resolution: {integrity: sha512-MvG/clsADq1GPM2KGo2nyfaWVyn9naPiXrqIe4jYjXNZQt238kWyOGrsyc/DmRAQ+Re6yeo6yX/yoNCG5KAEVg==}
+
+  hookified@2.2.0:
+    resolution: {integrity: sha512-p/LgFzRN5FeoD3DLS6bkUapeye6E4SI6yJs6KetENd18S+FBthqYq2amJUWpt5z0EQwwHemidjY5OqJGEKm5uA==}
+
   hosted-git-info@7.0.2:
     resolution: {integrity: sha512-puUZAUKT5m8Zzvs72XWy3HtvVbTWljRE66cP60bxJzAqf2DgICo7lYTY2IHUmLnNpjYvw5bvmoHvPc0QO2a62w==}
     engines: {node: ^16.14.0 || >=18.0.0}
@@ -5457,6 +5628,10 @@ packages:
 
   https-browserify@1.0.0:
     resolution: {integrity: sha512-J+FkSdyD+0mA0N+81tMotaRMfSL9SGi+xpD3T6YApKsc3bGSXJlfXri3VyFOeYkfLRQisDk1W+jIFFKBeUBbBg==}
+
+  https-proxy-agent@5.0.1:
+    resolution: {integrity: sha512-dFcAjpTQFgoLMzC2VwU+C/CbS7uRL0lWmxDITmqm7C+7F0Odmj6s9l6alZc6AELXhrnggM2CeWSXHGOdX2YtwA==}
+    engines: {node: '>= 6'}
 
   https-proxy-agent@7.0.6:
     resolution: {integrity: sha512-vK9P5/iUfdl95AI+JVyUuIcVtd4ofvtrOr3HNtM2yxC9bnMbEdp3x01OhQNnjb8IJYi38VlTE3mBXwcfvywuSw==}
@@ -5829,6 +6004,9 @@ packages:
   keyv@4.5.4:
     resolution: {integrity: sha512-oxVHkHR/EJf2CNXnWxRLW6mg7JyCCUcG0DtEGmL2ctUo1PNTin1PUil+r/+4r5MpVgC/fn1kjsx7mjSujKqIpw==}
 
+  keyv@5.6.0:
+    resolution: {integrity: sha512-CYDD3SOtsHtyXeEORYRx2qBtpDJFjRTGXUtmNEMGyzYOKj1TE3tycdlho7kA1Ufx9OYWZzg52QFBGALTirzDSw==}
+
   kleur@3.0.3:
     resolution: {integrity: sha512-eTIzlVOSUR+JxdDFepEYcBMtZ9Qqdef+rnzWdRZuMbOywu5tO2w2N7rqjoANZ5k9vywhL6Br1VRjUIgTQx4E8w==}
     engines: {node: '>=6'}
@@ -5843,6 +6021,10 @@ packages:
   leven@3.1.0:
     resolution: {integrity: sha512-qsda+H8jTaUaN/x5vzW2rzc+8Rw4TAQ/4KjB46IwK5VH+IlVeeeje/EoZRpiXvIqjFgK84QffqPztGI3VBLG1A==}
     engines: {node: '>=6'}
+
+  libsignal@https://codeload.github.com/whiskeysockets/libsignal-node/tar.gz/bcea72df9ec34d9d9140ab30619cf479c7c144c7:
+    resolution: {tarball: https://codeload.github.com/whiskeysockets/libsignal-node/tar.gz/bcea72df9ec34d9d9140ab30619cf479c7c144c7}
+    version: 6.0.0
 
   lie@3.3.0:
     resolution: {integrity: sha512-UaiMJzeWRlEujzAuw5LokY1L5ecNQYZKfmyZ9L7wDHb/p5etKaxXhohBcrw0EYby+G/NA52vRSN4N39dxHAIwQ==}
@@ -6092,6 +6274,10 @@ packages:
   media-typer@1.1.0:
     resolution: {integrity: sha512-aisnrDP4GNe06UcKFnV5bfMNPBUw4jsLGaWwWfnH3v02GnBuXX2MCVn5RbrWo0j3pczUilYblq7fQ7Nw2t5XKw==}
     engines: {node: '>= 0.8'}
+
+  media-typer@2.0.0:
+    resolution: {integrity: sha512-kOy3OxT2HH39N70UnKgu4NWDZjLOz8W/mfyvniHjRH/DrL3f2pOfvWQ4p60offbbtDAnXWp0v9LfMIqMec269Q==}
+    engines: {node: '>=18'}
 
   memoize-one@5.2.1:
     resolution: {integrity: sha512-zYiwtZUcYyXKo/np96AGZAckk+FWWsUdJ3cHGGmld7+AhvcWmQyGCYUh1hc4Q/pkOhb65dQR/pqCyK0cOaHz4Q==}
@@ -6403,6 +6589,10 @@ packages:
   multitars@1.0.2:
     resolution: {integrity: sha512-6GwVw5eLi9sThdtlS4PKwC7yRLaf45pYhIEzKBHdKxi+YOXGKFX8acIniH+Uh/+k9mS2lQOupTccjoe5r0/1IQ==}
 
+  music-metadata@11.16.1:
+    resolution: {integrity: sha512-uR/mHK6eyfl8h3jVCobF5b38Mfg1IDJMiBxIVbmm5F+G1OXEFcUpQHveO84tJBAqvY93GCRY2R4kDyx7s06Rug==}
+    engines: {node: '>=18'}
+
   mz@2.7.0:
     resolution: {integrity: sha512-z81GNO7nnYMEhrGh9LeymoE4+Yr0Wn5McHIZMK5cfQCl+NDX08sCZgUc9/6MHni9IWuFLm1Z3HTCXu2z9fN62Q==}
 
@@ -6520,6 +6710,10 @@ packages:
   object.assign@4.1.7:
     resolution: {integrity: sha512-nK28WOo+QIjBkDduTINE4JkF/UJJKyf2EJxvJKfblDpyg0Q+pkOHNTL0Qwy6NP6FhE/EnzV73BxxqcJaXY9anw==}
     engines: {node: '>= 0.4'}
+
+  on-exit-leak-free@2.1.2:
+    resolution: {integrity: sha512-0eJJY6hXLGf1udHwfNftBqH+g73EU4B504nZeKpz1sYRKafAghwxEJunB2O7rDZkL4PGfsMVnTXZ2EjibbqcsA==}
+    engines: {node: '>=14.0.0'}
 
   on-finished@2.3.0:
     resolution: {integrity: sha512-ikqdkGAAyf/X/gPhXGvfgAytDZtDbr+bkNUJ0N9h5MI/dmdgCs3l6hoHrcUv41sRKew3jIwrp4qQDXiK99Utww==}
@@ -6710,6 +6904,26 @@ packages:
     resolution: {integrity: sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA==}
     engines: {node: '>=12'}
 
+  pino-abstract-transport@1.2.0:
+    resolution: {integrity: sha512-Guhh8EZfPCfH+PMXAb6rKOjGQEoy0xlAIn+irODG5kgfYV+BQ0rGYYWTIel3P5mmyXqkYkPmdIkywsn6QKUR1Q==}
+
+  pino-abstract-transport@2.0.0:
+    resolution: {integrity: sha512-F63x5tizV6WCh4R6RHyi2Ml+M70DNRXt/+HANowMflpgGFMAym/VKm6G7ZOQRjqN7XbGxK1Lg9t6ZrtzOaivMw==}
+
+  pino-std-serializers@6.2.2:
+    resolution: {integrity: sha512-cHjPPsE+vhj/tnhCy/wiMh3M3z3h/j15zHQX+S9GkTBgqJuTuJzYJ4gUyACLhDaJ7kk9ba9iRDmbH2tJU03OiA==}
+
+  pino-std-serializers@7.1.0:
+    resolution: {integrity: sha512-BndPH67/JxGExRgiX1dX0w1FvZck5Wa4aal9198SrRhZjH3GxKQUKIBnYJTdj2HDN3UQAS06HlfcSbQj2OHmaw==}
+
+  pino@8.21.0:
+    resolution: {integrity: sha512-ip4qdzjkAyDDZklUaZkcRFb2iA118H9SgRh8yzTkSQK8HilsOJF7rSY8HoW5+I0M46AZgX/pxbprf2vvzQCE0Q==}
+    hasBin: true
+
+  pino@9.14.0:
+    resolution: {integrity: sha512-8OEwKp5juEvb/MjpIc4hjqfgCNysrS94RIOMXYvpYCdm/jglrKEiAYmiumbmGhCvs+IcInsphYDFwqrjr7398w==}
+    hasBin: true
+
   pirates@4.0.7:
     resolution: {integrity: sha512-TfySrs/5nm8fQJDcBDuUng3VOUKsd7S+zqvbOTiGXHfxX4wK31ard+hoNuvkicM/2YFzlpDgABOevKSsB4G/FA==}
     engines: {node: '>= 6'}
@@ -6820,6 +7034,12 @@ packages:
   process-nextick-args@2.0.1:
     resolution: {integrity: sha512-3ouUOpQhtgrbOa17J7+uxOTpITYWaGP7/AhoR3+A+/1e9skrzelGi/dXzEYyvbxubEF6Wn2ypscTKiKJFFn1ag==}
 
+  process-warning@3.0.0:
+    resolution: {integrity: sha512-mqn0kFRl0EoqhnL0GQ0veqFHyIN1yig9RHh/InzORTUiZHFRAur+aMtRkELNwGs9aNwKS6tg/An4NYBPGwvtzQ==}
+
+  process-warning@5.1.1:
+    resolution: {integrity: sha512-oCkNVj4OKnKEcocVBcDfiIugN1/cE6rgfT3nCtzeqZPA8+rIxMaQ0xXzIkGP8Gj2qUaP1UR7uhJ1VD8lUCpzCg==}
+
   process@0.11.10:
     resolution: {integrity: sha512-cdGef/drWFoydD1JsMzuFf8100nZl+GT+yacc2bEced5f9Rjk4z+WtFUTBu9PhOi9j/jfmBPu0mMEY4wIdAF8A==}
     engines: {node: '>= 0.6.0'}
@@ -6849,6 +7069,10 @@ packages:
     resolution: {integrity: sha512-llQsMLSUDUPT44jdrU/O37qlnifitDP+ZwrmmZcoSKyLKvtZxpyV0n2/bD/N4tBAAZ/gJEdZU7KMraoK1+XYAg==}
     engines: {node: '>= 0.10'}
 
+  proxy-from-env@2.1.0:
+    resolution: {integrity: sha512-cJ+oHTW1VAEa8cJslgmUZrc+sjRKgAKl3Zyse6+PV38hZe/V6Z14TbCuXcan9F9ghlz4QrFr2c92TNF82UkYHA==}
+    engines: {node: '>=10'}
+
   psl@1.15.0:
     resolution: {integrity: sha512-JZd3gMVBAVQkSs6HdNZo9Sdo0LNcQeMNP3CozBJb3JYC/QUYZTnKxP+f8oWRX4rHP5EurWxqAHTSwUCjlNKa1w==}
 
@@ -6864,6 +7088,10 @@ packages:
   punycode@2.3.1:
     resolution: {integrity: sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==}
     engines: {node: '>=6'}
+
+  qified@0.10.1:
+    resolution: {integrity: sha512-+Owyggi9IxT1ePKGafcI87ubSmxol6smwJ+RAHDQlx9+9cPwFWDiKFFCPuWhr9ignlGpZ9vDQLw67N4dcTVFEA==}
+    engines: {node: '>=20'}
 
   qrcode.react@4.2.0:
     resolution: {integrity: sha512-QpgqWi8rD9DsS9EP3z7BT+5lY5SFhsqGjpgW5DY/i3mK4M9DTBNz3ErMi8BWYEfI3L0d8GIbGmcdFAS1uIRGjA==}
@@ -6896,6 +7124,9 @@ packages:
 
   queue@6.0.2:
     resolution: {integrity: sha512-iHZWu+q3IdFZFX36ro/lKBkSvfkztY5Y7HMiPlOUjhupPcG2JMfst2KKEpu5XndviX/3UhFbRngUPNKtgvtZiA==}
+
+  quick-format-unescaped@4.0.4:
+    resolution: {integrity: sha512-tYC1Q1hgyRuHgloV/YXs2w15unPVh8qfu/qCTfhTYamaw7fyhumKa2yGpdSo87vY32rIclj+4fWYQXUMs9EHvg==}
 
   quick-lru@5.1.1:
     resolution: {integrity: sha512-WuyALRjWPDGtt/wzJiadO5AXY+8hZ80hVpe6MyivgraREW751X3SbhRvG3eLKOYN+8VEvqLcf3wdnt44Z4S4SA==}
@@ -7024,9 +7255,17 @@ packages:
     resolution: {integrity: sha512-9u/sniCrY3D5WdsERHzHE4G2YCXqoG5FTHUiCC4SIbr6XcLZBY05ya9EKjYek9O5xOAwjGq+1JdGBAS7Q9ScoA==}
     engines: {node: '>= 6'}
 
+  readable-stream@4.8.0:
+    resolution: {integrity: sha512-2jhTTU3Eilp/2DMT71gbcoqC35eQHasMJH0RHkYxwlxIv3+FR6Y5xAFZIwEGLxKkjZYEFlsiMNIdwUqjK2lLHQ==}
+    engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
+
   readdirp@3.6.0:
     resolution: {integrity: sha512-hOS089on8RduqdbhvQ5Z37A0ESjsqz6qnRcffsMU3495FuTdqSm+7bhJ29JvIOsBDEEnan5DPu9t3To9VRlMzA==}
     engines: {node: '>=8.10.0'}
+
+  real-require@0.2.0:
+    resolution: {integrity: sha512-57frrGM/OCTLqLOAh0mhVA9VBMHd+9U7Zb2THMGdBUoZVOtGbJzjxsYGDJ3A9AYYCP4hn6y1TVbaOfzWtm5GFg==}
+    engines: {node: '>= 12.13.0'}
 
   reallysimple@0.5.3:
     resolution: {integrity: sha512-pSk953kBcqwZnerzeX4dHT56p41D+8jBS1MUYaHKMCtrhQiFrfBqGXnTM0OhZ0leAoVHgxHMhXmsWVcQlx79KQ==}
@@ -7154,6 +7393,10 @@ packages:
   safe-regex-test@1.1.0:
     resolution: {integrity: sha512-x/+Cz4YrimQxQccJf5mKEbIa1NzeCRNI5Ecl/ekmlYaampdNLPalVyIcCZNNH3MvmqBugV5TMYZXv0ljslUlaw==}
     engines: {node: '>= 0.4'}
+
+  safe-stable-stringify@2.5.0:
+    resolution: {integrity: sha512-b3rppTKm9T+PsVCBEOUR46GWI7fdOs00VKZ1+9c1EWDaDMvjQc6tUwuFyIprgGgTcWoVHSKrU8H31ZHA2e0RHA==}
+    engines: {node: '>=10'}
 
   safer-buffer@2.1.2:
     resolution: {integrity: sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==}
@@ -7302,6 +7545,12 @@ packages:
     resolution: {integrity: sha512-RQsvleCbF8cVHEv+xuDGaA4pOizFqJ0GgjtMSRo6oP8pnN7WsigHgVGey6aILRBKv4W2YOMHLqbKdnB6hpB9fw==}
     engines: {node: '>=20.0.0'}
 
+  sonic-boom@3.8.1:
+    resolution: {integrity: sha512-y4Z8LCDBuum+PBP3lSV7RHrXscqksve/bi0as7mhwVnBW+/wUqKT/2Kb7um8yqcFy0duYbbPxzt89Zy2nOCaxg==}
+
+  sonic-boom@4.2.1:
+    resolution: {integrity: sha512-w6AxtubXa2wTXAUsZMMWERrsIRAdrK0Sc+FUytWvYAhBJLyuI4llrMIC1DtlNSdI99EI86KZum2MMq3EAZlF9Q==}
+
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
@@ -7323,6 +7572,10 @@ packages:
 
   space-separated-tokens@2.0.2:
     resolution: {integrity: sha512-PEGlAwrG8yXGXRjW32fGbg66JAlOAwbObuqVoJpv/mRgoWDQfgH1wDPvtzWyUSNAXBGSk8h755YDbbcEy3SH2Q==}
+
+  split2@4.2.0:
+    resolution: {integrity: sha512-UcjcJOWknrNkF6PLX83qcHM6KHgVKNkV62Y8a5uYDVv9ydGQVwAHMKqHdJje1VTWpljG0WYpCDhrCdAOYH4TWg==}
+    engines: {node: '>= 10.x'}
 
   sprintf-js@1.0.3:
     resolution: {integrity: sha512-D9cPgkvLlV3t3IzL0D0YLvGA9Ahk4PcvVwUbN0dSGr1aP0Nrt4AEnTUbuGvquEC0mA64Gqt1fzirlRs5ibXx8g==}
@@ -7437,6 +7690,10 @@ packages:
   strnum@2.1.2:
     resolution: {integrity: sha512-l63NF9y/cLROq/yqKXSLtcMeeyOfnSQlfMSlzFt/K73oIaD8DGaQWd7Z34X9GPiKqP5rbSh84Hl4bOlLcjiSrQ==}
 
+  strtok3@10.6.2:
+    resolution: {integrity: sha512-BkdixFFUt7r7LsX6aGNPVyYMLjW+M1USLlKPNbZsrZEmLFh5tGqhdfckKo6xgsZIJqdDD0CZGkeCJJwNWQIKQA==}
+    engines: {node: '>=18'}
+
   structured-headers@0.4.1:
     resolution: {integrity: sha512-0MP/Cxx5SzeeZ10p/bZI0S6MpgD+yxAhi1BOQ34jgnMXsCq3j1t6tQnZu+KdlL7dvJTLT3g9xN8tl10TqgFMcg==}
 
@@ -7520,6 +7777,12 @@ packages:
   thenify@3.3.1:
     resolution: {integrity: sha512-RVZSIV5IG10Hk3enotrhvz0T9em6cyHBLkH/YAZuKqd8hRkKhSfCGIcP2KUY0EPxndzANBmNllzWPwak+bheSw==}
 
+  thread-stream@2.7.0:
+    resolution: {integrity: sha512-qQiRWsU/wvNolI6tbbCKd9iKaTnCXsTwVxhhKM6nctPdujTyztjlbUkUTUymidWcMnZ5pWR0ej4a0tjsW021vw==}
+
+  thread-stream@3.2.0:
+    resolution: {integrity: sha512-zLBvqpwr4Esa0kRjcrzGU6zL25lePWaCLMx0RQFrmteozIfeNdaMLpG5U7PeHzvlFkAWaRKA9/KVW4F60iB+qw==}
+
   three-mesh-bvh@0.8.3:
     resolution: {integrity: sha512-4G5lBaF+g2auKX3P0yqx+MJC6oVt6sB5k+CchS6Ob0qvH0YIhuUk1eYr7ktsIpY+albCqE80/FVQGV190PmiAg==}
     peerDependencies:
@@ -7586,6 +7849,10 @@ packages:
   toidentifier@1.0.1:
     resolution: {integrity: sha512-o5sSPKEkg/DIQNmH43V0/uerLrpzVedkUh8tGNvaeXpfpuwjKenlSox/2O/BTlZUtEe+JG7s5YhEz608PlAHRA==}
     engines: {node: '>=0.6'}
+
+  token-types@6.1.2:
+    resolution: {integrity: sha512-dRXchy+C0IgK8WPC6xvCHFRIWYUbqqdEIKPaKo/AcTUNzwLTK6AH7RjdLWsEZcAN/TBdtfUw3PYEgPr5VPr6ww==}
+    engines: {node: '>=14.16'}
 
   toqr@0.1.1:
     resolution: {integrity: sha512-FWAPzCIHZHnrE/5/w9MPk0kK25hSQSH2IKhYh9PyjS3SG/+IEMvlwIHbhz+oF7xl54I+ueZlVnMjyzdSwLmAwA==}
@@ -7734,6 +8001,10 @@ packages:
     resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
     engines: {node: '>=14.17'}
     hasBin: true
+
+  uint8array-extras@1.6.0:
+    resolution: {integrity: sha512-8iAasVS4wUx0gPLjH8Xtz2PeDzTSiy8QiLGu2DT3X5GU+egFEQhpnbtkehbAwjvDcxIERmCYcysiODFmE3Ud0Q==}
+    engines: {node: '>=18'}
 
   unbox-primitive@1.1.0:
     resolution: {integrity: sha512-nWJ91DjeOkej/TA8pXQ3myruKpKEYgqvpw9lz4OPHj/NWFNluYrjbz9j01CJ8yKQd2g4jFoOkINCTW2I5LEEyw==}
@@ -8068,6 +8339,9 @@ packages:
     resolution: {integrity: sha512-hUrmaWBdVDcxvYqnyh09zunKzROWjbZTiNy8dBEjkS7ehEDQibXJ7XvlmtbwuTclUiIyN+CyXQD4Vmko8fNm8w==}
     engines: {node: '>=8'}
     hasBin: true
+
+  win-guid@0.2.1:
+    resolution: {integrity: sha512-gEIQU4mkgl2OPeoNrWflcJFJ3Ae2BPd4eCsHHA/XikslkIVms/nHhvnvzIZV7VLmBvtFlDOzLt9rrZT+n6D67A==}
 
   workbox-background-sync@7.4.1:
     resolution: {integrity: sha512-HhT7KE8tOWDm02wRNshXUnUPofMlhenF2DBdUnDPOubhizzPeItkYTmAB6td1Z2cjYPa98vzEiPLEuzn5hN66g==}
@@ -9123,6 +9397,26 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
+  '@borewit/text-codec@0.2.2': {}
+
+  '@cacheable/memory@2.2.0':
+    dependencies:
+      '@cacheable/utils': 2.5.0
+      '@keyv/bigmap': 1.3.1(keyv@5.6.0)
+      hookified: 1.15.1
+      keyv: 5.6.0
+
+  '@cacheable/node-cache@1.7.6':
+    dependencies:
+      cacheable: 2.5.0
+      hookified: 1.15.1
+      keyv: 5.6.0
+
+  '@cacheable/utils@2.5.0':
+    dependencies:
+      hashery: 1.5.1
+      keyv: 5.6.0
+
   '@csstools/color-helpers@5.1.0':
     optional: true
 
@@ -9671,6 +9965,18 @@ snapshots:
       '@refinio/trust.core': file:sources/one/packages/trust.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))
       base64-js: 1.5.1
 
+  '@hapi/boom@10.0.1':
+    dependencies:
+      '@hapi/hoek': 11.0.7
+
+  '@hapi/boom@9.1.4':
+    dependencies:
+      '@hapi/hoek': 9.3.0
+
+  '@hapi/hoek@11.0.7': {}
+
+  '@hapi/hoek@9.3.0': {}
+
   '@hono/node-server@1.19.9(hono@4.12.0)':
     dependencies:
       hono: 4.12.0
@@ -9854,6 +10160,14 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
+  '@keyv/bigmap@1.3.1(keyv@5.6.0)':
+    dependencies:
+      hashery: 1.5.1
+      hookified: 1.15.1
+      keyv: 5.6.0
+
+  '@keyv/serialize@1.1.1': {}
+
   '@leichtgewicht/ip-codec@2.0.5':
     optional: true
 
@@ -9955,6 +10269,8 @@ snapshots:
   '@pdf-lib/upng@1.0.1':
     dependencies:
       pako: 1.0.11
+
+  '@pinojs/redact@0.4.0': {}
 
   '@protobufjs/aspromise@1.1.2': {}
 
@@ -10636,31 +10952,31 @@ snapshots:
       - immer
     optional: true
 
-  ? '@refinio/agent.browser@file:sources/vger/packages/agent.browser(@refinio/agent.code@file:sources/one/packages/agent.code)(@refinio/agent.core@file:sources/one/packages/agent.core(rjxfsehigy2u2ovnztj5yqupkq))(@refinio/cube.contracts@file:sources/one/packages/cube.contracts(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/local.core@file:sources/one/packages/local.core(@huggingface/transformers@4.0.1)(@refinio/settings.core@file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0))(onnxruntime-web@1.24.2)(phonemizer@1.2.1))(@refinio/matching.core@file:sources/one/packages/matching.core(@refinio/one.core@file:sources/one/packages/one.core))(@vger/vger.core@file:sources/one/packages/vger.core(vcw7552n6uh2e4dgp6ijhf6y44))(quickjs-emscripten@0.31.0)'
+  ? '@refinio/agent.browser@file:sources/vger/packages/agent.browser(@refinio/agent.code@file:sources/one/packages/agent.code)(@refinio/agent.core@file:sources/one/packages/agent.core(glgcdmtau2oprsq7spz3zdfgge))(@refinio/cube.contracts@file:sources/one/packages/cube.contracts(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/local.core@file:sources/one/packages/local.core(@huggingface/transformers@4.0.1)(@refinio/settings.core@file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0))(onnxruntime-web@1.24.2)(phonemizer@1.2.1))(@refinio/matching.core@file:sources/one/packages/matching.core(@refinio/one.core@file:sources/one/packages/one.core))(@vger/vger.core@file:sources/one/packages/vger.core(dxifhroqvmayxos6bwfjrgqzvu))(quickjs-emscripten@0.31.0)'
   : dependencies:
       '@refinio/agent.code': file:sources/one/packages/agent.code
-      '@refinio/agent.core': file:sources/one/packages/agent.core(rjxfsehigy2u2ovnztj5yqupkq)
+      '@refinio/agent.core': file:sources/one/packages/agent.core(glgcdmtau2oprsq7spz3zdfgge)
       '@refinio/local.core': file:sources/one/packages/local.core(@huggingface/transformers@4.0.1)(@refinio/settings.core@file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0))(onnxruntime-web@1.24.2)(phonemizer@1.2.1)
       '@refinio/matching.core': file:sources/one/packages/matching.core(@refinio/one.core@file:sources/one/packages/one.core)
-      '@vger/vger.core': file:sources/one/packages/vger.core(vcw7552n6uh2e4dgp6ijhf6y44)
+      '@vger/vger.core': file:sources/one/packages/vger.core(dxifhroqvmayxos6bwfjrgqzvu)
       quickjs-emscripten: 0.31.0
     optionalDependencies:
       '@refinio/cube.contracts': file:sources/one/packages/cube.contracts(@refinio/one.core@file:sources/one/packages/one.core)
 
-  '@refinio/agent.builder@file:sources/one/packages/agent.builder(@refinio/agent.core@file:sources/one/packages/agent.core(rjxfsehigy2u2ovnztj5yqupkq))(@refinio/settings.core@file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0))':
+  '@refinio/agent.builder@file:sources/one/packages/agent.builder(@refinio/agent.core@file:sources/one/packages/agent.core(glgcdmtau2oprsq7spz3zdfgge))(@refinio/settings.core@file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0))':
     dependencies:
-      '@refinio/agent.core': file:sources/one/packages/agent.core(rjxfsehigy2u2ovnztj5yqupkq)
+      '@refinio/agent.core': file:sources/one/packages/agent.core(glgcdmtau2oprsq7spz3zdfgge)
       '@refinio/settings.core': file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0)
 
   '@refinio/agent.code@file:sources/one/packages/agent.code':
     dependencies:
       typescript: 5.9.3
 
-  '@refinio/agent.core@file:sources/one/packages/agent.core(rjxfsehigy2u2ovnztj5yqupkq)':
+  '@refinio/agent.core@file:sources/one/packages/agent.core(glgcdmtau2oprsq7spz3zdfgge)':
     dependencies:
       '@refinio/api': file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu)
       '@refinio/assembly.core': file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq)
-      '@refinio/chat.core': file:sources/one/packages/chat.core(6rjwo7zsuyzmztpi5v7eauhbty)
+      '@refinio/chat.core': file:sources/one/packages/chat.core(2thwucvv6x6qbd2otqwh3razle)
       '@refinio/llm.one': file:sources/one/packages/llm.one(@refinio/filer.core@file:sources/one/packages/filer.core(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core)))
       '@refinio/memory.core': file:sources/one/packages/memory.core(wcehqggdgmpjfchdcxvush4qgm)
       '@refinio/one.core': file:sources/one/packages/one.core
@@ -10725,11 +11041,27 @@ snapshots:
       fast-xml-parser: 5.3.7
       ical.js: 2.2.1
 
-  '@refinio/chat.core@file:sources/one/packages/chat.core(6rjwo7zsuyzmztpi5v7eauhbty)':
+  '@refinio/chat.archive@file:sources/one/packages/chat.archive(@refinio/module.core@file:sources/one/packages/module.core(zmrucxlxbt66htjhggyljykzbm))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))':
+    dependencies:
+      '@refinio/module.core': file:sources/one/packages/module.core(zmrucxlxbt66htjhggyljykzbm)
+      '@refinio/one.core': file:sources/one/packages/one.core
+      '@refinio/one.models': file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5)
+
+  '@refinio/chat.baileys@file:sources/one/packages/chat.baileys(@refinio/module.core@file:sources/one/packages/module.core(zmrucxlxbt66htjhggyljykzbm))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(@whiskeysockets/baileys@6.7.24(bufferutil@4.0.9)(sharp@0.34.5)(utf-8-validate@6.0.5))':
+    dependencies:
+      '@hapi/boom': 10.0.1
+      '@refinio/module.core': file:sources/one/packages/module.core(zmrucxlxbt66htjhggyljykzbm)
+      '@refinio/one.core': file:sources/one/packages/one.core
+      '@refinio/one.models': file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5)
+      '@whiskeysockets/baileys': 6.7.24(bufferutil@4.0.9)(sharp@0.34.5)(utf-8-validate@6.0.5)
+      pino: 8.21.0
+      qrcode: 1.5.4
+
+  '@refinio/chat.core@file:sources/one/packages/chat.core(2thwucvv6x6qbd2otqwh3razle)':
     dependencies:
       '@refinio/api': file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu)
       '@refinio/assembly.core': file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq)
-      '@refinio/contact.core': file:sources/one/packages/contact.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(@refinio/trust.core@file:sources/one/packages/trust.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5)))
+      '@refinio/contact.core': file:sources/one/packages/contact.core(@refinio/api@file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(@refinio/trust.core@file:sources/one/packages/trust.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5)))
       '@refinio/device.core': file:sources/one/packages/device.core(itev6olydisg5wasfwqbannj3a)
       '@refinio/one.core': file:sources/one/packages/one.core
       '@refinio/one.models': file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5)
@@ -10757,6 +11089,7 @@ snapshots:
       '@refinio/trie.core': file:sources/one/packages/trie.core(@refinio/one.core@file:sources/one/packages/one.core)
       '@refinio/verification.core': file:sources/one/packages/verification.core(@refinio/one.core@file:sources/one/packages/one.core)
       '@refinio/workflow.core': file:sources/one/packages/workflow.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)
+      typescript: 5.7.3
 
   '@refinio/connection.core@file:sources/one/packages/connection.core(aulaat7c5qd7tz53tjp3urqxki)':
     dependencies:
@@ -10778,8 +11111,9 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@refinio/contact.core@file:sources/one/packages/contact.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(@refinio/trust.core@file:sources/one/packages/trust.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5)))':
+  '@refinio/contact.core@file:sources/one/packages/contact.core(@refinio/api@file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(@refinio/trust.core@file:sources/one/packages/trust.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5)))':
     dependencies:
+      '@refinio/api': file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu)
       '@refinio/one.core': file:sources/one/packages/one.core
       '@refinio/one.models': file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5)
       '@refinio/trust.core': file:sources/one/packages/trust.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))
@@ -10933,15 +11267,15 @@ snapshots:
 
   '@refinio/memory.refinement@file:sources/one/packages/memory.refinement': {}
 
-  '@refinio/module.core@file:sources/one/packages/module.core(3uuqczr7s4mhij6kvxchogg5hq)':
+  '@refinio/module.core@file:sources/one/packages/module.core(zmrucxlxbt66htjhggyljykzbm)':
     dependencies:
-      '@refinio/agent.core': file:sources/one/packages/agent.core(rjxfsehigy2u2ovnztj5yqupkq)
+      '@refinio/agent.core': file:sources/one/packages/agent.core(glgcdmtau2oprsq7spz3zdfgge)
       '@refinio/api': file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu)
       '@refinio/assembly.core': file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq)
       '@refinio/connection.core': file:sources/one/packages/connection.core(aulaat7c5qd7tz53tjp3urqxki)
       '@refinio/one.core': file:sources/one/packages/one.core
       '@refinio/one.models': file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5)
-      '@refinio/orchestration.worker': file:sources/one/packages/orchestration.worker(@refinio/orchestration.core@file:sources/one/packages/orchestration.core(x4fwn5kmv76xybbbmns75h6ovm))(@refinio/vger.agent@file:sources/one/packages/vger.agent(l37hooqgk7w6lsavqczmh6v2bu))(@refinio/worker.core@file:sources/one/packages/worker.core)
+      '@refinio/orchestration.worker': file:sources/one/packages/orchestration.worker(@refinio/orchestration.core@file:sources/one/packages/orchestration.core(wl5foweo4y77f26xqn4wut523a))(@refinio/vger.agent@file:sources/one/packages/vger.agent(5vv5fnmmbepiwiy5efc7jikyuq))(@refinio/worker.core@file:sources/one/packages/worker.core)
       '@refinio/source.core': file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core))
       '@refinio/worker.core': file:sources/one/packages/worker.core
 
@@ -10974,18 +11308,18 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@refinio/orchestration.ai@file:sources/one/packages/orchestration.ai(@refinio/agent.core@file:sources/one/packages/agent.core(rjxfsehigy2u2ovnztj5yqupkq))(@refinio/api@file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/orchestration.core@file:sources/one/packages/orchestration.core(x4fwn5kmv76xybbbmns75h6ovm))(@refinio/vger.agent@file:sources/one/packages/vger.agent(l37hooqgk7w6lsavqczmh6v2bu))(@refinio/workflow.core@file:sources/one/packages/workflow.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core))':
+  '@refinio/orchestration.ai@file:sources/one/packages/orchestration.ai(@refinio/agent.core@file:sources/one/packages/agent.core(glgcdmtau2oprsq7spz3zdfgge))(@refinio/api@file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/orchestration.core@file:sources/one/packages/orchestration.core(wl5foweo4y77f26xqn4wut523a))(@refinio/vger.agent@file:sources/one/packages/vger.agent(5vv5fnmmbepiwiy5efc7jikyuq))(@refinio/workflow.core@file:sources/one/packages/workflow.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core))':
     dependencies:
-      '@refinio/agent.core': file:sources/one/packages/agent.core(rjxfsehigy2u2ovnztj5yqupkq)
+      '@refinio/agent.core': file:sources/one/packages/agent.core(glgcdmtau2oprsq7spz3zdfgge)
       '@refinio/api': file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu)
       '@refinio/one.core': file:sources/one/packages/one.core
-      '@refinio/orchestration.core': file:sources/one/packages/orchestration.core(x4fwn5kmv76xybbbmns75h6ovm)
-      '@refinio/vger.agent': file:sources/one/packages/vger.agent(l37hooqgk7w6lsavqczmh6v2bu)
+      '@refinio/orchestration.core': file:sources/one/packages/orchestration.core(wl5foweo4y77f26xqn4wut523a)
+      '@refinio/vger.agent': file:sources/one/packages/vger.agent(5vv5fnmmbepiwiy5efc7jikyuq)
       '@refinio/workflow.core': file:sources/one/packages/workflow.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)
 
-  '@refinio/orchestration.core@file:sources/one/packages/orchestration.core(x4fwn5kmv76xybbbmns75h6ovm)':
+  '@refinio/orchestration.core@file:sources/one/packages/orchestration.core(wl5foweo4y77f26xqn4wut523a)':
     dependencies:
-      '@refinio/agent.core': file:sources/one/packages/agent.core(rjxfsehigy2u2ovnztj5yqupkq)
+      '@refinio/agent.core': file:sources/one/packages/agent.core(glgcdmtau2oprsq7spz3zdfgge)
       '@refinio/api': file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu)
       '@refinio/one.core': file:sources/one/packages/one.core
       '@refinio/prompt.core': file:sources/one/packages/prompt.core(@refinio/llm.one@file:sources/one/packages/llm.one(@refinio/filer.core@file:sources/one/packages/filer.core(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core))))(@refinio/one.core@file:sources/one/packages/one.core)
@@ -10994,10 +11328,10 @@ snapshots:
       '@refinio/trust.abac': file:sources/one/packages/trust.abac(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(@refinio/tag.core@file:sources/one/packages/tag.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(@refinio/trie.core@file:sources/one/packages/trie.core(@refinio/one.core@file:sources/one/packages/one.core)))(@refinio/trie.core@file:sources/one/packages/trie.core(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/trust.core@file:sources/one/packages/trust.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5)))
       '@refinio/workflow.core': file:sources/one/packages/workflow.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)
 
-  '@refinio/orchestration.worker@file:sources/one/packages/orchestration.worker(@refinio/orchestration.core@file:sources/one/packages/orchestration.core(x4fwn5kmv76xybbbmns75h6ovm))(@refinio/vger.agent@file:sources/one/packages/vger.agent(l37hooqgk7w6lsavqczmh6v2bu))(@refinio/worker.core@file:sources/one/packages/worker.core)':
+  '@refinio/orchestration.worker@file:sources/one/packages/orchestration.worker(@refinio/orchestration.core@file:sources/one/packages/orchestration.core(wl5foweo4y77f26xqn4wut523a))(@refinio/vger.agent@file:sources/one/packages/vger.agent(5vv5fnmmbepiwiy5efc7jikyuq))(@refinio/worker.core@file:sources/one/packages/worker.core)':
     dependencies:
-      '@refinio/orchestration.core': file:sources/one/packages/orchestration.core(x4fwn5kmv76xybbbmns75h6ovm)
-      '@refinio/vger.agent': file:sources/one/packages/vger.agent(l37hooqgk7w6lsavqczmh6v2bu)
+      '@refinio/orchestration.core': file:sources/one/packages/orchestration.core(wl5foweo4y77f26xqn4wut523a)
+      '@refinio/vger.agent': file:sources/one/packages/vger.agent(5vv5fnmmbepiwiy5efc7jikyuq)
       '@refinio/worker.core': file:sources/one/packages/worker.core
 
   '@refinio/package.fs@file:sources/one/packages/package.fs(@refinio/one.core@file:sources/one/packages/one.core)':
@@ -11022,9 +11356,9 @@ snapshots:
     dependencies:
       '@refinio/one.core': file:sources/one/packages/one.core
 
-  '@refinio/qa.core@file:sources/one/packages/qa.core(ap2limvczzvqr4moji7ahogppy)':
+  '@refinio/qa.core@file:sources/one/packages/qa.core(ulqyz4xlbswza4anioqdjbd5mi)':
     dependencies:
-      '@refinio/agent.core': file:sources/one/packages/agent.core(rjxfsehigy2u2ovnztj5yqupkq)
+      '@refinio/agent.core': file:sources/one/packages/agent.core(glgcdmtau2oprsq7spz3zdfgge)
       '@refinio/api': file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu)
       '@refinio/instrumentation.core': file:sources/one/packages/instrumentation.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core)))
       '@refinio/job.core': file:sources/one/packages/job.core
@@ -11036,7 +11370,7 @@ snapshots:
       '@refinio/mcp.core': file:sources/one/packages/mcp.core(@refinio/api@file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu))(@refinio/memory.core@file:sources/one/packages/memory.core(wcehqggdgmpjfchdcxvush4qgm))(@refinio/one.core@file:sources/one/packages/one.core)(zod@4.3.6)
       '@refinio/memory.core': file:sources/one/packages/memory.core(wcehqggdgmpjfchdcxvush4qgm)
       '@refinio/source.documents': file:sources/one/packages/source.documents(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core)))
-      '@vger/vger.core': file:sources/one/packages/vger.core(vcw7552n6uh2e4dgp6ijhf6y44)
+      '@vger/vger.core': file:sources/one/packages/vger.core(dxifhroqvmayxos6bwfjrgqzvu)
       vitest: 3.2.4(@types/debug@4.1.12)(@types/node@25.3.3)(jiti@1.21.7)(jsdom@26.1.0(bufferutil@4.0.9)(utf-8-validate@6.0.5))(lightningcss@1.31.1)(terser@5.44.1)(yaml@2.8.1)
 
   '@refinio/qa.protocol@file:sources/one/packages/qa.protocol': {}
@@ -11053,7 +11387,7 @@ snapshots:
       '@refinio/one.core': file:sources/one/packages/one.core
       '@refinio/verification.core': file:sources/one/packages/verification.core(@refinio/one.core@file:sources/one/packages/one.core)
 
-  '@refinio/rule.vger@file:sources/one/packages/rule.vger(4scsc5l7fzhqqhveearhzrbb2u)':
+  '@refinio/rule.vger@file:sources/one/packages/rule.vger(r5nfbraabuytqqowzbo3fyid2a)':
     dependencies:
       '@refinio/one.core': file:sources/one/packages/one.core
       '@refinio/one.models': file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5)
@@ -11062,6 +11396,9 @@ snapshots:
       '@refinio/trust.core': file:sources/one/packages/trust.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))
       '@refinio/txt.core': file:sources/one/packages/txt.core(ooiuu6tv4dtvyrctxvhlmx67om)
       '@refinio/verification.core': file:sources/one/packages/verification.core(@refinio/one.core@file:sources/one/packages/one.core)
+    optionalDependencies:
+      '@refinio/api': file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu)
+      '@refinio/assembly.core': file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq)
 
   '@refinio/saliency.core@file:sources/one/packages/saliency.core': {}
 
@@ -11229,13 +11566,13 @@ snapshots:
       '@refinio/trust.pdf': file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core)
       docx: 9.7.1
 
-  '@refinio/ui.core@file:sources/one/packages/ui.core(ztei2eub733ep6n6nb7goulogm)':
+  '@refinio/ui.core@file:sources/one/packages/ui.core(wgqqddxmc6c4qufeibky7rptsu)':
     dependencies:
-      '@refinio/agent.core': file:sources/one/packages/agent.core(rjxfsehigy2u2ovnztj5yqupkq)
+      '@refinio/agent.core': file:sources/one/packages/agent.core(glgcdmtau2oprsq7spz3zdfgge)
       '@refinio/api': file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu)
-      '@refinio/chat.core': file:sources/one/packages/chat.core(6rjwo7zsuyzmztpi5v7eauhbty)
+      '@refinio/chat.core': file:sources/one/packages/chat.core(2thwucvv6x6qbd2otqwh3razle)
       '@refinio/connection.core': file:sources/one/packages/connection.core(aulaat7c5qd7tz53tjp3urqxki)
-      '@refinio/contact.core': file:sources/one/packages/contact.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(@refinio/trust.core@file:sources/one/packages/trust.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5)))
+      '@refinio/contact.core': file:sources/one/packages/contact.core(@refinio/api@file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(@refinio/trust.core@file:sources/one/packages/trust.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5)))
       '@refinio/job.core': file:sources/one/packages/job.core
       '@refinio/memory.core': file:sources/one/packages/memory.core(wcehqggdgmpjfchdcxvush4qgm)
       '@refinio/one.core': file:sources/one/packages/one.core
@@ -11243,8 +11580,10 @@ snapshots:
       '@refinio/trust.core': file:sources/one/packages/trust.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))
       '@refinio/trust.me': file:sources/one/packages/trust.me(@refinio/api@file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(@refinio/sync.core@file:sources/one/packages/sync.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.core@file:sources/one/packages/trust.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))))(@refinio/trust.core@file:sources/one/packages/trust.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5)))
       '@refinio/workflow.core': file:sources/one/packages/workflow.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)
-      '@vger/vger.core': file:sources/one/packages/vger.core(vcw7552n6uh2e4dgp6ijhf6y44)
+      '@vger/vger.core': file:sources/one/packages/vger.core(dxifhroqvmayxos6bwfjrgqzvu)
       react: 19.1.0
+    optionalDependencies:
+      '@refinio/transport.core': file:sources/one/packages/transport.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))
 
   '@refinio/ui.theme@file:sources/one/packages/ui.theme': {}
 
@@ -11252,12 +11591,12 @@ snapshots:
     dependencies:
       '@refinio/one.core': file:sources/one/packages/one.core
 
-  '@refinio/vger.agent@file:sources/one/packages/vger.agent(l37hooqgk7w6lsavqczmh6v2bu)':
+  '@refinio/vger.agent@file:sources/one/packages/vger.agent(5vv5fnmmbepiwiy5efc7jikyuq)':
     dependencies:
-      '@refinio/agent.core': file:sources/one/packages/agent.core(rjxfsehigy2u2ovnztj5yqupkq)
+      '@refinio/agent.core': file:sources/one/packages/agent.core(glgcdmtau2oprsq7spz3zdfgge)
       '@refinio/me.core': file:sources/one/packages/me.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/tag.core@file:sources/one/packages/tag.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(@refinio/trie.core@file:sources/one/packages/trie.core(@refinio/one.core@file:sources/one/packages/one.core)))(@refinio/trie.core@file:sources/one/packages/trie.core(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/trust.core@file:sources/one/packages/trust.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5)))
       '@refinio/one.core': file:sources/one/packages/one.core
-      '@refinio/orchestration.core': file:sources/one/packages/orchestration.core(x4fwn5kmv76xybbbmns75h6ovm)
+      '@refinio/orchestration.core': file:sources/one/packages/orchestration.core(wl5foweo4y77f26xqn4wut523a)
       '@refinio/source.agent': file:sources/one/packages/source.agent(monqr2iqfyahb5d57iegt4tqnq)
 
   '@refinio/worker.core@file:sources/one/packages/worker.core': {}
@@ -11420,6 +11759,15 @@ snapshots:
     dependencies:
       defer-to-connect: 2.0.1
     optional: true
+
+  '@tokenizer/inflate@0.4.1':
+    dependencies:
+      debug: 4.4.3
+      token-types: 6.1.2
+    transitivePeerDependencies:
+      - supports-color
+
+  '@tokenizer/token@0.3.0': {}
 
   '@trickfilm400/rollup-plugin-off-main-thread@3.0.0-pre1':
     dependencies:
@@ -11593,25 +11941,29 @@ snapshots:
       react: 19.1.0
     optional: true
 
-  '@vger/auth.login@file:sources/vger/packages/auth.login(@glueone/auth.core@file:sources/one/packages/auth.core(74ermwycsbmctz7xxwuwyrgc4i))(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/api@file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu))(@vger/vger.core@file:sources/one/packages/vger.core(vcw7552n6uh2e4dgp6ijhf6y44))':
+  '@vger/auth.login@file:sources/vger/packages/auth.login(@glueone/auth.core@file:sources/one/packages/auth.core(74ermwycsbmctz7xxwuwyrgc4i))(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/api@file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu))(@vger/vger.core@file:sources/one/packages/vger.core(dxifhroqvmayxos6bwfjrgqzvu))':
     dependencies:
       '@glueone/auth.core': file:sources/one/packages/auth.core(74ermwycsbmctz7xxwuwyrgc4i)
       '@glueone/glue.core': file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4)
       '@refinio/api': file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu)
-      '@vger/vger.core': file:sources/one/packages/vger.core(vcw7552n6uh2e4dgp6ijhf6y44)
+      '@vger/vger.core': file:sources/one/packages/vger.core(dxifhroqvmayxos6bwfjrgqzvu)
 
-  '@vger/vger.core@file:sources/one/packages/vger.core(vcw7552n6uh2e4dgp6ijhf6y44)':
+  '@vger/vger.core@file:sources/one/packages/vger.core(dxifhroqvmayxos6bwfjrgqzvu)':
     dependencies:
       '@anthropic-ai/sdk': 0.65.0(zod@4.3.6)
       '@glueone/glue.core': file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4)
-      '@refinio/agent.builder': file:sources/one/packages/agent.builder(@refinio/agent.core@file:sources/one/packages/agent.core(rjxfsehigy2u2ovnztj5yqupkq))(@refinio/settings.core@file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0))
-      '@refinio/agent.core': file:sources/one/packages/agent.core(rjxfsehigy2u2ovnztj5yqupkq)
+      '@refinio/agent.builder': file:sources/one/packages/agent.builder(@refinio/agent.core@file:sources/one/packages/agent.core(glgcdmtau2oprsq7spz3zdfgge))(@refinio/settings.core@file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0))
+      '@refinio/agent.core': file:sources/one/packages/agent.core(glgcdmtau2oprsq7spz3zdfgge)
       '@refinio/api': file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu)
       '@refinio/assembly.core': file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq)
       '@refinio/browser.core': file:sources/one/packages/browser.core(@refinio/api@file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu))(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)
-      '@refinio/chat.core': file:sources/one/packages/chat.core(6rjwo7zsuyzmztpi5v7eauhbty)
+      '@refinio/chat.archive': file:sources/one/packages/chat.archive(@refinio/module.core@file:sources/one/packages/module.core(zmrucxlxbt66htjhggyljykzbm))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))
+      '@refinio/chat.baileys': file:sources/one/packages/chat.baileys(@refinio/module.core@file:sources/one/packages/module.core(zmrucxlxbt66htjhggyljykzbm))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(@whiskeysockets/baileys@6.7.24(bufferutil@4.0.9)(sharp@0.34.5)(utf-8-validate@6.0.5))
+      '@refinio/chat.core': file:sources/one/packages/chat.core(2thwucvv6x6qbd2otqwh3razle)
       '@refinio/coding.core': file:sources/one/packages/coding.core(6qradznpgpgonw4zt5r6ds477m)
       '@refinio/connection.core': file:sources/one/packages/connection.core(aulaat7c5qd7tz53tjp3urqxki)
+      '@refinio/cube.core': file:sources/one/packages/cube.core(@refinio/cube.contracts@file:sources/one/packages/cube.contracts(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/meaning.core@file:sources/one/packages/meaning.core(@refinio/cube.contracts@file:sources/one/packages/cube.contracts(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(@refinio/trie.core@file:sources/one/packages/trie.core(@refinio/one.core@file:sources/one/packages/one.core))
+      '@refinio/device.core': file:sources/one/packages/device.core(itev6olydisg5wasfwqbannj3a)
       '@refinio/group.core': file:sources/one/packages/group.core(@refinio/one.core@file:sources/one/packages/one.core)
       '@refinio/job.core': file:sources/one/packages/job.core
       '@refinio/knowledge.core': file:sources/one/packages/knowledge.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.agent@file:sources/one/packages/source.agent(monqr2iqfyahb5d57iegt4tqnq))(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core)))
@@ -11622,21 +11974,22 @@ snapshots:
       '@refinio/llm.qwen': file:sources/one/packages/llm.qwen
       '@refinio/matching.core': file:sources/one/packages/matching.core(@refinio/one.core@file:sources/one/packages/one.core)
       '@refinio/mcp.core': file:sources/one/packages/mcp.core(@refinio/api@file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu))(@refinio/memory.core@file:sources/one/packages/memory.core(wcehqggdgmpjfchdcxvush4qgm))(@refinio/one.core@file:sources/one/packages/one.core)(zod@4.3.6)
+      '@refinio/meaning.core': file:sources/one/packages/meaning.core(@refinio/cube.contracts@file:sources/one/packages/cube.contracts(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/one.core@file:sources/one/packages/one.core)
       '@refinio/meme.core': file:sources/one/packages/meme.core(qpncydwqseznp7llgzve753zlq)
       '@refinio/memory.core': file:sources/one/packages/memory.core(wcehqggdgmpjfchdcxvush4qgm)
       '@refinio/memory.refinement': file:sources/one/packages/memory.refinement
-      '@refinio/module.core': file:sources/one/packages/module.core(3uuqczr7s4mhij6kvxchogg5hq)
+      '@refinio/module.core': file:sources/one/packages/module.core(zmrucxlxbt66htjhggyljykzbm)
       '@refinio/one.core': file:sources/one/packages/one.core
       '@refinio/one.models': file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5)
-      '@refinio/orchestration.ai': file:sources/one/packages/orchestration.ai(@refinio/agent.core@file:sources/one/packages/agent.core(rjxfsehigy2u2ovnztj5yqupkq))(@refinio/api@file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/orchestration.core@file:sources/one/packages/orchestration.core(x4fwn5kmv76xybbbmns75h6ovm))(@refinio/vger.agent@file:sources/one/packages/vger.agent(l37hooqgk7w6lsavqczmh6v2bu))(@refinio/workflow.core@file:sources/one/packages/workflow.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core))
-      '@refinio/orchestration.core': file:sources/one/packages/orchestration.core(x4fwn5kmv76xybbbmns75h6ovm)
+      '@refinio/orchestration.ai': file:sources/one/packages/orchestration.ai(@refinio/agent.core@file:sources/one/packages/agent.core(glgcdmtau2oprsq7spz3zdfgge))(@refinio/api@file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/orchestration.core@file:sources/one/packages/orchestration.core(wl5foweo4y77f26xqn4wut523a))(@refinio/vger.agent@file:sources/one/packages/vger.agent(5vv5fnmmbepiwiy5efc7jikyuq))(@refinio/workflow.core@file:sources/one/packages/workflow.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core))
+      '@refinio/orchestration.core': file:sources/one/packages/orchestration.core(wl5foweo4y77f26xqn4wut523a)
       '@refinio/package.fs': file:sources/one/packages/package.fs(@refinio/one.core@file:sources/one/packages/one.core)
       '@refinio/pentest.core': file:sources/one/packages/pentest.core(@refinio/one.core@file:sources/one/packages/one.core)
       '@refinio/prompt.core': file:sources/one/packages/prompt.core(@refinio/llm.one@file:sources/one/packages/llm.one(@refinio/filer.core@file:sources/one/packages/filer.core(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core))))(@refinio/one.core@file:sources/one/packages/one.core)
       '@refinio/provenance.core': file:sources/one/packages/provenance.core(@refinio/one.core@file:sources/one/packages/one.core)
       '@refinio/rss.core': file:sources/one/packages/rss.core(@refinio/settings.core@file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0))
       '@refinio/rule.core': file:sources/one/packages/rule.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/verification.core@file:sources/one/packages/verification.core(@refinio/one.core@file:sources/one/packages/one.core))
-      '@refinio/rule.vger': file:sources/one/packages/rule.vger(4scsc5l7fzhqqhveearhzrbb2u)
+      '@refinio/rule.vger': file:sources/one/packages/rule.vger(r5nfbraabuytqqowzbo3fyid2a)
       '@refinio/saliency.core': file:sources/one/packages/saliency.core
       '@refinio/scout.core': file:sources/one/packages/scout.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.agent@file:sources/one/packages/source.agent(monqr2iqfyahb5d57iegt4tqnq))
       '@refinio/settings.agent': file:sources/one/packages/settings.agent(@refinio/settings.core@file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0))
@@ -11661,7 +12014,7 @@ snapshots:
       '@refinio/trust.pdf': file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core)
       '@refinio/txt.core': file:sources/one/packages/txt.core(ooiuu6tv4dtvyrctxvhlmx67om)
       '@refinio/verification.core': file:sources/one/packages/verification.core(@refinio/one.core@file:sources/one/packages/one.core)
-      '@refinio/vger.agent': file:sources/one/packages/vger.agent(l37hooqgk7w6lsavqczmh6v2bu)
+      '@refinio/vger.agent': file:sources/one/packages/vger.agent(5vv5fnmmbepiwiy5efc7jikyuq)
       '@refinio/workflow.core': file:sources/one/packages/workflow.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)
       '@refinio/workspace.core': file:sources/one/packages/workspace.core(@refinio/coding.core@file:sources/one/packages/coding.core(6qradznpgpgonw4zt5r6ds477m))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.agent@file:sources/one/packages/source.agent(monqr2iqfyahb5d57iegt4tqnq))(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core)))(@refinio/workflow.core@file:sources/one/packages/workflow.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core))
       ajv: 8.17.1
@@ -11673,7 +12026,7 @@ snapshots:
       - encoding
       - zod
 
-  '@vger/vger.glue@file:sources/one/packages/vger.glue(rhofivjjh3vpxrk3z2wr7vkyy4)':
+  '@vger/vger.glue@file:sources/one/packages/vger.glue(hkatdhnlb44twezhf2lwalgux4)':
     dependencies:
       '@glueone/glue.core': file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4)
       '@refinio/api': file:sources/one/packages/refinio.api(xnqw4y3im3oaugjf54amjruydu)
@@ -11685,19 +12038,21 @@ snapshots:
       '@refinio/settings.core': file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0)
       '@refinio/source.core': file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core))
       '@refinio/trust.core': file:sources/one/packages/trust.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))
-      '@vger/vger.core': file:sources/one/packages/vger.core(vcw7552n6uh2e4dgp6ijhf6y44)
+      '@vger/vger.core': file:sources/one/packages/vger.core(dxifhroqvmayxos6bwfjrgqzvu)
       base64-js: 1.5.1
+    optionalDependencies:
+      '@refinio/chat.core': file:sources/one/packages/chat.core(2thwucvv6x6qbd2otqwh3razle)
 
-  '@vger/vger.txt.ui@file:sources/one/packages/vger.txt.ui(@refinio/source.documents@file:sources/one/packages/source.documents(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core))))(@refinio/txt.core@file:sources/one/packages/txt.core(ooiuu6tv4dtvyrctxvhlmx67om))(@refinio/ui.core@file:sources/one/packages/ui.core(ztei2eub733ep6n6nb7goulogm))(@vger/vger.core@file:sources/one/packages/vger.core(vcw7552n6uh2e4dgp6ijhf6y44))(react@19.1.0)':
+  '@vger/vger.txt.ui@file:sources/one/packages/vger.txt.ui(@refinio/source.documents@file:sources/one/packages/source.documents(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core))))(@refinio/txt.core@file:sources/one/packages/txt.core(ooiuu6tv4dtvyrctxvhlmx67om))(@refinio/ui.core@file:sources/one/packages/ui.core(wgqqddxmc6c4qufeibky7rptsu))(@vger/vger.core@file:sources/one/packages/vger.core(dxifhroqvmayxos6bwfjrgqzvu))(react@19.1.0)':
     dependencies:
       '@refinio/source.documents': file:sources/one/packages/source.documents(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core)))
       '@refinio/txt.core': file:sources/one/packages/txt.core(ooiuu6tv4dtvyrctxvhlmx67om)
-      '@refinio/ui.core': file:sources/one/packages/ui.core(ztei2eub733ep6n6nb7goulogm)
-      '@vger/vger.core': file:sources/one/packages/vger.core(vcw7552n6uh2e4dgp6ijhf6y44)
+      '@refinio/ui.core': file:sources/one/packages/ui.core(wgqqddxmc6c4qufeibky7rptsu)
+      '@vger/vger.core': file:sources/one/packages/vger.core(dxifhroqvmayxos6bwfjrgqzvu)
       lucide-react: 0.554.0(react@19.1.0)
       react: 19.1.0
 
-  '@vger/vger.ui@file:sources/one/packages/vger.ui(fe2jpbitvyxqmydzauig55zo6i)':
+  '@vger/vger.ui@file:sources/one/packages/vger.ui(ibhc5zzxjczznfrsc2ob5btmoi)':
     dependencies:
       '@fontsource-variable/inter': 5.3.0
       '@fontsource-variable/jetbrains-mono': 5.3.0
@@ -11717,26 +12072,26 @@ snapshots:
       '@radix-ui/react-slot': 1.2.4(@types/react@19.2.14)(react@19.1.0)
       '@radix-ui/react-switch': 1.2.6(@types/react-dom@19.1.10(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@radix-ui/react-tabs': 1.1.13(@types/react-dom@19.1.10(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@refinio/agent.builder': file:sources/one/packages/agent.builder(@refinio/agent.core@file:sources/one/packages/agent.core(rjxfsehigy2u2ovnztj5yqupkq))(@refinio/settings.core@file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0))
+      '@refinio/agent.builder': file:sources/one/packages/agent.builder(@refinio/agent.core@file:sources/one/packages/agent.core(glgcdmtau2oprsq7spz3zdfgge))(@refinio/settings.core@file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0))
       '@refinio/assembly.core': file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq)
-      '@refinio/chat.core': file:sources/one/packages/chat.core(6rjwo7zsuyzmztpi5v7eauhbty)
+      '@refinio/chat.core': file:sources/one/packages/chat.core(2thwucvv6x6qbd2otqwh3razle)
       '@refinio/chat.media': file:sources/one/packages/chat.media(@refinio/media.core@file:sources/one/packages/media.core(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))
       '@refinio/connection.core': file:sources/one/packages/connection.core(aulaat7c5qd7tz53tjp3urqxki)
       '@refinio/job.core': file:sources/one/packages/job.core
-      '@refinio/local.core': file:sources/one/packages/local.core(@huggingface/transformers@4.2.0)(@refinio/settings.core@file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0))(onnxruntime-web@1.29.0)(phonemizer@1.2.1)
-      '@refinio/module.core': file:sources/one/packages/module.core(3uuqczr7s4mhij6kvxchogg5hq)
+      '@refinio/local.core': file:sources/one/packages/local.core(@huggingface/transformers@4.0.1)(@refinio/settings.core@file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0))(onnxruntime-web@1.24.2)(phonemizer@1.2.1)
+      '@refinio/module.core': file:sources/one/packages/module.core(zmrucxlxbt66htjhggyljykzbm)
       '@refinio/one.core': file:sources/one/packages/one.core
       '@refinio/one.discovery': file:sources/one/packages/one.discovery(xjtl2wef5d3ty74o37s7o3asy4)
       '@refinio/settings.core': file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0)
       '@refinio/source.documents': file:sources/one/packages/source.documents(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core)))
       '@refinio/trust.core': file:sources/one/packages/trust.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))
       '@refinio/txt.core': file:sources/one/packages/txt.core(ooiuu6tv4dtvyrctxvhlmx67om)
-      '@refinio/ui.core': file:sources/one/packages/ui.core(ztei2eub733ep6n6nb7goulogm)
+      '@refinio/ui.core': file:sources/one/packages/ui.core(wgqqddxmc6c4qufeibky7rptsu)
       '@refinio/ui.theme': file:sources/one/packages/ui.theme
       '@refinio/workflow.core': file:sources/one/packages/workflow.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)
       '@refinio/workspace.core': file:sources/one/packages/workspace.core(@refinio/coding.core@file:sources/one/packages/coding.core(6qradznpgpgonw4zt5r6ds477m))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.agent@file:sources/one/packages/source.agent(monqr2iqfyahb5d57iegt4tqnq))(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core)))(@refinio/workflow.core@file:sources/one/packages/workflow.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core))
-      '@vger/vger.core': file:sources/one/packages/vger.core(vcw7552n6uh2e4dgp6ijhf6y44)
-      '@vger/vger.txt.ui': file:sources/one/packages/vger.txt.ui(@refinio/source.documents@file:sources/one/packages/source.documents(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core))))(@refinio/txt.core@file:sources/one/packages/txt.core(ooiuu6tv4dtvyrctxvhlmx67om))(@refinio/ui.core@file:sources/one/packages/ui.core(ztei2eub733ep6n6nb7goulogm))(@vger/vger.core@file:sources/one/packages/vger.core(vcw7552n6uh2e4dgp6ijhf6y44))(react@19.1.0)
+      '@vger/vger.core': file:sources/one/packages/vger.core(dxifhroqvmayxos6bwfjrgqzvu)
+      '@vger/vger.txt.ui': file:sources/one/packages/vger.txt.ui(@refinio/source.documents@file:sources/one/packages/source.documents(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core))))(@refinio/txt.core@file:sources/one/packages/txt.core(ooiuu6tv4dtvyrctxvhlmx67om))(@refinio/ui.core@file:sources/one/packages/ui.core(wgqqddxmc6c4qufeibky7rptsu))(@vger/vger.core@file:sources/one/packages/vger.core(dxifhroqvmayxos6bwfjrgqzvu))(react@19.1.0)
       class-variance-authority: 0.7.1
       clsx: 2.1.1
       date-fns: 2.30.0
@@ -11766,7 +12121,7 @@ snapshots:
       - supports-color
       - tailwindcss
 
-  '@vger/vger.ui@file:sources/one/packages/vger.ui(ykpa3zu4wrr3gcld26tv3e27nm)':
+  '@vger/vger.ui@file:sources/one/packages/vger.ui(jvbfl7qb725x5mpcgaibij4slu)':
     dependencies:
       '@fontsource-variable/inter': 5.3.0
       '@fontsource-variable/jetbrains-mono': 5.3.0
@@ -11786,26 +12141,26 @@ snapshots:
       '@radix-ui/react-slot': 1.2.4(@types/react@19.2.14)(react@19.1.0)
       '@radix-ui/react-switch': 1.2.6(@types/react-dom@19.1.10(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@radix-ui/react-tabs': 1.1.13(@types/react-dom@19.1.10(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@refinio/agent.builder': file:sources/one/packages/agent.builder(@refinio/agent.core@file:sources/one/packages/agent.core(rjxfsehigy2u2ovnztj5yqupkq))(@refinio/settings.core@file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0))
+      '@refinio/agent.builder': file:sources/one/packages/agent.builder(@refinio/agent.core@file:sources/one/packages/agent.core(glgcdmtau2oprsq7spz3zdfgge))(@refinio/settings.core@file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0))
       '@refinio/assembly.core': file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq)
-      '@refinio/chat.core': file:sources/one/packages/chat.core(6rjwo7zsuyzmztpi5v7eauhbty)
+      '@refinio/chat.core': file:sources/one/packages/chat.core(2thwucvv6x6qbd2otqwh3razle)
       '@refinio/chat.media': file:sources/one/packages/chat.media(@refinio/media.core@file:sources/one/packages/media.core(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))
       '@refinio/connection.core': file:sources/one/packages/connection.core(aulaat7c5qd7tz53tjp3urqxki)
       '@refinio/job.core': file:sources/one/packages/job.core
-      '@refinio/local.core': file:sources/one/packages/local.core(@huggingface/transformers@4.0.1)(@refinio/settings.core@file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0))(onnxruntime-web@1.24.2)(phonemizer@1.2.1)
-      '@refinio/module.core': file:sources/one/packages/module.core(3uuqczr7s4mhij6kvxchogg5hq)
+      '@refinio/local.core': file:sources/one/packages/local.core(@huggingface/transformers@4.2.0)(@refinio/settings.core@file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0))(onnxruntime-web@1.29.0)(phonemizer@1.2.1)
+      '@refinio/module.core': file:sources/one/packages/module.core(zmrucxlxbt66htjhggyljykzbm)
       '@refinio/one.core': file:sources/one/packages/one.core
       '@refinio/one.discovery': file:sources/one/packages/one.discovery(xjtl2wef5d3ty74o37s7o3asy4)
       '@refinio/settings.core': file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0)
       '@refinio/source.documents': file:sources/one/packages/source.documents(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core)))
       '@refinio/trust.core': file:sources/one/packages/trust.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))
       '@refinio/txt.core': file:sources/one/packages/txt.core(ooiuu6tv4dtvyrctxvhlmx67om)
-      '@refinio/ui.core': file:sources/one/packages/ui.core(ztei2eub733ep6n6nb7goulogm)
+      '@refinio/ui.core': file:sources/one/packages/ui.core(wgqqddxmc6c4qufeibky7rptsu)
       '@refinio/ui.theme': file:sources/one/packages/ui.theme
       '@refinio/workflow.core': file:sources/one/packages/workflow.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)
       '@refinio/workspace.core': file:sources/one/packages/workspace.core(@refinio/coding.core@file:sources/one/packages/coding.core(6qradznpgpgonw4zt5r6ds477m))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.agent@file:sources/one/packages/source.agent(monqr2iqfyahb5d57iegt4tqnq))(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core)))(@refinio/workflow.core@file:sources/one/packages/workflow.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core))
-      '@vger/vger.core': file:sources/one/packages/vger.core(vcw7552n6uh2e4dgp6ijhf6y44)
-      '@vger/vger.txt.ui': file:sources/one/packages/vger.txt.ui(@refinio/source.documents@file:sources/one/packages/source.documents(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core))))(@refinio/txt.core@file:sources/one/packages/txt.core(ooiuu6tv4dtvyrctxvhlmx67om))(@refinio/ui.core@file:sources/one/packages/ui.core(ztei2eub733ep6n6nb7goulogm))(@vger/vger.core@file:sources/one/packages/vger.core(vcw7552n6uh2e4dgp6ijhf6y44))(react@19.1.0)
+      '@vger/vger.core': file:sources/one/packages/vger.core(dxifhroqvmayxos6bwfjrgqzvu)
+      '@vger/vger.txt.ui': file:sources/one/packages/vger.txt.ui(@refinio/source.documents@file:sources/one/packages/source.documents(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(w3r2l2jh4p4dby7u3hwc2zvgjq))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core))))(@refinio/txt.core@file:sources/one/packages/txt.core(ooiuu6tv4dtvyrctxvhlmx67om))(@refinio/ui.core@file:sources/one/packages/ui.core(wgqqddxmc6c4qufeibky7rptsu))(@vger/vger.core@file:sources/one/packages/vger.core(dxifhroqvmayxos6bwfjrgqzvu))(react@19.1.0)
       class-variance-authority: 0.7.1
       clsx: 2.1.1
       date-fns: 2.30.0
@@ -11891,10 +12246,32 @@ snapshots:
 
   '@webgpu/types@0.1.69': {}
 
+  '@whiskeysockets/baileys@6.7.24(bufferutil@4.0.9)(sharp@0.34.5)(utf-8-validate@6.0.5)':
+    dependencies:
+      '@cacheable/node-cache': 1.7.6
+      '@hapi/boom': 9.1.4
+      async-mutex: 0.5.0
+      axios: 1.20.0
+      libsignal: https://codeload.github.com/whiskeysockets/libsignal-node/tar.gz/bcea72df9ec34d9d9140ab30619cf479c7c144c7
+      music-metadata: 11.16.1
+      pino: 9.14.0
+      protobufjs: 7.6.4
+      sharp: 0.34.5
+      ws: 8.18.3(bufferutil@4.0.9)(utf-8-validate@6.0.5)
+    transitivePeerDependencies:
+      - bufferutil
+      - debug
+      - supports-color
+      - utf-8-validate
+
   '@xmldom/xmldom@0.8.11': {}
 
   '@xmldom/xmldom@0.9.12':
     optional: true
+
+  abort-controller@3.0.0:
+    dependencies:
+      event-target-shim: 5.0.1
 
   accepts@1.3.8:
     dependencies:
@@ -11911,6 +12288,12 @@ snapshots:
   addressparser@1.0.1: {}
 
   adm-zip@0.5.18: {}
+
+  agent-base@6.0.2:
+    dependencies:
+      debug: 4.4.3
+    transitivePeerDependencies:
+      - supports-color
 
   agent-base@7.1.4:
     optional: true
@@ -12027,11 +12410,17 @@ snapshots:
 
   async-function@1.0.0: {}
 
+  async-mutex@0.5.0:
+    dependencies:
+      tslib: 2.8.1
+
   async@3.2.6: {}
 
   asynckit@0.4.0: {}
 
   at-least-node@1.0.0: {}
+
+  atomic-sleep@1.0.0: {}
 
   autoprefixer@10.6.1(postcss@8.5.26):
     dependencies:
@@ -12049,6 +12438,16 @@ snapshots:
   aws-sign2@0.7.0: {}
 
   aws4@1.13.2: {}
+
+  axios@1.20.0:
+    dependencies:
+      follow-redirects: 1.16.2
+      form-data: 4.0.6
+      https-proxy-agent: 5.0.1
+      proxy-from-env: 2.1.0
+    transitivePeerDependencies:
+      - debug
+      - supports-color
 
   babel-plugin-polyfill-corejs2@0.4.15(@babel/core@7.29.7):
     dependencies:
@@ -12331,7 +12730,6 @@ snapshots:
     dependencies:
       base64-js: 1.5.1
       ieee754: 1.2.1
-    optional: true
 
   bufferutil@4.0.9:
     dependencies:
@@ -12357,6 +12755,14 @@ snapshots:
       normalize-url: 6.1.0
       responselike: 2.0.1
     optional: true
+
+  cacheable@2.5.0:
+    dependencies:
+      '@cacheable/memory': 2.2.0
+      '@cacheable/utils': 2.5.0
+      hookified: 1.15.1
+      keyv: 5.6.0
+      qified: 0.10.1
 
   call-bind-apply-helpers@1.0.2:
     dependencies:
@@ -12576,6 +12982,8 @@ snapshots:
 
   content-type@1.0.5: {}
 
+  content-type@2.1.0: {}
+
   convert-source-map@2.0.0: {}
 
   cookie-signature@1.0.7: {}
@@ -12658,6 +13066,8 @@ snapshots:
     optional: true
 
   csstype@3.2.3: {}
+
+  curve25519-js@0.0.4: {}
 
   dashdash@1.14.1:
     dependencies:
@@ -13047,6 +13457,8 @@ snapshots:
 
   etag@1.8.1: {}
 
+  event-target-shim@5.0.1: {}
+
   events@3.3.0: {}
 
   eventsource-parser@3.0.6: {}
@@ -13280,6 +13692,8 @@ snapshots:
 
   fast-json-stable-stringify@2.1.0: {}
 
+  fast-redact@3.5.0: {}
+
   fast-uri@3.1.0: {}
 
   fast-xml-parser@4.5.7:
@@ -13336,6 +13750,15 @@ snapshots:
 
   fflate@0.8.2:
     optional: true
+
+  file-type@21.3.4:
+    dependencies:
+      '@tokenizer/inflate': 0.4.1
+      strtok3: 10.6.2
+      token-types: 6.1.2
+      uint8array-extras: 1.6.0
+    transitivePeerDependencies:
+      - supports-color
 
   filelist@1.0.6:
     dependencies:
@@ -13396,6 +13819,8 @@ snapshots:
   flow-enums-runtime@0.0.6:
     optional: true
 
+  follow-redirects@1.16.2: {}
+
   fontfaceobserver@2.3.0:
     optional: true
 
@@ -13414,6 +13839,14 @@ snapshots:
     dependencies:
       asynckit: 0.4.0
       combined-stream: 1.0.8
+      mime-types: 2.1.35
+
+  form-data@4.0.6:
+    dependencies:
+      asynckit: 0.4.0
+      combined-stream: 1.0.8
+      es-set-tostringtag: 2.1.0
+      hasown: 2.0.4
       mime-types: 2.1.35
 
   formdata-polyfill@4.0.10:
@@ -13626,6 +14059,10 @@ snapshots:
       inherits: 2.0.4
       minimalistic-assert: 1.0.1
 
+  hashery@1.5.1:
+    dependencies:
+      hookified: 1.15.1
+
   hasown@2.0.4:
     dependencies:
       function-bind: 1.1.2
@@ -13694,6 +14131,10 @@ snapshots:
 
   hono@4.12.0: {}
 
+  hookified@1.15.1: {}
+
+  hookified@2.2.0: {}
+
   hosted-git-info@7.0.2:
     dependencies:
       lru-cache: 10.4.3
@@ -13738,6 +14179,13 @@ snapshots:
     optional: true
 
   https-browserify@1.0.0: {}
+
+  https-proxy-agent@5.0.1:
+    dependencies:
+      agent-base: 6.0.2
+      debug: 4.4.3
+    transitivePeerDependencies:
+      - supports-color
 
   https-proxy-agent@7.0.6:
     dependencies:
@@ -14130,6 +14578,10 @@ snapshots:
       json-buffer: 3.0.1
     optional: true
 
+  keyv@5.6.0:
+    dependencies:
+      '@keyv/serialize': 1.1.1
+
   kleur@3.0.3:
     optional: true
 
@@ -14141,6 +14593,11 @@ snapshots:
     optional: true
 
   leven@3.1.0: {}
+
+  libsignal@https://codeload.github.com/whiskeysockets/libsignal-node/tar.gz/bcea72df9ec34d9d9140ab30619cf479c7c144c7:
+    dependencies:
+      curve25519-js: 0.0.4
+      protobufjs: 7.6.4
 
   lie@3.3.0:
     dependencies:
@@ -14474,6 +14931,8 @@ snapshots:
   media-typer@0.3.0: {}
 
   media-typer@1.1.0: {}
+
+  media-typer@2.0.0: {}
 
   memoize-one@5.2.1:
     optional: true
@@ -15127,6 +15586,21 @@ snapshots:
   multitars@1.0.2:
     optional: true
 
+  music-metadata@11.16.1:
+    dependencies:
+      '@borewit/text-codec': 0.2.2
+      '@tokenizer/token': 0.3.0
+      content-type: 2.1.0
+      debug: 4.4.3
+      file-type: 21.3.4
+      media-typer: 2.0.0
+      strtok3: 10.6.2
+      token-types: 6.1.2
+      uint8array-extras: 1.6.0
+      win-guid: 0.2.1
+    transitivePeerDependencies:
+      - supports-color
+
   mz@2.7.0:
     dependencies:
       any-promise: 1.3.0
@@ -15255,6 +15729,8 @@ snapshots:
       es-object-atoms: 1.1.2
       has-symbols: 1.1.0
       object-keys: 1.1.1
+
+  on-exit-leak-free@2.1.2: {}
 
   on-finished@2.3.0:
     dependencies:
@@ -15484,6 +15960,47 @@ snapshots:
 
   picomatch@4.0.7: {}
 
+  pino-abstract-transport@1.2.0:
+    dependencies:
+      readable-stream: 4.8.0
+      split2: 4.2.0
+
+  pino-abstract-transport@2.0.0:
+    dependencies:
+      split2: 4.2.0
+
+  pino-std-serializers@6.2.2: {}
+
+  pino-std-serializers@7.1.0: {}
+
+  pino@8.21.0:
+    dependencies:
+      atomic-sleep: 1.0.0
+      fast-redact: 3.5.0
+      on-exit-leak-free: 2.1.2
+      pino-abstract-transport: 1.2.0
+      pino-std-serializers: 6.2.2
+      process-warning: 3.0.0
+      quick-format-unescaped: 4.0.4
+      real-require: 0.2.0
+      safe-stable-stringify: 2.5.0
+      sonic-boom: 3.8.1
+      thread-stream: 2.7.0
+
+  pino@9.14.0:
+    dependencies:
+      '@pinojs/redact': 0.4.0
+      atomic-sleep: 1.0.0
+      on-exit-leak-free: 2.1.2
+      pino-abstract-transport: 2.0.0
+      pino-std-serializers: 7.1.0
+      process-warning: 5.1.1
+      quick-format-unescaped: 4.0.4
+      real-require: 0.2.0
+      safe-stable-stringify: 2.5.0
+      sonic-boom: 4.2.1
+      thread-stream: 3.2.0
+
   pirates@4.0.7: {}
 
   pkce-challenge@5.0.1: {}
@@ -15573,6 +16090,10 @@ snapshots:
 
   process-nextick-args@2.0.1: {}
 
+  process-warning@3.0.0: {}
+
+  process-warning@5.1.1: {}
+
   process@0.11.10: {}
 
   progress@2.0.3:
@@ -15616,6 +16137,8 @@ snapshots:
       forwarded: 0.2.0
       ipaddr.js: 1.9.1
 
+  proxy-from-env@2.1.0: {}
+
   psl@1.15.0:
     dependencies:
       punycode: 2.3.1
@@ -15638,6 +16161,10 @@ snapshots:
   punycode@1.4.1: {}
 
   punycode@2.3.1: {}
+
+  qified@0.10.1:
+    dependencies:
+      hookified: 2.2.0
 
   qrcode.react@4.2.0(react@19.1.0):
     dependencies:
@@ -15667,6 +16194,8 @@ snapshots:
     dependencies:
       inherits: 2.0.4
     optional: true
+
+  quick-format-unescaped@4.0.4: {}
 
   quick-lru@5.1.1:
     optional: true
@@ -15852,9 +16381,19 @@ snapshots:
       string_decoder: 1.3.0
       util-deprecate: 1.0.2
 
+  readable-stream@4.8.0:
+    dependencies:
+      abort-controller: 3.0.0
+      buffer: 6.0.3
+      events: 3.3.0
+      process: 0.11.10
+      string_decoder: 1.3.0
+
   readdirp@3.6.0:
     dependencies:
       picomatch: 2.3.1
+
+  real-require@0.2.0: {}
 
   reallysimple@0.5.3:
     dependencies:
@@ -16084,6 +16623,8 @@ snapshots:
       es-errors: 1.3.0
       is-regex: 1.2.1
 
+  safe-stable-stringify@2.5.0: {}
+
   safer-buffer@2.1.2: {}
 
   sandbox-cli-detector@0.2.0:
@@ -16294,6 +16835,14 @@ snapshots:
 
   smob@1.6.2: {}
 
+  sonic-boom@3.8.1:
+    dependencies:
+      atomic-sleep: 1.0.0
+
+  sonic-boom@4.2.1:
+    dependencies:
+      atomic-sleep: 1.0.0
+
   source-map-js@1.2.1: {}
 
   source-map-support@0.5.21:
@@ -16309,6 +16858,8 @@ snapshots:
   source-map@0.8.0: {}
 
   space-separated-tokens@2.0.2: {}
+
+  split2@4.2.0: {}
 
   sprintf-js@1.0.3: {}
 
@@ -16458,6 +17009,10 @@ snapshots:
 
   strnum@2.1.2: {}
 
+  strtok3@10.6.2:
+    dependencies:
+      '@tokenizer/token': 0.3.0
+
   structured-headers@0.4.1:
     optional: true
 
@@ -16581,6 +17136,14 @@ snapshots:
     dependencies:
       any-promise: 1.3.0
 
+  thread-stream@2.7.0:
+    dependencies:
+      real-require: 0.2.0
+
+  thread-stream@3.2.0:
+    dependencies:
+      real-require: 0.2.0
+
   three-mesh-bvh@0.8.3(three@0.170.0):
     dependencies:
       three: 0.170.0
@@ -16647,6 +17210,12 @@ snapshots:
       is-number: 7.0.0
 
   toidentifier@1.0.1: {}
+
+  token-types@6.1.2:
+    dependencies:
+      '@borewit/text-codec': 0.2.2
+      '@tokenizer/token': 0.3.0
+      ieee754: 1.2.1
 
   toqr@0.1.1:
     optional: true
@@ -16799,6 +17368,8 @@ snapshots:
   typescript@5.7.3: {}
 
   typescript@5.9.3: {}
+
+  uint8array-extras@1.6.0: {}
 
   unbox-primitive@1.1.0:
     dependencies:
@@ -17170,6 +17741,8 @@ snapshots:
     dependencies:
       siginfo: 2.0.0
       stackback: 0.0.2
+
+  win-guid@0.2.1: {}
 
   workbox-background-sync@7.4.1:
     dependencies:
