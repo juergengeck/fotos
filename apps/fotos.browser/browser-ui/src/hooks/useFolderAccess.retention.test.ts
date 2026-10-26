@@ -146,6 +146,25 @@ describe('useFolderAccess retained reanalysis', () => {
         expect(saved.querySelector('[data-stream-id="photo"]')?.getAttribute('data-face-names')).toBe('Unknown;Ada');
     });
 
+    it('keeps consecutive queued associations when only annotation metadata changes', async () => {
+        const test = await fixture();
+        const embedding = (position: number) => Array.from({length: EMBEDDING_DIM}, (_, index) => index === position ? 1 : 0);
+        test.analyze.mockResolvedValueOnce({dataAttrs: facesToDataAttrs({faces: [
+            {detection: {bbox: [0, 0, 40, 40], score: 0.99, landmarks: []}, embedding: embedding(0)},
+            {detection: {bbox: [80, 0, 120, 40], score: 0.99, landmarks: []}, embedding: embedding(1)},
+        ]}), cropBlobs: []});
+        await test.access.reanalyzeFaces();
+        await Promise.all([
+            test.access.associateFaceWithCluster('photo', 0, 'first-person'),
+            test.access.associateFaceWithCluster('photo', 1, 'second-person'),
+        ]);
+        expect(test.livePhoto().faces?.clusterIds).toEqual(['first-person', 'second-person']);
+        expect(test.error()).toBeNull();
+        const saved = new DOMParser().parseFromString(test.html(), 'text/html');
+        expect(saved.querySelector('[data-stream-id="photo"]')?.getAttribute('data-face-cluster-hashes'))
+            .toBe('first-person;second-person');
+    });
+
     it('analyzes a folder opened during another face pass without importing the first folder clusters', async () => {
         const test = await fixture();
         const embeddingA = Array.from({length: EMBEDDING_DIM}, (_, index) => index === 0 ? 1 : 0);

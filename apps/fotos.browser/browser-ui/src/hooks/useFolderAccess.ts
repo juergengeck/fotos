@@ -3409,7 +3409,11 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             const currentEntries = entriesRef.current;
             const handle = rootHandleRef.current;
             if (!handle) throw new Error('No folder open');
-            if (handle !== selectedHandle || currentEntries.find(entry => entry.hash === photoHash)?.faces !== selectedFaces) {
+            const currentFaces = currentEntries.find(entry => entry.hash === photoHash)?.faces;
+            // Annotation edits retain detection arrays; replacement and deletion
+            // publish new ones, invalidating the selected positional face index.
+            if (handle !== selectedHandle || currentFaces?.count !== selectedFaces?.count
+                || currentFaces?.bboxes !== selectedFaces?.bboxes || currentFaces?.embeddings !== selectedFaces?.embeddings) {
                 setError('Face analysis changed. Select the face again.');
                 return;
             }
