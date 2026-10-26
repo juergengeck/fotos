@@ -26,9 +26,10 @@ interface FotosIdResult {
         mode: 'create' | 'recover';
         identity: string;
         displayName: string;
-        publicKey: string;
+        publicKey?: string;
         claimPayload?: string;
         signature?: string;
+        recoveryProofs?: Array<{ claimPayload: string; signature: string }>;
     };
     error?: string;
 }
@@ -40,7 +41,6 @@ interface OpenFotosRecoveryPopupOptions {
     personPublicKey: string;
     challengeId: string;
     challenge: string;
-    expectedFotosPublicKey: string;
 }
 
 function openFotosRecoveryPopup(options: OpenFotosRecoveryPopupOptions): Promise<FotosIdResult> {
@@ -93,7 +93,6 @@ function openFotosRecoveryPopup(options: OpenFotosRecoveryPopupOptions): Promise
                     personPublicKey: options.personPublicKey,
                     challengeId: options.challengeId,
                     challenge: options.challenge,
-                    expectedFotosPublicKey: options.expectedFotosPublicKey,
                 }, popupOrigin);
                 return;
             }
@@ -119,44 +118,77 @@ function openFotosRecoveryPopup(options: OpenFotosRecoveryPopupOptions): Promise
     });
 }
 
-function requireSuccessfulFotosRecoveryResult(result: FotosIdResult): {
-    identity: string;
-    displayName: string;
-    claimPayload: string;
-    signature: string;
-} {
-    if (!result.success) {
-        throw new Error(
-            typeof result.error === 'string' && result.error.trim().length > 0
-                ? result.error
-                : 'Fotos id popup returned failure without an error message',
-        );
+export interface FotosRecoveryProofContext {
+  identity: string;
+  personId: string;
+  gluePublicKey: string;
+  challengeId: string;
+  challenge: string;
+}
+
+export interface SuccessfulFotosRecoveryResult {
+  identity: string;
+  displayName: string;
+  recoveryProofs: Array<{ claimPayload: string; signature: string }>;
+}
+
+function requireSuccessfulFotosResult(result: FotosIdResult): NonNullable<FotosIdResult['data']> {
+  if (!result.success) {
+    if (typeof result.error === 'string' && result.error.trim().length > 0) {
+      throw new Error(result.error);
     }
+    throw new Error('Fotos id popup returned failure without an error message');
+  }
+  if (result.data === undefined) {
+    throw new Error('Fotos id popup returned success without data');
+  }
+  return result.data;
+}
 
-    const data = result.data;
-    if (!data) {
-        throw new Error('Fotos id popup returned success without data');
+function requireNonEmptyString(value: unknown, label: string): string {
+  if (typeof value !== 'string') {
+    throw new Error(`Fotos id popup did not return ${label}`);
+  }
+  const normalized = value.trim();
+  if (normalized.length === 0) {
+    throw new Error(`Fotos id popup returned an empty ${label}`);
+  }
+  return normalized;
+}
+
+function requireSuccessfulFotosRecoveryResult(
+  result: FotosIdResult,
+  expected: FotosRecoveryProofContext,
+): SuccessfulFotosRecoveryResult {
+  const data = requireSuccessfulFotosResult(result);
+  if (data.mode !== 'recover') {
+    throw new Error(`Expected fotos recovery result, received ${data.mode}`);
+  }
+  const identity = requireNonEmptyString(data.identity, 'identity');
+  if (identity !== expected.identity) {
+    throw new Error(`Fotos recovery returned ${identity}, expected ${expected.identity}`);
+  }
+  if (!Array.isArray(data.recoveryProofs) || data.recoveryProofs.length < 1 || data.recoveryProofs.length > 3) {
+    throw new Error('Fotos recovery requires between 1 and 3 proofs');
+  }
+  const recoveryProofs = data.recoveryProofs.map(proof => {
+    const claimPayload = requireNonEmptyString(proof?.claimPayload, 'claimPayload');
+    const signature = requireNonEmptyString(proof?.signature, 'signature');
+    if (claimPayload.length > 8192 || signature.length > 512) throw new Error('Fotos recovery proof is too large');
+    let claim: any;
+    try { claim = JSON.parse(claimPayload); } catch { throw new Error('Invalid Fotos recovery claim'); }
+    if (!claim || claim.$type$ !== 'FotosNameClaim' || claim.action !== 'recover'
+      || Object.entries(expected).some(([key, value]) => claim[key] !== value)
+      || typeof claim.fotosPublicKey !== 'string' || !claim.fotosPublicKey.trim()) {
+      throw new Error('Fotos recovery claim does not match the requested recovery');
     }
-    if (data.mode !== 'recover') {
-        throw new Error(`Expected fotos recovery result, received ${data.mode}`);
-    }
-
-    const identity = data.identity?.trim();
-    const displayName = data.displayName?.trim();
-    const claimPayload = data.claimPayload?.trim();
-    const signature = data.signature?.trim();
-
-    if (!identity) throw new Error('Fotos id popup did not return identity');
-    if (!displayName) throw new Error('Fotos id popup did not return displayName');
-    if (!claimPayload) throw new Error('Fotos id popup did not return claimPayload');
-    if (!signature) throw new Error('Fotos id popup did not return signature');
-
-    return {
-        identity,
-        displayName,
-        claimPayload,
-        signature,
-    };
+    return { claimPayload, signature };
+  });
+  return {
+    identity,
+    displayName: requireNonEmptyString(data.displayName, 'displayName'),
+    recoveryProofs,
+  };
 }
 
 export interface FotosRecoveryTarget<PersonId extends string = string> {
@@ -201,9 +233,6 @@ export async function runFotosRecoveryFlow<PersonId extends string = string>({
     ) {
         throw new Error(beginBody?.error || `Recovery setup failed: ${beginRes.status}`);
     }
-    if (typeof beginBody.data.fotosPublicKey !== 'string' || beginBody.data.fotosPublicKey.trim().length === 0) {
-        throw new Error('Recovery setup did not return the expected fotos proof key');
-    }
 
     const { personId, personPublicKeyHex, instanceEncryptionKeyHex } = await getFotosRecoveryTarget();
     const popupResult = await openFotosRecoveryPopup({
@@ -213,27 +242,30 @@ export async function runFotosRecoveryFlow<PersonId extends string = string>({
         personPublicKey: personPublicKeyHex,
         challengeId: beginBody.data.challengeId,
         challenge: beginBody.data.challenge,
-        expectedFotosPublicKey: beginBody.data.fotosPublicKey,
     });
     const {
         identity: fotosIdentity,
         displayName: fotosDisplayName,
-        claimPayload,
-        signature: fotosSignature,
-    } = requireSuccessfulFotosRecoveryResult(popupResult);
+        recoveryProofs: popupProofs,
+    } = requireSuccessfulFotosRecoveryResult(popupResult, {
+        identity: requestedIdentity, personId, gluePublicKey: personPublicKeyHex,
+        challengeId: beginBody.data.challengeId, challenge: beginBody.data.challenge,
+    });
 
     if (fotosIdentity !== requestedIdentity) {
         throw new Error(`Fotos recovery returned ${fotosIdentity}, expected ${requestedIdentity}`);
     }
 
-    const glueSignature = await signClaimWithGlueKey(personId, claimPayload);
+    const recoveryProofs = [];
+    for (const proof of popupProofs) {
+        recoveryProofs.push({ claimPayload: proof.claimPayload,
+            glueSignature: await signClaimWithGlueKey(personId, proof.claimPayload), fotosSignature: proof.signature });
+    }
     const recoverRes = await fetchImpl(`${apiBase}/api/registration/fotos/recover-complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            claimPayload,
-            glueSignature,
-            fotosSignature,
+            recoveryProofs,
             instanceEncryptionKey: instanceEncryptionKeyHex,
         }),
     });

@@ -15,7 +15,7 @@ import { deriveKeyFromPhotos, deriveRecoveryKeyCandidatesFromPhotos } from '@/li
 import { uint8arrayToHexString } from '@refinio/one.core/lib/util/arraybuffer-to-and-from-hex-string.js';
 import { nameToIdentity } from '@glueone/glue.core/registration/identity.js';
 import {
-  selectExpectedRecoveryCandidate,
+  assertRecoveryCandidateIntegrity,
   signRecoveryPayload,
 } from '@/lib/fotos-recovery.js';
 import { API_BASE } from '@/config.js';
@@ -57,7 +57,6 @@ interface PopupRequest {
   personPublicKey?: string;
   challengeId?: string;
   challenge?: string;
-  expectedFotosPublicKey?: string;
 }
 
 function buildFotosClaimPayload(
@@ -126,7 +125,6 @@ export function FotosIdPopup() {
           personPublicKey: typeof data.personPublicKey === 'string' ? data.personPublicKey : undefined,
           challengeId: typeof data.challengeId === 'string' ? data.challengeId : undefined,
           challenge: typeof data.challenge === 'string' ? data.challenge : undefined,
-          expectedFotosPublicKey: typeof data.expectedFotosPublicKey === 'string' ? data.expectedFotosPublicKey : undefined,
         };
         setPhase('setup');
       }
@@ -159,9 +157,10 @@ export function FotosIdPopup() {
     mode: FotosIdMode;
     identity: string;
     displayName: string;
-    publicKey: string;
+    publicKey?: string;
     claimPayload?: string;
     signature?: string;
+    recoveryProofs?: Array<{ claimPayload: string; signature: string }>;
   }) => {
     setPhase('done');
     sendResult({ success: true, data });
@@ -185,7 +184,6 @@ export function FotosIdPopup() {
           personPublicKey={requestRef.current?.personPublicKey}
           challengeId={requestRef.current?.challengeId}
           challenge={requestRef.current?.challenge}
-          expectedFotosPublicKey={requestRef.current?.expectedFotosPublicKey}
           onCreated={handleCompleted}
         />
       )}
@@ -300,14 +298,14 @@ function FotosIdSetupForm(props: {
   personPublicKey?: string;
   challengeId?: string;
   challenge?: string;
-  expectedFotosPublicKey?: string;
   onCreated: (data: {
     mode: FotosIdMode;
     identity: string;
     displayName: string;
-    publicKey: string;
+    publicKey?: string;
     claimPayload?: string;
     signature?: string;
+    recoveryProofs?: Array<{ claimPayload: string; signature: string }>;
   }) => void;
 }) {
   const {
@@ -317,7 +315,6 @@ function FotosIdSetupForm(props: {
     personPublicKey,
     challengeId,
     challenge,
-    expectedFotosPublicKey,
     onCreated,
   } = props;
 
@@ -506,43 +503,20 @@ function FotosIdSetupForm(props: {
       }
 
       if (mode === 'recover') {
-        if (!expectedFotosPublicKey) {
-          throw new Error('No expected fotos proof key received from opener');
-        }
         const recoveryCandidates = await deriveRecoveryKeyCandidatesFromPhotos({ images: imageBytes, passphrase });
-        setProgress('Matching fotos proof...');
-        const verifiedCandidate = await selectExpectedRecoveryCandidate(
-          expectedFotosPublicKey,
-          recoveryCandidates,
-        );
-
-        setProgress('Signing fotos proof...');
-        const claimPayload = buildFotosClaimPayload(
-          mode,
-          identity,
-          personId,
-          personPublicKey,
-          verifiedCandidate.publicKey,
-          challengeId,
-          challenge,
-        );
-        const signature = signRecoveryPayload(
-          claimPayload,
-          verifiedCandidate.candidate,
-        );
-
-        for (const img of images) {
-          URL.revokeObjectURL(img.thumbnailUrl);
+        if (recoveryCandidates.length < 1 || recoveryCandidates.length > 3) {
+          throw new Error('Fotos recovery requires between 1 and 3 candidates');
         }
-
-        onCreated({
-          mode,
-          identity,
-          displayName: trimmedDisplayName,
-          publicKey: verifiedCandidate.publicKey,
-          claimPayload,
-          signature,
+        // Validate every candidate before signing any recovery claim.
+        recoveryCandidates.forEach(candidate => assertRecoveryCandidateIntegrity(candidate));
+        setProgress('Signing fotos proofs...');
+        const recoveryProofs = recoveryCandidates.map(candidate => {
+          const claimPayload = buildFotosClaimPayload(mode, identity, personId, personPublicKey,
+            uint8arrayToHexString(candidate.publicKey), challengeId, challenge);
+          return { claimPayload, signature: signRecoveryPayload(claimPayload, candidate) };
         });
+        for (const img of images) URL.revokeObjectURL(img.thumbnailUrl);
+        onCreated({ mode, identity, displayName: trimmedDisplayName, recoveryProofs });
         return;
       }
 

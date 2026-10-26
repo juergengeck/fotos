@@ -1,3 +1,4 @@
+/// <reference path="../../../../glue/glue.browser/browser-ui/src/vite-env.d.ts" />
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const stateSetters = vi.hoisted(() => [] as Array<ReturnType<typeof vi.fn>>);
@@ -24,7 +25,7 @@ vi.mock('@/lib/photo-key-derivation.js', () => ({
 }));
 
 vi.mock('@/lib/fotos-recovery.js', () => ({
-  selectExpectedRecoveryCandidate: vi.fn(),
+  assertRecoveryCandidateIntegrity: vi.fn(),
   signRecoveryPayload: vi.fn(),
 }));
 
@@ -35,6 +36,11 @@ vi.mock('@refinio/one.core/lib/util/arraybuffer-to-and-from-hex-string.js', () =
 vi.mock('@/config.js', () => ({
   API_BASE: 'https://api.fotos.one',
 }));
+
+// Test the real cross-app boundary; this is not a production dependency.
+import { runFotosRecoveryFlow as runGlueFotosRecoveryFlow } from '../../../../glue/glue.browser/browser-ui/src/lib/fotosIdFlow.ts';
+import { getSuccessfulFotosRecoveryResult } from '../../../../glue/glue.browser/browser-ui/src/lib/fotos-popup-result.ts';
+vi.mock('../../../../glue/glue.browser/browser-ui/src/config.js', () => ({ API_BASE: 'https://registrar.test' }));
 
 import { FotosIdPopup } from './FotosIdPopup.tsx';
 
@@ -388,7 +394,6 @@ describe('FotosIdPopup', () => {
             personPublicKey: 'glue-public-key-1',
             challengeId: 'challenge-id-1',
             challenge: 'challenge-1',
-            expectedFotosPublicKey: 'expected-fotos-key-1',
           },
         };
       }
@@ -399,21 +404,14 @@ describe('FotosIdPopup', () => {
     mockUseEffect.mockImplementation(() => {});
 
     const { deriveRecoveryKeyCandidatesFromPhotos } = await import('@/lib/photo-key-derivation.js');
-    const { selectExpectedRecoveryCandidate, signRecoveryPayload } = await import('@/lib/fotos-recovery.js');
-    vi.mocked(deriveRecoveryKeyCandidatesFromPhotos).mockResolvedValue([
-      {
-        publicKey: new Uint8Array([7, 7, 7]),
-        secretKey: new Uint8Array(64),
-        seed: new Uint8Array(32),
-      },
-    ]);
-    vi.mocked(selectExpectedRecoveryCandidate).mockReturnValue({
-      candidate: {
-        publicKey: new Uint8Array([7, 7, 7]),
-        secretKey: new Uint8Array(64),
-        seed: new Uint8Array(32),
-      },
-      publicKey: 'expected-fotos-key-1',
+    const { assertRecoveryCandidateIntegrity, signRecoveryPayload } = await import('@/lib/fotos-recovery.js');
+    const candidates = [7, 8, 9].map(value => ({ publicKey: new Uint8Array([value, value, value]),
+      secretKey: new Uint8Array(64), seed: new Uint8Array(32) }));
+    vi.mocked(deriveRecoveryKeyCandidatesFromPhotos).mockResolvedValue(candidates);
+    const { uint8arrayToHexString } = await import('@refinio/one.core/lib/util/arraybuffer-to-and-from-hex-string.js');
+    vi.mocked(uint8arrayToHexString).mockImplementation(bytes => {
+      const array = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+      return `fotos-key-${array[0]}` as any;
     });
     vi.mocked(signRecoveryPayload).mockReturnValue('claim-signature-2');
 
@@ -426,20 +424,17 @@ describe('FotosIdPopup', () => {
       images: [new Uint8Array([4, 5, 6])],
       passphrase: 'secret-passphrase',
     });
-    expect(selectExpectedRecoveryCandidate).toHaveBeenCalledWith(
-      'expected-fotos-key-1',
-      expect.any(Array),
-    );
-    expect(signRecoveryPayload).toHaveBeenCalledWith(
-      expect.stringContaining(`"identity":${JSON.stringify(identity)}`),
-      expect.anything(),
-    );
-    expect(signRecoveryPayload).toHaveBeenCalledWith(
-      expect.stringContaining('"action":"recover"'),
-      expect.objectContaining({
-        publicKey: new Uint8Array([7, 7, 7]),
-      }),
-    );
+    expect(assertRecoveryCandidateIntegrity).toHaveBeenCalledTimes(3);
+    expect(signRecoveryPayload).toHaveBeenCalledTimes(3);
+    candidates.forEach((candidate, index) => {
+      expect(assertRecoveryCandidateIntegrity).toHaveBeenNthCalledWith(index + 1, candidate);
+      expect(signRecoveryPayload).toHaveBeenNthCalledWith(index + 1,
+        JSON.stringify({ $type$: 'FotosNameClaim', action: 'recover', identity, personId: 'person-1',
+          gluePublicKey: 'glue-public-key-1', fotosPublicKey: `fotos-key-${candidate.publicKey[0]}`,
+          challengeId: 'challenge-id-1', challenge: 'challenge-1' }), candidate);
+    });
+    expect(vi.mocked(assertRecoveryCandidateIntegrity).mock.invocationCallOrder[2])
+      .toBeLessThan(vi.mocked(signRecoveryPayload).mock.invocationCallOrder[0]);
     expect(opener.postMessage).toHaveBeenCalledWith(
       {
         type: 'fotos-id-result',
@@ -449,12 +444,39 @@ describe('FotosIdPopup', () => {
           mode: 'recover',
           identity,
           displayName,
-          publicKey: 'expected-fotos-key-1',
-          claimPayload: expect.stringContaining('"challengeId":"challenge-id-1"'),
-          signature: 'claim-signature-2',
+          recoveryProofs: candidates.map(candidate => ({
+            claimPayload: expect.stringContaining(`"fotosPublicKey":"fotos-key-${candidate.publicKey[0]}"`),
+            signature: 'claim-signature-2',
+          })),
         },
       },
       'https://glue.one',
     );
+
+    // Consume the exact message emitted above, rather than reconstructing a fixture.
+    const emitted = opener.postMessage.mock.calls[0][0];
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true,
+        data: { challengeId: 'challenge-id-1', challenge: 'challenge-1' } })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true, data: { cert: { id: 'recovered-cert' } } })));
+    const signClaimWithGlueKey = vi.fn().mockResolvedValue('glue-signature');
+    const openPopup = vi.fn().mockResolvedValue(emitted);
+    await expect(runGlueFotosRecoveryFlow({
+      requestedDisplayName: displayName, requestedIdentity: identity, apiBase: 'https://registrar.test', fetchImpl,
+      getFotosRecoveryTarget: async () => ({ personId: 'person-1', personPublicKeyHex: 'glue-public-key-1',
+        instanceEncryptionKeyHex: 'instance-key-1' }),
+      openPopup, parsePopupResult: getSuccessfulFotosRecoveryResult, signClaimWithGlueKey,
+    })).resolves.toEqual({ personId: 'person-1', fotosIdentity: identity,
+      fotosDisplayName: displayName, cert: { id: 'recovered-cert' } });
+    expect(openPopup.mock.calls[0][0]).not.toHaveProperty('expectedFotosPublicKey');
+    expect(signClaimWithGlueKey).toHaveBeenCalledTimes(candidates.length);
+    emitted.data.recoveryProofs.forEach((proof: { claimPayload: string; signature: string }, index: number) => {
+      expect(signClaimWithGlueKey).toHaveBeenNthCalledWith(index + 1, 'person-1', proof.claimPayload);
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, 'https://registrar.test/api/registration/fotos/recover-complete',
+      expect.objectContaining({ body: JSON.stringify({ recoveryProofs: emitted.data.recoveryProofs.map(
+        (proof: { claimPayload: string; signature: string }) => ({ claimPayload: proof.claimPayload,
+          glueSignature: 'glue-signature', fotosSignature: proof.signature })), instanceEncryptionKey: 'instance-key-1' }) }));
   });
 });
