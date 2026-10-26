@@ -1,15 +1,13 @@
 #!/usr/bin/env node
 
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import { basename, dirname, extname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '../../../../..');
-const VGER_ROOT = resolve(REPO_ROOT, 'sources/vger');
-const SHARED_VGER_ROOT = resolve(REPO_ROOT, 'sources/vger');
 const DEFAULT_BASE_URL = 'http://localhost:5518/';
 const DEFAULT_API_BASE = 'http://localhost:5517';
 const READY_TIMEOUT_MS = Number(process.env.FOTOS_LIVE_READY_TIMEOUT_MS || 180_000);
@@ -61,57 +59,6 @@ function isTransientDebugApiError(error) {
     message.includes('Most likely because of a navigation') ||
     message.includes('Target page, context or browser has been closed')
   );
-}
-
-async function loadPlaywright() {
-  try {
-    return await import('playwright');
-  } catch {
-    const fallbackPath = resolveFallbackPackageEntry(
-      ['playwright'],
-      [VGER_ROOT, SHARED_VGER_ROOT],
-    );
-    if (!fallbackPath) {
-      throw new Error(
-        'Playwright is not installed in this workspace. Install it in the shared vger repo or add it to apps/fotos.browser/browser-ui.',
-      );
-    }
-
-    return await import(pathToFileURL(fallbackPath).href);
-  }
-}
-
-function resolveFallbackPackageEntry(packageNames, roots) {
-  for (const root of roots) {
-    for (const packageName of packageNames) {
-      const directEntry = resolve(root, `node_modules/${packageName}/index.js`);
-      if (existsSync(directEntry)) {
-        return directEntry;
-      }
-
-      const pnpmEntry = resolvePnpmPackageEntry(root, packageName);
-      if (pnpmEntry) {
-        return pnpmEntry;
-      }
-    }
-  }
-
-  return null;
-}
-
-function resolvePnpmPackageEntry(root, packageName) {
-  const pnpmRoot = resolve(root, 'node_modules/.pnpm');
-  if (!existsSync(pnpmRoot)) {
-    return null;
-  }
-
-  const match = readdirSync(pnpmRoot).find(name => name === packageName || name.startsWith(`${packageName}@`));
-  if (!match) {
-    return null;
-  }
-
-  const entry = resolve(pnpmRoot, match, 'node_modules', packageName, 'index.js');
-  return existsSync(entry) ? entry : null;
 }
 
 async function launchBrowser(playwrightModule, headless) {
@@ -916,7 +863,7 @@ async function main() {
     }
   }
 
-  const playwrightModule = await loadPlaywright();
+  const playwrightModule = await import('playwright');
   const baseUrl = process.env.FOTOS_LIVE_URL || DEFAULT_BASE_URL;
   const apiBase = process.env.FOTOS_LIVE_API_BASE || DEFAULT_API_BASE;
   const suffix = randomUUID().replace(/-/g, '').slice(0, 8);

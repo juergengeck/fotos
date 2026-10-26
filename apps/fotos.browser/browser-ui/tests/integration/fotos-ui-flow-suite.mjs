@@ -1,13 +1,11 @@
 #!/usr/bin/env node
 
-import {existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {dirname, resolve} from 'node:path';
-import {fileURLToPath, pathToFileURL} from 'node:url';
+import {fileURLToPath} from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const browserUiRoot = resolve(here, '../..');
-const repoRoot = resolve(browserUiRoot, '../../..');
-const sharedVgerRoot = resolve(repoRoot, 'sources/vger');
 const baseUrl = process.env.FOTOS_QA_URL || 'http://127.0.0.1:5188/';
 const artifactDir = process.env.FOTOS_QA_ARTIFACT_DIR || resolve(here, 'reports/ui-latest');
 const fixturePaths = [
@@ -38,25 +36,6 @@ async function runStep(id, title, run) {
     results.push(result);
     event('step-fail', id, {title, durationMs: result.durationMs, error: message});
     throw error;
-  }
-}
-
-function resolvePnpmPlaywright() {
-  const pnpmRoot = resolve(sharedVgerRoot, 'node_modules/.pnpm');
-  if (!existsSync(pnpmRoot)) return null;
-  const match = readdirSync(pnpmRoot).find(name => name === 'playwright' || name.startsWith('playwright@'));
-  if (!match) return null;
-  const entry = resolve(pnpmRoot, match, 'node_modules/playwright/index.js');
-  return existsSync(entry) ? entry : null;
-}
-
-async function loadPlaywright() {
-  try {
-    return await import('playwright');
-  } catch {
-    const fallback = resolvePnpmPlaywright();
-    if (!fallback) throw new Error('Playwright is unavailable; install it in the shared vger workspace');
-    return await import(pathToFileURL(fallback).href);
   }
 }
 
@@ -287,7 +266,7 @@ async function runMobile(browser) {
 async function main() {
   for (const fixture of fixturePaths) if (!existsSync(fixture)) throw new Error(`Fixture not found: ${fixture}`);
   mkdirSync(artifactDir, {recursive: true});
-  const playwrightModule = await loadPlaywright();
+  const playwrightModule = await import('playwright');
   const playwright = playwrightModule.default ?? playwrightModule;
   const browser = await playwright.chromium.launch({headless: process.env.HEADLESS !== 'false'});
   const startedAt = new Date().toISOString();
