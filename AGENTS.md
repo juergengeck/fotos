@@ -30,8 +30,8 @@ closure to be installed. On a clean checkout, bootstrap those before invoking it
 
 ```sh
 sources dev
-(cd sources/one && pnpm --filter one-experimental --filter '@refinio/one.core...' --filter '@refinio/one.models...' --filter '@refinio/meaning.core...' --filter '@refinio/trie.core...' --filter '@refinio/trust.core...' install --frozen-lockfile)
-sources task @refinio/one.core:build @refinio/one.models:build @refinio/meaning.core:build @refinio/trie.core:build @refinio/trust.core:build
+(cd sources/one && pnpm --filter one-experimental --filter '@refinio/one.core...' --filter '@refinio/one.models...' --filter '@refinio/meaning.core...' --filter '@refinio/trie.core...' --filter '@refinio/trust.core...' --filter '@refinio/provenance.core...' --filter '@refinio/sync.core...' install --frozen-lockfile)
+sources task @refinio/one.core:build @refinio/one.models:build @refinio/meaning.core:build @refinio/trie.core:build @refinio/trust.core:build @refinio/provenance.core:build @refinio/sync.core:build
 pnpm install --frozen-lockfile
 pnpm --filter @refinio/fotos.core build
 pnpm --filter @refinio/fotos.core typecheck
@@ -62,3 +62,19 @@ tooling live under `packages/`. Workspace membership is explicit: only the neste
 `apps/fotos.browser/browser-ui` is active, while its legacy wrapper remains excluded.
 Preserve the separately vendored Expo installation. Do not introduce checkout source
 aliases or consumer-owned recipe registries; consume the owning public package entries.
+
+Fotos.core now imports Provenance and shared Sync rules through their public
+ONE entries. Prepare those two owners alongside the original five foundation
+packages before refreshing Fotos.core or a consumer in the ONE/Fotos repository
+cycle. The selected seven-package foundation graph remains directed toward
+ONE.core and Trust; it does not require a reverse Fotos app build. New
+Git-pinned bootstrap and cache qualification must cover this expanded closure.
+
+Fire TV checks are explicitly deferred in [Fotos issue 2](https://github.com/juergengeck/fotos/issues/2):
+the new target's frozen pnpm 10 installation requires the exact ignored archives
+in `fotos.expo/vendor`, which are unavailable. Preserve the declared vendor and
+patch contracts; do not substitute same-version archives or regenerate a baseline.
+Its existing standalone layout/lock is an unqualified migration gap pending those
+inputs, not an approved workspace-policy exception. Native install, typechecking,
+APK and physical Fire TV qualification remain outstanding; the existing navigation
+tests alone do not establish those results.

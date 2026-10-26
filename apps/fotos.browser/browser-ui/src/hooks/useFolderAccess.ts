@@ -17,10 +17,11 @@ import type {
     GallerySurface,
     GallerySurfaceProfile,
 } from '@refinio/fotos.core';
-import { copyFilesToDirectory, ingestDirectory, type IngestProgress, type FaceWorkerHandle } from '@/lib/browserIngest';
+import { copyFilesToDirectory, hashImageFile, ingestDirectory, type IngestProgress, type FaceWorkerHandle } from '@/lib/browserIngest';
 import {parseFotosEntryByteSize} from '@refinio/fotos.core/ingest';
 import {readFotosIndexWithExactByteSizes} from '@/lib/fotosIndexByteSizeMigration';
 import { createFaceWorker } from '@/lib/faceWorkerClient';
+import {queueFaceMetadataMutation, replaceFaceAnalysis, replaceSemanticAnalysis} from '@/lib/analysisRetention';
 import { createSemanticWorker } from '@/lib/semanticWorkerClient';
 import { isMobile } from '@/lib/platform';
 import {
@@ -155,7 +156,7 @@ async function updateIndexHtmlData(
                     faceCount: dataAttrs['face-count'] ?? null,
                 });
             }
-            return;
+            throw new Error(`Could not persist ${namespace} analysis for ${photo.sourcePath ?? photo.name}: index row missing.`);
         }
 
         for (const attr of [...row.getAttributeNames()]) {
@@ -796,6 +797,31 @@ async function readFileFromHandle(
     return fileHandle.getFile();
 }
 
+async function readAnalysisSourceFile(handle: FileSystemDirectoryHandle, photo: PhotoEntry): Promise<File> {
+    if (!photo.sourcePath) throw new Error(`Cannot analyze ${photo.name}: source path missing.`);
+    const file = await readFileFromHandle(handle, photo.sourcePath);
+    const expectedHash = await queueIndexHtmlWrite(async () => {
+        const segments = photo.sourcePath!.split('/').filter(Boolean);
+        let directory = handle;
+        for (const segment of segments.slice(0, -1)) directory = await directory.getDirectoryHandle(segment);
+        const one = await directory.getDirectoryHandle('one');
+        const index = await one.getFileHandle('index.html');
+        const document = new DOMParser().parseFromString(await (await index.getFile()).text(), 'text/html');
+        const row = Array.from(document.querySelectorAll('tr.fs-entry')).find(row => (
+            row.getAttribute('data-stream-id') === photo.hash
+            || (row.getAttribute('data-content-hash') ?? row.getAttribute('data-hash')) === photo.hash
+        ));
+        if (!row) throw new Error(`Cannot analyze ${photo.name}: index row missing.`);
+        const hash = row.getAttribute('data-content-hash') ?? row.getAttribute('data-hash');
+        if (!hash) throw new Error(`Cannot analyze ${photo.name}: index content hash missing.`);
+        return hash;
+    });
+    if (await hashImageFile(file) !== expectedHash) {
+        throw new Error(`Cannot analyze ${photo.name}: source content changed since indexing; saved analysis retained. Rescan the folder first.`);
+    }
+    return file;
+}
+
 interface LoadedClusterState {
     dim: FaceClusterDimension;
     threshold: number;
@@ -811,8 +837,9 @@ async function loadClusterState(dirHandle: FileSystemDirectoryHandle): Promise<L
             dim: FaceClusterDimension.deserialize(json),
             threshold: parsed.threshold ?? 0.55,
         };
-    } catch {
-        return null;
+    } catch (cause) {
+        if (cause instanceof DOMException && cause.name === 'NotFoundError') return null;
+        throw cause;
     }
 }
 
@@ -1711,6 +1738,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     const facePassProgressRef = useRef<{ total: number; current: number; fileName?: string } | null>(null);
     const semanticWorkerRef = useRef<ReturnType<typeof createSemanticWorker> | null>(null);
     const semanticPassPromiseRef = useRef<Promise<void> | null>(null);
+    const facePassPromiseRef = useRef<Promise<void> | null>(null);
     // Persistent hidden file input for mobile photo selection — reused across
     // openFolder calls to avoid iOS Safari PWA issues with dynamic elements.
     const mobileInputRef = useRef<HTMLInputElement | null>(null);
@@ -2101,9 +2129,25 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         });
 
         if (stored && isSameThreshold(stored.threshold, threshold)) {
-            clusterDimRef.current = stored.dim;
+            // Index rows commit individually. A crash may leave clusters.json
+            // behind them, so derive the cache from the selected accepted rows.
+            // This preserves row-owned cluster IDs and never redetects/reclusters.
+            const accepted = buildClusterDimensionFromMetadata(photos, threshold);
+            for (const cluster of accepted.getAllClusters()) {
+                const storedName = normalizeClusterName(stored.dim.getCluster(cluster.id)?.personName);
+                if (!cluster.personName && storedName) accepted.nameCluster(cluster.id, storedName);
+            }
+            const stale = accepted.getAllClusters().some(cluster => {
+                const cached = stored.dim.getCluster(cluster.id);
+                if (!cached || cached.centroid.length !== EMBEDDING_DIM || !cached.centroid.every(Number.isFinite) || cached.personName !== cluster.personName || cached.members.length !== cluster.members.length) return true;
+                const members = new Set(cached.members.map(member => `${member.photoHash}:${member.faceIndex}`));
+                return cluster.members.some(member => !members.has(`${member.photoHash}:${member.faceIndex}`))
+                    || cluster.centroid.some((value, index) => Math.abs(value - cached.centroid[index]) > 1e-6);
+            }) || accepted.getClusterCount() !== stored.dim.getClusterCount();
+            if (stale) await saveClusterState(handle, accepted);
+            clusterDimRef.current = accepted;
             clusterThresholdRef.current = threshold;
-            return {dim: stored.dim, entries: photos};
+            return {dim: accepted, entries: photos};
         }
 
         if (!hasClusterableFaces) {
@@ -2161,296 +2205,141 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         }
     }, []);
 
-    /**
-     * Background face pass: for photos missing face data, run face detection
-     * and update one/index.html + in-memory entries as each completes.
-     */
-    const runBackgroundFacePass = useCallback(async (
+    // Publish only after the index write commits. Keep folder records and the
+    // visible projection in agreement so subsequent reanalysis sees user edits.
+    const publishAnalysis = useCallback((photo: PhotoEntry, update: Partial<PhotoEntry>) => {
+        const matches = (entry: PhotoEntry) => entry.hash === photo.hash && entry.sourcePath === photo.sourcePath;
+        Object.assign(photo, update);
+        foldersRef.current = foldersRef.current.map(folder => ({
+            ...folder,
+            entries: folder.entries.map(entry => matches(entry) ? {...entry, ...update} : entry),
+        }));
+        entriesRef.current = entriesRef.current.map(entry => matches(entry) ? {...entry, ...update} : entry);
+        setEntries(previous => previous.map(entry => matches(entry) ? {...entry, ...update} : entry));
+    }, []);
+
+    const currentAnalysisPhoto = useCallback((photo: PhotoEntry) => (
+        entriesRef.current.find(entry => entry.hash === photo.hash && entry.sourcePath === photo.sourcePath) ?? photo
+    ), []);
+
+    const runBackgroundFacePass = useCallback((
         handle: FileSystemDirectoryHandle,
-        photos: PhotoEntry[]
-    ) => {
-        // Trust any face metadata already materialized in one/index.html and
-        // only enrich entries that are still missing face results.
-        const missing = photos.filter(p => p.faces === undefined);
-        if (missing.length === 0) return;
-
-        traceHang('face-pass-start', {
-            folderName: handle.name,
-            total: missing.length,
-            alreadyAnalyzed: photos.length - missing.length,
-        });
-        facePassProgressRef.current = { total: missing.length, current: 0 };
-        setIngestProgress({
-            phase: 'preparing-faces',
-            current: 0,
-            total: missing.length,
-            statusLabel: 'Starting face analytics...',
-        });
-
-        let faceHandle: FaceWorkerHandle | undefined;
-        try {
-            faceHandle = await getFaceWorker();
-        } catch (err) {
-            console.warn('Face detection unavailable:', err);
-            traceHang('face-pass-unavailable', { message: String(err) });
-            setIngestProgress(null);
-            return;
-        }
-
-        // Load or create cluster dimension
-        if (!clusterDimRef.current) {
-            clusterDimRef.current = (await ensureClusterDimension(handle, photos, clusterThreshold)).dim;
-        }
-        const dim = clusterDimRef.current;
-
-        console.log(`[FacePass] Running face detection on ${missing.length} photos...`);
-
-        try {
-            for (let i = 0; i < missing.length; i++) {
-                const photo = missing[i];
-                facePassProgressRef.current = {
-                    total: missing.length,
-                    current: i,
-                    fileName: photo.name,
-                };
-                if (!photo.sourcePath) {
-                    setIngestProgress({ phase: 'faces', current: i + 1, total: missing.length, fileName: photo.name });
-                    continue;
-                }
-
-                setIngestProgress({ phase: 'faces', current: i, total: missing.length, fileName: photo.name });
-
-                try {
-                // Read the image file
-                    const file = await readFileFromHandle(handle, photo.sourcePath);
-                    const imageId = photo.hash.slice(0, 16);
-
-                // Run face detection
-                    const result = await faceHandle.analyze(file, imageId);
-                    const faceCount = parseInt(result.dataAttrs['face-count'] ?? '0', 10);
-
-                // Write face crops to one/faces/ directory
-                    if (result.cropBlobs.length > 0) {
-                    // Find the one dir for this photo's parent folder
-                        const segments = (photo.sourcePath).split('/').filter(Boolean);
-                        let dirHandle = handle;
-                        for (let s = 0; s < segments.length - 1; s++) {
-                            dirHandle = await dirHandle.getDirectoryHandle(segments[s]);
-                        }
-                        const oneDir = await dirHandle.getDirectoryHandle('one', { create: true });
-                        const facesDir = await oneDir.getDirectoryHandle('faces', { create: true });
-                        for (const crop of result.cropBlobs) {
-                            const cropName = crop.name.split('/').pop()!;
-                            const fh = await facesDir.getFileHandle(cropName, { create: true });
-                            const wr = await fh.createWritable();
-                            await wr.write(crop.blob);
-                            await wr.close();
-                        }
-                    }
-
-                // Parse face data and cluster each detected face
-                    const parsed = dataAttrsToFaces(result.dataAttrs);
-                    const clusterInfos: FaceClusterInfo[] = [];
-                    if (parsed.faces.length > 0) {
-                        for (let fi = 0; fi < parsed.faces.length; fi++) {
-                            const face = parsed.faces[fi];
-                            const clusterId = dim.assign(face.embedding, photo.hash, fi);
-                            const cluster = dim.getCluster(clusterId);
-                            const personId = findClusterPersonIdInEntries(photos, clusterId);
-                            clusterInfos.push({
-                                clusterId,
-                                personName: cluster?.personName,
-                                personId,
-                            });
-                        }
-                    }
-
-                // Re-generate data attrs with cluster info
-                    const enrichedAttrs = facesToDataAttrs(parsed, clusterInfos.length > 0 ? clusterInfos : undefined);
-
-                // Update one/index.html with face + cluster data attributes
-                    await updateIndexHtmlFaceData(handle, photo, enrichedAttrs);
-
-                // Update in-memory entry
-                    if (faceCount > 0) {
-                        const relPath = photo.sourcePath.includes('/')
-                            ? photo.sourcePath.split('/').slice(0, -1).join('/')
-                            : '';
-                        const prefix = relPath ? `${relPath}/one/` : 'one/';
-
-                        const faceInfo: FaceInfo = {
-                            count: parsed.faces.length,
-                            bboxes: parsed.faces.map(f => f.detection.bbox),
-                            scores: parsed.faces.map(f => f.detection.score),
-                            embeddings: (() => {
-                                const flat = new Float32Array(parsed.faces.length * EMBEDDING_DIM);
-                                for (let j = 0; j < parsed.faces.length; j++) {
-                                    flat.set(parsed.faces[j].embedding, j * EMBEDDING_DIM);
+        photos: PhotoEntry[],
+        force = false,
+    ): Promise<void> => {
+        if (facePassPromiseRef.current) return facePassPromiseRef.current;
+        const promise = (async () => {
+            const pending = photos.filter(photo => (force || photo.faces === undefined)
+                && photo.sourcePath && (!photo.mimeType || photo.mimeType.startsWith('image/')));
+            if (pending.length === 0) return;
+            facePassProgressRef.current = {total: pending.length, current: 0};
+            setIngestProgress({phase: 'preparing-faces', current: 0, total: pending.length, statusLabel: 'Starting face analytics...'});
+            try {
+                const worker = await getFaceWorker();
+                let dim = clusterDimRef.current ?? (await ensureClusterDimension(handle, photos, clusterThreshold)).dim;
+                const failures: string[] = [];
+                for (let index = 0; index < pending.length; index++) {
+                    const photo = pending[index];
+                    facePassProgressRef.current = {total: pending.length, current: index, fileName: photo.name};
+                    setIngestProgress({phase: 'faces', current: index, total: pending.length, fileName: photo.name});
+                    try {
+                        await replaceFaceAnalysis({
+                            currentPhoto: () => currentAnalysisPhoto(photo),
+                            dimension: dim,
+                            currentDimension: () => rootHandleRef.current === handle ? clusterDimRef.current ?? dim : dim,
+                            acceptedPhotos: () => photos.map(currentAnalysisPhoto),
+                            commit: queueFaceMetadataMutation,
+                            analyze: async () => {
+                                const file = await readAnalysisSourceFile(handle, photo);
+                                // The commit helper remaps worker crop refs to a full
+                                // generation ID before any filesystem writes.
+                                return worker.analyze(file, createExplicitPersonId());
+                            },
+                            writeCrops: async crops => {
+                                if (crops.length === 0) return;
+                                const segments = photo.sourcePath!.split('/').filter(Boolean);
+                                let directory = handle;
+                                for (const segment of segments.slice(0, -1)) directory = await directory.getDirectoryHandle(segment);
+                                const one = await directory.getDirectoryHandle('one', {create: true});
+                                const faces = await one.getDirectoryHandle('faces', {create: true});
+                                for (const crop of crops) {
+                                    const file = await faces.getFileHandle(crop.name.split('/').pop()!, {create: true});
+                                    const writable = await file.createWritable();
+                                    await writable.write(crop.blob);
+                                    await writable.close();
                                 }
-                                return flat;
-                            })(),
-                            crops: parsed.faces.map(f => f.cropPath ? `${prefix}${f.cropPath}` : ''),
-                            clusterIds: clusterInfos.map(c => c.clusterId),
-                            names: clusterInfos.map(c => c.personName ?? 'Unknown'),
-                            personIds: clusterInfos.map(c => c.personId ?? ''),
-                        };
-                        photo.faces = faceInfo;
-                    } else {
-                        photo.faces = { count: 0, bboxes: [], scores: [], embeddings: null, crops: [] };
+                            },
+                            persist: attrs => updateIndexHtmlFaceData(handle, photo, attrs),
+                            publish: (faces, nextDimension) => {
+                                dim = nextDimension;
+                                clusterDimRef.current = dim;
+                                publishAnalysis(photo, {faces});
+                            },
+                        });
+                    } catch (cause) {
+                        const detail = `${photo.name}: ${cause instanceof Error ? cause.message : String(cause)}`;
+                        failures.push(detail);
+                        setError(`Face analysis failed. ${detail}`);
+                        traceHang('face-pass-photo-failed', {name: photo.name, message: detail});
                     }
-
-                    // Trigger re-render with updated entries
-                    setEntries(prev => [...prev]);
-                    traceHang('face-pass-photo-complete', {
-                        name: photo.name,
-                        index: i + 1,
-                        total: missing.length,
-                        faceCount,
-                    });
-
-                    console.log(`[FacePass] ${i + 1}/${missing.length} ${photo.name}: ${faceCount} faces`);
-                } catch (err) {
-                    console.warn(`[FacePass] Failed for ${photo.name}:`, err);
-                    traceHang('face-pass-photo-failed', {
-                        name: photo.name,
-                        index: i + 1,
-                        total: missing.length,
-                        message: String(err),
-                    });
-                } finally {
-                    facePassProgressRef.current = {
-                        total: missing.length,
-                        current: i + 1,
-                        fileName: photo.name,
-                    };
-                    setIngestProgress({ phase: 'faces', current: i + 1, total: missing.length, fileName: photo.name });
+                    facePassProgressRef.current = {total: pending.length, current: index + 1, fileName: photo.name};
+                    setIngestProgress({phase: 'faces', current: index + 1, total: pending.length, fileName: photo.name});
                 }
+                await queueFaceMetadataMutation(() => saveClusterState(handle, rootHandleRef.current === handle ? clusterDimRef.current ?? dim : dim));
+                if (failures.length) throw new Error(`Face analysis failed for ${failures.length} photo(s). ${failures.join(' ')}`);
+            } catch (cause) {
+                setError(cause instanceof Error ? cause.message : String(cause));
+                // Background callers observe the visible error; explicit reanalysis
+                // also receives the rejection rather than reporting success.
+                if (force) throw cause;
+            } finally {
+                facePassProgressRef.current = null;
+                setIngestProgress(null);
             }
-
-        // Save cluster state after processing all photos
-            if (dim.getClusterCount() > 0) {
-                try {
-                    await saveClusterState(handle, dim);
-                    console.log(`[FacePass] Saved ${dim.getClusterCount()} clusters`);
-                } catch (err) {
-                    console.warn('[FacePass] Failed to save cluster state:', err);
-                }
-            }
-
-            console.log('[FacePass] Complete.');
-        } finally {
-            facePassProgressRef.current = null;
-            traceHang('face-pass-complete', {
-                folderName: handle.name,
-                total: missing.length,
-            });
-            setIngestProgress(null);
-        }
-    }, [clusterThreshold, ensureClusterDimension, getFaceWorker]);
+        })().finally(() => {
+            if (facePassPromiseRef.current === promise) facePassPromiseRef.current = null;
+        });
+        facePassPromiseRef.current = promise;
+        return promise;
+    }, [clusterThreshold, currentAnalysisPhoto, ensureClusterDimension, getFaceWorker, publishAnalysis]);
 
     const runBackgroundSemanticPass = useCallback(async (
         handle: FileSystemDirectoryHandle,
         photos: PhotoEntry[],
+        force = false,
     ) => {
-        const pending = photos.filter(photo => photo.semantic === undefined);
-        if (pending.length === 0) {
-            return;
-        }
-
-        traceHang('semantic-pass-start', {
-            folderName: handle.name,
-            total: pending.length,
-            alreadyEmbedded: photos.length - pending.length,
-        });
-        setIngestProgress({
-            phase: 'preparing-semantic',
-            current: 0,
-            total: pending.length,
-            statusLabel: 'Loading semantic search model...',
-        });
-
-        let semanticHandle;
+        const pending = photos.filter(photo => (force || photo.semantic === undefined)
+            && photo.sourcePath && (!photo.mimeType || photo.mimeType.startsWith('image/')));
+        if (pending.length === 0) return;
+        setIngestProgress({phase: 'preparing-semantic', current: 0, total: pending.length, statusLabel: 'Loading semantic search model...'});
         try {
-            semanticHandle = await getSemanticWorker();
-        } catch (error) {
-            console.warn('[SemanticPass] Semantic search unavailable:', error);
-            traceHang('semantic-pass-unavailable', { message: String(error) });
-            setIngestProgress(null);
-            return;
-        }
-
-        console.log(`[SemanticPass] Running semantic embeddings on ${pending.length} photos...`);
-
-        try {
+            const worker = await getSemanticWorker();
+            const failures: string[] = [];
             for (let index = 0; index < pending.length; index++) {
                 const photo = pending[index];
-                let semantic: SemanticInfo | null = null;
-
-                setIngestProgress({
-                    phase: 'semantic',
-                    current: index,
-                    total: pending.length,
-                    fileName: photo.name,
-                    statusLabel: 'Embedding images for semantic search...',
-                });
-
+                setIngestProgress({phase: 'semantic', current: index, total: pending.length, fileName: photo.name, statusLabel: 'Embedding images for semantic search...'});
                 try {
-                    const isEmbeddable = !photo.mimeType || photo.mimeType.startsWith('image/');
-                    if (photo.sourcePath && isEmbeddable) {
-                        const file = await readFileFromHandle(handle, photo.sourcePath);
-                        const result = await semanticHandle.embedImage(file);
-                        semantic = {
-                            modelId: result.modelId,
-                            embedding: result.embedding,
-                        };
-                        await updateIndexHtmlSemanticData(handle, photo, semanticToDataAttrs(semantic));
-                    }
-                } catch (error) {
-                    console.warn(`[SemanticPass] Failed for ${photo.name}:`, error);
-                    traceHang('semantic-pass-photo-failed', {
-                        name: photo.name,
-                        index: index + 1,
-                        total: pending.length,
-                        message: String(error),
+                    await replaceSemanticAnalysis({
+                        analyze: async () => worker.embedImage(await readAnalysisSourceFile(handle, photo)),
+                        persist: semantic => updateIndexHtmlSemanticData(handle, photo, semanticToDataAttrs(semantic)),
+                        publish: semantic => publishAnalysis(photo, {semantic}),
                     });
+                } catch (cause) {
+                    const detail = `${photo.name}: ${cause instanceof Error ? cause.message : String(cause)}`;
+                    failures.push(detail);
+                    setError(`Semantic analysis failed. ${detail}`);
+                    traceHang('semantic-pass-photo-failed', {name: photo.name, message: detail});
                 }
-
-                photo.semantic = semantic;
-                setEntries(prev => prev.map(entry => {
-                    if (entry.hash !== photo.hash) {
-                        return entry;
-                    }
-                    return {
-                        ...entry,
-                        semantic,
-                    };
-                }));
-
-                traceHang('semantic-pass-photo-complete', {
-                    name: photo.name,
-                    index: index + 1,
-                    total: pending.length,
-                    embedded: Boolean(semantic),
-                });
-                console.log(`[SemanticPass] ${index + 1}/${pending.length} ${photo.name}${semantic ? '' : ' (skipped)'}`);
-
-                setIngestProgress({
-                    phase: 'semantic',
-                    current: index + 1,
-                    total: pending.length,
-                    fileName: photo.name,
-                    statusLabel: 'Embedding images for semantic search...',
-                });
+                setIngestProgress({phase: 'semantic', current: index + 1, total: pending.length, fileName: photo.name});
             }
-            console.log('[SemanticPass] Complete.');
+            if (failures.length) throw new Error(`Semantic analysis failed for ${failures.length} photo(s). ${failures.join(' ')}`);
+        } catch (cause) {
+            setError(cause instanceof Error ? cause.message : String(cause));
+            throw cause;
         } finally {
-            traceHang('semantic-pass-complete', {
-                folderName: handle.name,
-                total: pending.length,
-            });
             setIngestProgress(null);
         }
-    }, [getSemanticWorker]);
+    }, [getSemanticWorker, publishAnalysis]);
 
     const ensureSemanticEmbeddings = useCallback(async () => {
         const handle = rootHandleRef.current;
@@ -3193,100 +3082,39 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             return;
         }
 
-        semanticPassPromiseRef.current = null;
-        traceHang('analysis-reanalyze-start', {
-            folderName,
-            entries: targetEntries.length,
-            faces: shouldReanalyzeFaces,
-            semantic: shouldReanalyzeSemantic,
-        });
-        console.log('[fotos-analysis] reanalyze-start', {
-            folder: folderName,
-            entries: targetEntries.length,
-            faces: shouldReanalyzeFaces,
-            semantic: shouldReanalyzeSemantic,
-        });
-
-        try {
-            for (let index = 0; index < targetEntries.length; index++) {
-                const photo = targetEntries[index];
-                setIngestProgress({
-                    phase: shouldReanalyzeFaces ? 'preparing-faces' : 'preparing-semantic',
-                    current: index,
-                    total: targetEntries.length,
-                    fileName: photo.name,
-                    statusLabel: 'Clearing saved analysis...',
-                });
-                if (shouldReanalyzeFaces) {
-                    await updateIndexHtmlFaceData(handle, photo, {});
-                }
-                if (shouldReanalyzeSemantic) {
-                    await updateIndexHtmlSemanticData(handle, photo, {});
-                }
+        // Await the current owner before forcing a replacement; resetting its
+        // promise would admit overlapping writers over the same saved results.
+        await Promise.all([facePassPromiseRef.current, semanticPassPromiseRef.current]);
+        setError(null);
+        const currentEntries = targetEntries.map(currentAnalysisPhoto);
+        const failures: unknown[] = [];
+        if (shouldReanalyzeFaces) {
+            try {
+                await runBackgroundFacePass(handle, currentEntries, true);
+            } catch (cause) {
+                failures.push(cause);
             }
-
-            if (targetEntries.length > 0) {
-                setIngestProgress({
-                    phase: shouldReanalyzeFaces ? 'preparing-faces' : 'preparing-semantic',
-                    current: targetEntries.length,
-                    total: targetEntries.length,
-                    statusLabel: 'Saved analysis cleared.',
-                });
-            }
-
-            if (shouldReanalyzeFaces) {
-                await clearClusterState(handle);
-                clusterDimRef.current = null;
-                clusterThresholdRef.current = null;
-            }
-
-            const cleared = targetEntries.map(photo => ({
-                ...photo,
-                faces: shouldReanalyzeFaces ? undefined : photo.faces,
-                semantic: shouldReanalyzeSemantic ? undefined : photo.semantic,
-            }));
-            if (currentFolder) {
-                applyManagedFolders(foldersRef.current.map(record => (
-                    record.id === currentFolder.id
-                        ? { ...record, entries: cleared }
-                        : record
-                )));
-            } else {
-                setEntries(cleared);
-            }
-
-            if (cleared.length === 0) {
-                setIngestProgress(null);
-                return;
-            }
-
-            if (shouldReanalyzeFaces) {
-                await runBackgroundFacePass(handle, cleared);
-            }
-            if (shouldReanalyzeSemantic) {
-                let semanticPass: Promise<void>;
-                semanticPass = runBackgroundSemanticPass(handle, cleared)
-                    .finally(() => {
-                        if (semanticPassPromiseRef.current === semanticPass) {
-                            semanticPassPromiseRef.current = null;
-                        }
-                    });
-                semanticPassPromiseRef.current = semanticPass;
+        }
+        if (shouldReanalyzeSemantic) {
+            const semanticPass = runBackgroundSemanticPass(handle, currentEntries, true);
+            semanticPassPromiseRef.current = semanticPass;
+            try {
                 await semanticPass;
+            } catch (cause) {
+                failures.push(cause);
+            } finally {
+                if (semanticPassPromiseRef.current === semanticPass) semanticPassPromiseRef.current = null;
             }
-        } finally {
-            traceHang('analysis-reanalyze-complete', {
-                folderName,
-                entries: targetEntries.length,
-                faces: shouldReanalyzeFaces,
-                semantic: shouldReanalyzeSemantic,
-            });
+        }
+        if (failures.length) {
+            const message = failures.map(cause => cause instanceof Error ? cause.message : String(cause)).join(' ');
+            setError(message);
+            throw new Error(message);
         }
     }, [
-        applyManagedFolders,
         allowsLocalFaceEnrichment,
+        currentAnalysisPhoto,
         entries,
-        folderName,
         runBackgroundFacePass,
         runBackgroundSemanticPass,
         semanticSearchEnabled,
@@ -3449,16 +3277,17 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         }
     }, [claimAuthorshipOnIngest, entries, isOpen]);
 
-    const renameFace = useCallback(async (clusterId: string, name: string) => {
+    const renameFace = useCallback(async (clusterId: string, name: string) => queueFaceMetadataMutation(async () => {
+        const currentEntries = entriesRef.current;
         const handle = rootHandleRef.current;
         if (!handle) throw new Error('No folder open');
 
         const dim = await ensureClusterDimensionForEditing();
         const normalizedName = normalizeClusterName(name) ?? '';
-        const personId = findClusterPersonIdInEntries(entries, clusterId);
+        const personId = findClusterPersonIdInEntries(currentEntries, clusterId);
         const affectedClusterIds = new Set(
             personId
-                ? findClusterIdsForPersonInEntries(entries, personId)
+                ? findClusterIdsForPersonInEntries(currentEntries, personId)
                 : [clusterId],
         );
 
@@ -3472,7 +3301,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         }
 
         const affectedEntries: PhotoEntry[] = [];
-        const nextEntries = entries.map(entry => {
+        currentEntries.forEach(entry => {
             const faces = entry.faces;
             if (!faces?.clusterIds) return entry;
             const names = [...(faces.names ?? faces.clusterIds.map(() => 'Unknown'))];
@@ -3497,15 +3326,14 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             return updated;
         });
 
-        setEntries(nextEntries);
-        await Promise.all(
-            affectedEntries.map(entry =>
-                updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry))
-            ),
-        );
-    }, [ensureClusterDimensionForEditing, entries]);
+        for (const entry of affectedEntries) {
+            await updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry));
+            publishAnalysis(entry, {faces: entry.faces});
+        }
+    }), [ensureClusterDimensionForEditing, publishAnalysis]);
 
-    const deleteFace = useCallback(async (clusterId: string) => {
+    const deleteFace = useCallback(async (clusterId: string) => queueFaceMetadataMutation(async () => {
+        const currentEntries = entriesRef.current;
         const handle = rootHandleRef.current;
         if (!handle) throw new Error('No folder open');
 
@@ -3516,7 +3344,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         }
 
         const affectedEntries: PhotoEntry[] = [];
-        const nextEntries = entries.map(entry => {
+        currentEntries.forEach(entry => {
             if (!entry.faces?.clusterIds) return entry;
             const idx = entry.faces.clusterIds.indexOf(clusterId);
             if (idx < 0) return entry;
@@ -3553,28 +3381,27 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             return updated;
         });
 
-        setEntries(nextEntries);
-        await Promise.all(
-            affectedEntries.map(entry =>
-                updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry))
-            ),
-        );
-    }, [ensureClusterDimensionForEditing, entries]);
+        for (const entry of affectedEntries) {
+            await updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry));
+            publishAnalysis(entry, {faces: entry.faces});
+        }
+    }), [ensureClusterDimensionForEditing, publishAnalysis]);
 
     const associateFaceWithCluster = useCallback(async (
         photoHash: string,
         faceIndex: number,
         clusterId: string,
-    ) => {
+    ) => queueFaceMetadataMutation(async () => {
+        const currentEntries = entriesRef.current;
         const handle = rootHandleRef.current;
         if (!handle) throw new Error('No folder open');
 
         const affectedEntries: PhotoEntry[] = [];
-        let updatedTargetName = findClusterNameInEntries(entries, clusterId);
-        const updatedTargetPersonId = findClusterPersonIdInEntries(entries, clusterId);
+        let updatedTargetName = findClusterNameInEntries(currentEntries, clusterId);
+        const updatedTargetPersonId = findClusterPersonIdInEntries(currentEntries, clusterId);
         let changed = false;
 
-        const nextEntries = entries.map(entry => {
+        const nextEntries = currentEntries.map(entry => {
             const faces = entry.faces;
             if (!faces) {
                 return entry;
@@ -3660,21 +3487,20 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             return;
         }
 
-        setEntries(nextEntries);
-        await Promise.all(
-            affectedEntries.map(entry =>
-                updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry))
-            ),
-        );
+        for (const entry of affectedEntries) {
+            await updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry));
+            publishAnalysis(entry, {faces: entry.faces});
+        }
 
         clusterDimRef.current = await rebuildPersistedClusterStateFromEntries(handle, nextEntries, clusterThreshold);
         clusterThresholdRef.current = clusterThreshold;
-    }, [clusterThreshold, entries]);
+    }), [clusterThreshold, publishAnalysis]);
 
     const mergeFaceClusters = useCallback(async (
         targetClusterId: string,
         sourceClusterIds: string[],
-    ) => {
+    ) => queueFaceMetadataMutation(async () => {
+        const currentEntries = entriesRef.current;
         const handle = rootHandleRef.current;
         if (!handle) {
             throw new Error('No folder open');
@@ -3689,15 +3515,15 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             return;
         }
 
-        const targetName = findClusterNameInEntries(entries, targetClusterId)
-            ?? [...sourceSet].map(clusterId => findClusterNameInEntries(entries, clusterId)).find(Boolean);
-        const targetPersonId = findClusterPersonIdInEntries(entries, targetClusterId)
-            ?? [...sourceSet].map(clusterId => findClusterPersonIdInEntries(entries, clusterId)).find(Boolean);
+        const targetName = findClusterNameInEntries(currentEntries, targetClusterId)
+            ?? [...sourceSet].map(clusterId => findClusterNameInEntries(currentEntries, clusterId)).find(Boolean);
+        const targetPersonId = findClusterPersonIdInEntries(currentEntries, targetClusterId)
+            ?? [...sourceSet].map(clusterId => findClusterPersonIdInEntries(currentEntries, clusterId)).find(Boolean);
 
         const affectedEntries: PhotoEntry[] = [];
         let changed = false;
 
-        const nextEntries = entries.map(entry => {
+        const nextEntries = currentEntries.map(entry => {
             const faces = entry.faces;
             if (!faces?.clusterIds?.length) {
                 return entry;
@@ -3772,18 +3598,17 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             return;
         }
 
-        setEntries(nextEntries);
-        await Promise.all(
-            affectedEntries.map(entry =>
-                updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry))
-            ),
-        );
+        for (const entry of affectedEntries) {
+            await updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry));
+            publishAnalysis(entry, {faces: entry.faces});
+        }
 
         clusterDimRef.current = await rebuildPersistedClusterStateFromEntries(handle, nextEntries, clusterThreshold);
         clusterThresholdRef.current = clusterThreshold;
-    }, [clusterThreshold, entries]);
+    }), [clusterThreshold, publishAnalysis]);
 
-    const groupFaceClustersAsPerson = useCallback(async (clusterIds: string[], preferredPersonId?: string) => {
+    const groupFaceClustersAsPerson = useCallback(async (clusterIds: string[], preferredPersonId?: string) => queueFaceMetadataMutation(async () => {
+        const currentEntries = entriesRef.current;
         const handle = rootHandleRef.current;
         if (!handle) {
             throw new Error('No folder open');
@@ -3800,11 +3625,11 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
 
         const personId = normalizePersonId(preferredPersonId)
             ?? uniqueClusterIds
-            .map(clusterId => findClusterPersonIdInEntries(entries, clusterId))
+            .map(clusterId => findClusterPersonIdInEntries(currentEntries, clusterId))
             .find(Boolean)
             ?? createExplicitPersonId();
         const personName = uniqueClusterIds
-            .map(clusterId => findClusterNameInEntries(entries, clusterId))
+            .map(clusterId => findClusterNameInEntries(currentEntries, clusterId))
             .find(Boolean);
         const clusterIdSet = new Set(uniqueClusterIds);
 
@@ -3821,7 +3646,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         const affectedEntries: PhotoEntry[] = [];
         let changed = false;
 
-        const nextEntries = entries.map(entry => {
+        currentEntries.forEach(entry => {
             const faces = entry.faces;
             if (!faces?.clusterIds?.length) {
                 return entry;
@@ -3881,16 +3706,15 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             return personId;
         }
 
-        setEntries(nextEntries);
-        await Promise.all(
-            affectedEntries.map(entry =>
-                updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry))
-            ),
-        );
+        for (const entry of affectedEntries) {
+            await updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry));
+            publishAnalysis(entry, {faces: entry.faces});
+        }
         return personId;
-    }, [ensureClusterDimensionForEditing, entries]);
+    }), [ensureClusterDimensionForEditing, publishAnalysis]);
 
-    const separatePersonGroup = useCallback(async (personId: string) => {
+    const separatePersonGroup = useCallback(async (personId: string) => queueFaceMetadataMutation(async () => {
+        const currentEntries = entriesRef.current;
         const handle = rootHandleRef.current;
         if (!handle) {
             throw new Error('No folder open');
@@ -3905,7 +3729,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         const separatedClusterIds = new Set<string>();
         let changed = false;
 
-        const nextEntries = entries.map(entry => {
+        currentEntries.forEach(entry => {
             const faces = entry.faces;
             if (!faces?.personIds?.length) {
                 return entry;
@@ -3945,14 +3769,12 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             return [];
         }
 
-        setEntries(nextEntries);
-        await Promise.all(
-            affectedEntries.map(entry =>
-                updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry))
-            ),
-        );
+        for (const entry of affectedEntries) {
+            await updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry));
+            publishAnalysis(entry, {faces: entry.faces});
+        }
         return [...separatedClusterIds];
-    }, [entries]);
+    }), [publishAnalysis]);
 
     return {
         initializationComplete,

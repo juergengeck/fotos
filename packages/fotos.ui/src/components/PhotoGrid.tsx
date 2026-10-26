@@ -26,6 +26,9 @@ export interface PhotoGridProps<TPhoto extends PhotoEntry = PhotoEntry> {
     loading?: boolean;
     getThumbUrl: (entry: TPhoto) => Promise<string | null>;
     mobile?: boolean;
+    /** Browser/platform adapter supplies timed-media classification and playback. */
+    canPlayInline?: (photo: TPhoto) => boolean;
+    renderInlinePlayer?: (photo: TPhoto, onStop: () => void) => ReactNode;
     analysisProgress?: ProgressState | null;
     loadingLabel?: ReactNode;
     emptyTitle?: ReactNode;
@@ -71,6 +74,8 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
     loading,
     getThumbUrl,
     analysisProgress,
+    canPlayInline,
+    renderInlinePlayer,
     loadingLabel = 'Scanning gallery...',
     emptyTitle = 'No photos found',
     emptyHint = (
@@ -81,6 +86,11 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
     onPhotoContextMenu,
 }: PhotoGridProps<TPhoto>) {
     const [cursor, setCursor] = useState(-1);
+    const [playingHash, setPlayingHash] = useState<string | null>(null);
+    const stopPlayback = useCallback(() => setPlayingHash(null), []);
+    useEffect(() => {
+        if (selectionActive || !photos.some(photo => photo.hash === playingHash)) stopPlayback();
+    }, [photos, playingHash, selectionActive, stopPlayback]);
     const gridRef = useRef<HTMLDivElement>(null);
     const [availableSize, setAvailableSize] = useState({width: 0, height: 0});
     const sparse = photos.length > 0 && photos.length <= 8;
@@ -111,7 +121,7 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
     // Keyboard navigation
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
-            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+            if (e.target instanceof Element && e.target.closest('input, textarea, select, video, [data-media-controls], button:not([data-photo-index])')) return;
             const total = photos.length;
             if (total === 0) return;
 
@@ -144,6 +154,7 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
                                 onPhotoToggleSelection(photo, cursor);
                             }
                         } else {
+                            stopPlayback();
                             onPhotoClick(cursor);
                         }
                     }
@@ -193,7 +204,7 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
 
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
-    }, [cursor, photos, getColumnCount, onPhotoClick, onPhotoToggleSelection, onClearSelection, onPhotoContextMenu, selectionActive]);
+    }, [cursor, photos, getColumnCount, onPhotoClick, onPhotoToggleSelection, onClearSelection, onPhotoContextMenu, selectionActive, stopPlayback]);
 
     // Reset cursor when photos change
     useEffect(() => { setCursor(-1); }, [photos]);
@@ -286,7 +297,12 @@ export function PhotoGrid<TPhoto extends PhotoEntry = PhotoEntry>({
                                         focused={fi === cursor}
                                         selected={selectedPhotoHashes?.has(photo.hash) === true}
                                         selectionActive={selectionActive}
-                                        onOpen={() => onPhotoClick(fi)}
+                                        onOpen={() => { stopPlayback(); onPhotoClick(fi); }}
+                                        playable={Boolean(renderInlinePlayer && canPlayInline?.(photo))}
+                                        playing={playingHash === photo.hash && !selectionActive}
+                                        onPlay={() => setPlayingHash(photo.hash)}
+                                        onStop={stopPlayback}
+                                        renderInlinePlayer={renderInlinePlayer}
                                         onToggleSelection={
                                             onPhotoToggleSelection
                                                 ? options => onPhotoToggleSelection(photo, fi, options)
@@ -321,10 +337,20 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
     onToggleSelection,
     onContextMenu,
     getThumbUrl,
+    playable,
+    playing,
+    onPlay,
+    onStop,
+    renderInlinePlayer,
 }: {
     photo: TPhoto;
     flatIndex: number;
     contain: boolean;
+    playable: boolean;
+    playing: boolean;
+    onPlay: () => void;
+    onStop: () => void;
+    renderInlinePlayer?: PhotoGridProps<TPhoto>['renderInlinePlayer'];
     highlightedFaceIndices: readonly number[];
     focused: boolean;
     selected: boolean;
@@ -334,6 +360,16 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
     onContextMenu?: (e: React.MouseEvent | React.TouchEvent) => void;
     getThumbUrl: (entry: TPhoto) => Promise<string | null>;
 }) {
+    const cardRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        if (!playing || typeof IntersectionObserver === 'undefined') return;
+        const observer = new IntersectionObserver(entries => {
+            if (entries.some(entry => !entry.isIntersecting)) onStop();
+        });
+        if (cardRef.current) observer.observe(cardRef.current);
+        return () => observer.disconnect();
+    }, [playing, onStop]);
+
     const [thumbSrc, setThumbSrc] = useState<string | null>(null);
     const [loaded, setLoaded] = useState(false);
     const [imageSize, setImageSize] = useState<{width: number; height: number} | null>(null);
@@ -409,6 +445,7 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
 
     return (
         <div
+            ref={cardRef}
             className={`group relative aspect-square overflow-hidden cursor-pointer touch-manipulation ${
                 focused ? 'ring-2 ring-[#e94560] ring-offset-1 ring-offset-black' : ''
             } ${
@@ -429,6 +466,7 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
                 }}
                 data-photo-index={flatIndex}
                 aria-label={selectionActive ? `${selected ? 'Deselect' : 'Select'} ${photo.name}` : `Open ${photo.name}`}
+                title={playable ? `Open viewer: ${photo.name}` : undefined}
                 className="absolute inset-0 z-10 appearance-none border-0 bg-transparent p-0 text-left focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#e94560]"
             />
             {!loaded && (
@@ -445,6 +483,25 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
                     }}
                     className={`w-full h-full ${useContain ? 'object-contain' : 'object-cover'} transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`}
                 />
+            )}
+
+            {playing && renderInlinePlayer && (
+                <div className="absolute inset-0 z-20 bg-black" data-inline-playback>
+                    {renderInlinePlayer(photo, onStop)}
+                </div>
+            )}
+            {playable && !selectionActive && (
+                <div className="absolute right-1 top-1 z-30 flex gap-1" data-media-controls>
+                    <button type="button" aria-label={`${playing ? 'Stop' : 'Play'} ${photo.name}`}
+                        onClick={playing ? onStop : onPlay}
+                        className="min-h-11 min-w-11 rounded bg-black/80 px-2 py-1 text-xs text-white focus-visible:ring-2 focus-visible:ring-white">
+                        {playing ? 'Stop' : 'Play'}
+                    </button>
+                    <button type="button" aria-label={`Open viewer: ${photo.name}`} onClick={onOpen}
+                        className="min-h-11 min-w-11 rounded bg-black/80 px-2 py-1 text-xs text-white focus-visible:ring-2 focus-visible:ring-white">
+                        Open viewer
+                    </button>
+                </div>
             )}
 
             {loaded && showFaces && faceWidth && faceHeight && (
@@ -476,7 +533,7 @@ function PhotoCard<TPhoto extends PhotoEntry = PhotoEntry>({
                     aria-pressed={selected}
                     aria-label={selected ? 'Deselect photo' : 'Select photo'}
                     onClick={handleCheckboxClick}
-                    className={`absolute left-0 top-0 z-20 flex h-11 w-11 items-center justify-center rounded-md transition-opacity ${
+                    className={`absolute left-0 top-0 z-30 flex h-11 w-11 items-center justify-center rounded-md transition-opacity ${
                         selected || selectionActive
                             ? 'opacity-100'
                             : 'opacity-0 group-hover:opacity-100 focus:opacity-100 [@media(hover:none)]:opacity-70'

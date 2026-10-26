@@ -163,7 +163,8 @@
     "@refinio/source.git": "file:./vendor/refinio-source.git-0.1.0.tgz",
     "@refinio/ui.theme": "file:./vendor/refinio-ui.theme-0.1.0.tgz",
     "@glueone/auth.core": "file:vendor/glueone-auth.core-1.0.0.tgz",
-    "expo-web-browser": "~15.0.11"
+    "expo-web-browser": "~15.0.11",
+    "@refinio/provenance.core": "link:../../one/packages/provenance.core"
   },
   "devDependencies": {
     "@refinio/one.core-expo": "file:./vendor/refinio-one.core-expo-0.1.0.tgz",

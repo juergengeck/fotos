@@ -241,6 +241,12 @@ export function fotosTestRunnerPlugin(browserUiRoot: string): Plugin {
                 args: [uiScript],
                 env: {FOTOS_QA_URL: baseUrl, FOTOS_QA_ARTIFACT_DIR: path.resolve(reportsDir, `${runId}-ui`)},
             },
+            {
+                id: 'media-playback',
+                title: 'Inline video/GIF playback and cleanup',
+                command: process.execPath,
+                args: ['./tests/integration/fotos-media-playback-suite.mjs'],
+            },
         ];
         if (profile === 'full') {
             steps.push(

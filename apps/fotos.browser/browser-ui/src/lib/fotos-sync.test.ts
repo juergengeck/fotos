@@ -17,6 +17,7 @@ const {
     getObjectWithTypeMock,
     readFotosManifestSnapshotMock,
     existsMock,
+    recordFotosAcquisitionMock,
 } = vi.hoisted(() => ({
     storeVersionedObjectMock: vi.fn(async (obj: Record<string, unknown>) => ({
         hash: `${String(obj.$type$)}-hash`,
@@ -54,6 +55,7 @@ const {
         entryHashes: [],
         resolvedAttestations: [],
     })),
+    recordFotosAcquisitionMock: vi.fn(async () => 'acquisition-observation-hash'),
     existsMock: vi.fn(async () => true),
 }));
 
@@ -81,6 +83,8 @@ vi.mock('@refinio/one.core/lib/system/storage-base.js', () => ({
 vi.mock('@refinio/one.core/lib/storage-unversioned-objects.js', () => ({
     getObjectWithType: getObjectWithTypeMock,
 }));
+
+vi.mock('../../../../fotos.core/src/media-acquisition.js', () => ({recordFotosAcquisition: recordFotosAcquisitionMock}));
 
 vi.mock('./browserIngest.js', () => ({
     hashImageFile: hashImageFileMock,
@@ -137,6 +141,7 @@ import {
     getVersionedObjectIfPresent,
     shouldClaimFotosAuthorship,
     syncPhotosToOneCore,
+    syncPhotoToOneCore,
 } from './fotos-sync.js';
 
 describe('fotos sync authorship toggle', () => {
@@ -164,6 +169,7 @@ describe('fotos sync authorship toggle', () => {
                             capturedAt: photo.capturedAt,
                             updatedAt: photo.updatedAt,
                             variants: new Set(['original-variant-hash']),
+                            acquisitionObservations: new Set(['prior-observation-hash']),
                             ...overrides,
                         },
                     };
@@ -218,6 +224,7 @@ describe('fotos sync authorship toggle', () => {
                             sourceIdHashes: new Set(['Source-id-hash']),
                             entryIdHashes: new Set(['SourceEntry-id-hash']),
                             variants: new Set(['original-variant-hash']),
+                            acquisitionObservations: new Set(['prior-observation-hash']),
                             ...(locatorValues.length > 0
                                 ? {locators: new Set(['original-locator-hash'])}
                                 : {}),
@@ -259,6 +266,8 @@ describe('fotos sync authorship toggle', () => {
     }
 
     beforeEach(() => {
+        recordFotosAcquisitionMock.mockReset();
+        recordFotosAcquisitionMock.mockResolvedValue('acquisition-observation-hash');
         storeVersionedObjectMock.mockClear();
         getObjectByIdHashMock.mockReset().mockImplementation(async () => {
             const error = new Error('not found');
@@ -729,5 +738,44 @@ describe('fotos sync authorship toggle', () => {
         await Promise.all([first, second]);
         expect(starts).toEqual(['first-hash', 'second-hash']);
         expect(readFotosManifestSnapshotMock).toHaveBeenCalledTimes(2);
+    });
+});
+
+
+describe('Fotos acquisition publication boundary', () => {
+    beforeEach(() => {
+        recordFotosAcquisitionMock.mockReset().mockResolvedValue('acquisition-observation-hash');
+        storeVersionedObjectMock.mockReset().mockImplementation(async obj => ({
+            hash: `${String(obj.$type$)}-hash`, idHash: `${String(obj.$type$)}-id-hash`, status: 'stored',
+        }));
+        calculateIdHashOfObjMock.mockReset().mockImplementation(async obj => `${String(obj.$type$)}-id-hash`);
+    });
+    it('records acquisition before publishing its entry and preserves the prior root', async () => {
+        storeVersionedObjectMock.mockClear();
+        addEntryToManifestMock.mockClear();
+        recordFotosAcquisitionMock.mockResolvedValue('acquisition-observation-hash');
+        getObjectByIdHashMock.mockImplementation(async idHash => {
+            if (idHash === 'FotosEntry-id-hash') return {obj: {acquisitionObservations: new Set(['prior-observation-hash'])}};
+            const error = new Error('not found');
+            error.name = 'FileNotFoundError';
+            throw error;
+        });
+        await syncPhotoToOneCore({hash: 'photo-hash', name: 'photo.jpg', mimeType: 'image/jpeg', size: 4, sourcePath: 'photo.jpg', capturedAt: 'reported-time'} as any, null);
+        expect(recordFotosAcquisitionMock).toHaveBeenCalledWith(expect.objectContaining({
+            originalVariant: 'FotosMediaVariant-hash',
+            context: expect.objectContaining({surface: 'browser', source: 'photo.jpg', reportedCaptureTime: 'reported-time'}),
+        }));
+        const entry = storeVersionedObjectMock.mock.calls.map(([obj]) => obj).find(obj => obj.$type$ === 'FotosEntry');
+        expect(entry?.acquisitionObservations).toEqual(new Set(['prior-observation-hash', 'acquisition-observation-hash']));
+        expect(addEntryToManifestMock).toHaveBeenCalled();
+    });
+
+    it('does not publish a successful entry when provenance recording fails', async () => {
+        storeVersionedObjectMock.mockClear();
+        addEntryToManifestMock.mockClear();
+        recordFotosAcquisitionMock.mockRejectedValueOnce(new Error('evidence unavailable'));
+        await expect(syncPhotoToOneCore({hash: 'photo-hash', name: 'photo.jpg', mimeType: 'image/jpeg', size: 4} as any, null)).rejects.toThrow('evidence unavailable');
+        expect(storeVersionedObjectMock.mock.calls.some(([obj]) => obj.$type$ === 'FotosEntry')).toBe(false);
+        expect(addEntryToManifestMock).not.toHaveBeenCalled();
     });
 });

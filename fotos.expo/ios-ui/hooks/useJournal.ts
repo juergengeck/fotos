@@ -76,7 +76,7 @@ export function useJournal(initialPlanTypes: string[] = DEFAULT_PLAN_TYPES): Use
     try {
       const results = await queryAssemblies({
         planTypes: Array.from(selectedPlanTypes),
-        sortBy: 'created',
+        sortBy: 'occurrence',
         order: 'desc',
         limit: 500
       });

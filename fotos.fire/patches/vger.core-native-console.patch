@@ -1,0 +1,24 @@
+--- a/dist/modules/CoreModule.js
++++ b/dist/modules/CoreModule.js
+@@ -163,15 +163,15 @@
+                 console.log('[CoreModule] Created default Settings');
+             }
+             // Initialize all models (state machine transitions)
+-            console.time('[perf] CoreModule.leuteModel.init');
++            const leuteModelInitStartedAt = Date.now();
+             await this.leuteModel.init();
+-            console.timeEnd('[perf] CoreModule.leuteModel.init');
+-            console.time('[perf] CoreModule.channelManager.init');
++            console.log('[perf] CoreModule.leuteModel.init:', Date.now() - leuteModelInitStartedAt, 'ms');
++            const channelManagerInitStartedAt = Date.now();
+             await this.channelManager.init();
+-            console.timeEnd('[perf] CoreModule.channelManager.init');
+-            console.time('[perf] CoreModule.topicModel.init');
++            console.log('[perf] CoreModule.channelManager.init:', Date.now() - channelManagerInitStartedAt, 'ms');
++            const topicModelInitStartedAt = Date.now();
+             await this.topicModel.init();
+-            console.timeEnd('[perf] CoreModule.topicModel.init');
++            console.log('[perf] CoreModule.topicModel.init:', Date.now() - topicModelInitStartedAt, 'ms');
+             // Publish core models onto the shared OneCore object immediately so
+             // modules initializing later in the same graph can consume the legacy
+             // mirror without waiting for platform post-init wiring.

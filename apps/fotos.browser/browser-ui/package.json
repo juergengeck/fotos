@@ -132,7 +132,8 @@
     "@vger/auth.login": "file:../../../sources/vger/packages/auth.login",
     "@refinio/agent.browser": "file:../../../sources/vger/packages/agent.browser",
     "@refinio/agent.code": "file:../../../sources/one/packages/agent.code",
-    "quickjs-emscripten": "0.31.0"
+    "quickjs-emscripten": "0.31.0",
+    "@refinio/provenance.core": "file:../../../sources/one/packages/provenance.core"
   },
   "devDependencies": {
     "@types/qrcode": "catalog:",

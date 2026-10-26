@@ -10,6 +10,7 @@ Product docs:
 Layout:
 
 - `apps/fotos.browser` - browser/PWA client for fotos.one
+- `fotos.fire` - incoming native Fire TV client; selected vendor bootstrap is pending
 - `packages/fotos.core` - shared gallery, face, and recipe logic
 - `packages/fotos.headless` - split headless deployment, Fotos skills, and semantic batch tooling for `spark` + `schweiz`
 - `apps/fotos.html` - portable HTML fallback app and media-view plugin for `vger.html` / `glue.browser`, meant to live in `one/` folders when `fotos.browser` is unavailable
@@ -51,3 +52,12 @@ checks remain behind the explicit `test:batch` command. The browser development
 server retains scan, local-photo serving and proxy routes. Two unused catalog/query
 routes targeting the absent `one.fotos` producer were removed; no current UI, test
 or documentation called those routes.
+
+Fire TV checks are explicitly deferred in [Fotos issue 2](https://github.com/juergengeck/fotos/issues/2):
+the new target's frozen pnpm 10 installation requires the exact ignored archives
+in `fotos.expo/vendor`, which are unavailable. Preserve the declared vendor and
+patch contracts; do not substitute same-version archives or regenerate a baseline.
+Its existing standalone layout/lock is an unqualified migration gap pending those
+inputs, not an approved workspace-policy exception. Native install, typechecking,
+APK and physical Fire TV qualification remain outstanding; the existing navigation
+tests alone do not establish those results.

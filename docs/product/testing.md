@@ -38,6 +38,11 @@ directory picker with deterministic photo fixtures, and drives:
 - library and saved-collection restoration after a page reload;
 - mobile intake and bottom-sheet tab/collapse behavior.
 
+The UI profile also runs the isolated media playback protocol. It verifies GIF
+ingest byte retention and playback controls, then drives real GIF and video
+playback inside grid and full-screen stream cards, including seeking, explicit
+viewer access, single-player ownership, and cleanup when scrolled offscreen.
+
 The same browser protocol can target an already-running dev server from the package:
 
 ```bash

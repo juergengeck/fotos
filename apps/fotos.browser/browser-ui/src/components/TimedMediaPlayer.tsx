@@ -4,6 +4,7 @@ import {createGifPlaybackTimeline, getGifFrameIndex, type GifAnimation} from '@r
 import {decodeGifInWorker} from '@/lib/gifDecoder';
 
 interface TimedMediaPlayerProps {
+    compact?: boolean;
     src: string;
     name: string;
     mediaStyle: CSSProperties;
@@ -31,6 +32,7 @@ function stopControlEvent(event: SyntheticEvent) {
 
 export function TimedMediaPlayer({
     src,
+    compact = false,
     name,
     mediaStyle,
     onReady,
@@ -239,7 +241,9 @@ export function TimedMediaPlayer({
             {animation && animation.frames.length > 1 && animation.durationMs > 0 && !error && (
                 <div
                     data-media-controls
-                    className="absolute bottom-5 left-1/2 z-20 flex w-[min(34rem,calc(100%-2rem))] -translate-x-1/2 items-center gap-3 rounded-xl border border-white/15 bg-black/75 px-3 py-2 text-white/75 shadow-xl backdrop-blur-sm"
+                    className={compact
+                        ? "absolute bottom-0 left-0 z-20 flex w-full flex-wrap items-center gap-1 bg-black/85 p-1 text-white/75"
+                        : "absolute bottom-5 left-1/2 z-20 flex w-[min(34rem,calc(100%-2rem))] -translate-x-1/2 items-center gap-3 rounded-xl border border-white/15 bg-black/75 px-3 py-2 text-white/75 shadow-xl backdrop-blur-sm"}
                     role="group"
                     aria-label="Animated image playback"
                     onClick={stopControlEvent}
@@ -267,7 +271,7 @@ export function TimedMediaPlayer({
                         aria-label="Animated image position"
                         className="min-w-0 flex-1 accent-[#e94560]"
                     />
-                    <span className="shrink-0 text-xs tabular-nums text-white/60">
+                    <span className={compact ? "order-last w-full text-center text-xs tabular-nums text-white/60" : "shrink-0 text-xs tabular-nums text-white/60"}>
                         {formatTime(currentTimeMs)} / {formatTime(animation.durationMs)}
                     </span>
                     <button

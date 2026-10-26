@@ -67,6 +67,7 @@ export interface FotosManifestResolvedEntry {
     updatedAt: string | null;
     faceCount: number;
     hasThumb: boolean;
+    acquisitionObservationHashes: string[];
 }
 
 export interface FotosManifestResolvedAuthenticityAttestation {
@@ -232,6 +233,7 @@ async function resolveManifestEntries(
                 updatedAt: typeof entry.updatedAt === 'string' ? entry.updatedAt : null,
                 faceCount: typeof entry.faceCount === 'number' ? entry.faceCount : 0,
                 hasThumb: Boolean(entry.thumb),
+                acquisitionObservationHashes: [...entry.acquisitionObservations ?? []].map(String).sort(),
             } satisfies FotosManifestResolvedEntry;
         } catch {
             return null;

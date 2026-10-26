@@ -34,6 +34,12 @@ export const FOTOS_FLOW_SUITES = [
     evidence: ['browser-ui', 'unit-contract'],
   },
   {
+    id: 'media-playback',
+    title: 'Inline video/GIF playback, controls, and player cleanup',
+    featureIds: ['F107'],
+    evidence: ['browser-ui', 'unit-contract'],
+  },
+  {
     id: 'ui-people',
     title: 'People clusters, naming, grouping, merging, and deletion',
     featureIds: range(51, 60),

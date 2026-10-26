@@ -125,6 +125,7 @@ Legend for **State**: ✅ complete · ⚠️ works but has UX defects listed in 
 | F34 | Clear filters via breadcrumbs | Breadcrumb crumb click | [App.tsx:1279](../../fotos.browser/browser-ui/src/App.tsx#L1279) | ⚠️ |
 | F35 | Browser back/forward across photo route | History API | [App.tsx:1104](../../fotos.browser/browser-ui/src/App.tsx#L1104) | ✅ |
 | F36 | Save / restore synced breadcrumb branches | Settings → Breadcrumb History | [Sidebar.tsx:2449](../../fotos.browser/browser-ui/src/components/Sidebar.tsx#L2449) | ⚠️ |
+| F107 | Play video/GIF inside a grid or full-screen stream card; pause, seek, stop, or open viewer | Card → Play / Stop / Open viewer | [InlineMediaPlayer.tsx](../../fotos.browser/browser-ui/src/components/InlineMediaPlayer.tsx), [playback protocol](../../fotos.browser/browser-ui/tests/integration/fotos-media-playback-suite.mjs) | ✅ |
 
 ### 3.4 Photo viewer (lightbox)
 

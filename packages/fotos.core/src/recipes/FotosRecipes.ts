@@ -12,6 +12,9 @@
  */
 import type {BLOB, CLOB, Person, Recipe, VersionNode} from '@refinio/one.core/lib/recipes.js';
 import type {SHA256Hash, SHA256IdHash} from '@refinio/one.core/lib/util/type-checks.js';
+import {ProvenanceRecipes, type ProvenanceObservation} from '@refinio/provenance.core';
+import {FotosAcquisitionRecipes} from './FotosAcquisitionRecipes.js';
+import type {FotosAcquisitionClaim, FotosAcquisitionContext, FotosAcquisitionMethod, FotosAcquisitionPremise} from './FotosAcquisitionRecipes.js';
 import {GalleryTrieRecipes} from './GalleryTrieRecipes.js';
 import {FotosDeviceBookRecipes} from './FotosDeviceBookRecipes.js';
 import {FotosMediaRecipes} from './FotosMediaRecipes.js';
@@ -45,6 +48,7 @@ export interface FotosEntry {
     exifHeight?: number;
     thumb?: SHA256Hash<BLOB>;
     variants?: Set<SHA256Hash<FotosMediaVariant>>;
+    acquisitionObservations?: Set<SHA256Hash<ProvenanceObservation>>;
     faceCount?: number;
     faceEmbeddings?: SHA256Hash<BLOB>;
     faceCrops?: SHA256Hash<BLOB>;
@@ -84,7 +88,7 @@ export interface FotosShareManifest {
     scopeId: string;
     entries: Set<SHA256Hash<FotosEntry>>;
     /** Producer-written flat closure used by live CHUM root notifications. */
-    snapshotObjects: Set<SHA256Hash<FotosEntry | FotosMediaVariant>>;
+    snapshotObjects: Set<SHA256Hash<FotosEntry | FotosMediaVariant | ProvenanceObservation | FotosAcquisitionClaim | FotosAcquisitionMethod | FotosAcquisitionContext | FotosAcquisitionPremise>>;
     snapshotIds: Set<SHA256IdHash<Person | FotosEntry | FotosMediaVariant>>;
     snapshotBlobs?: Set<SHA256Hash<BLOB>>;
     snapshotClobs?: Set<SHA256Hash<CLOB>>;
@@ -205,6 +209,7 @@ export const FotosEntryRecipe: Recipe = {
                 item: {type: 'referenceToObj', allowedTypes: new Set(['FotosMediaVariant'])}
             }
         },
+        {itemprop: 'acquisitionObservations', optional: true, itemtype: {type: 'set', item: {type: 'referenceToObj', allowedTypes: new Set(['ProvenanceObservation'])}}},
         {itemprop: 'faceCount', optional: true, itemtype: {type: 'integer'}},
         {itemprop: 'faceEmbeddings', optional: true, itemtype: {type: 'referenceToBlob'}},
         {itemprop: 'faceCrops', optional: true, itemtype: {type: 'referenceToBlob'}}
@@ -280,7 +285,7 @@ export const FotosShareManifestRecipe: Recipe = {
                 type: 'set',
                 item: {
                     type: 'referenceToObj',
-                    allowedTypes: new Set(['FotosEntry', 'FotosMediaVariant']),
+                    allowedTypes: new Set(['FotosEntry', 'FotosMediaVariant', 'ProvenanceObservation', 'FotosAcquisitionClaim', 'FotosAcquisitionMethod', 'FotosAcquisitionContext', 'FotosAcquisitionPremise']),
                 },
             },
         },
@@ -366,6 +371,8 @@ export const FotosRecipes: Recipe[] = [
     FotosShareCertificateChainRecipe,
     FotosSharePinProofRecipe,
     ...FotosMediaRecipes,
+    ...FotosAcquisitionRecipes,
+    ...ProvenanceRecipes,
     ...FotosDeviceBookRecipes,
     ...GalleryTrieRecipes,
 ];

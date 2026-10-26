@@ -103,7 +103,8 @@
     "@refinio/device.core": "file:../../sources/one/packages/device.core",
     "@refinio/cube.space": "file:../../sources/one/packages/cube.space",
     "@refinio/media.core": "file:../../sources/one/packages/media.core",
-    "@refinio/contact.core": "file:../../sources/one/packages/contact.core"
+    "@refinio/contact.core": "file:../../sources/one/packages/contact.core",
+    "@refinio/provenance.core": "file:../../sources/one/packages/provenance.core"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

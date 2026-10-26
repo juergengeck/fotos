@@ -523,8 +523,9 @@ async function loadPreservedIndexAttrs(
         }
 
         return preserved;
-    } catch {
-        return new Map();
+    } catch (cause) {
+        if (cause instanceof DOMException && cause.name === 'NotFoundError') return new Map();
+        throw cause;
     }
 }
 
@@ -623,7 +624,7 @@ export async function ingestDirectory(
             }
 
             // Face detection + recognition
-            if (faceWorker && getMediaPlaybackKind(img.name, img.mime) !== 'video') {
+            if (faceWorker && data['face-count'] === undefined && getMediaPlaybackKind(img.name, img.mime) !== 'video') {
                 onProgress?.({
                     phase: 'faces',
                     current: processed,

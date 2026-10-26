@@ -3772,6 +3772,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                                     onClearSelection={clearCollectionSelection}
                                     loading={gallery.loading}
                                     getThumbUrl={gallery.folder.getThumbUrl}
+                                    getFileUrl={gallery.folder.getFileUrl}
                                     mobile={mobile}
                                     analysisProgress={progress}
                                     emptyTitle={

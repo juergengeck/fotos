@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { getObjectByIdObj } from '@refinio/one.core/lib/storage-versioned-objects.js';
+import type { SHA256IdHash } from '@refinio/one.core/lib/util/type-checks.js';
 import type {
   TraceContent,
   ContextInjectionTrace,
@@ -27,7 +28,8 @@ export interface MessageTrace {
   };
   contextInjection?: {
     subjects: Array<{
-      id: string;
+      id?: SHA256IdHash;
+      pendingRef?: string;
       keywords: string[];
       description?: string;
     }>;
@@ -93,6 +95,7 @@ export function useMessageTrace(messageId: string | null): UseMessageTraceReturn
           contextInjection: ctx ? {
             subjects: ctx.subjects.map((s: ContextInjectionTrace['subjects'][0]) => ({
               id: s.idHash,
+              pendingRef: s.pendingRef,
               keywords: s.keywords,
               description: s.description
             })),

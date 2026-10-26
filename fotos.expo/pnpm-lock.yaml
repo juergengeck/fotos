@@ -537,6 +537,9 @@ importers:
       xregexp:
         specifier: ^5.1.2
         version: 5.1.2
+      '@refinio/provenance.core':
+        specifier: link:../../one/packages/provenance.core
+        version: link:../../one/packages/provenance.core
     devDependencies:
       '@types/react':
         specifier: 19.1.10

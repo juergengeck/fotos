@@ -60,6 +60,7 @@ import {
     readMediaBook,
 } from '@refinio/source.media/services';
 import {hashImageFile} from './browserIngest.js';
+import {recordFotosAcquisition} from '../../../../fotos.core/src/media-acquisition.js';
 
 export interface SyncPhotosToOneCoreOptions {
     claimAuthorship?: boolean;
@@ -229,6 +230,7 @@ async function isPhotoAlreadySynced(
         return false;
     }
 
+    if (!current.acquisitionObservations?.size) return false;
     const originalVariant = await findCompleteOriginalVariant(current, entryIdHash, photo);
     if (!originalVariant) return false;
 
@@ -621,6 +623,7 @@ async function storeFotosMediaState(
     originalBlobHash?: SHA256Hash<BLOB>,
     thumbBlobHash?: SHA256Hash<BLOB>,
 ): Promise<{
+    originalVariant: SHA256Hash<FotosMediaVariant>;
     variants: Set<SHA256Hash<FotosMediaVariant>>;
     locators: Set<SHA256Hash<FotosMediaLocator>>;
     variantIdHashes: Set<SHA256IdHash<FotosMediaVariant>>;
@@ -660,7 +663,7 @@ async function storeFotosMediaState(
     }
 
     if (!thumbBlobHash) {
-        return { variants, locators, variantIdHashes, locatorIdHashes };
+        return { originalVariant: originalVariantResult.hash as SHA256Hash<FotosMediaVariant>, variants, locators, variantIdHashes, locatorIdHashes };
     }
 
     const thumbVariant = createFotosMediaVariant({
@@ -688,7 +691,7 @@ async function storeFotosMediaState(
         locatorIdHashes.add(storedLocator.idHash);
     }
 
-    return { variants, locators, variantIdHashes, locatorIdHashes };
+    return { originalVariant: originalVariantResult.hash as SHA256Hash<FotosMediaVariant>, variants, locators, variantIdHashes, locatorIdHashes };
 }
 
 // ---------------------------------------------------------------------------
@@ -869,6 +872,21 @@ export async function syncPhotoToOneCore(
     if (mediaState.variants.size > 0) {
         entry.variants = mediaState.variants;
     }
+
+    const previous = await getVersionedObjectIfPresent(entryIdHash);
+    const observation = await recordFotosAcquisition({
+        observer: author,
+        originalVariant: mediaState.originalVariant,
+        context: {
+            acquiredAt: Date.now(), surface: 'browser', source: photo.sourcePath || photo.name,
+            ...(photo.capturedAt ? {reportedCaptureTime: photo.capturedAt} : {}),
+            ...(photo.exif?.camera ? {reportedCamera: photo.exif.camera} : {}),
+            ...(photo.exif?.gps ? {reportedGpsLat: photo.exif.gps.lat, reportedGpsLon: photo.exif.gps.lon} : {}),
+        },
+    });
+    entry.acquisitionObservations = new Set([
+        ...((previous?.obj as FotosEntry | undefined)?.acquisitionObservations ?? []), observation,
+    ]);
 
     // Store the versioned object (idempotent — same contentHash isId = same object)
     const result = await storeVersionedObject(entry as unknown as FotosEntry);
