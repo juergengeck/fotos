@@ -21,7 +21,7 @@ vi.mock('@refinio/fotos.core', () => ({
     createFotosMediaLocator: (params: object) => ({$type$: 'FotosMediaLocator', ...params}),
     appendFotosDeviceBookContent: async () => undefined,
 }));
-vi.mock('../../../../../one/packages/source.media/src/services/MediaSourceService.js', () => ({
+vi.mock('@refinio/source.media/services', () => ({
     createMediaSource: (params: object) => ({$type$: 'Source', id: 'source', ...params}),
     createMediaSourceEntry: (params: object) => ({$type$: 'SourceEntry', sourceRef: 'source-ref', ...params}),
     appendMediaBookContent: async () => undefined,

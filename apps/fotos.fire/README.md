@@ -6,20 +6,36 @@ and slideshow. Its QR invitation pairs a trusted Fotos device; pairing alone doe
 not grant access to a photo library. The sending device must share a gallery with
 this TV.
 
-The app uses Expo 54, the matching React Native TV fork, and the same vendored ONE
-package generation as `../fotos.expo`. Shared platform sources belong to
-`../../sources/one/packages`; `one-experimental` is not a dependency. Metro resolution is
-shared with the phone app while each target uses its own React Native installation.
+The app uses Expo 54.0.34 and the selected React Native TV 0.81.5-2 fork.
+Both native apps participate in the owning Fotos pnpm/Turbo workspace. They share
+`@refinio/fotos.native` bootstrap/bundler exports while each app installs its own
+explicit native/runtime providers. Foreign libraries use Sources-managed public
+packages. No vendor setup, source aliases or hoisting are part of this workflow.
 
 ## Build and install
 
-Requires Node 20.19.4+, pnpm, Java 17, the Android SDK, and the prepared
-`../fotos.expo/vendor` archives used by the current mobile runtime. Dependencies
-reference that sibling directory directly; no TV-specific vendor copy is needed.
-From this folder:
+Prepare the declared producer outputs at their owners, following the staged root
+AGENTS.md workflow. From the Fotos root, use its declared pnpm version:
 
 ```bash
-pnpm install --ignore-workspace
+pnpm install --frozen-lockfile
+pnpm --filter @refinio/fotos.fire typecheck
+pnpm --filter @refinio/fotos.fire test
+pnpm --filter @refinio/fotos.fire build
+```
+
+`build` is the actual Expo/Metro Android export, including Hermes compilation. It
+does not build/sign an APK, provision a device or deploy. APK commands below need
+Node 20.19.4+, Java 17 and the Android SDK and remain separately unqualified.
+Historical missing-vendor-archive checks stay deferred in
+[Fotos issue 2](https://github.com/juergengeck/fotos/issues/2). The public-provider
+migration does not reconstruct or qualify that historical baseline. The original
+console-timing patch is retained; current installed vger.core already implements
+its native-safe behavior. See `patches/README.md`.
+
+From this app directory, only when performing separately authorized native work:
+
+```bash
 pnpm build:apk
 pnpm run deploy 192.168.178.23:5555
 ```
@@ -57,5 +73,5 @@ used as TV media URLs. Downloaded media is cached in the app's private storage.
 
 ```bash
 pnpm typecheck
-node --test src/ui/navigation.test.mjs
+pnpm test
 ```

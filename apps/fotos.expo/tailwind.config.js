@@ -5,7 +5,7 @@ module.exports = {
     "./app/**/*.{js,jsx,ts,tsx}",
     "./components/**/*.{js,jsx,ts,tsx}",
     "./ios-ui/**/*.{js,jsx,ts,tsx}",
-    "../../../one/packages/vger.ui/src/**/*.{js,jsx,ts,tsx}"
+    require('path').join(require('path').dirname(require.resolve('@vger/vger.ui')), '**/*.{js,jsx,ts,tsx}')
   ],
   presets: [require("nativewind/preset")],
   theme: {

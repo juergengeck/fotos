@@ -10,7 +10,8 @@ Product docs:
 Layout:
 
 - `apps/fotos.browser` - browser/PWA client for fotos.one
-- `apps/fotos.fire` - incoming native Fire TV client; selected vendor bootstrap is pending
+- `apps/fotos.expo` - native phone client
+- `apps/fotos.fire` - native Fire TV client
 - `packages/fotos.core` - shared gallery, face, and recipe logic
 - `packages/fotos.headless` - split headless deployment, Fotos skills, and semantic batch tooling for `spark` + `schweiz`
 - `apps/fotos.html` - portable HTML fallback app and media-view plugin for `vger.html` / `glue.browser`, meant to live in `one/` folders when `fotos.browser` is unavailable
@@ -38,13 +39,15 @@ corepack pnpm --filter @one/fotos.browser.ui test
 After the initial lockfile is generated, use `pnpm install --frozen-lockfile`.
 Cross-repository dependencies use ordinary `file:` installations. Reinstall after
 rebuilding a changed producer so the installed files reflect its current output.
-The root manages the six local web/shared/deployment packages with pnpm and Turbo;
+The root manages its local web/native/shared/deployment packages with pnpm and Turbo;
 it never includes packages from another Git repository. Library consumers install
 the internal peers declared by `@refinio/fotos.core` explicitly.
 
-Expo retains its separate vendored installation (`apps/fotos.expo/.vendorrc.json`).
-The `fotos.browser` wrapper is not a workspace member because it still declares
-the legacy `one.fotos` dependency; use `@one/fotos.browser.ui` for web development.
+Both native apps now use the owning root workspace and lock with Sources-managed
+public providers. Direct external selections are preserved; conflicting transitive
+entries follow the user-approved existing-root priority. See AGENTS.md for native
+preparation and the precise qualification limits. The obsolete browser wrapper
+remains excluded because its `one.fotos` dependency no longer exists.
 
 `packages/fotos.gallery` supplies reusable source React components. Headless holds
 deployment tooling and skills rather than a standalone server. Its network batch
@@ -53,11 +56,9 @@ server retains scan, local-photo serving and proxy routes. Two unused catalog/qu
 routes targeting the absent `one.fotos` producer were removed; no current UI, test
 or documentation called those routes.
 
-Fire TV checks are explicitly deferred in [Fotos issue 2](https://github.com/juergengeck/fotos/issues/2):
-the new target's frozen pnpm 10 installation requires the exact ignored archives
-in `apps/fotos.expo/vendor`, which are unavailable. Preserve the declared vendor and
-patch contracts; do not substitute same-version archives or regenerate a baseline.
-Its existing standalone layout/lock is an unqualified migration gap pending those
-inputs, not an approved workspace-policy exception. Native install, typechecking,
-APK and physical Fire TV qualification remain outstanding; the existing navigation
-tests alone do not establish those results.
+Historical Fire TV missing-archive checks remain deferred in
+[Fotos issue 2](https://github.com/juergengeck/fotos/issues/2). No vendor baseline
+was regenerated or substituted. Current public-provider metadata and workspace
+migration do not qualify those archives, physical devices, signing or deployment.
+The original native-console patch is retained; its behavioral requirement must
+also hold in the current installed owning vger.core output.

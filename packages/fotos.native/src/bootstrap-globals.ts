@@ -48,4 +48,6 @@ if (typeof globalThis.localStorage === 'undefined') {
   }
 }
 
-require('@refinio/one.core-expo/load-expo');
+
+
+export {};

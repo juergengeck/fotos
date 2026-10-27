@@ -1,6 +1,6 @@
 # fotos.expo `vger.core` Module Cut
 
-This is the practical companion to [vger-core-modules.md](/Users/gecko/src/fotos/fotos.expo/docs/vger-core-modules.md).
+This is the practical companion to [vger-core-modules.md](vger-core-modules.md).
 
 Status: implemented for fotos mobile. `fotos.expo` now imports the `mobile-library` initializer entrypoint instead of the full `initializeModules(...)` entrypoint.
 
@@ -12,8 +12,8 @@ This doc answers the more useful question for fotos mobile:
 
 ## Source of truth
 
-- `/Users/gecko/src/fotos/fotos.expo/ios-ui/Model.ts`
-- `/Users/gecko/src/fotos/fotos.expo/ios-ui/modules/index.ts`
+- `apps/fotos.expo/ios-ui/Model.ts`
+- `apps/fotos.expo/ios-ui/modules/index.ts`
 - `/Users/gecko/src/vger/packages/vger.core/src/initialization/initializeModules.ts`
 - `/Users/gecko/src/vger/packages/vger.cube/one.md`
 

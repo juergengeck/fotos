@@ -1,3 +1,3 @@
-const createFotosMetroConfig = require('./metro.shared');
+const createFotosMetroConfig = require('@refinio/fotos.native/metro');
 
 module.exports = createFotosMetroConfig(__dirname);

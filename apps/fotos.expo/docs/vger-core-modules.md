@@ -1,6 +1,6 @@
 # vger.core Modules
 
-For the fotos-specific runtime cut and dependency spine, see [vger-core-fotos-module-cut.md](/Users/gecko/src/fotos/fotos.expo/docs/vger-core-fotos-module-cut.md).
+For the fotos-specific runtime cut and dependency spine, see [vger-core-fotos-module-cut.md](vger-core-fotos-module-cut.md).
 
 This inventory is based on:
 

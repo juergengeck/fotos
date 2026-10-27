@@ -6,21 +6,7 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "moduleResolution": "bundler",
-    "paths": {
-      "@refinio/fotos.core": [
-        "../../packages/fotos.core/src/index.ts"
-      ],
-      "@refinio/fotos.core/*": [
-        "../../packages/fotos.core/src/*"
-      ],
-      "@refinio/fotos.core/shared-filesystem": [
-        "../../packages/fotos.core/src/shared-fotos-file-system.ts"
-      ],
-      "@refinio/fotos.core/filesystem": [
-        "../../packages/fotos.core/src/fotos-file-system.ts"
-      ]
-    }
+    "moduleResolution": "bundler"
   },
   "include": [
     "index.ts",

@@ -5,13 +5,13 @@
     "scheme": "fotosfire",
     "version": "0.1.0",
     "orientation": "landscape",
-    "icon": "../fotos.expo/assets/icon.png",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "android": {
       "package": "one.fotos.fire",
       "adaptiveIcon": {
-        "foregroundImage": "../fotos.expo/assets/adaptive-icon.png",
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#111111"
       },
       "blockedPermissions": [
@@ -38,7 +38,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "../fotos.expo/assets/splash-icon.png",
+          "image": "./assets/splash-icon.png",
           "imageWidth": 160,
           "resizeMode": "contain",
           "backgroundColor": "#111111"
@@ -48,6 +48,9 @@
     "extra": {
       "commServerUrl": "wss://api.glue.one/comm",
       "webUrl": "https://fotos.one"
+    },
+    "experiments": {
+      "autolinkingModuleResolution": true
     }
   }
 }

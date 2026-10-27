@@ -6,7 +6,7 @@ module.exports = function(api) {
       "nativewind/babel",
     ],
     plugins: [
-      "./metro-babel-plugin.js",
+      require.resolve('@refinio/fotos.native/babel-plugin'),
       "react-native-reanimated/plugin",
     ],
   };

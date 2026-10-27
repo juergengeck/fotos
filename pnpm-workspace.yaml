@@ -5,6 +5,9 @@ packages:
 - apps/fotos.html
 - packages/fotos.headless
 - apps/fotos.browser/browser-ui
+- apps/fotos.expo
+- apps/fotos.fire
+- packages/fotos.native
 catalog:
   typescript: 5.7.3
   vitest: 3.2.4

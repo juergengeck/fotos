@@ -91,6 +91,9 @@
       "eas": {
         "projectId": "fotos-expo-template"
       }
+    },
+    "experiments": {
+      "autolinkingModuleResolution": true
     }
   }
 }

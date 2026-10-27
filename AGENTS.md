@@ -51,17 +51,18 @@ Sources project lock. Use sequential stages outside `sources run`/`sources task`
 For clean release checkouts use the Sources selected-closure bootstrap guidance;
 activation and installation are separate and immediate-owner Git pins apply.
 
-Expo retains its separate vendored installation and frozen lock as an unqualified
-migration baseline, not an approved package-policy exception. The legacy
-`fotos.browser` wrapper remains excluded because `one.fotos` no longer exists;
-use `@one/fotos.browser.ui`. Existing broader migration failures remain visible.
+The native applications participate in the same owning workspace and root lock.
+Use the root's declared pnpm version and frozen installation. Native external
+versions remain pinned to their original app lock selections; at conflicting
+transitive snapshot keys, the user-approved policy retains the pre-existing root
+selection. This is not permission to upgrade direct dependencies.
 
 ## Local layout
 
-Browser applications live under `apps/`; shared libraries and private deployment
-tooling live under `packages/`. Workspace membership is explicit: only the nested
-`apps/fotos.browser/browser-ui` is active, while its legacy wrapper remains excluded.
-Preserve the separately vendored Expo installation. Do not introduce checkout source
+Applications live under `apps/`; shared libraries and private deployment
+tooling live under `packages/`. Workspace membership is explicit: native apps `apps/fotos.expo` and
+`apps/fotos.fire` join the shared packages and nested browser UI; the obsolete
+browser wrapper remains excluded because `one.fotos` no longer exists. Do not introduce checkout source
 aliases or consumer-owned recipe registries; consume the owning public package entries.
 
 Fotos.core now imports Provenance and shared Sync rules through their public
@@ -71,29 +72,42 @@ cycle. The selected seven-package foundation graph remains directed toward
 ONE.core and Trust; it does not require a reverse Fotos app build. New
 Git-pinned bootstrap and cache qualification must cover this expanded closure.
 
-Fire TV checks are explicitly deferred in [Fotos issue 2](https://github.com/juergengeck/fotos/issues/2):
-the new target's frozen pnpm 10 installation requires the exact ignored archives
-in `apps/fotos.expo/vendor`, which are unavailable. Preserve the declared vendor and
-patch contracts; do not substitute same-version archives or regenerate a baseline.
-Its existing standalone layout/lock is an unqualified migration gap pending those
-inputs, not an approved workspace-policy exception. Native install, typechecking,
-APK and physical Fire TV qualification remain outstanding; the existing navigation
-tests alone do not establish those results.
+## Native applications and qualification
 
-## Remaining Expo and Fire TV package migration
+Both native apps use ordinary owning-package providers.
+`packages/fotos.native` supplies their shared source bootstrap and Metro/Babel
+configuration through public workspace exports; app trees do not import each
+other's bootstrap source. Foreign libraries are
+copied from Sources-managed directories; Fotos.core uses `workspace:*`. UDP's
+owning repository is selected at `sources/udp`, and its public package lives at
+`sources/udp/packages/react-native-udp-ios`. Prepare outputs at their owners,
+then refresh the normal root installation. Do not recursively prepare an ancestor
+project, regenerate vendor archives, or emit held producers during consumer checks.
 
-The excluded Expo target has 97 unmanaged vendor references, and Fire TV has 96.
-Both now live under `apps/` but remain outside the repository workspace, with separate locks;
-neither target has completed the shared metadata, layout or workspace policy.
-Preserving the existing archives and patches does not waive those requirements.
-Fire TV issue 2 defers its unavailable native checks only.
+Expo 54's `expo/metro-config` supports this isolated pnpm workspace. Metro resolves
+installed public exports without checkout aliases, extra foreign `node_modules`,
+hoisting rules, source fallbacks or Node-only stubs. NativeWind scans the installed
+public UI package. SDK 54 autolinking module resolution is enabled for both native
+apps so bundled native modules follow each app's actual declared native providers. Check native module resolution and app-specific React Native
+selection before claiming a bundle or device result. The user explicitly approved the existing react-native-tvos 0.81.5-2 fork for
+both native apps to avoid mixed phone/TV native declarations. Expo remains
+54.0.34 and other direct selections remain unchanged. Only Fire enables TV mode.
 
-Remaining work is to establish the platform baseline with the exact required
-archives, then reconcile their installation with
-the owning root workspace/lock and Turbo, replace unmanaged foreign vendor
-references with Sources-managed owner packages, and verify Metro resolution
-through public exports and concrete providers. Preserve selected external
-versions, native patches and platform contracts throughout. Expo is also missing
-96 required vendor archives in this checkout; its native install/types/build and
-physical-device checks are unqualified. Do not regenerate or substitute archives
-to claim either baseline or the policy migration passes.
+The app `build` commands bundle JavaScript with Expo/Metro and do not sign or deploy.
+`typecheck` remains the strict native app program, and `test` includes the existing
+native tests. Run them directly during a producer-output hold; the full Turbo graph
+can rebuild local libraries and must wait until their consumer window allows it.
+
+The missing-archive checks in [Fotos issue 2](https://github.com/juergengeck/fotos/issues/2)
+remain explicitly deferred. Migration to current public owner providers does not
+reconstruct or qualify the unavailable historical Fire vendor baseline. No missing
+archive is replaced or regenerated. This deferral does not cover metadata, layout,
+workspace, declared dependencies, or newly reachable native check failures. APK,
+physical device and live sharing qualification must be reported separately.
+
+The original `apps/fotos.fire/patches/vger.core-native-console.patch` is retained
+byte-for-byte. Its native-console contract requires Date.now/console.log timing
+instead of console.time/timeEnd in CoreModule initialization. Current ONE's public
+vger.core output already carries that behavior; validate the installed output
+before retiring an obsolete application of the archival patch. Never edit or
+patch the owning emitted files in a consumer.
