@@ -1,5 +1,6 @@
 // hash.ts
-import { createHash } from 'node:crypto';
+import {sha256} from '@noble/hashes/sha256';
+import {bytesToHex} from '@noble/hashes/utils';
 import {
     isJpeg,
     stripJpegMetadata,
@@ -13,13 +14,10 @@ export {
 };
 
 export async function sha256Hex(data: ArrayBuffer | ArrayBufferView): Promise<string> {
-    const hash = createHash('sha256');
-    if (data instanceof ArrayBuffer) {
-        hash.update(Buffer.from(data));
-    } else {
-        hash.update(Buffer.from(data.buffer, data.byteOffset, data.byteLength));
-    }
-    return hash.digest('hex');
+    const bytes = data instanceof ArrayBuffer
+        ? new Uint8Array(data)
+        : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    return bytesToHex(sha256(bytes));
 }
 
 export async function hashImageBytes(bytes: Uint8Array): Promise<string> {

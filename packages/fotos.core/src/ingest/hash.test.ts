@@ -33,6 +33,14 @@ describe('stripJpegMetadata', () => {
 });
 
 describe('sha256Hex', () => {
+    it('hashes only the selected byte range of buffers and views', async () => {
+        const bytes = Uint8Array.from([0, ...new TextEncoder().encode('hello'), 255]);
+        const expected = '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824';
+        expect(await sha256Hex(bytes.subarray(1, 6))).toBe(expected);
+        expect(await sha256Hex(new DataView(bytes.buffer, 1, 5))).toBe(expected);
+        expect(await sha256Hex(bytes.buffer.slice(1, 6))).toBe(expected);
+    });
+
     it('hashes to hex string', async () => {
         const data = new TextEncoder().encode('hello');
         const hash = await sha256Hex(data);
