@@ -163,7 +163,7 @@ export class DiscoveryCollectionAdapter {
     }
 
     console.log('[DiscoveryCollectionAdapter] Collecting peer:', peer.id.substring(0, 8));
-    await (this.service as any).handlePeerDiscovered(peer);
+    await this.service.collectPeer(peer);
   }
 
   /**
