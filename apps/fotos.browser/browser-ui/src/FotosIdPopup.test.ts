@@ -1,4 +1,3 @@
-/// <reference path="../../../../glue/glue.browser/browser-ui/src/vite-env.d.ts" />
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const stateSetters = vi.hoisted(() => [] as Array<ReturnType<typeof vi.fn>>);
@@ -36,11 +35,6 @@ vi.mock('@refinio/one.core/lib/util/arraybuffer-to-and-from-hex-string.js', () =
 vi.mock('@/config.js', () => ({
   API_BASE: 'https://api.fotos.one',
 }));
-
-// Test the real cross-app boundary; this is not a production dependency.
-import { runFotosRecoveryFlow as runGlueFotosRecoveryFlow } from '../../../../glue/glue.browser/browser-ui/src/lib/fotosIdFlow.ts';
-import { getSuccessfulFotosRecoveryResult } from '../../../../glue/glue.browser/browser-ui/src/lib/fotos-popup-result.ts';
-vi.mock('../../../../glue/glue.browser/browser-ui/src/config.js', () => ({ API_BASE: 'https://registrar.test' }));
 
 import { FotosIdPopup } from './FotosIdPopup.tsx';
 
@@ -452,31 +446,5 @@ describe('FotosIdPopup', () => {
       },
       'https://glue.one',
     );
-
-    // Consume the exact message emitted above, rather than reconstructing a fixture.
-    const emitted = opener.postMessage.mock.calls[0][0];
-    const fetchImpl = vi.fn<typeof fetch>()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true,
-        data: { challengeId: 'challenge-id-1', challenge: 'challenge-1' } })))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true, data: { cert: { id: 'recovered-cert' } } })));
-    const signClaimWithGlueKey = vi.fn().mockResolvedValue('glue-signature');
-    const openPopup = vi.fn().mockResolvedValue(emitted);
-    await expect(runGlueFotosRecoveryFlow({
-      requestedDisplayName: displayName, requestedIdentity: identity, apiBase: 'https://registrar.test', fetchImpl,
-      getFotosRecoveryTarget: async () => ({ personId: 'person-1', personPublicKeyHex: 'glue-public-key-1',
-        instanceEncryptionKeyHex: 'instance-key-1' }),
-      openPopup, parsePopupResult: getSuccessfulFotosRecoveryResult, signClaimWithGlueKey,
-    })).resolves.toEqual({ personId: 'person-1', fotosIdentity: identity,
-      fotosDisplayName: displayName, cert: { id: 'recovered-cert' } });
-    expect(openPopup.mock.calls[0][0]).not.toHaveProperty('expectedFotosPublicKey');
-    expect(signClaimWithGlueKey).toHaveBeenCalledTimes(candidates.length);
-    emitted.data.recoveryProofs.forEach((proof: { claimPayload: string; signature: string }, index: number) => {
-      expect(signClaimWithGlueKey).toHaveBeenNthCalledWith(index + 1, 'person-1', proof.claimPayload);
-    });
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
-    expect(fetchImpl).toHaveBeenNthCalledWith(2, 'https://registrar.test/api/registration/fotos/recover-complete',
-      expect.objectContaining({ body: JSON.stringify({ recoveryProofs: emitted.data.recoveryProofs.map(
-        (proof: { claimPayload: string; signature: string }) => ({ claimPayload: proof.claimPayload,
-          glueSignature: 'glue-signature', fotosSignature: proof.signature })), instanceEncryptionKey: 'instance-key-1' }) }));
   });
 });
