@@ -16,8 +16,8 @@ const BROWSER_UI_ROOT = resolve(__dirname, '../..');
 const REPO_ROOT = resolve(BROWSER_UI_ROOT, '../../..');
 const VGER_ROOT = resolve(REPO_ROOT, 'sources/vger');
 const ONE_ROOT = resolve(REPO_ROOT, 'sources/one');
-const HEADLESS_ROOT = resolve(VGER_ROOT, 'packages/vger.headless');
-const HEADLESS_CLI = 'src/cli.ts';
+const HEADLESS_ROOT = resolve(VGER_ROOT, 'apps/vger.headless');
+const HEADLESS_CLI = 'dist/cli.js';
 const COMM_SERVER_BUNDLE = resolve(ONE_ROOT, 'packages/one.models/comm_server.bundle.js');
 const SUITE_SCRIPT = resolve(__dirname, 'fotos-adhoc-gallery-share-suite.mjs');
 const STATIC_SERVER = resolve(__dirname, 'browser-static-server.cjs');
@@ -346,10 +346,8 @@ async function main() {
   logChildLifecycle(commServer, '[commserver]');
 
   const headless = spawn(
-    'pnpm',
+    process.execPath,
     [
-      'exec',
-      'tsx',
       HEADLESS_CLI,
       '--port', String(headlessPort),
       '--quicvc-port', String(headlessQuicVCPort),

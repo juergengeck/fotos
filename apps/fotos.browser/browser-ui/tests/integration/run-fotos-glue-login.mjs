@@ -2,7 +2,7 @@
 import {spawn} from 'node:child_process';
 import {createServer} from 'node:net';
 import {createSocket} from 'node:dgram';
-import {createWriteStream, mkdtempSync, writeFileSync} from 'node:fs';
+import {createWriteStream, mkdtempSync, readFileSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -13,7 +13,11 @@ import {provisionLocalHeadlessAuthority} from './fotos-local-headless-authority.
 const here = dirname(fileURLToPath(import.meta.url));
 const appRoot = resolve(here, '../..');
 const workspace = resolve(appRoot, '../../..');
-const headlessRoot = resolve(workspace, 'sources/vger/packages/vger.headless');
+const headlessRoot = resolve(workspace, 'sources/vger/apps/vger.headless');
+const consentHtmlInput = process.env.GLUE_ONE_AUTH_HTML?.trim();
+if (!consentHtmlInput) throw new Error('Set GLUE_ONE_AUTH_HTML to the real built Glue one-auth.html fixture');
+const consentHtmlPath = resolve(consentHtmlInput);
+readFileSync(consentHtmlPath, 'utf8');
 const directory = mkdtempSync(join(tmpdir(), 'fotos-glue-e2e-'));
 const log = createWriteStream(join(directory, 'services.log'));
 const children = [];
@@ -59,11 +63,12 @@ try {
   const appUrl = `http://localhost:${browserPort}/`;
   start(process.execPath, [resolve(workspace, 'sources/one/packages/one.models/comm_server.bundle.js'),
     '-h', 'localhost', '-p', String(commPort), '-l'], workspace);
-  const api = start('pnpm', ['exec', 'tsx', 'src/cli.ts', '--port', String(apiPort),
+  const api = start(process.execPath, ['dist/cli.js', '--port', String(apiPort),
     '--quicvc-port', String(quicPort), '--host', '127.0.0.1', '--storage', join(directory, 'store'),
     '--comm-server', `ws://localhost:${commPort}`, '--email', 'fotos-glue-e2e@test.local',
     '--password', 'disposable-fotos-glue-e2e-only', '--name', 'FotosGlueE2E', '--ephemeral'], headlessRoot, {
     ...resolveHeadlessBookEnv(headlessRoot), GLUE_DEBUG_REGISTRATION_TOKEN: token,
+    GLUE_ONE_AUTH_HTML: consentHtmlPath,
     WEBAUTHN_RP_ID: 'glue.one', WEBAUTHN_ORIGIN: 'https://glue.one', NODE_NO_WARNINGS: '1',
     // The real consent origin is distinct from the API host. Keep the normal
     // cookie/CSRF boundary and explicitly allow only this QA relying origin.
@@ -84,7 +89,7 @@ try {
   for (const mode of ['popup', 'redirect']) {
     console.log(`[fotos-glue-e2e] ${mode} transport`);
     const run = spawn(process.execPath, [join(here, 'fotos-glue-login-e2e.mjs')], {cwd: appRoot, stdio: 'inherit',
-      env: {...process.env, FOTOS_GLUE_QA_STATE: stateFile, FOTOS_GLUE_QA_URL: appUrl, FOTOS_GLUE_QA_MODE: mode}});
+      env: {...process.env, FOTOS_GLUE_QA_STATE: stateFile, FOTOS_GLUE_QA_URL: appUrl, FOTOS_GLUE_QA_MODE: mode, GLUE_ONE_AUTH_HTML: consentHtmlPath}});
     const code = await new Promise(done => run.once('exit', value => done(value ?? 1)));
     if (code) {process.exitCode = code; break;}
   }

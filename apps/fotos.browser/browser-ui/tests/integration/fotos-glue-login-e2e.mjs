@@ -9,8 +9,13 @@ import {readFileSync, mkdirSync, writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {chromium} from 'playwright';
+import '@refinio/one.core/lib/system/load-nodejs.js';
+import {addCoreRecipesToRuntime} from '@refinio/one.core/object-recipes';
+import {calculateIdHashOfObj} from '@refinio/one.core/lib/util/object.js';
 import {subscriptionCertificateSigningPayload} from '@refinio/trust.core/recipes/SubscriptionCertificate.js';
 
+// Keep the expected ID independent of the browser app and its bundled registry.
+addCoreRecipesToRuntime();
 const root = fileURLToPath(new URL('../../../../..', import.meta.url));
 assert.ok(process.env.FOTOS_GLUE_QA_STATE, 'Run through run-fotos-glue-login.mjs');
 const state = JSON.parse(readFileSync(process.env.FOTOS_GLUE_QA_STATE, 'utf8'));
@@ -18,6 +23,8 @@ assert.ok(['127.0.0.1', 'localhost'].includes(new URL(state.base).hostname), 'Us
 const appUrl = process.env.FOTOS_GLUE_QA_URL || 'http://localhost:5397/';
 const mode = process.env.FOTOS_GLUE_QA_MODE || 'popup';
 assert.ok(['popup', 'redirect'].includes(mode));
+assert.ok(process.env.GLUE_ONE_AUTH_HTML?.trim(), 'Set GLUE_ONE_AUTH_HTML to the real built Glue one-auth.html fixture');
+const consentHtml = readFileSync(resolve(process.env.GLUE_ONE_AUTH_HTML), 'utf8');
 const artifacts = resolve(state.dir, `browser-${mode}`);
 mkdirSync(artifacts, {recursive: true});
 const results = [];
@@ -82,7 +89,7 @@ async function assertNoWebStorageSecret() {
     const secret = await createBrowserCredentialVault().read('https://glue.one', subject);
     const storage = JSON.stringify([Object.entries(localStorage), Object.entries(sessionStorage)]);
     return Boolean(secret) && !storage.includes(secret);
-  }, {subject: fixture.subject, moduleUrl: '/@fs/' + resolve(root, 'sources/one/packages/auth.core/dist/index.js')});
+  }, {subject: fixture.subject, moduleUrl: '/@fs/' + fileURLToPath(import.meta.resolve('@glueone/auth.core'))});
   assert.equal(absent, true, 'The exact sealed credential must be absent from both Web Storage areas');
 }
 
@@ -94,7 +101,6 @@ try {
     await context.addInitScript(origin => {if (location.origin === origin) window.open = () => null;}, new URL(appUrl).origin);
   }
   context.on('page', target => authenticatorReady.set(target, attachAuthenticator(target)));
-  const consentHtml = readFileSync(resolve(root, '../glue/glue.browser/browser-ui/public/one-auth.html'), 'utf8');
   await context.route('https://glue.one/**', async route => {
     const url = new URL(route.request().url());
     if (url.pathname === '/__fotos_e2e_enroll') return route.fulfill({contentType: 'text/html', body: '<!doctype html><title>Isolated passkey enrollment</title>'});
@@ -215,10 +221,7 @@ try {
     const selected = await account();
     assert.equal(selected.active, `glue-${fixture.subject}`);
     assert.equal(selected.sessionActive, `glue-${fixture.subject}`);
-    const expectedOwner = await page.evaluate(async ({subject, moduleUrl}) => {
-      const {calculateIdHashOfObj} = await import(moduleUrl);
-      return calculateIdHashOfObj({$type$: 'Person', email: `glue:${subject}`});
-    }, {subject: fixture.subject, moduleUrl: '/@fs/' + resolve(root, 'sources/one/packages/one.core/lib/util/object.js')});
+    const expectedOwner = await calculateIdHashOfObj({$type$: 'Person', email: `glue:${fixture.subject}`});
     const status = await page.evaluate(() => window.__fotosDebug.getStatus());
     assert.equal(status.ownerId, expectedOwner, 'The unlocked runtime must belong to the verified subject account');
     assert.notEqual(status.ownerId, owner.ownerId, 'Sign-in must leave the visitor runtime');

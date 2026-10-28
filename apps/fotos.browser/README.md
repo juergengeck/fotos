@@ -237,3 +237,31 @@ curl -X POST http://localhost:5188/api/fotos/init
 
 Design: [fotos-federation-design.md](../../docs/plans/2026-03-08-fotos-federation-design.md)
 Plan: [fotos-federation-implementation.md](../../docs/plans/2026-03-08-fotos-federation-implementation.md)
+
+## Disposable Glue login QA
+
+From the Fotos repository root, after the normal workspace installation, prepare
+ONE.models' commserver bundle and the selected VGER headless application with
+its installed runtime providers at their owners. The runner uses
+`sources/vger/apps/vger.headless/dist/cli.js`, the application's declared
+`vger-headless` binary, with disposable storage. It does not compile foreign
+packages or use a sibling TypeScript loader.
+
+Supply the real, already-built Glue consent document explicitly, using the same
+`GLUE_ONE_AUTH_HTML` input supported by VGER BrowserAuth:
+
+```sh
+GLUE_ONE_AUTH_HTML=/absolute/path/to/glue/apps/glue.browser/browser-ui/dist/one-auth.html \
+  pnpm --dir apps/fotos.browser/browser-ui test:integration:glue-login
+```
+
+Build that HTML in the Glue owner before this command; there is no sibling-path
+fallback or generated substitute. This fixture input does not add a Fotos
+Sources edge. The command preserves the real virtual-device passkey flow,
+cookie/CSRF checks, assertion rejection, popup/redirect and offline-reopen
+checks. It retains service logs and browser reports in its disposable evidence
+directory. Playwright Chromium must be available through the existing qualified
+runtime; this command does not install a host browser.
+
+Qualifying the prepared development runtime does not qualify a pinned production
+release; the integration owner controls pending VGER pins and publication.
