@@ -17,7 +17,7 @@ success measures, and delivery acceptance criteria live in the bounded epics lin
 from the [UI delivery plan](./ui/README.md). Finding identifiers are stable; their
 delivery priority may change as product decisions and technical discovery progress.
 
-Scope is the shipping browser app `fotos.browser/browser-ui` plus the shared UI primitives it consumes from `fotos.ui`. The portable fallback viewer (`fotos.html`) and the Expo shell (`fotos.expo`) are referenced only where they diverge.
+Scope is the shipping browser app `apps/fotos.browser/browser-ui` plus the shared UI primitives it consumes from `fotos.ui`. The portable fallback viewer (`fotos.html`) and the Expo shell (`fotos.expo`) are referenced only where they diverge.
 
 Primary files reviewed:
 
@@ -633,7 +633,7 @@ Two profiles are available:
 
 Runner state, current step, timing, failures, and logs are visible in the control
 pane and written to a single Markdown report under
-`fotos.browser/browser-ui/tests/integration/reports/`. See the
+`apps/fotos.browser/browser-ui/tests/integration/reports/`. See the
 [integrated QA protocol](./testing.md) for evidence ownership and invocation.
 
 The [flow documents](../flows/README.md) describe how the runtime realizes the

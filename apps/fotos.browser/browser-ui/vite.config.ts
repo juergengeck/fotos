@@ -1,0 +1,342 @@
+import { defineConfig, normalizePath, type HmrOptions, type Plugin } from 'vite';
+import { viteStaticCopy } from 'vite-plugin-static-copy';
+import react from '@vitejs/plugin-react';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
+import { VitePWA } from 'vite-plugin-pwa';
+import { fotosApiPlugin } from './vite-plugin-fotos-api';
+import { fotosTestRunnerPlugin } from './vite-plugin-fotos-test-runner';
+import path from 'path';
+import fs from 'fs';
+import os from 'os';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+
+const DEV_API_PROXY_TARGET = process.env.VITE_HEADLESS_URL || 'https://api.glue.one';
+const DEV_ALLOWED_HOSTS = (process.env.VITE_ALLOWED_HOSTS || '')
+    .split(',')
+    .map(host => host.trim())
+    .filter(Boolean);
+const DEV_SERVER_HOST = process.env.VITE_DEV_HOST || undefined;
+const DEV_HMR_HOST = process.env.VITE_HMR_HOST || undefined;
+const DEV_HMR_PROTOCOL = process.env.VITE_HMR_PROTOCOL || undefined;
+const ORT_RUNTIME_DIR = path.dirname(require.resolve('onnxruntime-web/webgpu'));
+const ORT_RUNTIME_FILES = [
+    'ort-wasm-simd-threaded.jsep.mjs',
+    'ort-wasm-simd-threaded.jsep.wasm',
+    'ort-wasm-simd-threaded.mjs',
+    'ort-wasm-simd-threaded.wasm',
+] as const;
+const BUILD_ID = new Date().toISOString();
+
+function parseOptionalInt(value: string | undefined): number | undefined {
+    if (!value) {
+        return undefined;
+    }
+
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function getDevHmrOptions(): HmrOptions | undefined {
+    const clientPort = parseOptionalInt(process.env.VITE_HMR_PORT);
+    if (!DEV_HMR_HOST && !DEV_HMR_PROTOCOL && clientPort === undefined) {
+        return undefined;
+    }
+
+    return {
+        ...(DEV_HMR_HOST ? { host: DEV_HMR_HOST } : {}),
+        ...(DEV_HMR_PROTOCOL ? { protocol: DEV_HMR_PROTOCOL } : {}),
+        ...(clientPort !== undefined ? { clientPort } : {}),
+    };
+}
+
+function buildVersionPlugin(buildId: string): Plugin {
+    const source = JSON.stringify({
+        buildId,
+        builtAt: buildId,
+    }, null, 2);
+
+    return {
+        name: 'build-version',
+        configureServer(server) {
+            server.middlewares.use((req, res, next) => {
+                const url = new URL(req.url ?? '/', 'http://localhost');
+                if (url.pathname !== '/version.json') {
+                    next();
+                    return;
+                }
+
+                res.setHeader('Content-Type', 'application/json');
+                res.setHeader('Cache-Control', 'no-store');
+                res.end(source);
+            });
+        },
+        generateBundle() {
+            this.emitFile({
+                type: 'asset',
+                fileName: 'version.json',
+                source,
+            });
+        },
+    };
+}
+
+function ortRuntimePlugin(): Plugin {
+    const routePrefix = '/ort/';
+
+    function isKnownRuntimeFile(fileName: string): fileName is typeof ORT_RUNTIME_FILES[number] {
+        return ORT_RUNTIME_FILES.includes(fileName as typeof ORT_RUNTIME_FILES[number]);
+    }
+
+    function resolveRuntimeFile(fileName: string): string | null {
+        if (!isKnownRuntimeFile(fileName)) {
+            return null;
+        }
+        return path.join(ORT_RUNTIME_DIR, fileName);
+    }
+
+    function copyRuntimeFiles(outputDir: string) {
+        const targetDir = path.join(outputDir, 'ort');
+        fs.mkdirSync(targetDir, { recursive: true });
+        for (const fileName of ORT_RUNTIME_FILES) {
+            fs.copyFileSync(path.join(ORT_RUNTIME_DIR, fileName), path.join(targetDir, fileName));
+        }
+    }
+
+    return {
+        name: 'ort-runtime',
+        configureServer(server) {
+            server.middlewares.use((req, res, next) => {
+                if (!req.url?.startsWith(routePrefix)) {
+                    next();
+                    return;
+                }
+
+                const fileName = req.url.slice(routePrefix.length).split('?')[0];
+                const runtimeFile = resolveRuntimeFile(fileName);
+                if (!runtimeFile || !fs.existsSync(runtimeFile)) {
+                    res.statusCode = 404;
+                    res.end('Not found');
+                    return;
+                }
+
+                res.setHeader('Content-Type', fileName.endsWith('.wasm') ? 'application/wasm' : 'text/javascript; charset=utf-8');
+                res.setHeader('Cache-Control', 'no-cache');
+                fs.createReadStream(runtimeFile).pipe(res);
+            });
+        },
+        closeBundle() {
+            copyRuntimeFiles(path.resolve(__dirname, 'dist'));
+        },
+    };
+}
+
+/** Vite plugin that serves local photos and provides a scan API */
+function localPhotosPlugin(): Plugin {
+    const PHOTO_ROOTS = [
+        path.join(os.homedir(), 'Downloads'),
+        path.join(os.homedir(), 'Pictures'),
+    ];
+    const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.heic', '.webp', '.tiff', '.gif']);
+
+    function scanDir(dir: string, maxDepth: number, depth = 0): string[] {
+        if (depth > maxDepth) return [];
+        try {
+            const entries = fs.readdirSync(dir, { withFileTypes: true });
+            const results: string[] = [];
+            for (const entry of entries) {
+                if (entry.name.startsWith('.')) continue;
+                const full = path.join(dir, entry.name);
+                if (entry.isFile() && IMAGE_EXT.has(path.extname(entry.name).toLowerCase())) {
+                    results.push(full);
+                } else if (entry.isDirectory() && depth < maxDepth) {
+                    results.push(...scanDir(full, maxDepth, depth + 1));
+                }
+            }
+            return results;
+        } catch { return []; }
+    }
+
+    return {
+        name: 'local-photos',
+        configureServer(server) {
+            server.middlewares.use((req, res, next) => {
+                // Scan API: list available photos
+                if (req.url === '/api/scan') {
+                    const photos: { name: string; path: string; size: number; mtime: string; dir: string }[] = [];
+                    for (const root of PHOTO_ROOTS) {
+                        const files = scanDir(root, 2);
+                        for (const f of files) {
+                            try {
+                                const stat = fs.statSync(f);
+                                photos.push({
+                                    name: path.basename(f),
+                                    path: f,
+                                    size: stat.size,
+                                    mtime: stat.mtime.toISOString(),
+                                    dir: path.basename(path.dirname(f)),
+                                });
+                            } catch { /* skip */ }
+                        }
+                    }
+                    // Sort by mtime desc, limit to 500
+                    photos.sort((a, b) => b.mtime.localeCompare(a.mtime));
+                    const limited = photos.slice(0, 500);
+                    res.setHeader('Content-Type', 'application/json');
+                    res.end(JSON.stringify(limited));
+                    return;
+                }
+
+                // Serve photo files: /photos/<base64-encoded-path>
+                if (req.url?.startsWith('/photos/')) {
+                    const encoded = req.url.slice('/photos/'.length).split('?')[0];
+                    try {
+                        const filePath = Buffer.from(decodeURIComponent(encoded), 'base64').toString('utf-8');
+                        // Security: must be under one of the photo roots
+                        const resolved = path.resolve(filePath);
+                        const allowed = PHOTO_ROOTS.some(r => resolved.startsWith(r));
+                        if (!allowed) { res.statusCode = 403; res.end('Forbidden'); return; }
+                        if (!fs.existsSync(resolved)) { res.statusCode = 404; res.end('Not found'); return; }
+
+                        const ext = path.extname(resolved).toLowerCase();
+                        const mimeMap: Record<string, string> = {
+                            '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+                            '.webp': 'image/webp', '.gif': 'image/gif', '.heic': 'image/heic',
+                            '.tiff': 'image/tiff',
+                        };
+                        res.setHeader('Content-Type', mimeMap[ext] || 'application/octet-stream');
+                        res.setHeader('Cache-Control', 'public, max-age=3600');
+                        fs.createReadStream(resolved).pipe(res);
+                    } catch { res.statusCode = 400; res.end('Bad request'); }
+                    return;
+                }
+
+                next();
+            });
+        }
+    };
+}
+
+export default defineConfig({
+    base: process.env.VITE_BASE || '/',
+    clearScreen: false,
+    plugins: [
+        react(),
+        viteStaticCopy({targets: [
+            {
+                src: normalizePath(path.join(path.dirname(require.resolve('@refinio/agent.browser/workers/local-llm.worker.js')), '*.{js,wasm}')),
+                dest: '__vger_local_model_artifacts__/runtime/agent-browser/0.1.0/wasm',
+            },
+            {
+                src: normalizePath(path.join(path.dirname(require.resolve('@refinio/agent.browser/runtime-assets/litert-lm/0.13.1/wasm/litertlm_wasm_internal.js')), '*')),
+                dest: '__vger_local_model_artifacts__/runtime/litert-lm/0.13.1/wasm',
+            },
+            {
+                src: normalizePath(path.join(path.dirname(require.resolve('@refinio/agent.browser/runtime-assets/litert-js/2.5.0/wasm/litert_wasm_internal.js')), 'litert_wasm_internal.*')),
+                dest: '__vger_local_model_artifacts__/runtime/litert-js/2.5.0/wasm',
+            },
+            {
+                src: normalizePath(require.resolve('@refinio/agent.browser/runtime-assets/wllama/3.5.1/wasm/wllama.wasm')),
+                dest: '__vger_local_model_artifacts__/runtime/wllama/3.5.1/wasm',
+            },
+        ]}),
+        nodePolyfills({
+            globals: {
+                Buffer: false,
+            },
+        }),
+        buildVersionPlugin(BUILD_ID),
+        ortRuntimePlugin(),
+        localPhotosPlugin(),
+        fotosApiPlugin(),
+        fotosTestRunnerPlugin(__dirname),
+        VitePWA({
+            registerType: 'prompt',
+            strategies: 'injectManifest',
+            srcDir: 'src',
+            filename: 'sw.ts',
+            manifest: {
+                name: 'fotos.one',
+                short_name: 'fotos',
+                description: 'Photo management with face recognition',
+                start_url: '/',
+                display: 'standalone',
+                background_color: '#111111',
+                theme_color: '#111111',
+                icons: [
+                    { src: '/cam.svg', sizes: 'any', type: 'image/svg+xml' },
+                    { src: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+                ],
+                share_target: {
+                    action: '/_share',
+                    method: 'POST',
+                    enctype: 'multipart/form-data',
+                    params: {
+                        files: [{ name: 'photos', accept: ['image/*'] }],
+                    },
+                } as any,
+            },
+            injectManifest: {
+                // Keep the worker limited to static icons. HTML and hashed
+                // bundles stay network-fetched so a rollout race can never
+                // leave the app shell stuck on stale assets.
+                globPatterns: ['cam.svg', 'apple-touch-icon.png', 'manifest.webmanifest'],
+                globIgnores: ['**/_worker.js'],
+            },
+        }),
+    ],
+    resolve: {
+        alias: [
+            {find: '@', replacement: path.resolve(__dirname, './src')},
+        ],
+        extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'],
+        dedupe: ['react', 'react-dom', '@huggingface/transformers', '@refinio/one.core', '@refinio/one.models'],
+    },
+    define: {
+        global: 'globalThis',
+        'process.env': {},
+        'process.version': '"v20.0.0"',
+        'process.platform': '"browser"',
+        __APP_BUILD_ID__: JSON.stringify(BUILD_ID),
+    },
+    optimizeDeps: {
+        entries: ['src/main.tsx', 'src/fotos-id-main.tsx', 'src/workers/face.worker.ts', 'src/workers/semantic.worker.ts'],
+        include: [
+            'react',
+            'react-dom',
+            'tweetnacl',
+        ],
+        exclude: ['onnxruntime-web'],
+    },
+    worker: {
+        format: 'es',
+    },
+    build: {
+        target: 'esnext',
+        outDir: 'dist',
+        emptyOutDir: true,
+        rollupOptions: {
+            input: {
+                main: path.resolve(__dirname, 'index.html'),
+                'fotos-id': path.resolve(__dirname, 'fotos-id.html'),
+            },
+            external: ['ws'],
+        },
+    },
+    server: {
+        port: 5188,
+        strictPort: true,
+        open: true,
+        ...(DEV_SERVER_HOST ? { host: DEV_SERVER_HOST } : {}),
+        ...(DEV_ALLOWED_HOSTS.length > 0 ? { allowedHosts: DEV_ALLOWED_HOSTS } : {}),
+        ...(getDevHmrOptions() ? { hmr: getDevHmrOptions() } : {}),
+        proxy: {
+            '/api': {
+                target: DEV_API_PROXY_TARGET,
+                changeOrigin: true,
+                secure: true,
+            },
+        },
+    }
+});
