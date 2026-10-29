@@ -803,6 +803,9 @@ importers:
       react-native-ble-plx:
         specifier: 3.5.1
         version: 3.5.1(react-native-tvos@0.81.5-2)(react@19.1.0)
+      react-native-css-interop:
+        specifier: 0.2.3
+        version: 0.2.3(react-native-reanimated@4.1.7(react-native-tvos@0.81.5-2)(react-native-worklets@0.5.1(@babel/core@7.29.7)(react-native-tvos@0.81.5-2)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native-tvos@0.81.5-2)(react@19.1.0))(react-native-svg@15.12.1(react-native-tvos@0.81.5-2)(react@19.1.0))(react-native-tvos@0.81.5-2)(react@19.1.0)(tailwindcss@3.4.19(yaml@2.9.1))
       react-native-get-random-values:
         specifier: 1.11.0
         version: 1.11.0(react-native-tvos@0.81.5-2)
@@ -1158,6 +1161,9 @@ importers:
       react-native:
         specifier: npm:react-native-tvos@0.81.5-2
         version: react-native-tvos@0.81.5-2(@babel/core@7.29.7)(@types/react@19.1.10)(bufferutil@4.0.9)(react-native-tvos@0.81.5-2)(react@19.1.0)(utf-8-validate@6.0.5)
+      react-native-css-interop:
+        specifier: 0.2.7
+        version: 0.2.7(react-native-reanimated@4.1.7(react-native-tvos@0.81.5-2)(react-native-worklets@0.5.1(@babel/core@7.29.7)(react-native-tvos@0.81.5-2)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native-tvos@0.81.5-2)(react@19.1.0))(react-native-svg@15.12.1(react-native-tvos@0.81.5-2)(react@19.1.0))(react-native-tvos@0.81.5-2)(react@19.1.0)(tailwindcss@3.4.19(yaml@2.9.1))
       react-native-get-random-values:
         specifier: 1.11.0
         version: 1.11.0(react-native-tvos@0.81.5-2)
