@@ -5,8 +5,7 @@
   "type": "module",
   "main": "browser-ui/src/main.tsx",
   "dependencies": {
-    "@refinio/fotos.core": "workspace:*",
-    "one.fotos": "workspace:*"
+    "@refinio/fotos.core": "workspace:*"
   },
   "scripts": {
     "dev": "cd browser-ui && npm run dev",

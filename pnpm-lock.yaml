@@ -35,10 +35,6 @@ importers:
       turbo:
         specifier: 2.6.1
         version: 2.6.1
-      typescript:
-        specifier: "catalog:"
-        version: 5.7.3
-
   apps/fotos.browser/browser-ui:
     dependencies:
       '@glueone/auth.core':
@@ -326,9 +322,6 @@ importers:
       '@refinio/workspace.core':
         specifier: file:../../../sources/one/packages/workspace.core
         version: file:sources/one/packages/workspace.core(@refinio/coding.core@file:sources/one/packages/coding.core(vxemt5krldyvxr27enftql2bma))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.agent@file:sources/one/packages/source.agent(lqox3us7fikhhe7a27pb2rh36q))(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(kjb64sebq6c4dvgnydb4xkbtru))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core)))(@refinio/workflow.core@file:sources/one/packages/workflow.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(kjb64sebq6c4dvgnydb4xkbtru))(@refinio/one.core@file:sources/one/packages/one.core))
-      '@simplewebauthn/browser':
-        specifier: ^11.0.0
-        version: 11.0.0
       '@vger/auth.login':
         specifier: file:../../../sources/vger/packages/auth.login
         version: file:sources/vger/packages/auth.login(@glueone/auth.core@file:sources/one/packages/auth.core(74ermwycsbmctz7xxwuwyrgc4i))(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/api@file:sources/one/packages/refinio.api(wo3bfe22gffqtnjfegzj5la6uy))(@vger/vger.core@file:sources/one/packages/vger.core(x3km6git42pglmxqz56uwcyawa))
@@ -438,21 +431,12 @@ importers:
 
   apps/fotos.expo:
     dependencies:
-      '@dr.pogodin/react-native-fs':
-        specifier: 2.38.2
-        version: 2.38.2(react-native-tvos@0.81.5-2)(react@19.1.0)
       '@glueone/auth.core':
         specifier: file:../../sources/one/packages/auth.core
         version: file:sources/one/packages/auth.core(gbyzmqwn632v22557ffop25biu)
       '@glueone/glue.core':
         specifier: file:../../sources/one/packages/glue.core
         version: file:sources/one/packages/glue.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(kjb64sebq6c4dvgnydb4xkbtru))(@refinio/group.core@file:sources/one/packages/group.core(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/meaning.core@file:sources/one/packages/meaning.core(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(@refinio/trie.core@file:sources/one/packages/trie.core(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/trust.core@file:sources/one/packages/trust.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5)))
-      '@react-native-async-storage/async-storage':
-        specifier: 2.2.0
-        version: 2.2.0(react-native-tvos@0.81.5-2)
-      '@react-navigation/native':
-        specifier: 7.2.4
-        version: 7.2.4(react-native-tvos@0.81.5-2)(react@19.1.0)
       '@refinio/agent.builder':
         specifier: file:../../sources/one/packages/agent.builder
         version: file:sources/one/packages/agent.builder(@refinio/agent.core@file:sources/one/packages/agent.core(k5ppgddj6ewomx2n2kirjow4fu))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(@refinio/settings.core@file:sources/one/packages/settings.core(ow3hucz623lhcb5t4kvqstrjku))
@@ -471,9 +455,6 @@ importers:
       '@refinio/browser.core':
         specifier: file:../../sources/one/packages/browser.core
         version: file:sources/one/packages/browser.core(@refinio/api@file:sources/one/packages/refinio.api(k4gur33z7nkd6zofkkn3kvkaqm))(@refinio/assembly.core@file:sources/one/packages/assembly.core(kjb64sebq6c4dvgnydb4xkbtru))(@refinio/one.core@file:sources/one/packages/one.core)
-      '@refinio/calendar.core':
-        specifier: file:../../sources/one/packages/calendar.core
-        version: file:sources/one/packages/calendar.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trie.core@file:sources/one/packages/trie.core(@refinio/one.core@file:sources/one/packages/one.core))
       '@refinio/chat.archive':
         specifier: file:../../sources/one/packages/chat.archive
         version: file:sources/one/packages/chat.archive(@refinio/module.core@file:sources/one/packages/module.core(wto2eqbmidxaypamktt7epchze))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))
@@ -591,9 +572,6 @@ importers:
       '@refinio/orchestration.core':
         specifier: file:../../sources/one/packages/orchestration.core
         version: file:sources/one/packages/orchestration.core(yfy53w52cl6swqeowyu4q33h6u)
-      '@refinio/orchestration.podman':
-        specifier: file:../../sources/one/packages/orchestration.podman
-        version: file:sources/one/packages/orchestration.podman(@refinio/orchestration.core@file:sources/one/packages/orchestration.core(yfy53w52cl6swqeowyu4q33h6u))(@refinio/vger.agent@file:sources/one/packages/vger.agent(76szepqhz5ftyyw6dsmdzrmwo4))
       '@refinio/orchestration.worker':
         specifier: file:../../sources/one/packages/orchestration.worker
         version: file:sources/one/packages/orchestration.worker(@refinio/orchestration.core@file:sources/one/packages/orchestration.core(yfy53w52cl6swqeowyu4q33h6u))(@refinio/vger.agent@file:sources/one/packages/vger.agent(76szepqhz5ftyyw6dsmdzrmwo4))(@refinio/worker.core@file:sources/one/packages/worker.core)
@@ -738,18 +716,12 @@ importers:
       '@refinio/workspace.core':
         specifier: file:../../sources/one/packages/workspace.core
         version: file:sources/one/packages/workspace.core(@refinio/coding.core@file:sources/one/packages/coding.core(vxemt5krldyvxr27enftql2bma))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.agent@file:sources/one/packages/source.agent(lqox3us7fikhhe7a27pb2rh36q))(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(kjb64sebq6c4dvgnydb4xkbtru))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core)))(@refinio/workflow.core@file:sources/one/packages/workflow.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(kjb64sebq6c4dvgnydb4xkbtru))(@refinio/one.core@file:sources/one/packages/one.core))
-      '@shopify/flash-list':
-        specifier: 2.0.2
-        version: 2.0.2(@babel/runtime@7.29.10)(react-native-tvos@0.81.5-2)(react@19.1.0)
       '@types/react-dom':
         specifier: 19.1.10
         version: 19.1.10(@types/react@19.1.10)
       '@vger/vger.core':
         specifier: file:../../sources/one/packages/vger.core
         version: file:sources/one/packages/vger.core(rh3qtfjoejoylwaniutp56twfe)
-      '@vger/vger.glue':
-        specifier: file:../../sources/one/packages/vger.glue
-        version: file:sources/one/packages/vger.glue(fvanvgijjxi4j5hm6zo26glzku)
       '@vger/vger.txt.ui':
         specifier: file:../../sources/one/packages/vger.txt.ui
         version: file:sources/one/packages/vger.txt.ui(rgvtfiapsybcyojvvku5d3y4du)
@@ -759,9 +731,6 @@ importers:
       assert:
         specifier: 2.1.0
         version: 2.1.0
-      browserify-zlib:
-        specifier: 0.2.0
-        version: 0.2.0
       date-fns:
         specifier: 4.1.0
         version: 4.1.0
@@ -777,12 +746,12 @@ importers:
       expo-constants:
         specifier: 18.0.13
         version: 18.0.13(expo@54.0.34)(react-native-tvos@0.81.5-2)
-      expo-crypto:
-        specifier: 15.0.9
-        version: 15.0.9(expo@54.0.34)
       expo-dev-client:
         specifier: 6.0.21
         version: 6.0.21(expo@54.0.34)
+      expo-crypto:
+        specifier: 15.0.9
+        version: 15.0.9(expo@54.0.34)
       expo-file-system:
         specifier: 19.0.22
         version: 19.0.22(expo@54.0.34)(react-native-tvos@0.81.5-2)
@@ -792,9 +761,6 @@ importers:
       expo-image-picker:
         specifier: 17.0.11
         version: 17.0.11(expo@54.0.34)
-      expo-linear-gradient:
-        specifier: 15.0.8
-        version: 15.0.8(expo@54.0.34)(react-native-tvos@0.81.5-2)(react@19.1.0)
       expo-linking:
         specifier: 8.0.12
         version: 8.0.12(expo@54.0.34)(react-native-tvos@0.81.5-2)(react@19.1.0)
@@ -825,9 +791,6 @@ importers:
       nativewind:
         specifier: 4.2.3
         version: 4.2.3(react-native-reanimated@4.1.7(react-native-tvos@0.81.5-2)(react-native-worklets@0.5.1(@babel/core@7.29.7)(react-native-tvos@0.81.5-2)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native-tvos@0.81.5-2)(react@19.1.0))(react-native-svg@15.12.1(react-native-tvos@0.81.5-2)(react@19.1.0))(react-native-tvos@0.81.5-2)(react@19.1.0)(tailwindcss@3.4.19(yaml@2.9.1))
-      path-browserify:
-        specifier: 1.0.1
-        version: 1.0.1
       react:
         specifier: 19.1.0
         version: 19.1.0
@@ -840,9 +803,6 @@ importers:
       react-native-ble-plx:
         specifier: 3.5.1
         version: 3.5.1(react-native-tvos@0.81.5-2)(react@19.1.0)
-      react-native-css-interop:
-        specifier: 0.2.3
-        version: 0.2.3(react-native-reanimated@4.1.7(react-native-tvos@0.81.5-2)(react-native-worklets@0.5.1(@babel/core@7.29.7)(react-native-tvos@0.81.5-2)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native-tvos@0.81.5-2)(react@19.1.0))(react-native-svg@15.12.1(react-native-tvos@0.81.5-2)(react@19.1.0))(react-native-tvos@0.81.5-2)(react@19.1.0)(tailwindcss@3.4.19(yaml@2.9.1))
       react-native-get-random-values:
         specifier: 1.11.0
         version: 1.11.0(react-native-tvos@0.81.5-2)
@@ -870,24 +830,12 @@ importers:
       react-native-zeroconf:
         specifier: 0.13.8
         version: 0.13.8(react-native-tvos@0.81.5-2)
-      stream-browserify:
-        specifier: 3.0.0
-        version: 3.0.0
       tailwindcss:
         specifier: 3.4.19
         version: 3.4.19(yaml@2.9.1)
-      text-encoding-polyfill:
-        specifier: 0.6.7
-        version: 0.6.7
       util:
         specifier: 0.12.5
         version: 0.12.5
-      whatwg-fetch:
-        specifier: 3.6.20
-        version: 3.6.20
-      xregexp:
-        specifier: 5.1.2
-        version: 5.1.2
     devDependencies:
       '@expo/config-plugins':
         specifier: 54.0.4
@@ -904,15 +852,9 @@ importers:
 
   apps/fotos.fire:
     dependencies:
-      '@glueone/auth.core':
-        specifier: file:../../sources/one/packages/auth.core
-        version: file:sources/one/packages/auth.core(gbyzmqwn632v22557ffop25biu)
       '@glueone/glue.core':
         specifier: file:../../sources/one/packages/glue.core
         version: file:sources/one/packages/glue.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(kjb64sebq6c4dvgnydb4xkbtru))(@refinio/group.core@file:sources/one/packages/group.core(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/meaning.core@file:sources/one/packages/meaning.core(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(@refinio/trie.core@file:sources/one/packages/trie.core(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/trust.core@file:sources/one/packages/trust.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5)))
-      '@react-native-async-storage/async-storage':
-        specifier: 2.2.0
-        version: 2.2.0(react-native-tvos@0.81.5-2)
       '@react-native-tvos/config-tv':
         specifier: 0.1.5
         version: 0.1.5(expo@54.0.34)
@@ -934,9 +876,6 @@ importers:
       '@refinio/browser.core':
         specifier: file:../../sources/one/packages/browser.core
         version: file:sources/one/packages/browser.core(@refinio/api@file:sources/one/packages/refinio.api(k4gur33z7nkd6zofkkn3kvkaqm))(@refinio/assembly.core@file:sources/one/packages/assembly.core(kjb64sebq6c4dvgnydb4xkbtru))(@refinio/one.core@file:sources/one/packages/one.core)
-      '@refinio/calendar.core':
-        specifier: file:../../sources/one/packages/calendar.core
-        version: file:sources/one/packages/calendar.core(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trie.core@file:sources/one/packages/trie.core(@refinio/one.core@file:sources/one/packages/one.core))
       '@refinio/chat.archive':
         specifier: file:../../sources/one/packages/chat.archive
         version: file:sources/one/packages/chat.archive(@refinio/module.core@file:sources/one/packages/module.core(wto2eqbmidxaypamktt7epchze))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))
@@ -946,9 +885,6 @@ importers:
       '@refinio/chat.core':
         specifier: file:../../sources/one/packages/chat.core
         version: file:sources/one/packages/chat.core(c3uofthw4xbhovows4d2r67rvm)
-      '@refinio/chat.media':
-        specifier: file:../../sources/one/packages/chat.media
-        version: file:sources/one/packages/chat.media(@refinio/media.core@file:sources/one/packages/media.core(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))
       '@refinio/coding.core':
         specifier: file:../../sources/one/packages/coding.core
         version: file:sources/one/packages/coding.core(vxemt5krldyvxr27enftql2bma)
@@ -982,9 +918,6 @@ importers:
       '@refinio/group.core':
         specifier: file:../../sources/one/packages/group.core
         version: file:sources/one/packages/group.core(@refinio/one.core@file:sources/one/packages/one.core)
-      '@refinio/imap.safety':
-        specifier: file:../../sources/vger/packages/imap.safety
-        version: file:sources/vger/packages/imap.safety
       '@refinio/job.core':
         specifier: file:../../sources/one/packages/job.core
         version: file:sources/one/packages/job.core
@@ -1006,9 +939,6 @@ importers:
       '@refinio/llm.qwen':
         specifier: file:../../sources/one/packages/llm.qwen
         version: file:sources/one/packages/llm.qwen
-      '@refinio/local.core':
-        specifier: file:../../sources/one/packages/local.core
-        version: file:sources/one/packages/local.core(@huggingface/transformers@4.2.0)(@refinio/settings.core@file:sources/one/packages/settings.core(@glueone/glue.core@file:sources/one/packages/glue.core(lrd53c4r4dsz66uvtzbdhia7b4))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/one.models@file:sources/one/packages/one.models(@refinio/one.core@file:sources/one/packages/one.core)(bufferutil@4.0.9)(utf-8-validate@6.0.5))(react@19.1.0))(onnxruntime-web@1.29.0)(phonemizer@1.2.1)
       '@refinio/matching.core':
         specifier: file:../../sources/one/packages/matching.core
         version: file:sources/one/packages/matching.core(@refinio/one.core@file:sources/one/packages/one.core)
@@ -1021,9 +951,6 @@ importers:
       '@refinio/meaning.core':
         specifier: file:../../sources/one/packages/meaning.core
         version: file:sources/one/packages/meaning.core(@refinio/cube.contracts@file:sources/one/packages/cube.contracts(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/one.core@file:sources/one/packages/one.core)
-      '@refinio/media.core':
-        specifier: file:../../sources/one/packages/media.core
-        version: file:sources/one/packages/media.core(@refinio/one.core@file:sources/one/packages/one.core)
       '@refinio/meme.core':
         specifier: file:../../sources/one/packages/meme.core
         version: file:sources/one/packages/meme.core(vebfaujfk4v7wrdhvicxoqfczm)
@@ -1054,9 +981,6 @@ importers:
       '@refinio/orchestration.core':
         specifier: file:../../sources/one/packages/orchestration.core
         version: file:sources/one/packages/orchestration.core(yfy53w52cl6swqeowyu4q33h6u)
-      '@refinio/orchestration.podman':
-        specifier: file:../../sources/one/packages/orchestration.podman
-        version: file:sources/one/packages/orchestration.podman(@refinio/orchestration.core@file:sources/one/packages/orchestration.core(yfy53w52cl6swqeowyu4q33h6u))(@refinio/vger.agent@file:sources/one/packages/vger.agent(76szepqhz5ftyyw6dsmdzrmwo4))
       '@refinio/orchestration.worker':
         specifier: file:../../sources/one/packages/orchestration.worker
         version: file:sources/one/packages/orchestration.worker(@refinio/orchestration.core@file:sources/one/packages/orchestration.core(yfy53w52cl6swqeowyu4q33h6u))(@refinio/vger.agent@file:sources/one/packages/vger.agent(76szepqhz5ftyyw6dsmdzrmwo4))(@refinio/worker.core@file:sources/one/packages/worker.core)
@@ -1117,9 +1041,6 @@ importers:
       '@refinio/source.git':
         specifier: file:../../sources/one/packages/source.git
         version: file:sources/one/packages/source.git(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(kjb64sebq6c4dvgnydb4xkbtru))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core)))
-      '@refinio/source.imap':
-        specifier: file:../../sources/vger/packages/source.imap
-        version: file:sources/vger/packages/source.imap(dxwfxyg5ggbx47muznzafdtvfy)
       '@refinio/source.leipzig':
         specifier: file:../../sources/one/packages/source.leipzig
         version: file:sources/one/packages/source.leipzig(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/source.core@file:sources/one/packages/source.core(@refinio/assembly.core@file:sources/one/packages/assembly.core(kjb64sebq6c4dvgnydb4xkbtru))(@refinio/one.core@file:sources/one/packages/one.core)(@refinio/trust.pdf@file:sources/one/packages/trust.pdf(@refinio/one.core@file:sources/one/packages/one.core)))
@@ -1177,12 +1098,6 @@ importers:
       '@refinio/txt.core':
         specifier: file:../../sources/one/packages/txt.core
         version: file:sources/one/packages/txt.core(42ql3x57za2dxf6pgwfpkbfdhe)
-      '@refinio/ui.core':
-        specifier: file:../../sources/one/packages/ui.core
-        version: file:sources/one/packages/ui.core(k4xeswlvnyx5cwdkkpkmu7mbem)
-      '@refinio/ui.theme':
-        specifier: file:../../sources/one/packages/ui.theme
-        version: file:sources/one/packages/ui.theme
       '@refinio/verification.core':
         specifier: file:../../sources/one/packages/verification.core
         version: file:sources/one/packages/verification.core(@refinio/one.core@file:sources/one/packages/one.core)
@@ -1204,33 +1119,15 @@ importers:
       '@vger/vger.core':
         specifier: file:../../sources/one/packages/vger.core
         version: file:sources/one/packages/vger.core(rh3qtfjoejoylwaniutp56twfe)
-      '@vger/vger.glue':
-        specifier: file:../../sources/one/packages/vger.glue
-        version: file:sources/one/packages/vger.glue(fvanvgijjxi4j5hm6zo26glzku)
-      '@vger/vger.txt.ui':
-        specifier: file:../../sources/one/packages/vger.txt.ui
-        version: file:sources/one/packages/vger.txt.ui(rgvtfiapsybcyojvvku5d3y4du)
-      '@vger/vger.ui':
-        specifier: file:../../sources/one/packages/vger.ui
-        version: file:sources/one/packages/vger.ui(wrl245hdv4jaqykwtbhoft6ana)
       assert:
         specifier: 2.1.0
         version: 2.1.0
-      browserify-zlib:
-        specifier: 0.2.0
-        version: 0.2.0
-      date-fns:
-        specifier: 4.4.0
-        version: 4.4.0
       events:
         specifier: 3.3.0
         version: 3.3.0
       expo:
         specifier: 54.0.34
         version: 54.0.34(@babel/core@7.29.7)(@expo/dom-webview@57.0.1)(@expo/metro-runtime@6.1.2)(bufferutil@4.0.9)(expo-router@6.0.23)(react-native-tvos@0.81.5-2)(react@19.1.0)(typescript@5.9.3)(utf-8-validate@6.0.5)
-      expo-constants:
-        specifier: 18.0.14
-        version: 18.0.14(expo@54.0.34)(react-native-tvos@0.81.5-2)
       expo-crypto:
         specifier: 15.0.9
         version: 15.0.9(expo@54.0.34)
@@ -1249,66 +1146,36 @@ importers:
       expo-splash-screen:
         specifier: 31.0.13
         version: 31.0.13(expo@54.0.34)(typescript@5.9.3)
-      lucide-react-native:
-        specifier: 0.555.0
-        version: 0.555.0(react-native-svg@15.12.1(react-native-tvos@0.81.5-2)(react@19.1.0))(react-native-tvos@0.81.5-2)(react@19.1.0)
       nativewind:
         specifier: 4.2.7
         version: 4.2.7(react-native-reanimated@4.1.7(react-native-tvos@0.81.5-2)(react-native-worklets@0.5.1(@babel/core@7.29.7)(react-native-tvos@0.81.5-2)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native-tvos@0.81.5-2)(react@19.1.0))(react-native-svg@15.12.1(react-native-tvos@0.81.5-2)(react@19.1.0))(react-native-tvos@0.81.5-2)(react@19.1.0)(tailwindcss@3.4.19(yaml@2.9.1))
-      path-browserify:
-        specifier: 1.0.1
-        version: 1.0.1
       qrcode:
         specifier: 1.5.4
         version: 1.5.4
       react:
         specifier: 19.1.0
         version: 19.1.0
-      react-dom:
-        specifier: 19.1.0
-        version: 19.1.0(react@19.1.0)
       react-native:
         specifier: npm:react-native-tvos@0.81.5-2
         version: react-native-tvos@0.81.5-2(@babel/core@7.29.7)(@types/react@19.1.10)(bufferutil@4.0.9)(react-native-tvos@0.81.5-2)(react@19.1.0)(utf-8-validate@6.0.5)
-      react-native-css-interop:
-        specifier: 0.2.7
-        version: 0.2.7(react-native-reanimated@4.1.7(react-native-tvos@0.81.5-2)(react-native-worklets@0.5.1(@babel/core@7.29.7)(react-native-tvos@0.81.5-2)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native-tvos@0.81.5-2)(react@19.1.0))(react-native-svg@15.12.1(react-native-tvos@0.81.5-2)(react@19.1.0))(react-native-tvos@0.81.5-2)(react@19.1.0)(tailwindcss@3.4.19(yaml@2.9.1))
       react-native-get-random-values:
         specifier: 1.11.0
         version: 1.11.0(react-native-tvos@0.81.5-2)
       react-native-reanimated:
         specifier: 4.1.7
         version: 4.1.7(react-native-tvos@0.81.5-2)(react-native-worklets@0.5.1(@babel/core@7.29.7)(react-native-tvos@0.81.5-2)(react@19.1.0))(react@19.1.0)
-      react-native-safe-area-context:
-        specifier: 5.6.2
-        version: 5.6.2(react-native-tvos@0.81.5-2)(react@19.1.0)
-      react-native-svg:
-        specifier: 15.12.1
-        version: 15.12.1(react-native-tvos@0.81.5-2)(react@19.1.0)
-      react-native-web:
-        specifier: 0.21.4
-        version: 0.21.4(encoding@0.1.13)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       react-native-worklets:
         specifier: 0.5.1
         version: 0.5.1(@babel/core@7.29.7)(react-native-tvos@0.81.5-2)(react@19.1.0)
-      stream-browserify:
-        specifier: 3.0.0
-        version: 3.0.0
+      react-native-svg:
+        specifier: 15.12.1
+        version: 15.12.1(react-native-tvos@0.81.5-2)(react@19.1.0)
       tailwindcss:
         specifier: 3.4.19
         version: 3.4.19(yaml@2.9.1)
-      text-encoding-polyfill:
-        specifier: 0.6.7
-        version: 0.6.7
       util:
         specifier: 0.12.5
         version: 0.12.5
-      whatwg-fetch:
-        specifier: 3.6.20
-        version: 3.6.20
-      xregexp:
-        specifier: 5.1.3
-        version: 5.1.3
     devDependencies:
       '@types/qrcode':
         specifier: 1.5.6
@@ -1322,10 +1189,6 @@ importers:
       typescript:
         specifier: 5.9.3
         version: 5.9.3
-      vitest:
-        specifier: 3.2.7
-        version: 3.2.7(@types/debug@4.1.13)(@types/node@26.6.5)(jiti@1.21.7)(jsdom@26.1.0(bufferutil@4.0.9)(utf-8-validate@6.0.5))(lightningcss@1.33.0)(terser@5.51.2)(yaml@2.9.1)
-
   apps/fotos.html:
     dependencies:
       '@glueone/glue.core':
@@ -1626,9 +1489,6 @@ importers:
       autoprefixer:
         specifier: ^10.4.16
         version: 10.6.1(postcss@8.5.26)
-      postcss:
-        specifier: ^8.4.32
-        version: 8.5.26
       tailwindcss:
         specifier: ^3.4.0
         version: 3.4.19(yaml@2.8.1)

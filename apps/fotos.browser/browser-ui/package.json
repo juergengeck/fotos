@@ -46,7 +46,6 @@
     "@refinio/sync.core": "file:../../../sources/one/packages/sync.core",
     "@refinio/trust.core": "file:../../../sources/one/packages/trust.core",
     "@refinio/trust.me": "file:../../../sources/one/packages/trust.me",
-    "@simplewebauthn/browser": "^11.0.0",
     "base64-js": "^1.5.1",
     "exifreader": "^4.24.0",
     "lucide-react": "^0.554.0",
