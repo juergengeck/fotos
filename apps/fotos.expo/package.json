@@ -32,7 +32,6 @@
     "@refinio/contact.core": "file:../../sources/one/packages/contact.core",
     "@refinio/cube.core": "file:../../sources/one/packages/cube.core",
     "@refinio/cube.space": "file:../../sources/one/packages/cube.space",
-    "@refinio/cube.time": "file:../../sources/one/packages/cube.time",
     "@refinio/device.core": "file:../../sources/one/packages/device.core",
     "@refinio/knowledge.core": "file:../../sources/one/packages/knowledge.core",
     "@refinio/llm.deutsch": "file:../../sources/one/packages/llm.deutsch",

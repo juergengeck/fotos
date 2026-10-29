@@ -74,6 +74,13 @@ Git-pinned bootstrap and cache qualification must cover this expanded closure.
 
 ## Native applications and qualification
 
+Temporary [ONE#13](https://github.com/juergengeck/one/issues/13) exclusion:
+Expo and Fire do not use `@refinio/cube.time`, so their dependencies and the
+workspace's Sources allowlist, preparation and task hashes omit it. Standalone
+CubeTime remains an unqualified target owned by ONE. The required shared Trie
+recipes and `@refinio/cube.core` providers remain intact; restore CubeTime only
+for an actual consumer after its owning type/build failure is resolved.
+
 Both native apps use ordinary owning-package providers.
 `packages/fotos.native` supplies their shared source bootstrap and Metro/Babel
 configuration through public workspace exports; app trees do not import each
