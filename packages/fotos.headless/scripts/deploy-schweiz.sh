@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HEADLESS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$HEADLESS_DIR/../.." && pwd)"
 VGER_ROOT="$(cd "$REPO_ROOT/sources/vger" && pwd)"
-VGER_HEADLESS_DIR="$VGER_ROOT/packages/vger.headless"
+VGER_HEADLESS_DIR="$VGER_ROOT/apps/vger.headless"
 ONE_CORE_DIR="$(cd "$REPO_ROOT/sources/one/packages/one.core" && pwd)"
 
 truthy() {

@@ -2,7 +2,7 @@
 
 import { spawn } from 'node:child_process';
 import { createSocket } from 'node:dgram';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path, { dirname, resolve } from 'node:path';
 import { createServer } from 'node:net';
@@ -15,8 +15,8 @@ const BROWSER_UI_ROOT = resolve(__dirname, '..');
 const REPO_ROOT = resolve(BROWSER_UI_ROOT, '../../..');
 const VGER_ROOT = resolve(REPO_ROOT, 'sources/vger');
 const ONE_ROOT = resolve(REPO_ROOT, 'sources/one');
-const HEADLESS_ROOT = resolve(VGER_ROOT, 'packages/vger.headless');
-const HEADLESS_CLI = 'src/cli.ts';
+const HEADLESS_ROOT = resolve(VGER_ROOT, 'apps/vger.headless');
+const HEADLESS_CLI = resolve(HEADLESS_ROOT, 'dist/cli.js');
 const VITE_BIN = resolve(BROWSER_UI_ROOT, 'node_modules/vite/bin/vite.js');
 const COMM_SERVER_BUNDLE = resolve(ONE_ROOT, 'packages/one.models/comm_server.bundle.js');
 const INTEGRATION_SCRIPT = resolve(__dirname, 'fotos-live-integration.mjs');
@@ -267,11 +267,9 @@ async function main() {
   commServer.stderr?.on('data', prefixOutput(process.stderr, '[commserver:err] '));
 
   const headless = spawn(
-    'pnpm',
+    process.execPath,
     [
-      'exec',
-      'tsx',
-      HEADLESS_CLI,
+      realpathSync(HEADLESS_CLI),
       '--port', String(headlessPort),
       '--quicvc-port', String(headlessQuicVCPort),
       '--host', 'localhost',
