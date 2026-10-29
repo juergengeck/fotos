@@ -15,12 +15,15 @@ import { LLMComparisonPanel } from './LLMComparisonPanel';
 import { ShareWithField, type SharePeerOption } from './ShareWithField';
 import type { ManagedFolder } from '@/hooks/useFolderAccess';
 import { ShareInviteCard } from './ShareInviteCard';
+import { ReceiveInvitation } from './ReceiveInvitation';
 import type {ReceivedFotosShareScope} from '@refinio/fotos.core/received-shares';
 import {BrowseControls, ControlPaneHeader} from './ControlPaneHeader';
 
 export type SidebarTab = 'browse' | 'sharing' | 'settings';
 
 interface SidebarProps {
+    active?: boolean;
+    onOpenGalleryInvitation: (url: string) => void;
     activeTab: SidebarTab;
     onTabChange: (tab: SidebarTab) => void;
     openRequest?: number;
@@ -120,6 +123,8 @@ interface SidebarProps {
 }
 
 export function Sidebar({
+    active = true,
+    onOpenGalleryInvitation,
     activeTab,
     onTabChange,
     openRequest = 0,
@@ -227,6 +232,15 @@ export function Sidebar({
     useEffect(() => {
         if (openRequest > 0 && mobile) setMobileSheetState('half');
     }, [mobile, openRequest]);
+
+    const [landscape, setLandscape] = useState(() => window.matchMedia('(orientation: landscape)').matches);
+    useEffect(() => {
+        const query = window.matchMedia('(orientation: landscape)');
+        const update = () => setLandscape(query.matches);
+        query.addEventListener('change', update);
+        return () => query.removeEventListener('change', update);
+    }, []);
+    const panelActive = active && (!mobile || landscape || mobileSheetState !== 'collapsed');
 
     // Mobile: inline panel, no overlay/drawer
     if (mobile) {
@@ -362,6 +376,9 @@ export function Sidebar({
                     )}
                     {tab === 'sharing' && (
                         <LibrarySharingPanel
+                            active={panelActive}
+                            fotosModel={fotosModel}
+                            onOpenGalleryInvitation={onOpenGalleryInvitation}
                             collections={collections}
                             onRenameCollection={onRenameCollection}
                             onDeleteCollection={onDeleteCollection}
@@ -393,6 +410,7 @@ export function Sidebar({
                     )}
                     {tab === 'settings' && (
                         <SettingsTab
+                            active={panelActive}
                             settings={settings} onUpdateStorage={onUpdateStorage}
                             onUpdateDeviceName={onUpdateDeviceName}
                             onUpdateAnalysis={onUpdateAnalysis}
@@ -521,6 +539,9 @@ export function Sidebar({
                 )}
                 {tab === 'sharing' && (
                     <LibrarySharingPanel
+                        active={panelActive}
+                        fotosModel={fotosModel}
+                        onOpenGalleryInvitation={onOpenGalleryInvitation}
                         collections={collections}
                         onRenameCollection={onRenameCollection}
                         onDeleteCollection={onDeleteCollection}
@@ -552,6 +573,7 @@ export function Sidebar({
                 )}
                 {tab === 'settings' && (
                     <SettingsTab
+                        active={panelActive}
                         settings={settings}
                         onUpdateStorage={onUpdateStorage}
                         onUpdateDeviceName={onUpdateDeviceName}
@@ -1513,6 +1535,9 @@ function FolderManagementPanel({
 }
 
 function LibrarySharingPanel({
+    active,
+    fotosModel,
+    onOpenGalleryInvitation,
     collections,
     onRenameCollection,
     onDeleteCollection,
@@ -1530,6 +1555,9 @@ function LibrarySharingPanel({
     onCollectionShareChange,
     onClusterShareChange,
 }: {
+    active: boolean;
+    fotosModel?: FotosModel | null;
+    onOpenGalleryInvitation: (url: string) => void;
     collections: FotosCollectionSummary[];
     onRenameCollection: (collectionId: string, name: string) => void;
     onDeleteCollection: (collectionId: string) => void;
@@ -1568,6 +1596,10 @@ function LibrarySharingPanel({
     return (
         <>
             <SectionLabel>Sharing</SectionLabel>
+            <CollapsibleSection label="Receive invitation">
+                <ReceiveInvitation active={active} pairing={fotosModel?.connectionModule?.connectionPlan}
+                    onOpenGalleryInvitation={onOpenGalleryInvitation} />
+            </CollapsibleSection>
             <div className="grid grid-cols-2 gap-2">
                 <div className="rounded-lg border border-white/10 bg-white/[0.035] p-3"><div className="text-lg font-semibold text-white">{outgoingScopeCount}</div><div className="text-xs text-white/55">outgoing scopes</div></div>
                 <div className="rounded-lg border border-white/10 bg-white/[0.035] p-3"><div className="text-lg font-semibold text-white">{activeReceivedCount}</div><div className="text-xs text-white/55">received scopes</div></div>
@@ -1854,6 +1886,7 @@ function ManageClusterShareRow({
 }
 
 function SettingsTab({
+    active,
     settings,
     onUpdateStorage,
     onUpdateDeviceName,
@@ -1874,6 +1907,7 @@ function SettingsTab({
     showOnboarding,
     onDismissOnboarding,
 }: {
+    active: boolean;
     settings: FotosSettings;
     onUpdateStorage: (updates: Partial<FotosSettings['storage']>) => void;
     onUpdateDeviceName: (name: string) => void;
@@ -1984,6 +2018,7 @@ function SettingsTab({
             <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-3 space-y-4">
                 <div id="settings-identity" ref={el => setSectionRef('settings-identity', el)}>
                     <FotosSettingsPanel
+                        active={active}
                         model={fotosModel}
                         acceptSharing={acceptSharing}
                         onAcceptSharingChange={onAcceptSharingChange}

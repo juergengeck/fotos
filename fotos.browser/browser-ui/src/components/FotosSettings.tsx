@@ -38,6 +38,7 @@ function CollapsibleSection({ label, defaultOpen = true, children }: { label: st
 type CertState = 'ephemeral' | 'anchored' | 'certified';
 
 interface FotosSettingsProps {
+    active?: boolean;
     model: FotosModel | null;
     acceptSharing: boolean;
     onAcceptSharingChange: (enabled: boolean) => void;
@@ -101,6 +102,7 @@ export function GlueAccountSignIn({ disabled = false, loginHint }: { disabled?: 
 }
 
 export function FotosSettings({
+    active = true,
     model,
     acceptSharing,
     onAcceptSharingChange,
@@ -824,7 +826,7 @@ export function FotosSettings({
     return (
         <>
         <CollapsibleSection label="Devices" defaultOpen={window.location.pathname.replace(/\/$/, '') === '/invites/inviteDevice'}>
-            <DevicesManager devices={model?.devicesPlan} pairing={model?.connectionModule?.connectionPlan} settings={model?.settingsPlan} />
+            <DevicesManager scanInvitations active={active} devices={model?.devicesPlan} pairing={model?.connectionModule?.connectionPlan} settings={model?.settingsPlan} />
         </CollapsibleSection>
         <CollapsibleSection label="fotos id">
             <div className="space-y-2">

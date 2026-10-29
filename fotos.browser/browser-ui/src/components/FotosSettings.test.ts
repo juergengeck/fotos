@@ -23,7 +23,8 @@ vi.mock('@/lib/fotosGlueLogin', () => ({
   getFotosGlueLogin: () => ({ signIn: mockGlueSignIn }),
 }));
 
-vi.mock('@vger/vger.ui/components/device/DevicesManager', () => ({ DevicesManager: () => null }));
+const mockDevicesManager = vi.hoisted(() => vi.fn((_props: unknown) => null));
+vi.mock('@vger/vger.ui/components/device/DevicesManager', () => ({ DevicesManager: mockDevicesManager }));
 
 vi.mock('react', async () => {
   const actual = await vi.importActual<typeof import('react')>('react');
@@ -286,6 +287,12 @@ describe('FotosSettings identity flows', () => {
     } else {
       globalThis.window = originalWindow;
     }
+  });
+
+  it('enables the shared invitation scanner in Devices', () => {
+    window.location.pathname = '/invites/inviteDevice';
+    renderSettings([]);
+    expect(mockDevicesManager).toHaveBeenCalledWith(expect.objectContaining({scanInvitations: true, active: true}));
   });
 
   it('opens the verified Glue account and reloads after explicit sign-in', async () => {
