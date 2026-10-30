@@ -413,15 +413,6 @@ async function initModules(
       getPresenceTrace: limit => browserGlueModule.getPresenceTrace(limit),
     });
 
-    // Incoming CHUM admission boundary
-    connectionModule.setUnknownPeerIdentityMatcher((remotePersonId, remotePublicKey) => {
-      const personId = String(remotePersonId);
-      return browserGlueModule.shouldAcceptIncomingPeer?.(personId, remotePublicKey) ?? false;
-    });
-    nextConnectionModule.setDirectPeerSyncMatcher((remotePersonId, remotePublicKey) =>
-      browserGlueModule.shouldAcceptIncomingPeer(String(remotePersonId), remotePublicKey),
-    );
-
     registry.register(glueModule);
   }
 
