@@ -118,3 +118,13 @@ instead of console.time/timeEnd in CoreModule initialization. Current ONE's publ
 vger.core output already carries that behavior; validate the installed output
 before retiring an obsolete application of the archival patch. Never edit or
 patch the owning emitted files in a consumer.
+
+## Turbo cache policy
+
+Compiled/source package builds, browser bundles, Expo exports, no-emit checks
+and the default offline unit suites use native Turbo caching. Root configuration,
+Vite/Expo environment and declared foreign provider hashes participate in keys.
+Generated `dist/**` trees include package archives and exported assets. A cached
+browser build retains its original artifact build timestamp. Native prebuild,
+installation, Sources preparation and separate live/device suites are outside
+this cached task contract; caching does not qualify those operations.

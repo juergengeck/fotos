@@ -2,31 +2,47 @@
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
     "build": {
-      "cache": false,
+      "cache": true,
       "dependsOn": [
         "^build"
       ],
       "outputs": [
         "dist/**"
+      ],
+      "env": [
+        "VITE_*",
+        "EXPO_PUBLIC_*",
+        "EXPO_TV",
+        "NODE_ENV",
+        "BABEL_ENV"
       ]
     },
     "test": {
       "dependsOn": [
         "^build"
       ],
-      "cache": false
+      "cache": true,
+      "outputs": [],
+      "env": [
+        "VITE_*",
+        "EXPO_PUBLIC_*",
+        "EXPO_TV",
+        "NODE_ENV",
+        "BABEL_ENV"
+      ]
     },
     "typecheck": {
       "dependsOn": [
         "^build"
       ],
-      "cache": false
+      "cache": true,
+      "outputs": []
     },
     "clean": {
       "cache": false
     },
     "@one/fotos.browser.ui#build": {
-      "cache": false,
+      "cache": true,
       "dependsOn": [
         "^build"
       ],
@@ -131,14 +147,19 @@
         "SOURCES_VGER_VGER_CORE__BUILD",
         "SOURCES_VGER_VGER_GLUE__BUILD",
         "SOURCES_VGER_VGER_TXT_UI__BUILD",
-        "SOURCES_VGER_VGER_UI__BUILD"
+        "SOURCES_VGER_VGER_UI__BUILD",
+        "VITE_*",
+        "EXPO_PUBLIC_*",
+        "EXPO_TV",
+        "NODE_ENV",
+        "BABEL_ENV"
       ]
     },
     "@one/fotos.browser.ui#typecheck": {
       "dependsOn": [
         "^build"
       ],
-      "cache": false,
+      "cache": true,
       "env": [
         "SOURCES_GLUEONE_AUTH_CORE__BUILD",
         "SOURCES_GLUEONE_GLUE_CORE__BUILD",
@@ -238,13 +259,14 @@
         "SOURCES_VGER_VGER_GLUE__BUILD",
         "SOURCES_VGER_VGER_TXT_UI__BUILD",
         "SOURCES_VGER_VGER_UI__BUILD"
-      ]
+      ],
+      "outputs": []
     },
     "@one/fotos.browser.ui#test": {
       "dependsOn": [
         "^build"
       ],
-      "cache": false,
+      "cache": true,
       "env": [
         "SOURCES_GLUEONE_AUTH_CORE__BUILD",
         "SOURCES_GLUEONE_GLUE_CORE__BUILD",
@@ -343,8 +365,14 @@
         "SOURCES_VGER_VGER_CORE__BUILD",
         "SOURCES_VGER_VGER_GLUE__BUILD",
         "SOURCES_VGER_VGER_TXT_UI__BUILD",
-        "SOURCES_VGER_VGER_UI__BUILD"
-      ]
+        "SOURCES_VGER_VGER_UI__BUILD",
+        "VITE_*",
+        "EXPO_PUBLIC_*",
+        "EXPO_TV",
+        "NODE_ENV",
+        "BABEL_ENV"
+      ],
+      "outputs": []
     },
     "@refinio/fotos.core#build": {
       "cache": true,
@@ -361,14 +389,19 @@
         "SOURCES_REFINIO_TRIE_CORE__BUILD",
         "SOURCES_REFINIO_TRUST_CORE__BUILD",
         "SOURCES_REFINIO_PROVENANCE_CORE__BUILD",
-        "SOURCES_REFINIO_SYNC_CORE__BUILD"
+        "SOURCES_REFINIO_SYNC_CORE__BUILD",
+        "VITE_*",
+        "EXPO_PUBLIC_*",
+        "EXPO_TV",
+        "NODE_ENV",
+        "BABEL_ENV"
       ]
     },
     "@refinio/fotos.core#typecheck": {
       "dependsOn": [
         "^build"
       ],
-      "cache": false,
+      "cache": true,
       "env": [
         "SOURCES_REFINIO_MEANING_CORE__BUILD",
         "SOURCES_REFINIO_ONE_CORE__BUILD",
@@ -377,13 +410,14 @@
         "SOURCES_REFINIO_TRUST_CORE__BUILD",
         "SOURCES_REFINIO_PROVENANCE_CORE__BUILD",
         "SOURCES_REFINIO_SYNC_CORE__BUILD"
-      ]
+      ],
+      "outputs": []
     },
     "@refinio/fotos.core#test": {
       "dependsOn": [
         "^build"
       ],
-      "cache": false,
+      "cache": true,
       "env": [
         "SOURCES_REFINIO_MEANING_CORE__BUILD",
         "SOURCES_REFINIO_ONE_CORE__BUILD",
@@ -391,11 +425,17 @@
         "SOURCES_REFINIO_TRIE_CORE__BUILD",
         "SOURCES_REFINIO_TRUST_CORE__BUILD",
         "SOURCES_REFINIO_PROVENANCE_CORE__BUILD",
-        "SOURCES_REFINIO_SYNC_CORE__BUILD"
-      ]
+        "SOURCES_REFINIO_SYNC_CORE__BUILD",
+        "VITE_*",
+        "EXPO_PUBLIC_*",
+        "EXPO_TV",
+        "NODE_ENV",
+        "BABEL_ENV"
+      ],
+      "outputs": []
     },
     "@one/fotos.html#build": {
-      "cache": false,
+      "cache": true,
       "dependsOn": [
         "^build"
       ],
@@ -489,14 +529,19 @@
         "SOURCES_REFINIO_WORKSPACE_CORE__BUILD",
         "SOURCES_VGER_VGER_CORE__BUILD",
         "SOURCES_VGER_VGER_TXT_UI__BUILD",
-        "SOURCES_VGER_VGER_UI__BUILD"
+        "SOURCES_VGER_VGER_UI__BUILD",
+        "VITE_*",
+        "EXPO_PUBLIC_*",
+        "EXPO_TV",
+        "NODE_ENV",
+        "BABEL_ENV"
       ]
     },
     "@one/fotos.html#typecheck": {
       "dependsOn": [
         "^build"
       ],
-      "cache": false,
+      "cache": true,
       "env": [
         "SOURCES_GLUEONE_GLUE_CORE__BUILD",
         "SOURCES_REFINIO_AGENT_BUILDER__BUILD",
@@ -585,13 +630,14 @@
         "SOURCES_VGER_VGER_CORE__BUILD",
         "SOURCES_VGER_VGER_TXT_UI__BUILD",
         "SOURCES_VGER_VGER_UI__BUILD"
-      ]
+      ],
+      "outputs": []
     },
     "@refinio/fotos.ui#typecheck": {
       "dependsOn": [
         "^build"
       ],
-      "cache": false,
+      "cache": true,
       "env": [
         "SOURCES_REFINIO_MEANING_CORE__BUILD",
         "SOURCES_REFINIO_ONE_CORE__BUILD",
@@ -600,13 +646,14 @@
         "SOURCES_REFINIO_SYNC_CORE__BUILD",
         "SOURCES_REFINIO_TRIE_CORE__BUILD",
         "SOURCES_REFINIO_TRUST_CORE__BUILD"
-      ]
+      ],
+      "outputs": []
     },
     "@refinio/fotos.ui#test": {
       "dependsOn": [
         "^build"
       ],
-      "cache": false,
+      "cache": true,
       "env": [
         "SOURCES_REFINIO_MEANING_CORE__BUILD",
         "SOURCES_REFINIO_ONE_CORE__BUILD",
@@ -614,14 +661,20 @@
         "SOURCES_REFINIO_PROVENANCE_CORE__BUILD",
         "SOURCES_REFINIO_SYNC_CORE__BUILD",
         "SOURCES_REFINIO_TRIE_CORE__BUILD",
-        "SOURCES_REFINIO_TRUST_CORE__BUILD"
-      ]
+        "SOURCES_REFINIO_TRUST_CORE__BUILD",
+        "VITE_*",
+        "EXPO_PUBLIC_*",
+        "EXPO_TV",
+        "NODE_ENV",
+        "BABEL_ENV"
+      ],
+      "outputs": []
     },
     "//#sources:prepare": {
       "cache": false
     },
     "@refinio/fotos.expo#build": {
-      "cache": false,
+      "cache": true,
       "dependsOn": [
         "^build"
       ],
@@ -719,14 +772,19 @@
         "SOURCES_REFINIO_WORKSPACE_CORE__BUILD",
         "SOURCES_VGER_VGER_CORE__BUILD",
         "SOURCES_VGER_VGER_TXT_UI__BUILD",
-        "SOURCES_VGER_VGER_UI__BUILD"
+        "SOURCES_VGER_VGER_UI__BUILD",
+        "VITE_*",
+        "EXPO_PUBLIC_*",
+        "EXPO_TV",
+        "NODE_ENV",
+        "BABEL_ENV"
       ],
       "outputs": [
         "dist/**"
       ]
     },
     "@refinio/fotos.expo#typecheck": {
-      "cache": false,
+      "cache": true,
       "dependsOn": [
         "^build"
       ],
@@ -825,10 +883,11 @@
         "SOURCES_VGER_VGER_CORE__BUILD",
         "SOURCES_VGER_VGER_TXT_UI__BUILD",
         "SOURCES_VGER_VGER_UI__BUILD"
-      ]
+      ],
+      "outputs": []
     },
     "@refinio/fotos.expo#test": {
-      "cache": false,
+      "cache": true,
       "dependsOn": [
         "^build"
       ],
@@ -926,11 +985,17 @@
         "SOURCES_REFINIO_WORKSPACE_CORE__BUILD",
         "SOURCES_VGER_VGER_CORE__BUILD",
         "SOURCES_VGER_VGER_TXT_UI__BUILD",
-        "SOURCES_VGER_VGER_UI__BUILD"
-      ]
+        "SOURCES_VGER_VGER_UI__BUILD",
+        "VITE_*",
+        "EXPO_PUBLIC_*",
+        "EXPO_TV",
+        "NODE_ENV",
+        "BABEL_ENV"
+      ],
+      "outputs": []
     },
     "@refinio/fotos.fire#build": {
-      "cache": false,
+      "cache": true,
       "dependsOn": [
         "^build"
       ],
@@ -1017,14 +1082,19 @@
         "SOURCES_REFINIO_WORKER_CORE__BUILD",
         "SOURCES_REFINIO_WORKFLOW_CORE__BUILD",
         "SOURCES_REFINIO_WORKSPACE_CORE__BUILD",
-        "SOURCES_VGER_VGER_CORE__BUILD"
+        "SOURCES_VGER_VGER_CORE__BUILD",
+        "VITE_*",
+        "EXPO_PUBLIC_*",
+        "EXPO_TV",
+        "NODE_ENV",
+        "BABEL_ENV"
       ],
       "outputs": [
         "dist/**"
       ]
     },
     "@refinio/fotos.fire#typecheck": {
-      "cache": false,
+      "cache": true,
       "dependsOn": [
         "^build"
       ],
@@ -1112,10 +1182,11 @@
         "SOURCES_REFINIO_WORKFLOW_CORE__BUILD",
         "SOURCES_REFINIO_WORKSPACE_CORE__BUILD",
         "SOURCES_VGER_VGER_CORE__BUILD"
-      ]
+      ],
+      "outputs": []
     },
     "@refinio/fotos.fire#test": {
-      "cache": false,
+      "cache": true,
       "dependsOn": [
         "^build"
       ],
@@ -1202,8 +1273,21 @@
         "SOURCES_REFINIO_WORKER_CORE__BUILD",
         "SOURCES_REFINIO_WORKFLOW_CORE__BUILD",
         "SOURCES_REFINIO_WORKSPACE_CORE__BUILD",
-        "SOURCES_VGER_VGER_CORE__BUILD"
-      ]
+        "SOURCES_VGER_VGER_CORE__BUILD",
+        "VITE_*",
+        "EXPO_PUBLIC_*",
+        "EXPO_TV",
+        "NODE_ENV",
+        "BABEL_ENV"
+      ],
+      "outputs": []
     }
-  }
+  },
+  "globalDependencies": [
+    "scripts/**",
+    "tsconfig*.json",
+    "vitest*",
+    "babel.config.*",
+    "**/.env.*local"
+  ]
 }
