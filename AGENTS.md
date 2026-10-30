@@ -121,10 +121,14 @@ patch the owning emitted files in a consumer.
 
 ## Turbo cache policy
 
-Compiled/source package builds, browser bundles, Expo exports, no-emit checks
+Compiled/source package builds, browser bundles, Expo iOS exports, no-emit checks
 and the default offline unit suites use native Turbo caching. Root configuration,
 Vite/Expo environment and declared foreign provider hashes participate in keys.
 Generated `dist/**` trees include package archives and exported assets. A cached
 browser build retains its original artifact build timestamp. Native prebuild,
 installation, Sources preparation and separate live/device suites are outside
 this cached task contract; caching does not qualify those operations.
+
+Fire build remains uncached: its automatic `prebuild` lifecycle regenerates the
+native Android project outside `dist/**`. Its strict typecheck and offline unit
+tests remain cacheable; native project preparation is not a cached side effect.

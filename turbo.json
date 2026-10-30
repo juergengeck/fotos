@@ -995,7 +995,7 @@
       "outputs": []
     },
     "@refinio/fotos.fire#build": {
-      "cache": true,
+      "cache": false,
       "dependsOn": [
         "^build"
       ],
