@@ -1510,14 +1510,16 @@ importers:
         version: 3.2.4(@types/debug@4.1.12)(@types/node@25.3.3)(jiti@1.21.7)(jsdom@26.1.0(bufferutil@4.0.9)(utf-8-validate@6.0.5))(lightningcss@1.31.1)(terser@5.44.1)(yaml@2.8.1)
 
   packages/fotos.gallery:
-    dependencies:
-      react:
-        specifier: ">=18"
-        version: 19.2.4
     devDependencies:
       '@types/react':
         specifier: ^19.2.14
         version: 19.2.14
+      react:
+        specifier: 'catalog:'
+        version: 19.1.0
+      typescript:
+        specifier: 'catalog:'
+        version: 5.7.3
 
   packages/fotos.headless: {}
   packages/fotos.native:
