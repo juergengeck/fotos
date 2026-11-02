@@ -1481,6 +1481,9 @@ importers:
         specifier: ^4.37.0
         version: 4.46.0
     devDependencies:
+      "@types/node":
+        specifier: 26.6.5
+        version: 26.6.5
       '@refinio/meaning.core':
         specifier: file:../../sources/one/packages/meaning.core
         version: file:sources/one/packages/meaning.core(@refinio/cube.contracts@file:sources/one/packages/cube.contracts(@refinio/one.core@file:sources/one/packages/one.core))(@refinio/one.core@file:sources/one/packages/one.core)

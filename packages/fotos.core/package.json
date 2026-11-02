@@ -57,6 +57,7 @@
   },
   "devDependencies": {
     "@refinio/sync.core": "file:../../sources/one/packages/sync.core",
+    "@types/node": "26.6.5",
     "typescript": "^5.4.0",
     "vitest": "catalog:",
     "@refinio/meaning.core": "file:../../sources/one/packages/meaning.core",

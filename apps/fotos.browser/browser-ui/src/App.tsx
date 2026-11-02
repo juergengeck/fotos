@@ -65,6 +65,7 @@ import { resolveTokenToPersonId, type SharePeerOption } from '@/components/Share
 import { readStoredSidebarTab } from '@/lib/authFlowState';
 import {
     createFotosShareInvite,
+    FOTOS_SHARE_INVITE_PARAM,
     isFotosShareInviteExpired,
     parseFotosShareInviteUrl,
     type CreatedFotosShareInvite,
@@ -426,6 +427,19 @@ export function App({ fotosModel: initialModel }: AppProps) {
     const incomingShareDialogRef = useRef<HTMLDivElement>(null);
     const incomingSharePinRef = useRef<HTMLInputElement>(null);
     const incomingSharePreviousFocusRef = useRef<HTMLElement | null>(null);
+    const openScannedGalleryInvitation = useCallback((value: string) => {
+        const invite = parseFotosShareInviteUrl(value);
+        if (!invite) return;
+        // Keep this browser's account and route. Persist the invite so identity
+        // preparation can reload into the same PIN flow as an opened share link.
+        const currentUrl = new URL(window.location.href);
+        currentUrl.searchParams.set(FOTOS_SHARE_INVITE_PARAM, new URL(value, currentUrl).searchParams.get(FOTOS_SHARE_INVITE_PARAM)!);
+        window.history.replaceState(window.history.state, '', currentUrl);
+        setIncomingShareStatus('idle');
+        setIncomingShareError(null);
+        setIncomingSharePin('');
+        setIncomingShareInvite(invite);
+    }, []);
     const [receivedShareScopes, setReceivedShareScopes] = useState<ReceivedFotosShareScope[]>([]);
     const shareCommitCoordinatorRef = useRef(new FotosShareCommitCoordinator());
     const [confirmState, setConfirmState] = useState<{
@@ -3877,6 +3891,8 @@ export function App({ fotosModel: initialModel }: AppProps) {
 
                     {/* Sidebar/task panel */}
                     {sidebarVisible && <div inert={showFullscreenGallery} style={{display: showFullscreenGallery ? 'none' : 'contents'}}><Sidebar
+                        active={!showFullscreenGallery && !incomingShareInvite}
+                        onOpenGalleryInvitation={openScannedGalleryInvitation}
                         activeTab={sidebarTab}
                         onTabChange={openSidebarTab}
                         openRequest={sidebarOpenRequest}
