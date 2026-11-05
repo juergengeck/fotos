@@ -45,7 +45,7 @@
     "src"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --build",
     "clean": "rm -rf dist",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
