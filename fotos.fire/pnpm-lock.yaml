@@ -154,7 +154,7 @@ importers:
         version: file:../fotos.expo/vendor/refinio-coding.core-0.1.0.tgz(9f678294921cbed1b18f021704a11fa1)
       '@refinio/connection.core':
         specifier: file:../fotos.expo/vendor/refinio-connection.core-0.1.0.tgz
-        version: file:../fotos.expo/vendor/refinio-connection.core-0.1.0.tgz(b63bd7a6a01ec755c7c92bef3136a6ff)
+        version: file:../fotos.expo/vendor/refinio-connection.core-0.1.0.tgz(34b4cbba13451eacab26c994bcafd0c3)
       '@refinio/contact.core':
         specifier: file:../fotos.expo/vendor/refinio-contact.core-0.1.0.tgz
         version: file:../fotos.expo/vendor/refinio-contact.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/trust.core@file:../fotos.expo/vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/one.models@file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)))
@@ -235,7 +235,7 @@ importers:
         version: file:../fotos.expo/vendor/refinio-memory.refinement-0.1.0.tgz
       '@refinio/module.core':
         specifier: file:../fotos.expo/vendor/refinio-module.core-0.1.0.tgz
-        version: file:../fotos.expo/vendor/refinio-module.core-0.1.0.tgz(eea0bf9ce64a405d299ac7a60e4e43b6)
+        version: file:../fotos.expo/vendor/refinio-module.core-0.1.0.tgz(cb1942b59a217349b0801a6e0ccc808c)
       '@refinio/one.core':
         specifier: file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz
         version: file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz
@@ -355,7 +355,7 @@ importers:
         version: file:../fotos.expo/vendor/refinio-transport.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/one.models@file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))
       '@refinio/transport.node':
         specifier: file:../fotos.expo/vendor/refinio-transport.node-0.1.0.tgz
-        version: file:../fotos.expo/vendor/refinio-transport.node-0.1.0.tgz(@refinio/connection.core@file:../fotos.expo/vendor/refinio-connection.core-0.1.0.tgz(b63bd7a6a01ec755c7c92bef3136a6ff))(@refinio/transport.core@file:../fotos.expo/vendor/refinio-transport.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/one.models@file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)))
+        version: file:../fotos.expo/vendor/refinio-transport.node-0.1.0.tgz(@refinio/connection.core@file:../fotos.expo/vendor/refinio-connection.core-0.1.0.tgz(34b4cbba13451eacab26c994bcafd0c3))(@refinio/transport.core@file:../fotos.expo/vendor/refinio-transport.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/one.models@file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)))
       '@refinio/trie.core':
         specifier: file:../fotos.expo/vendor/refinio-trie.core-0.0.1.tgz
         version: file:../fotos.expo/vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)
@@ -376,7 +376,7 @@ importers:
         version: file:../fotos.expo/vendor/refinio-txt.core-0.1.0.tgz(@refinio/api@file:../fotos.expo/vendor/refinio-api-0.1.0.tgz(1fad95c26801c59b0a100a1f4a0e292c))(@refinio/assembly.core@file:../fotos.expo/vendor/refinio-assembly.core-1.0.0.tgz(1b2b51315a70cb1ebeec2804e79435d0))(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)
       '@refinio/ui.core':
         specifier: file:../fotos.expo/vendor/refinio-ui.core-1.0.0.tgz
-        version: file:../fotos.expo/vendor/refinio-ui.core-1.0.0.tgz(8f9d09bd361bf78c35f0bce0f43d22bd)
+        version: file:../fotos.expo/vendor/refinio-ui.core-1.0.0.tgz(9386d0e89360953be294645eb88b2367)
       '@refinio/ui.theme':
         specifier: file:../fotos.expo/vendor/refinio-ui.theme-0.1.0.tgz
         version: file:../fotos.expo/vendor/refinio-ui.theme-0.1.0.tgz
@@ -400,16 +400,16 @@ importers:
         version: 19.1.10(@types/react@19.1.10)
       '@vger/vger.core':
         specifier: file:../fotos.expo/vendor/vger-vger.core-1.0.0.tgz
-        version: file:../fotos.expo/vendor/vger-vger.core-1.0.0.tgz(patch_hash=ec29fa513a2d90179a719559862be22776185d12d7b8a7350e52decdd583dede)(c16353bff50154a25bedec216a67201e)
+        version: file:../fotos.expo/vendor/vger-vger.core-1.0.0.tgz(patch_hash=ec29fa513a2d90179a719559862be22776185d12d7b8a7350e52decdd583dede)(adb0b40750f2ac8654143dcf2994b7cb)
       '@vger/vger.glue':
         specifier: file:../fotos.expo/vendor/vger-vger.glue-1.0.0.tgz
-        version: file:../fotos.expo/vendor/vger-vger.glue-1.0.0.tgz(9277d7d5a7fd7c05986582f0759a9aa5)
+        version: file:../fotos.expo/vendor/vger-vger.glue-1.0.0.tgz(b5e35ffcca40549a66cc9e8f3cb142a1)
       '@vger/vger.txt.ui':
         specifier: file:../fotos.expo/vendor/vger-vger.txt.ui-0.1.0.tgz
-        version: file:../fotos.expo/vendor/vger-vger.txt.ui-0.1.0.tgz(1c8be14fb37b2659242a745a24ff566d)
+        version: file:../fotos.expo/vendor/vger-vger.txt.ui-0.1.0.tgz(0cf343a305bef227b7be49feb8b52ed3)
       '@vger/vger.ui':
         specifier: file:../fotos.expo/vendor/vger-vger.ui-1.0.0.tgz
-        version: file:../fotos.expo/vendor/vger-vger.ui-1.0.0.tgz(931567d65bbb0735b0e2208d7a6bf362)
+        version: file:../fotos.expo/vendor/vger-vger.ui-1.0.0.tgz(aec414405546665117b991daf611c022)
       assert:
         specifier: ^2.1.0
         version: 2.1.0
@@ -2253,7 +2253,7 @@ packages:
       '@refinio/workflow.core': '*'
 
   '@refinio/connection.core@file:../fotos.expo/vendor/refinio-connection.core-0.1.0.tgz':
-    resolution: {integrity: sha512-MfYmNmhVKxA/Xfh2pYp9rnnuYn/n7uz6w6ZxNz+b4bj80bnL68ETjm/03ERW9imjltsdISB5rsN4CzTBEJBAFw==, tarball: file:../fotos.expo/vendor/refinio-connection.core-0.1.0.tgz}
+    resolution: {integrity: sha512-PB7BXJKy5qpN3L3ggP3JM7lQmJrOwuzNbEnziFM6TyBg9EmyAx4D0/qqQKWz/uuzqh+d+Y8ljJZFwxODraCUVw==, tarball: file:../fotos.expo/vendor/refinio-connection.core-0.1.0.tgz}
     version: 0.1.0
     engines: {node: '>=18.0.0'}
     peerDependencies:
@@ -2262,6 +2262,7 @@ packages:
       '@refinio/group.core': '*'
       '@refinio/one.core': '*'
       '@refinio/one.models': '*'
+      '@refinio/space.core': '*'
       '@refinio/sync.core': '*'
       '@refinio/transport.core': '*'
       '@refinio/trust.abac': '*'
@@ -8982,12 +8983,13 @@ snapshots:
       '@refinio/verification.core': file:../fotos.expo/vendor/refinio-verification.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)
       '@refinio/workflow.core': file:../fotos.expo/vendor/refinio-workflow.core-0.1.0.tgz(@refinio/assembly.core@file:../fotos.expo/vendor/refinio-assembly.core-1.0.0.tgz(1b2b51315a70cb1ebeec2804e79435d0))(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)
 
-  '@refinio/connection.core@file:../fotos.expo/vendor/refinio-connection.core-0.1.0.tgz(b63bd7a6a01ec755c7c92bef3136a6ff)':
+  '@refinio/connection.core@file:../fotos.expo/vendor/refinio-connection.core-0.1.0.tgz(34b4cbba13451eacab26c994bcafd0c3)':
     dependencies:
       '@refinio/device.core': file:../fotos.expo/vendor/refinio-device.core-0.1.0.tgz(10e3785f588aa72642052358053a1cca)
       '@refinio/group.core': file:../fotos.expo/vendor/refinio-group.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)
       '@refinio/one.core': file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz
       '@refinio/one.models': file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)
+      '@refinio/space.core': file:../fotos.expo/vendor/refinio-space.core-0.1.0.tgz(@refinio/matching.core@file:../fotos.expo/vendor/refinio-matching.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/trie.core@file:../fotos.expo/vendor/refinio-trie.core-0.0.1.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))
       '@refinio/sync.core': file:../fotos.expo/vendor/refinio-sync.core-0.1.0.tgz(@refinio/one.models@file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))
       '@refinio/transport.core': file:../fotos.expo/vendor/refinio-transport.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/one.models@file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))
       '@refinio/trust.abac': file:../fotos.expo/vendor/refinio-trust.abac-0.1.0.tgz(081504cd070e235912c9e13d4f895a96)
@@ -9146,12 +9148,12 @@ snapshots:
 
   '@refinio/memory.refinement@file:../fotos.expo/vendor/refinio-memory.refinement-0.1.0.tgz': {}
 
-  '@refinio/module.core@file:../fotos.expo/vendor/refinio-module.core-0.1.0.tgz(eea0bf9ce64a405d299ac7a60e4e43b6)':
+  '@refinio/module.core@file:../fotos.expo/vendor/refinio-module.core-0.1.0.tgz(cb1942b59a217349b0801a6e0ccc808c)':
     dependencies:
       '@refinio/agent.core': file:../fotos.expo/vendor/refinio-agent.core-0.1.0.tgz(ef6d83077b9a06a438ad4676f168a197)
       '@refinio/api': file:../fotos.expo/vendor/refinio-api-0.1.0.tgz(1fad95c26801c59b0a100a1f4a0e292c)
       '@refinio/assembly.core': file:../fotos.expo/vendor/refinio-assembly.core-1.0.0.tgz(1b2b51315a70cb1ebeec2804e79435d0)
-      '@refinio/connection.core': file:../fotos.expo/vendor/refinio-connection.core-0.1.0.tgz(b63bd7a6a01ec755c7c92bef3136a6ff)
+      '@refinio/connection.core': file:../fotos.expo/vendor/refinio-connection.core-0.1.0.tgz(34b4cbba13451eacab26c994bcafd0c3)
       '@refinio/one.core': file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz
       '@refinio/one.models': file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)
       '@refinio/orchestration.worker': file:../fotos.expo/vendor/refinio-orchestration.worker-0.1.0.tgz(@refinio/orchestration.core@file:../fotos.expo/vendor/refinio-orchestration.core-1.0.0.tgz(54ad165d5e14b161ca055e04aaccde69))(@refinio/vger.agent@file:../fotos.expo/vendor/refinio-vger.agent-0.1.0.tgz(7d6c4ff3d9cdfbb574a187635e055ecf))(@refinio/worker.core@file:../fotos.expo/vendor/refinio-worker.core-0.1.0.tgz)
@@ -9172,6 +9174,7 @@ snapshots:
       - '@refinio/settings.agent'
       - '@refinio/settings.core'
       - '@refinio/source.agent'
+      - '@refinio/space.core'
       - '@refinio/strategy.core'
       - '@refinio/sync.core'
       - '@refinio/tag.core'
@@ -9437,9 +9440,9 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@refinio/transport.node@file:../fotos.expo/vendor/refinio-transport.node-0.1.0.tgz(@refinio/connection.core@file:../fotos.expo/vendor/refinio-connection.core-0.1.0.tgz(b63bd7a6a01ec755c7c92bef3136a6ff))(@refinio/transport.core@file:../fotos.expo/vendor/refinio-transport.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/one.models@file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)))':
+  '@refinio/transport.node@file:../fotos.expo/vendor/refinio-transport.node-0.1.0.tgz(@refinio/connection.core@file:../fotos.expo/vendor/refinio-connection.core-0.1.0.tgz(34b4cbba13451eacab26c994bcafd0c3))(@refinio/transport.core@file:../fotos.expo/vendor/refinio-transport.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/one.models@file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)))':
     dependencies:
-      '@refinio/connection.core': file:../fotos.expo/vendor/refinio-connection.core-0.1.0.tgz(b63bd7a6a01ec755c7c92bef3136a6ff)
+      '@refinio/connection.core': file:../fotos.expo/vendor/refinio-connection.core-0.1.0.tgz(34b4cbba13451eacab26c994bcafd0c3)
       '@refinio/transport.core': file:../fotos.expo/vendor/refinio-transport.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/one.models@file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))
       werift: 0.22.9
     transitivePeerDependencies:
@@ -9483,12 +9486,12 @@ snapshots:
     transitivePeerDependencies:
       - '@refinio/assembly.core'
 
-  '@refinio/ui.core@file:../fotos.expo/vendor/refinio-ui.core-1.0.0.tgz(8f9d09bd361bf78c35f0bce0f43d22bd)':
+  '@refinio/ui.core@file:../fotos.expo/vendor/refinio-ui.core-1.0.0.tgz(9386d0e89360953be294645eb88b2367)':
     dependencies:
       '@refinio/agent.core': file:../fotos.expo/vendor/refinio-agent.core-0.1.0.tgz(ef6d83077b9a06a438ad4676f168a197)
       '@refinio/api': file:../fotos.expo/vendor/refinio-api-0.1.0.tgz(1fad95c26801c59b0a100a1f4a0e292c)
       '@refinio/chat.core': file:../fotos.expo/vendor/refinio-chat.core-1.0.0.tgz(c728732ae3fca0f16c002f8d1f3b393a)
-      '@refinio/connection.core': file:../fotos.expo/vendor/refinio-connection.core-0.1.0.tgz(b63bd7a6a01ec755c7c92bef3136a6ff)
+      '@refinio/connection.core': file:../fotos.expo/vendor/refinio-connection.core-0.1.0.tgz(34b4cbba13451eacab26c994bcafd0c3)
       '@refinio/contact.core': file:../fotos.expo/vendor/refinio-contact.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/trust.core@file:../fotos.expo/vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/one.models@file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)))
       '@refinio/job.core': file:../fotos.expo/vendor/refinio-job.core-0.1.0.tgz
       '@refinio/memory.core': file:../fotos.expo/vendor/refinio-memory.core-0.1.0.tgz(3e4f7590fee37644833c68e4ab081e6b)
@@ -9496,7 +9499,7 @@ snapshots:
       '@refinio/one.models': file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)
       '@refinio/trust.core': file:../fotos.expo/vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/one.models@file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))
       '@refinio/workflow.core': file:../fotos.expo/vendor/refinio-workflow.core-0.1.0.tgz(@refinio/assembly.core@file:../fotos.expo/vendor/refinio-assembly.core-1.0.0.tgz(1b2b51315a70cb1ebeec2804e79435d0))(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)
-      '@vger/vger.core': file:../fotos.expo/vendor/vger-vger.core-1.0.0.tgz(patch_hash=ec29fa513a2d90179a719559862be22776185d12d7b8a7350e52decdd583dede)(c16353bff50154a25bedec216a67201e)
+      '@vger/vger.core': file:../fotos.expo/vendor/vger-vger.core-1.0.0.tgz(patch_hash=ec29fa513a2d90179a719559862be22776185d12d7b8a7350e52decdd583dede)(adb0b40750f2ac8654143dcf2994b7cb)
       react: 19.1.0
 
   '@refinio/ui.theme@file:../fotos.expo/vendor/refinio-ui.theme-0.1.0.tgz': {}
@@ -9735,7 +9738,7 @@ snapshots:
     transitivePeerDependencies:
       - graphql
 
-  '@vger/vger.core@file:../fotos.expo/vendor/vger-vger.core-1.0.0.tgz(patch_hash=ec29fa513a2d90179a719559862be22776185d12d7b8a7350e52decdd583dede)(c16353bff50154a25bedec216a67201e)':
+  '@vger/vger.core@file:../fotos.expo/vendor/vger-vger.core-1.0.0.tgz(patch_hash=ec29fa513a2d90179a719559862be22776185d12d7b8a7350e52decdd583dede)(adb0b40750f2ac8654143dcf2994b7cb)':
     dependencies:
       '@anthropic-ai/sdk': 0.65.0(zod@4.6.7)
       '@glueone/glue.core': file:../fotos.expo/vendor/glueone-glue.core-1.0.0.tgz(@refinio/assembly.core@file:../fotos.expo/vendor/refinio-assembly.core-1.0.0.tgz(1b2b51315a70cb1ebeec2804e79435d0))(@refinio/group.core@file:../fotos.expo/vendor/refinio-group.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))(@refinio/meaning.core@file:../fotos.expo/vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/one.models@file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))(@refinio/trust.core@file:../fotos.expo/vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/one.models@file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)))
@@ -9759,7 +9762,7 @@ snapshots:
       '@refinio/meme.core': file:../fotos.expo/vendor/refinio-meme.core-0.1.0.tgz(@refinio/knowledge.core@file:../fotos.expo/vendor/refinio-knowledge.core-0.1.0.tgz(ccb129d2dc8f1d1de5e42fc30d2b30f5))(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)
       '@refinio/memory.core': file:../fotos.expo/vendor/refinio-memory.core-0.1.0.tgz(3e4f7590fee37644833c68e4ab081e6b)
       '@refinio/memory.refinement': file:../fotos.expo/vendor/refinio-memory.refinement-0.1.0.tgz
-      '@refinio/module.core': file:../fotos.expo/vendor/refinio-module.core-0.1.0.tgz(eea0bf9ce64a405d299ac7a60e4e43b6)
+      '@refinio/module.core': file:../fotos.expo/vendor/refinio-module.core-0.1.0.tgz(cb1942b59a217349b0801a6e0ccc808c)
       '@refinio/one.core': file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz
       '@refinio/one.models': file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)
       '@refinio/orchestration.ai': file:../fotos.expo/vendor/refinio-orchestration.ai-1.0.0.tgz(@refinio/agent.core@file:../fotos.expo/vendor/refinio-agent.core-0.1.0.tgz(ef6d83077b9a06a438ad4676f168a197))(@refinio/api@file:../fotos.expo/vendor/refinio-api-0.1.0.tgz(1fad95c26801c59b0a100a1f4a0e292c))(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/orchestration.core@file:../fotos.expo/vendor/refinio-orchestration.core-1.0.0.tgz(54ad165d5e14b161ca055e04aaccde69))(@refinio/vger.agent@file:../fotos.expo/vendor/refinio-vger.agent-0.1.0.tgz(7d6c4ff3d9cdfbb574a187635e055ecf))(@refinio/workflow.core@file:../fotos.expo/vendor/refinio-workflow.core-0.1.0.tgz(@refinio/assembly.core@file:../fotos.expo/vendor/refinio-assembly.core-1.0.0.tgz(1b2b51315a70cb1ebeec2804e79435d0))(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))
@@ -9801,12 +9804,12 @@ snapshots:
       pdf-lib: 1.17.1
     optionalDependencies:
       '@refinio/source.git': file:../fotos.expo/vendor/refinio-source.git-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/source.core@file:../fotos.expo/vendor/refinio-source.core-0.1.0.tgz(@refinio/assembly.core@file:../fotos.expo/vendor/refinio-assembly.core-1.0.0.tgz(1b2b51315a70cb1ebeec2804e79435d0))(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/trust.pdf@file:../fotos.expo/vendor/refinio-trust.pdf-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)))
-      '@refinio/transport.node': file:../fotos.expo/vendor/refinio-transport.node-0.1.0.tgz(@refinio/connection.core@file:../fotos.expo/vendor/refinio-connection.core-0.1.0.tgz(b63bd7a6a01ec755c7c92bef3136a6ff))(@refinio/transport.core@file:../fotos.expo/vendor/refinio-transport.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/one.models@file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)))
+      '@refinio/transport.node': file:../fotos.expo/vendor/refinio-transport.node-0.1.0.tgz(@refinio/connection.core@file:../fotos.expo/vendor/refinio-connection.core-0.1.0.tgz(34b4cbba13451eacab26c994bcafd0c3))(@refinio/transport.core@file:../fotos.expo/vendor/refinio-transport.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/one.models@file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)))
     transitivePeerDependencies:
       - encoding
       - zod
 
-  '@vger/vger.glue@file:../fotos.expo/vendor/vger-vger.glue-1.0.0.tgz(9277d7d5a7fd7c05986582f0759a9aa5)':
+  '@vger/vger.glue@file:../fotos.expo/vendor/vger-vger.glue-1.0.0.tgz(b5e35ffcca40549a66cc9e8f3cb142a1)':
     dependencies:
       '@glueone/glue.core': file:../fotos.expo/vendor/glueone-glue.core-1.0.0.tgz(@refinio/assembly.core@file:../fotos.expo/vendor/refinio-assembly.core-1.0.0.tgz(1b2b51315a70cb1ebeec2804e79435d0))(@refinio/group.core@file:../fotos.expo/vendor/refinio-group.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))(@refinio/meaning.core@file:../fotos.expo/vendor/refinio-meaning.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/one.models@file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))(@refinio/trust.core@file:../fotos.expo/vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/one.models@file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)))
       '@refinio/api': file:../fotos.expo/vendor/refinio-api-0.1.0.tgz(1fad95c26801c59b0a100a1f4a0e292c)
@@ -9817,15 +9820,15 @@ snapshots:
       '@refinio/settings.core': file:../fotos.expo/vendor/refinio-settings.core-0.1.0.tgz(4f44e81a13810ae29b7c0a2706fe8784)
       '@refinio/source.core': file:../fotos.expo/vendor/refinio-source.core-0.1.0.tgz(@refinio/assembly.core@file:../fotos.expo/vendor/refinio-assembly.core-1.0.0.tgz(1b2b51315a70cb1ebeec2804e79435d0))(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/trust.pdf@file:../fotos.expo/vendor/refinio-trust.pdf-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))
       '@refinio/trust.core': file:../fotos.expo/vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/one.models@file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))
-      '@vger/vger.core': file:../fotos.expo/vendor/vger-vger.core-1.0.0.tgz(patch_hash=ec29fa513a2d90179a719559862be22776185d12d7b8a7350e52decdd583dede)(c16353bff50154a25bedec216a67201e)
+      '@vger/vger.core': file:../fotos.expo/vendor/vger-vger.core-1.0.0.tgz(patch_hash=ec29fa513a2d90179a719559862be22776185d12d7b8a7350e52decdd583dede)(adb0b40750f2ac8654143dcf2994b7cb)
       base64-js: 1.5.1
 
-  '@vger/vger.txt.ui@file:../fotos.expo/vendor/vger-vger.txt.ui-0.1.0.tgz(1c8be14fb37b2659242a745a24ff566d)':
+  '@vger/vger.txt.ui@file:../fotos.expo/vendor/vger-vger.txt.ui-0.1.0.tgz(0cf343a305bef227b7be49feb8b52ed3)':
     dependencies:
       '@refinio/source.documents': file:../fotos.expo/vendor/refinio-source.documents-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/source.core@file:../fotos.expo/vendor/refinio-source.core-0.1.0.tgz(@refinio/assembly.core@file:../fotos.expo/vendor/refinio-assembly.core-1.0.0.tgz(1b2b51315a70cb1ebeec2804e79435d0))(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/trust.pdf@file:../fotos.expo/vendor/refinio-trust.pdf-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)))
       '@refinio/txt.core': file:../fotos.expo/vendor/refinio-txt.core-0.1.0.tgz(@refinio/api@file:../fotos.expo/vendor/refinio-api-0.1.0.tgz(1fad95c26801c59b0a100a1f4a0e292c))(@refinio/assembly.core@file:../fotos.expo/vendor/refinio-assembly.core-1.0.0.tgz(1b2b51315a70cb1ebeec2804e79435d0))(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)
-      '@refinio/ui.core': file:../fotos.expo/vendor/refinio-ui.core-1.0.0.tgz(8f9d09bd361bf78c35f0bce0f43d22bd)
-      '@vger/vger.core': file:../fotos.expo/vendor/vger-vger.core-1.0.0.tgz(patch_hash=ec29fa513a2d90179a719559862be22776185d12d7b8a7350e52decdd583dede)(c16353bff50154a25bedec216a67201e)
+      '@refinio/ui.core': file:../fotos.expo/vendor/refinio-ui.core-1.0.0.tgz(9386d0e89360953be294645eb88b2367)
+      '@vger/vger.core': file:../fotos.expo/vendor/vger-vger.core-1.0.0.tgz(patch_hash=ec29fa513a2d90179a719559862be22776185d12d7b8a7350e52decdd583dede)(adb0b40750f2ac8654143dcf2994b7cb)
       lucide-react: 0.554.0(react@19.1.0)
       react: 19.1.0
     transitivePeerDependencies:
@@ -9890,7 +9893,7 @@ snapshots:
       - encoding
       - zod
 
-  '@vger/vger.ui@file:../fotos.expo/vendor/vger-vger.ui-1.0.0.tgz(931567d65bbb0735b0e2208d7a6bf362)':
+  '@vger/vger.ui@file:../fotos.expo/vendor/vger-vger.ui-1.0.0.tgz(aec414405546665117b991daf611c022)':
     dependencies:
       '@fontsource-variable/inter': 5.3.0
       '@fontsource-variable/jetbrains-mono': 5.3.0
@@ -9914,21 +9917,21 @@ snapshots:
       '@refinio/assembly.core': file:../fotos.expo/vendor/refinio-assembly.core-1.0.0.tgz(1b2b51315a70cb1ebeec2804e79435d0)
       '@refinio/chat.core': file:../fotos.expo/vendor/refinio-chat.core-1.0.0.tgz(c728732ae3fca0f16c002f8d1f3b393a)
       '@refinio/chat.media': file:../fotos.expo/vendor/refinio-chat.media-1.0.0.tgz(@refinio/media.core@file:../fotos.expo/vendor/refinio-media.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/one.models@file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))
-      '@refinio/connection.core': file:../fotos.expo/vendor/refinio-connection.core-0.1.0.tgz(b63bd7a6a01ec755c7c92bef3136a6ff)
+      '@refinio/connection.core': file:../fotos.expo/vendor/refinio-connection.core-0.1.0.tgz(34b4cbba13451eacab26c994bcafd0c3)
       '@refinio/job.core': file:../fotos.expo/vendor/refinio-job.core-0.1.0.tgz
       '@refinio/local.core': file:../fotos.expo/vendor/refinio-local.core-0.1.0.tgz(4f44e81a13810ae29b7c0a2706fe8784)
-      '@refinio/module.core': file:../fotos.expo/vendor/refinio-module.core-0.1.0.tgz(eea0bf9ce64a405d299ac7a60e4e43b6)
+      '@refinio/module.core': file:../fotos.expo/vendor/refinio-module.core-0.1.0.tgz(cb1942b59a217349b0801a6e0ccc808c)
       '@refinio/one.core': file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz
       '@refinio/one.discovery': file:../fotos.expo/vendor/refinio-one.discovery-1.0.0.tgz(@refinio/discovery.core@file:../fotos.expo/vendor/refinio-discovery.core-1.0.0.tgz(@refinio/matching.core@file:../fotos.expo/vendor/refinio-matching.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/one.models@file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)))(@refinio/matching.core@file:../fotos.expo/vendor/refinio-matching.core-0.1.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))
       '@refinio/settings.core': file:../fotos.expo/vendor/refinio-settings.core-0.1.0.tgz(4f44e81a13810ae29b7c0a2706fe8784)
       '@refinio/trust.core': file:../fotos.expo/vendor/refinio-trust.core-1.0.0.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)(@refinio/one.models@file:../fotos.expo/vendor/refinio-one.models-14.1.0-beta-8.tgz(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz))
       '@refinio/txt.core': file:../fotos.expo/vendor/refinio-txt.core-0.1.0.tgz(@refinio/api@file:../fotos.expo/vendor/refinio-api-0.1.0.tgz(1fad95c26801c59b0a100a1f4a0e292c))(@refinio/assembly.core@file:../fotos.expo/vendor/refinio-assembly.core-1.0.0.tgz(1b2b51315a70cb1ebeec2804e79435d0))(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)
-      '@refinio/ui.core': file:../fotos.expo/vendor/refinio-ui.core-1.0.0.tgz(8f9d09bd361bf78c35f0bce0f43d22bd)
+      '@refinio/ui.core': file:../fotos.expo/vendor/refinio-ui.core-1.0.0.tgz(9386d0e89360953be294645eb88b2367)
       '@refinio/ui.theme': file:../fotos.expo/vendor/refinio-ui.theme-0.1.0.tgz
       '@refinio/workflow.core': file:../fotos.expo/vendor/refinio-workflow.core-0.1.0.tgz(@refinio/assembly.core@file:../fotos.expo/vendor/refinio-assembly.core-1.0.0.tgz(1b2b51315a70cb1ebeec2804e79435d0))(@refinio/one.core@file:../fotos.expo/vendor/refinio-one.core-0.6.1-beta-4.tgz)
       '@refinio/workspace.core': file:../fotos.expo/vendor/refinio-workspace.core-0.1.0.tgz(61d4e62fba2524f5fc663bb0fa11cd4a)
-      '@vger/vger.core': file:../fotos.expo/vendor/vger-vger.core-1.0.0.tgz(patch_hash=ec29fa513a2d90179a719559862be22776185d12d7b8a7350e52decdd583dede)(c16353bff50154a25bedec216a67201e)
-      '@vger/vger.txt.ui': file:../fotos.expo/vendor/vger-vger.txt.ui-0.1.0.tgz(1c8be14fb37b2659242a745a24ff566d)
+      '@vger/vger.core': file:../fotos.expo/vendor/vger-vger.core-1.0.0.tgz(patch_hash=ec29fa513a2d90179a719559862be22776185d12d7b8a7350e52decdd583dede)(adb0b40750f2ac8654143dcf2994b7cb)
+      '@vger/vger.txt.ui': file:../fotos.expo/vendor/vger-vger.txt.ui-0.1.0.tgz(0cf343a305bef227b7be49feb8b52ed3)
       class-variance-authority: 0.7.1
       clsx: 2.1.1
       date-fns: 2.30.0
@@ -9997,6 +10000,7 @@ snapshots:
       - '@refinio/source.openlegal'
       - '@refinio/source.person'
       - '@refinio/source.wikipedia'
+      - '@refinio/space.core'
       - '@refinio/strategy.core'
       - '@refinio/sync.core'
       - '@refinio/table.core'
