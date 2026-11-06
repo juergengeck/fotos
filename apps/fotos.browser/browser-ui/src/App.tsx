@@ -6,6 +6,7 @@ import {FullscreenGallery, FullscreenGalleryExit, GallerySurfaceSwitcher} from '
 import {handleFullscreenGalleryKey} from '@/lib/fullscreenGalleryKeyboard';
 import { Lightbox } from '@/components/Lightbox';
 import { Sidebar, type SidebarTab } from '@/components/Sidebar';
+import { GlueAccountSignIn } from '@/components/FotosSettings';
 import { ConfirmModal } from '@/components/ConfirmModal';
 import { ContextMenu } from '@/components/ContextMenu';
 import { RenameModal } from '@/components/RenameModal';
@@ -3729,6 +3730,12 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         <p className="max-w-md text-center text-xs text-white/55">
                             {primaryIntakeSummary}
                         </p>
+                        <div className="flex flex-col items-center gap-2">
+                            <GlueAccountSignIn label="Sign in with glue.one" />
+                            <p className="max-w-md text-xs text-white/55">
+                                Sign in to your account before adding photos. No library is required.
+                            </p>
+                        </div>
                     </div>
                     <Impressum />
                 </div>
