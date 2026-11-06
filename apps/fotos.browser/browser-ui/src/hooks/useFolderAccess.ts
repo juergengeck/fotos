@@ -1,0 +1,3841 @@
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { fromByteArray as toBase64, toByteArray as fromBase64 } from 'base64-js';
+import type { PhotoEntry, ExifData, FaceInfo, SemanticInfo } from '@/types/fotos';
+import {
+    dataAttrsToFaces,
+    facesToDataAttrs,
+    EMBEDDING_DIM,
+    FaceClusterDimension,
+    getGallerySurfaceProfile,
+    planGalleryIntake,
+} from '@refinio/fotos.core';
+import type {
+    FaceAnalysisResult,
+    FaceClusterInfo,
+    FotosEntry,
+    GalleryIntakePlan,
+    GallerySurface,
+    GallerySurfaceProfile,
+} from '@refinio/fotos.core';
+import { copyFilesToDirectory, hashImageFile, ingestDirectory, type IngestProgress, type FaceWorkerHandle } from '@/lib/browserIngest';
+import {parseFotosEntryByteSize} from '@refinio/fotos.core/ingest';
+import {readFotosIndexWithExactByteSizes} from '@/lib/fotosIndexByteSizeMigration';
+import { createFaceWorker } from '@/lib/faceWorkerClient';
+import {queueFaceMetadataMutation, replaceFaceAnalysis, replaceSemanticAnalysis} from '@/lib/analysisRetention';
+import { createSemanticWorker } from '@/lib/semanticWorkerClient';
+import { isMobile } from '@/lib/platform';
+import {
+    syncPhotosToOneCore,
+    listenForFotosUpdates,
+    extractFaceDataFromEntry,
+    extractThumbUrlFromEntry,
+    writeFaceCropsToFilesystem,
+} from '@/lib/fotos-sync';
+import { traceHang } from '@/lib/hangTrace';
+import type { FaceWorkerProgress } from '@/lib/faceWorkerClient';
+import faceWorkerUrl from '@/workers/face.worker.ts?worker&url';
+import semanticWorkerUrl from '@/workers/semantic.worker.ts?worker&url';
+
+type IndexHtmlNamespace = 'face' | 'semantic';
+
+function escapeAttr(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function buildFacesCellHtml(dataAttrs: Record<string, string>): string {
+    const count = parseInt(dataAttrs['face-count'] ?? '0', 10);
+    if (count === 0) return '';
+
+    const crops = dataAttrs['face-crops']?.split(';') ?? [];
+    const names = dataAttrs['face-names']?.split(';') ?? [];
+    const clusterIds = dataAttrs['face-cluster-hashes']?.split(';') ?? [];
+
+    const parts: string[] = [];
+    for (let i = 0; i < count; i++) {
+        const name = names[i] && names[i] !== 'Unknown' ? escapeAttr(names[i]) : '';
+        const cropSrc = crops[i] ? `<img class="fs-face-crop" src="${escapeAttr(crops[i])}" loading="lazy" alt="${name}">` : '';
+        const nameLabel = name ? `<span class="fs-face-name">${name}</span>` : '';
+        const clusterId = clusterIds[i];
+        if (clusterId && name) {
+            parts.push(`<a class="fs-face" data-cluster="${escapeAttr(clusterId)}">${cropSrc}${nameLabel}</a>`);
+        } else {
+            parts.push(`<span class="fs-face">${cropSrc}${nameLabel}</span>`);
+        }
+    }
+    return parts.join('');
+}
+
+let indexHtmlWriteChain = Promise.resolve();
+
+function queueIndexHtmlWrite<T>(operation: () => Promise<T>): Promise<T> {
+    const next = indexHtmlWriteChain.then(operation, operation);
+    indexHtmlWriteChain = next.then(() => undefined, () => undefined);
+    return next;
+}
+
+function encodeFloat32Base64(values: Float32Array): string {
+    return toBase64(new Uint8Array(values.buffer, values.byteOffset, values.byteLength));
+}
+
+function decodeFloat32Base64(value: string): Float32Array {
+    const bytes = fromBase64(value);
+    if (bytes.byteLength % Float32Array.BYTES_PER_ELEMENT !== 0) {
+        throw new Error('Invalid Float32 embedding payload');
+    }
+
+    return new Float32Array(
+        bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    );
+}
+
+function semanticToDataAttrs(semantic: SemanticInfo): Record<string, string> {
+    return {
+        'semantic-model-id': semantic.modelId,
+        'semantic-embedding': encodeFloat32Base64(semantic.embedding),
+    };
+}
+
+function dataAttrsToSemanticInfo(dataAttrs: Record<string, string>): SemanticInfo | null {
+    const modelId = dataAttrs['semantic-model-id'];
+    const embedding = dataAttrs['semantic-embedding'];
+    if (!modelId || !embedding) {
+        return null;
+    }
+
+    return {
+        modelId,
+        embedding: decodeFloat32Base64(embedding),
+    };
+}
+
+/**
+ * Update a one/index.html file to add data-* attributes for a specific photo.
+ */
+async function updateIndexHtmlData(
+    rootHandle: FileSystemDirectoryHandle,
+    photo: PhotoEntry,
+    namespace: IndexHtmlNamespace,
+    dataAttrs: Record<string, string>,
+): Promise<void> {
+    await queueIndexHtmlWrite(async () => {
+        const segments = (photo.sourcePath ?? '').split('/').filter(Boolean);
+        let dirHandle = rootHandle;
+        for (let i = 0; i < segments.length - 1; i++) {
+            dirHandle = await dirHandle.getDirectoryHandle(segments[i]);
+        }
+
+        const oneDir = await dirHandle.getDirectoryHandle('one');
+        const indexHandle = await oneDir.getFileHandle('index.html');
+        const file = await indexHandle.getFile();
+        const html = await file.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const photoName = segments[segments.length - 1];
+
+        const rows = Array.from(doc.querySelectorAll<HTMLTableRowElement>('tr.fs-entry'));
+        const row = rows.find(candidate => {
+            const streamId = candidate.getAttribute('data-stream-id');
+            const contentHash = candidate.getAttribute('data-content-hash') ?? candidate.getAttribute('data-hash');
+            if (photo.hash && (streamId === photo.hash || contentHash === photo.hash)) {
+                return true;
+            }
+
+            const linkName = candidate.querySelector('.fs-name a:last-of-type')?.textContent?.trim();
+            return linkName === photoName;
+        });
+
+        if (!row) {
+            console.warn(`[fotos-${namespace}-meta] write-miss`, {
+                photo: photo.sourcePath ?? photo.name,
+                hash: photo.hash,
+            });
+            if (namespace === 'face') {
+                traceHang('face-metadata-write-miss', {
+                    photo: photo.sourcePath ?? photo.name,
+                    hash: photo.hash,
+                    faceCount: dataAttrs['face-count'] ?? null,
+                });
+            }
+            throw new Error(`Could not persist ${namespace} analysis for ${photo.sourcePath ?? photo.name}: index row missing.`);
+        }
+
+        for (const attr of [...row.getAttributeNames()]) {
+            if (attr.startsWith(`data-${namespace}-`)) {
+                row.removeAttribute(attr);
+            }
+        }
+
+        for (const [key, value] of Object.entries(dataAttrs)) {
+            row.setAttribute(`data-${key}`, value);
+        }
+
+        // Update visible faces cell to reflect current metadata
+        if (namespace === 'face') {
+            const facesCell = row.querySelector('.fs-faces') as HTMLTableCellElement | null;
+            if (facesCell) {
+                facesCell.innerHTML = buildFacesCellHtml(dataAttrs);
+            }
+        }
+
+        const nextHtml = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+
+        if (namespace === 'face') {
+            console.log('[fotos-face-meta] write', {
+                photo: photo.sourcePath ?? photo.name,
+                hash: photo.hash,
+                faceCount: dataAttrs['face-count'] ?? null,
+                clusterCount: dataAttrs['face-cluster-hashes']?.split(';').filter(Boolean).length ?? 0,
+                cleared: Object.keys(dataAttrs).length === 0,
+            });
+            traceHang('face-metadata-write', {
+                photo: photo.sourcePath ?? photo.name,
+                hash: photo.hash,
+                faceCount: dataAttrs['face-count'] ?? null,
+                clusterCount: dataAttrs['face-cluster-hashes']?.split(';').filter(Boolean).length ?? 0,
+                cleared: Object.keys(dataAttrs).length === 0,
+            });
+        }
+
+        const writable = await indexHandle.createWritable();
+        await writable.write(nextHtml);
+        await writable.close();
+    });
+}
+
+async function updateIndexHtmlFaceData(
+    rootHandle: FileSystemDirectoryHandle,
+    photo: PhotoEntry,
+    dataAttrs: Record<string, string>,
+): Promise<void> {
+    await updateIndexHtmlData(rootHandle, photo, 'face', dataAttrs);
+}
+
+async function updateIndexHtmlSemanticData(
+    rootHandle: FileSystemDirectoryHandle,
+    photo: PhotoEntry,
+    dataAttrs: Record<string, string>,
+): Promise<void> {
+    await updateIndexHtmlData(rootHandle, photo, 'semantic', dataAttrs);
+}
+
+async function removeIndexHtmlPhoto(
+    rootHandle: FileSystemDirectoryHandle,
+    photo: PhotoEntry,
+): Promise<void> {
+    await queueIndexHtmlWrite(async () => {
+        const segments = (photo.sourcePath ?? '').split('/').filter(Boolean);
+        if (segments.length === 0) {
+            return;
+        }
+
+        let dirHandle = rootHandle;
+        for (let index = 0; index < segments.length - 1; index++) {
+            dirHandle = await dirHandle.getDirectoryHandle(segments[index]);
+        }
+
+        const oneDir = await dirHandle.getDirectoryHandle('one');
+        const indexHandle = await oneDir.getFileHandle('index.html');
+        const file = await indexHandle.getFile();
+        const html = await file.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const photoName = segments[segments.length - 1];
+
+        const rows = Array.from(doc.querySelectorAll<HTMLTableRowElement>('tr.fs-entry'));
+        const row = rows.find(candidate => {
+            const streamId = candidate.getAttribute('data-stream-id');
+            const contentHash = candidate.getAttribute('data-content-hash') ?? candidate.getAttribute('data-hash');
+            if (photo.hash && (streamId === photo.hash || contentHash === photo.hash)) {
+                return true;
+            }
+
+            const linkName = candidate.querySelector('.fs-name a:last-of-type')?.textContent?.trim();
+            return linkName === photoName;
+        });
+
+        if (!row) {
+            console.warn('[fotos-delete] index row not found', {
+                photo: photo.sourcePath ?? photo.name,
+                hash: photo.hash,
+            });
+            return;
+        }
+
+        row.remove();
+
+        const summary = doc.querySelector('.fs-summary');
+        if (summary) {
+            const entryCount = doc.querySelectorAll('tr.fs-entry').length;
+            const childCount = doc.querySelectorAll('tr.fs-child').length;
+            summary.textContent = `${entryCount} files, ${childCount} folders`;
+        }
+
+        const nextHtml = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+        const writable = await indexHandle.createWritable();
+        await writable.write(nextHtml);
+        await writable.close();
+    });
+}
+
+async function removeGeneratedMetadataFile(
+    rootHandle: FileSystemDirectoryHandle,
+    relativePath: string | undefined,
+): Promise<void> {
+    if (!relativePath || relativePath.startsWith('remote:') || relativePath.startsWith('blob:') || relativePath.startsWith('data:')) {
+        return;
+    }
+
+    const segments = relativePath.split('/').filter(Boolean);
+    if (segments.length === 0 || !segments.includes('one')) {
+        return;
+    }
+
+    try {
+        let dirHandle = rootHandle;
+        for (let index = 0; index < segments.length - 1; index++) {
+            dirHandle = await dirHandle.getDirectoryHandle(segments[index]);
+        }
+        await dirHandle.removeEntry(segments[segments.length - 1]);
+    } catch {
+        // Generated files may already have been pruned by a rescan or older ingest.
+    }
+}
+
+async function removeLocalPhotoFile(
+    rootHandle: FileSystemDirectoryHandle,
+    relativePath: string,
+): Promise<void> {
+    const segments = relativePath.split('/').filter(Boolean);
+    if (segments.length === 0 || segments.includes('one')) {
+        return;
+    }
+
+    let dirHandle = rootHandle;
+    for (let index = 0; index < segments.length - 1; index++) {
+        dirHandle = await dirHandle.getDirectoryHandle(segments[index]);
+    }
+
+    await dirHandle.removeEntry(segments[segments.length - 1]);
+}
+
+function inferFaceInfoCount({
+    parsedCount,
+    detailedFaceCount,
+    clusterIds,
+    names,
+    personIds,
+}: {
+    parsedCount: number;
+    detailedFaceCount: number;
+    clusterIds?: string[];
+    names?: string[];
+    personIds?: string[];
+}): number {
+    return Math.max(
+        parsedCount,
+        detailedFaceCount,
+        clusterIds?.filter(Boolean).length ?? 0,
+        names?.length ?? 0,
+        personIds?.filter(Boolean).length ?? 0,
+    );
+}
+
+/**
+ * Parse a one/index.html DOM to extract photo entries from data-* attributes.
+ */
+function parseOneIndex(html: string, relPath: string): PhotoEntry[] {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const rows = doc.querySelectorAll('tr.fs-entry');
+    const entries: PhotoEntry[] = [];
+    let faceMetaRows = 0;
+    let zeroFaceRows = 0;
+    let clusteredRows = 0;
+
+    for (const row of rows) {
+        const mime = row.getAttribute('data-mime') ?? '';
+        if (!mime.startsWith('image/') && !mime.startsWith('video/')) continue;
+
+        const name = row.querySelector('.fs-name')?.textContent?.trim() ?? '';
+        const streamId = row.getAttribute('data-stream-id') ?? '';
+        const contentHash = row.getAttribute('data-content-hash') ?? row.getAttribute('data-hash') ?? '';
+        const thumb = row.getAttribute('data-thumb');
+        const exif: ExifData = {};
+        const exifDate = row.getAttribute('data-exif-date');
+        if (exifDate) exif.date = exifDate;
+        const camera = row.getAttribute('data-exif-camera');
+        if (camera) exif.camera = camera;
+        const lens = row.getAttribute('data-exif-lens');
+        if (lens) exif.lens = lens;
+        const focal = row.getAttribute('data-exif-focal');
+        if (focal) exif.focalLength = focal;
+        const aperture = row.getAttribute('data-exif-aperture');
+        if (aperture) exif.aperture = aperture;
+        const shutter = row.getAttribute('data-exif-shutter');
+        if (shutter) exif.shutter = shutter;
+        const iso = row.getAttribute('data-exif-iso');
+        if (iso) exif.iso = Number(iso);
+        const gps = row.getAttribute('data-exif-gps');
+        if (gps) {
+            const [lat, lon] = gps.split(',').map(Number);
+            if (!isNaN(lat) && !isNaN(lon)) exif.gps = { lat, lon };
+        }
+        const w = row.getAttribute('data-exif-width');
+        if (w) exif.width = Number(w);
+        const h = row.getAttribute('data-exif-height');
+        if (h) exif.height = Number(h);
+
+        // Parse face data
+        let faces: FaceInfo | undefined;
+        let semantic: SemanticInfo | null | undefined;
+        const faceCount = row.getAttribute('data-face-count');
+        if (faceCount !== null) {
+            const parsedCount = parseInt(faceCount, 10);
+            if (!Number.isNaN(parsedCount) && parsedCount >= 0) {
+                faceMetaRows += 1;
+                const clusterHashes = row.getAttribute('data-face-cluster-hashes');
+                const faceNames = row.getAttribute('data-face-names');
+                const facePersonIds = row.getAttribute('data-face-person-ids');
+                const clusterIds = clusterHashes ? clusterHashes.split(';') : undefined;
+                const names = faceNames ? faceNames.split(';') : undefined;
+                const personIds = facePersonIds ? facePersonIds.split(';') : undefined;
+                const inferredCount = inferFaceInfoCount({
+                    parsedCount,
+                    detailedFaceCount: 0,
+                    clusterIds,
+                    names,
+                    personIds,
+                });
+
+                if (inferredCount === 0) {
+                    zeroFaceRows += 1;
+                    faces = { count: 0, bboxes: [], scores: [], embeddings: null, crops: [] };
+                } else {
+                    const dataMap: Record<string, string> = {};
+                    const bboxes = row.getAttribute('data-face-bboxes');
+                    if (bboxes) dataMap['face-bboxes'] = bboxes;
+                    const scores = row.getAttribute('data-face-scores');
+                    if (scores) dataMap['face-scores'] = scores;
+                    const embeddings = row.getAttribute('data-face-embeddings');
+                    if (embeddings) dataMap['face-embeddings'] = embeddings;
+                    const crops = row.getAttribute('data-face-crops');
+                    if (crops) dataMap['face-crops'] = crops;
+
+                    const detailedFaceCount = bboxes
+                        ? bboxes.split(';').filter(Boolean).length
+                        : 0;
+                    dataMap['face-count'] = String(detailedFaceCount);
+
+                    const result = dataAttrsToFaces(dataMap);
+                    const count = inferFaceInfoCount({
+                        parsedCount: inferredCount,
+                        detailedFaceCount: result.faces.length,
+                        clusterIds,
+                        names,
+                        personIds,
+                    });
+
+                    const detailedEmbeddings = result.faces.some(face => face.embedding.some(value => value !== 0))
+                        ? (() => {
+                            const flat = new Float32Array(count * EMBEDDING_DIM);
+                            for (let i = 0; i < result.faces.length; i++) {
+                                flat.set(result.faces[i].embedding, i * EMBEDDING_DIM);
+                            }
+                            return flat;
+                        })()
+                        : null;
+
+                    faces = {
+                        count,
+                        bboxes: Array.from({length: count}, (_, i) => result.faces[i]?.detection.bbox ?? [0, 0, 0, 0]),
+                        scores: Array.from({length: count}, (_, i) => result.faces[i]?.detection.score ?? 0),
+                        embeddings: detailedEmbeddings,
+                        crops: Array.from({length: count}, (_, i) => result.faces[i]?.cropPath ?? ''),
+                        clusterIds,
+                        names,
+                        personIds,
+                    };
+                    if ((faces.clusterIds?.length ?? 0) > 0) {
+                        clusteredRows += 1;
+                    }
+                }
+            }
+        }
+
+        if (mime.startsWith('image/')) {
+            try {
+                const semanticInfo = dataAttrsToSemanticInfo({
+                    'semantic-model-id': row.getAttribute('data-semantic-model-id') ?? '',
+                    'semantic-embedding': row.getAttribute('data-semantic-embedding') ?? '',
+                });
+                if (semanticInfo) {
+                    semantic = semanticInfo;
+                }
+            } catch (error) {
+                console.warn('[fotos-semantic-meta] failed to parse semantic embedding', {
+                    photo: relPath ? `${relPath}/${name}` : name,
+                    error,
+                });
+            }
+        } else {
+            semantic = null;
+        }
+
+        const size = parseFotosEntryByteSize(
+            row.getAttribute('data-size-bytes') ?? undefined,
+        );
+
+        const scannedAt = doc.querySelector('.fs-node')?.getAttribute('data-scanned') ?? new Date().toISOString();
+
+        // Prefix face crop paths with folder context
+        if (faces) {
+            const prefix = relPath ? `${relPath}/one/` : 'one/';
+            faces.crops = faces.crops.map(c => c ? `${prefix}${c}` : '');
+        }
+
+        entries.push({
+            hash: streamId || contentHash,
+            name,
+            managed: 'metadata',
+            sourcePath: relPath ? `${relPath}/${name}` : name,
+            folderPath: relPath || undefined,
+            mimeType: mime || undefined,
+            thumb: thumb ? (relPath ? `${relPath}/one/${thumb}` : `one/${thumb}`) : undefined,
+            tags: relPath ? [relPath.split('/')[0]] : [],
+            capturedAt: exif.date ?? scannedAt,
+            updatedAt: scannedAt,
+            exif: Object.keys(exif).length > 0 ? exif : undefined,
+            addedAt: exif.date ?? scannedAt,
+            size,
+            faces,
+            semantic,
+        });
+    }
+
+    console.log('[fotos-face-meta] load', {
+        folder: relPath || '.',
+        entries: entries.length,
+        faceMetaRows,
+        zeroFaceRows,
+        clusteredRows,
+    });
+    traceHang('face-metadata-load', {
+        folder: relPath || '.',
+        entries: entries.length,
+        faceMetaRows,
+        zeroFaceRows,
+        clusteredRows,
+    });
+
+    return entries;
+}
+
+function basenameFromPath(value?: string): string | null {
+    if (!value) {
+        return null;
+    }
+
+    const segments = value.split('/').filter(Boolean);
+    return segments.length > 0 ? segments[segments.length - 1]! : null;
+}
+
+function dirnameFromPath(value?: string): string | undefined {
+    if (!value || !value.includes('/')) {
+        return undefined;
+    }
+
+    const segments = value.split('/').filter(Boolean);
+    if (segments.length <= 1) {
+        return undefined;
+    }
+
+    return segments.slice(0, -1).join('/');
+}
+
+function buildExifFromFotosEntry(entry: FotosEntry): ExifData | undefined {
+    const remoteEntry = entry as FotosEntry & Record<string, unknown>;
+    const gpsLat = typeof remoteEntry.exifGpsLat === 'number' ? remoteEntry.exifGpsLat : undefined;
+    const gpsLon = typeof remoteEntry.exifGpsLon === 'number' ? remoteEntry.exifGpsLon : undefined;
+    const exif: ExifData = {
+        ...(typeof remoteEntry.exifDate === 'string' ? { date: remoteEntry.exifDate } : {}),
+        ...(typeof remoteEntry.exifCamera === 'string' ? { camera: remoteEntry.exifCamera } : {}),
+        ...(typeof remoteEntry.exifLens === 'string' ? { lens: remoteEntry.exifLens } : {}),
+        ...(typeof remoteEntry.exifFocalLength === 'string' ? { focalLength: remoteEntry.exifFocalLength } : {}),
+        ...(typeof remoteEntry.exifAperture === 'string' ? { aperture: remoteEntry.exifAperture } : {}),
+        ...(typeof remoteEntry.exifShutter === 'string' ? { shutter: remoteEntry.exifShutter } : {}),
+        ...(typeof remoteEntry.exifIso === 'number' ? { iso: remoteEntry.exifIso } : {}),
+        ...(typeof remoteEntry.exifWidth === 'number' ? { width: remoteEntry.exifWidth } : {}),
+        ...(typeof remoteEntry.exifHeight === 'number' ? { height: remoteEntry.exifHeight } : {}),
+        ...(gpsLat !== undefined && gpsLon !== undefined ? { gps: { lat: gpsLat, lon: gpsLon } } : {}),
+    };
+
+    return Object.keys(exif).length > 0 ? exif : undefined;
+}
+
+function buildFaceInfoFromExtractedEntry(
+    entry: FotosEntry,
+    cropPaths: string[],
+    faceData: Awaited<ReturnType<typeof extractFaceDataFromEntry>>,
+): FaceInfo | undefined {
+    if (!entry.faceCount || entry.faceCount <= 0) {
+        return undefined;
+    }
+
+    if (!faceData) {
+        return {
+            count: entry.faceCount,
+            bboxes: [],
+            scores: [],
+            embeddings: null,
+            crops: [],
+        };
+    }
+
+    const faces = faceData.faces.faces;
+    return {
+        count: faces.length,
+        bboxes: faces.map(face => face.detection.bbox),
+        scores: faces.map(face => face.detection.score),
+        embeddings: faces.some(face => face.embedding.some(value => value !== 0))
+            ? (() => {
+                const flat = new Float32Array(faces.length * EMBEDDING_DIM);
+                for (let index = 0; index < faces.length; index++) {
+                    flat.set(faces[index].embedding, index * EMBEDDING_DIM);
+                }
+                return flat;
+            })()
+            : null,
+        crops: cropPaths,
+    };
+}
+
+function buildFilesystemFaceInfoFromRemoteEntry(
+    photo: PhotoEntry,
+    entry: FotosEntry,
+    faceData: Awaited<ReturnType<typeof extractFaceDataFromEntry>>,
+): FaceInfo | undefined {
+    if (!entry.faceCount || entry.faceCount <= 0) {
+        return undefined;
+    }
+
+    const relPath = (photo.sourcePath ?? '').includes('/')
+        ? (photo.sourcePath ?? '').split('/').slice(0, -1).join('/')
+        : '';
+    const prefix = relPath ? `${relPath}/one/` : 'one/';
+
+    if (!faceData) {
+        return {
+            count: entry.faceCount,
+            bboxes: [],
+            scores: [],
+            embeddings: null,
+            crops: [],
+        };
+    }
+
+    const faces = faceData.faces.faces;
+    return {
+        count: faces.length,
+        bboxes: faces.map(face => face.detection.bbox),
+        scores: faces.map(face => face.detection.score),
+        embeddings: faces.some(face => face.embedding.some(value => value !== 0))
+            ? (() => {
+                const flat = new Float32Array(faces.length * EMBEDDING_DIM);
+                for (let index = 0; index < faces.length; index++) {
+                    flat.set(faces[index].embedding, index * EMBEDDING_DIM);
+                }
+                return flat;
+            })()
+            : null,
+        crops: faces.map(face => face.cropPath ? `${prefix}${face.cropPath}` : ''),
+    };
+}
+
+async function materializeRemoteFotosEntry(
+    entry: FotosEntry,
+): Promise<{
+    photo: PhotoEntry;
+    cacheEntries: Array<[key: string, url: string]>;
+    faceData: Awaited<ReturnType<typeof extractFaceDataFromEntry>>;
+}> {
+    const thumbUrl = await extractThumbUrlFromEntry(entry);
+    const faceData = await extractFaceDataFromEntry(entry);
+    const cacheEntries: Array<[key: string, url: string]> = [];
+    const remoteSourceKey = thumbUrl ? `remote:${entry.contentHash}` : undefined;
+
+    if (thumbUrl && remoteSourceKey) {
+        cacheEntries.push([remoteSourceKey, thumbUrl]);
+    }
+
+    const cropPaths = (faceData?.cropBlobs ?? []).map((cropBlob, index) => {
+        const cropKey = `remote-face:${entry.contentHash}:${index}`;
+        const cropUrl = URL.createObjectURL(new Blob([cropBlob], { type: 'image/jpeg' }));
+        cacheEntries.push([cropKey, cropUrl]);
+        return cropKey;
+    });
+
+    const capturedAt = entry.capturedAt
+        ?? buildExifFromFotosEntry(entry)?.date
+        ?? entry.updatedAt
+        ?? new Date().toISOString();
+    const updatedAt = entry.updatedAt ?? capturedAt;
+    const originalSourcePath = typeof entry.sourcePath === 'string' ? entry.sourcePath : undefined;
+    const folderPath = typeof entry.folderPath === 'string'
+        ? entry.folderPath
+        : dirnameFromPath(originalSourcePath);
+    const remoteName = basenameFromPath(originalSourcePath) ?? `${entry.contentHash.slice(0, 12)}.photo`;
+
+    return {
+        photo: {
+            hash: entry.contentHash,
+            name: remoteName,
+            managed: 'metadata',
+            ...(remoteSourceKey ? { sourcePath: remoteSourceKey } : {}),
+            ...(folderPath ? { folderPath } : {}),
+            ...(entry.mime ? { mimeType: entry.mime } : {}),
+            ...(remoteSourceKey ? { thumb: remoteSourceKey } : {}),
+            tags: folderPath ? [folderPath.split('/')[0]!] : [],
+            capturedAt,
+            updatedAt,
+            exif: buildExifFromFotosEntry(entry),
+            addedAt: updatedAt,
+            size: entry.size,
+            faces: buildFaceInfoFromExtractedEntry(entry, cropPaths, faceData),
+        },
+        cacheEntries,
+        faceData,
+    };
+}
+
+function shouldAdoptIncomingFaces(currentFaces: FaceInfo | undefined, nextFaces: FaceInfo | undefined): boolean {
+    const currentCount = currentFaces?.count ?? 0;
+    const nextCount = nextFaces?.count ?? 0;
+    return nextCount > currentCount;
+}
+
+export function isRemoteGalleryEntry(entry: PhotoEntry): boolean {
+    return entry.sourcePath?.startsWith('remote:') === true
+        || entry.thumb?.startsWith('remote:') === true;
+}
+
+function mergeWithRemoteEntries(
+    nextEntries: PhotoEntry[],
+    previousEntries: readonly PhotoEntry[],
+): PhotoEntry[] {
+    const merged = [...nextEntries];
+    const seenHashes = new Set(nextEntries.map(entry => entry.hash));
+
+    for (const previousEntry of previousEntries) {
+        if (!isRemoteGalleryEntry(previousEntry) || seenHashes.has(previousEntry.hash)) {
+            continue;
+        }
+
+        merged.push(previousEntry);
+    }
+
+    return merged;
+}
+
+/**
+ * Recursively walk a directory handle looking for one/index.html files.
+ * Returns all photo entries found.
+ */
+async function walkForOneIndices(
+    dirHandle: FileSystemDirectoryHandle,
+    rootHandle: FileSystemDirectoryHandle,
+    relPath: string,
+    entries: PhotoEntry[]
+): Promise<void> {
+    // Check for one/index.html in this directory
+    let html: string | undefined;
+    try {
+        const oneDir = await dirHandle.getDirectoryHandle('one');
+        const indexFile = await oneDir.getFileHandle('index.html');
+        html = await queueIndexHtmlWrite(() => readFotosIndexWithExactByteSizes(
+            indexFile,
+            dirHandle,
+            relPath ? `${relPath}/one/index.html` : 'one/index.html',
+        ));
+    } catch (error) {
+        if (!(error instanceof DOMException) || error.name !== 'NotFoundError') {
+            throw error;
+        }
+    }
+
+    if (html !== undefined) {
+        const parsed = parseOneIndex(html, relPath);
+        entries.push(...parsed);
+    }
+
+    // Recurse into subdirectories
+    for await (const [name, handle] of (dirHandle as any).entries()) {
+        if (handle.kind !== 'directory') continue;
+        if (name === 'one' || name === '.git' || name === 'node_modules') continue;
+        if (name.startsWith('.')) continue;
+
+        const childPath = relPath ? `${relPath}/${name}` : name;
+        await walkForOneIndices(handle, rootHandle, childPath, entries);
+    }
+}
+
+/**
+ * Read a file from the directory handle tree by relative path.
+ */
+async function readFileFromHandle(
+    rootHandle: FileSystemDirectoryHandle,
+    relativePath: string
+): Promise<File> {
+    const segments = relativePath.split('/').filter(Boolean);
+    let dirHandle = rootHandle;
+
+    // Navigate to parent directory
+    for (let i = 0; i < segments.length - 1; i++) {
+        dirHandle = await dirHandle.getDirectoryHandle(segments[i]);
+    }
+
+    const fileHandle = await dirHandle.getFileHandle(segments[segments.length - 1]);
+    return fileHandle.getFile();
+}
+
+async function readAnalysisSourceFile(handle: FileSystemDirectoryHandle, photo: PhotoEntry): Promise<File> {
+    if (!photo.sourcePath) throw new Error(`Cannot analyze ${photo.name}: source path missing.`);
+    const file = await readFileFromHandle(handle, photo.sourcePath);
+    const expectedHash = await queueIndexHtmlWrite(async () => {
+        const segments = photo.sourcePath!.split('/').filter(Boolean);
+        let directory = handle;
+        for (const segment of segments.slice(0, -1)) directory = await directory.getDirectoryHandle(segment);
+        const one = await directory.getDirectoryHandle('one');
+        const index = await one.getFileHandle('index.html');
+        const document = new DOMParser().parseFromString(await (await index.getFile()).text(), 'text/html');
+        const row = Array.from(document.querySelectorAll('tr.fs-entry')).find(row => (
+            row.getAttribute('data-stream-id') === photo.hash
+            || (row.getAttribute('data-content-hash') ?? row.getAttribute('data-hash')) === photo.hash
+        ));
+        if (!row) throw new Error(`Cannot analyze ${photo.name}: index row missing.`);
+        const hash = row.getAttribute('data-content-hash') ?? row.getAttribute('data-hash');
+        if (!hash) throw new Error(`Cannot analyze ${photo.name}: index content hash missing.`);
+        return hash;
+    });
+    if (await hashImageFile(file) !== expectedHash) {
+        throw new Error(`Cannot analyze ${photo.name}: source content changed since indexing; saved analysis retained. Rescan the folder first.`);
+    }
+    return file;
+}
+
+interface LoadedClusterState {
+    dim: FaceClusterDimension;
+    threshold: number;
+}
+
+async function loadClusterState(dirHandle: FileSystemDirectoryHandle): Promise<LoadedClusterState | null> {
+    try {
+        const oneDir = await dirHandle.getDirectoryHandle('one');
+        const file = await (await oneDir.getFileHandle('clusters.json')).getFile();
+        const json = await file.text();
+        const parsed = JSON.parse(json) as {threshold?: number};
+        return {
+            dim: FaceClusterDimension.deserialize(json),
+            threshold: parsed.threshold ?? 0.55,
+        };
+    } catch (cause) {
+        if (cause instanceof DOMException && cause.name === 'NotFoundError') return null;
+        throw cause;
+    }
+}
+
+async function saveClusterState(dirHandle: FileSystemDirectoryHandle, dim: FaceClusterDimension): Promise<void> {
+    const oneDir = await dirHandle.getDirectoryHandle('one', { create: true });
+    const fh = await oneDir.getFileHandle('clusters.json', { create: true });
+    const wr = await fh.createWritable();
+    await wr.write(dim.serialize());
+    await wr.close();
+}
+
+async function clearClusterState(dirHandle: FileSystemDirectoryHandle): Promise<void> {
+    try {
+        const oneDir = await dirHandle.getDirectoryHandle('one');
+        await oneDir.removeEntry('clusters.json');
+    } catch {
+        // Ignore missing cluster state.
+    }
+}
+
+const DEFAULT_CLUSTER_SENSITIVITY = 50;
+const CLUSTER_THRESHOLD_MIN = 0.35;
+const CLUSTER_THRESHOLD_MAX = 0.75;
+const CLUSTER_THRESHOLD_EPSILON = 1e-6;
+
+function clusterSensitivityToThreshold(sensitivity: number): number {
+    const clamped = Math.max(0, Math.min(100, Number.isFinite(sensitivity) ? sensitivity : DEFAULT_CLUSTER_SENSITIVITY));
+    return CLUSTER_THRESHOLD_MIN + (clamped / 100) * (CLUSTER_THRESHOLD_MAX - CLUSTER_THRESHOLD_MIN);
+}
+
+function isSameThreshold(left: number, right: number): boolean {
+    return Math.abs(left - right) < CLUSTER_THRESHOLD_EPSILON;
+}
+
+function normalizeClusterName(name: string | null | undefined): string | undefined {
+    const trimmed = name?.trim();
+    if (!trimmed || trimmed === 'Unknown') {
+        return undefined;
+    }
+    return trimmed;
+}
+
+function normalizePersonId(personId: string | null | undefined): string | undefined {
+    const trimmed = personId?.trim();
+    return trimmed ? trimmed : undefined;
+}
+
+function createExplicitPersonId(): string {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function stripStoredFaceCropPath(photo: PhotoEntry, cropPath: string | undefined): string | undefined {
+    if (!cropPath) {
+        return undefined;
+    }
+
+    const relPath = photo.sourcePath?.includes('/')
+        ? photo.sourcePath.split('/').slice(0, -1).join('/')
+        : '';
+    const prefix = relPath ? `${relPath}/one/` : 'one/';
+    return cropPath.startsWith(prefix) ? cropPath.slice(prefix.length) : cropPath;
+}
+
+function buildFaceAnalysisResultFromEntry(photo: PhotoEntry): FaceAnalysisResult | null {
+    const faces = photo.faces;
+    if (!faces || faces.count <= 0 || !faces.embeddings) {
+        return null;
+    }
+
+    const resultFaces = Array.from({length: faces.count}, (_, index) => ({
+        detection: {
+            bbox: faces.bboxes[index],
+            score: faces.scores[index] ?? 0,
+            landmarks: [],
+        },
+        embedding: Array.from(
+            faces.embeddings!.slice(index * EMBEDDING_DIM, (index + 1) * EMBEDDING_DIM)
+        ),
+        cropPath: stripStoredFaceCropPath(photo, faces.crops[index]),
+    }));
+
+    return {faces: resultFaces};
+}
+
+function buildFaceClusterInfoFromEntry(photo: PhotoEntry): FaceClusterInfo[] | undefined {
+    const faces = photo.faces;
+    if (!faces?.clusterIds?.length) {
+        return undefined;
+    }
+
+    return faces.clusterIds.map((clusterId, index) => ({
+        clusterId,
+        personName: normalizeClusterName(faces.names?.[index]),
+        personId: normalizePersonId(faces.personIds?.[index]),
+    }));
+}
+
+function buildFaceDataAttrsFromEntry(photo: PhotoEntry): Record<string, string> {
+    const faces = photo.faces;
+    if (!faces || faces.count <= 0) {
+        return { 'face-count': '0' };
+    }
+
+    const result = buildFaceAnalysisResultFromEntry(photo);
+    if (result) {
+        return facesToDataAttrs(result, buildFaceClusterInfoFromEntry(photo));
+    }
+
+    const data: Record<string, string> = {
+        'face-count': String(faces.count),
+    };
+
+    if (faces.bboxes.length > 0) {
+        data['face-bboxes'] = faces.bboxes
+            .slice(0, faces.count)
+            .map(bbox => bbox.map(value => Math.round(value)).join(','))
+            .join(';');
+    }
+
+    if (faces.scores.length > 0) {
+        data['face-scores'] = faces.scores
+            .slice(0, faces.count)
+            .map(score => score.toFixed(3))
+            .join(',');
+    }
+
+    if (faces.embeddings) {
+        const used = faces.embeddings.slice(0, faces.count * EMBEDDING_DIM);
+        data['face-embeddings'] = encodeFloat32Base64(used);
+    }
+
+    if (faces.crops.some(Boolean)) {
+        data['face-crops'] = faces.crops
+            .slice(0, faces.count)
+            .map(crop => stripStoredFaceCropPath(photo, crop) ?? '')
+            .join(';');
+    }
+
+    if (faces.clusterIds?.length) {
+        data['face-cluster-hashes'] = faces.clusterIds.slice(0, faces.count).join(';');
+        data['face-names'] = faces.clusterIds
+            .slice(0, faces.count)
+            .map((_, index) => normalizeClusterName(faces.names?.[index]) ?? 'Unknown')
+            .join(';');
+        if (faces.personIds?.some(personId => Boolean(normalizePersonId(personId)))) {
+            data['face-person-ids'] = faces.clusterIds
+                .slice(0, faces.count)
+                .map((_, index) => normalizePersonId(faces.personIds?.[index]) ?? '')
+                .join(';');
+        }
+    }
+
+    return data;
+}
+
+function removeFaceEmbeddingAtIndex(
+    embeddings: Float32Array | null,
+    faceCount: number,
+    removeIndex: number,
+): Float32Array | null {
+    if (!embeddings || faceCount <= 1) {
+        return null;
+    }
+
+    const next = new Float32Array((faceCount - 1) * EMBEDDING_DIM);
+    let writeOffset = 0;
+    for (let index = 0; index < faceCount; index++) {
+        if (index === removeIndex) {
+            continue;
+        }
+        next.set(
+            embeddings.slice(index * EMBEDDING_DIM, (index + 1) * EMBEDDING_DIM),
+            writeOffset,
+        );
+        writeOffset += EMBEDDING_DIM;
+    }
+    return next;
+}
+
+function isSameStringArray(left: string[] | undefined, right: string[]): boolean {
+    if (!left) {
+        return right.length === 0;
+    }
+    if (left.length !== right.length) {
+        return false;
+    }
+    for (let index = 0; index < left.length; index++) {
+        if (left[index] !== right[index]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function findClusterNameInEntries(photos: PhotoEntry[], clusterId: string): string | undefined {
+    for (const photo of photos) {
+        const faces = photo.faces;
+        if (!faces?.clusterIds?.length) {
+            continue;
+        }
+
+        for (let faceIndex = 0; faceIndex < faces.clusterIds.length; faceIndex++) {
+            if (faces.clusterIds[faceIndex] !== clusterId) {
+                continue;
+            }
+
+            const name = normalizeClusterName(faces.names?.[faceIndex]);
+            if (name) {
+                return name;
+            }
+        }
+    }
+
+    return undefined;
+}
+
+function findClusterPersonIdInEntries(photos: PhotoEntry[], clusterId: string): string | undefined {
+    for (const photo of photos) {
+        const faces = photo.faces;
+        if (!faces?.clusterIds?.length) {
+            continue;
+        }
+
+        for (let faceIndex = 0; faceIndex < faces.clusterIds.length; faceIndex++) {
+            if (faces.clusterIds[faceIndex] !== clusterId) {
+                continue;
+            }
+
+            const personId = normalizePersonId(faces.personIds?.[faceIndex]);
+            if (personId) {
+                return personId;
+            }
+        }
+    }
+
+    return undefined;
+}
+
+function findClusterIdsForPersonInEntries(photos: PhotoEntry[], personId: string): string[] {
+    const normalizedPersonId = normalizePersonId(personId);
+    if (!normalizedPersonId) {
+        return [];
+    }
+
+    const clusterIds = new Set<string>();
+    for (const photo of photos) {
+        const faces = photo.faces;
+        if (!faces?.clusterIds?.length) {
+            continue;
+        }
+
+        for (let faceIndex = 0; faceIndex < faces.clusterIds.length; faceIndex++) {
+            if (normalizePersonId(faces.personIds?.[faceIndex]) !== normalizedPersonId) {
+                continue;
+            }
+
+            const clusterId = faces.clusterIds[faceIndex];
+            if (clusterId) {
+                clusterIds.add(clusterId);
+            }
+        }
+    }
+
+    return [...clusterIds];
+}
+
+interface ClusterRebuildResult {
+    dim: FaceClusterDimension;
+    entries: PhotoEntry[];
+}
+
+function buildClusterDimensionFromMetadata(
+    photos: PhotoEntry[],
+    threshold: number,
+): FaceClusterDimension {
+    const clusters = new Map<string, {
+        centroidSum: Float64Array;
+        embeddingCount: number;
+        members: Array<{photoHash: string; faceIndex: number}>;
+        personName?: string;
+    }>();
+
+    for (const photo of photos) {
+        const faces = photo.faces;
+        if (!faces?.clusterIds?.length) {
+            continue;
+        }
+
+        for (let faceIndex = 0; faceIndex < faces.clusterIds.length; faceIndex++) {
+            const clusterId = faces.clusterIds[faceIndex];
+            if (!clusterId) {
+                continue;
+            }
+
+            let cluster = clusters.get(clusterId);
+            if (!cluster) {
+                cluster = {
+                    centroidSum: new Float64Array(EMBEDDING_DIM),
+                    embeddingCount: 0,
+                    members: [],
+                };
+                clusters.set(clusterId, cluster);
+            }
+
+            cluster.members.push({
+                photoHash: photo.hash,
+                faceIndex,
+            });
+
+            const personName = normalizeClusterName(faces.names?.[faceIndex]);
+            if (!cluster.personName && personName) {
+                cluster.personName = personName;
+            }
+
+            const embedding = faces.embeddings?.slice(
+                faceIndex * EMBEDDING_DIM,
+                (faceIndex + 1) * EMBEDDING_DIM,
+            );
+            if (!embedding || embedding.length !== EMBEDDING_DIM) {
+                continue;
+            }
+
+            for (let dim = 0; dim < EMBEDDING_DIM; dim++) {
+                cluster.centroidSum[dim] += embedding[dim];
+            }
+            cluster.embeddingCount += 1;
+        }
+    }
+
+    const serialized = {
+        threshold,
+        clusters: [...clusters.entries()]
+            .filter(([, cluster]) => cluster.embeddingCount > 0)
+            .map(([clusterId, cluster]) => ({
+                id: clusterId,
+                centroid: Array.from(cluster.centroidSum, value => value / cluster.embeddingCount),
+                members: cluster.members,
+                ...(cluster.personName ? { personName: cluster.personName } : {}),
+            })),
+    };
+
+    return FaceClusterDimension.deserialize(JSON.stringify(serialized), threshold);
+}
+
+async function rebuildPersistedClusterStateFromEntries(
+    handle: FileSystemDirectoryHandle,
+    photos: PhotoEntry[],
+    threshold: number,
+): Promise<FaceClusterDimension> {
+    const dim = buildClusterDimensionFromMetadata(photos, threshold);
+    if (dim.getClusterCount() > 0) {
+        await saveClusterState(handle, dim);
+    } else {
+        await clearClusterState(handle);
+    }
+    return dim;
+}
+
+export interface FolderAccess {
+    /** Initial persisted-source restoration has completed. */
+    initializationComplete: boolean;
+    /** Whether a folder is currently open */
+    isOpen: boolean;
+    /** Current product surface */
+    surface: GallerySurface;
+    /** Shared capabilities for the active surface */
+    surfaceProfile: GallerySurfaceProfile;
+    /** Default intake plan for the active surface */
+    defaultIntakePlan: GalleryIntakePlan;
+    /** Share-target intake plan for the active surface */
+    shareIntakePlan: GalleryIntakePlan;
+    /** Name of the open folder */
+    folderName: string | null;
+    /** Local folders maintained by this source. */
+    folders: ManagedFolder[];
+    /** All photo entries from one/ folders */
+    entries: PhotoEntry[];
+    /** Loading state */
+    loading: boolean;
+    /** A folder scan or restore failure that needs user attention. */
+    error: string | null;
+    /** Ingestion progress (null when not ingesting) */
+    ingestProgress: IngestProgress | null;
+    /** Shared files waiting for a destination choice */
+    pendingImportCount: number;
+    /** Whether running in mobile/PWA lightweight mode */
+    mobile: boolean;
+    /** Whether this source can locally claim authorship when ingesting. */
+    canClaimAuthorshipOnIngest: boolean;
+    /** Whether new local intake should claim foto authorship. */
+    claimAuthorshipOnIngest: boolean;
+    /** Update whether new local intake should claim foto authorship. */
+    setClaimAuthorshipOnIngest: (enabled: boolean) => void;
+    /** Trigger the primary intake action for this surface. */
+    openFolder: () => void;
+    /** Make a maintained folder the current target for folder-scoped actions. */
+    selectFolder: (folderId: string) => void;
+    /** Forget a maintained folder without deleting files from disk. */
+    removeFolder: (folderId: string) => (() => void) | null;
+    /** Choose a writable local destination folder for an incoming shared gallery. */
+    chooseSharedGalleryDestination: () => Promise<boolean>;
+    /** Debug/test helper that always opens the file-input intake path. */
+    openLocalFiles: () => boolean;
+    /** Import local image files through the same intake path as the file picker. */
+    importLocalFiles: (
+        files: readonly File[],
+        options?: {useAppLocalFolder?: boolean},
+    ) => Promise<boolean>;
+    /** Rescan the current folder */
+    rescan: () => Promise<void>;
+    /** Remove a photo from the current gallery metadata */
+    deletePhoto: (hash: string) => Promise<void>;
+    /** Force rerun of enabled analysis for the current folder */
+    reanalyzeFaces: () => Promise<void>;
+    /** Ensure photo-level semantic embeddings exist for the current folder */
+    ensureSemanticEmbeddings: () => Promise<void>;
+    /** Ensure the current gallery entries are represented in ONE.core for sharing */
+    ensureSyncedToOneCore: (contentHashes?: readonly string[]) => Promise<void>;
+    /** Get an object URL for a file (for display). Caller must revoke. */
+    getFileUrl: (relativePath: string) => Promise<string>;
+    /** Get an object URL for a thumbnail */
+    getThumbUrl: (entry: PhotoEntry) => Promise<string | null>;
+    /** Get the raw File object for a relative path (for sharing) */
+    readFile: (relativePath: string) => Promise<File>;
+    /** Assign a display name to a face cluster */
+    renameFace: (clusterId: string, name: string) => Promise<void>;
+    /** Remove a face cluster from the current gallery state */
+    deleteFace: (clusterId: string) => Promise<void>;
+    /** Associate one detected face with an existing cluster */
+    associateFaceWithCluster: (photoHash: string, faceIndex: number, clusterId: string) => Promise<void>;
+    /** Merge source clusters into one target cluster */
+    mergeFaceClusters: (targetClusterId: string, sourceClusterIds: string[]) => Promise<void>;
+    /** Explicitly manage multiple clusters as one named person without merging them */
+    groupFaceClustersAsPerson: (clusterIds: string[], personId?: string) => Promise<string | null>;
+    /** Remove the explicit person collapse for a grouped person */
+    separatePersonGroup: (personId: string) => Promise<string[]>;
+}
+
+export interface ManagedFolder {
+    id: string;
+    name: string;
+    entryCount: number;
+    isCurrent: boolean;
+}
+
+// ── Persist last-opened folder handle via IndexedDB ──────────────────
+const IDB_NAME = 'fotos-prefs';
+const IDB_STORE = 'handles';
+const IDB_LAST_FOLDER_KEY = 'lastFolder';
+const IDB_FOLDERS_KEY = 'folders';
+const IDB_IMPORT_DESTINATION_KEY = 'importDestination';
+const DEFAULT_SHARED_FOLDER_NAME = 'shared';
+const DEFAULT_LOCAL_FOLDER_NAME = 'photos';
+
+type PersistedFolderPreference =
+    | {
+        kind: 'handle';
+        handle: FileSystemDirectoryHandle;
+        label?: string | null;
+    }
+    | {
+        kind: 'opfs';
+        path: string[];
+        label?: string | null;
+    };
+
+type PendingImport = {
+    files: File[];
+    source: 'share-target';
+};
+
+type ImportSource = PendingImport['source'] | 'local-picker';
+
+interface ManagedFolderRecord {
+    id: string;
+    label: string;
+    handle: FileSystemDirectoryHandle;
+    preference: PersistedFolderPreference;
+    entries: PhotoEntry[];
+    isCurrent: boolean;
+}
+
+interface PersistedManagedFolder {
+    id: string;
+    preference: PersistedFolderPreference;
+}
+
+function openPrefsDB(): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open(IDB_NAME, 1);
+        req.onupgradeneeded = () => {
+            req.result.createObjectStore(IDB_STORE);
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+function sanitizeFolderSegment(value: string | null | undefined, fallback: string): string {
+    const normalized = (value ?? '')
+        .replace(/[\\/:*?"<>|]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return normalized || fallback;
+}
+
+async function savePreference(key: string, value: unknown): Promise<void> {
+    const db = await openPrefsDB();
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).put(value, key);
+    db.close();
+}
+
+async function loadPreference<T>(key: string): Promise<T | null> {
+    const db = await openPrefsDB();
+    return new Promise((resolve) => {
+        const tx = db.transaction(IDB_STORE, 'readonly');
+        const req = tx.objectStore(IDB_STORE).get(key);
+        req.onsuccess = () => resolve((req.result ?? null) as T | null);
+        req.onerror = () => resolve(null);
+        db.close();
+    });
+}
+
+function isDirectoryHandleLike(value: unknown): value is FileSystemDirectoryHandle {
+    if (!value || typeof value !== 'object') {
+        return false;
+    }
+
+    const candidate = value as {
+        kind?: unknown;
+        name?: unknown;
+    };
+    return candidate.kind === 'directory' && typeof candidate.name === 'string';
+}
+
+function normalizeFolderPreference(value: unknown): PersistedFolderPreference | null {
+    if (isDirectoryHandleLike(value)) {
+        return {
+            kind: 'handle',
+            handle: value,
+            label: value.name,
+        };
+    }
+
+    if (!value || typeof value !== 'object') {
+        return null;
+    }
+
+    const candidate = value as Partial<PersistedFolderPreference>;
+    if (candidate.kind === 'handle' && isDirectoryHandleLike(candidate.handle)) {
+        return {
+            kind: 'handle',
+            handle: candidate.handle,
+            label: candidate.label ?? candidate.handle.name,
+        };
+    }
+
+    if (candidate.kind === 'opfs' && Array.isArray(candidate.path)) {
+        const normalizedPath = candidate.path
+            .filter((segment): segment is string => typeof segment === 'string')
+            .map(segment => sanitizeFolderSegment(segment, DEFAULT_LOCAL_FOLDER_NAME));
+        if (normalizedPath.length === 0) {
+            return null;
+        }
+
+        return {
+            kind: 'opfs',
+            path: normalizedPath,
+            label: candidate.label ?? normalizedPath[normalizedPath.length - 1],
+        };
+    }
+
+    return null;
+}
+
+function createManagedFolderId(): string {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+
+    return `folder-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+function entryFolderKey(entry: PhotoEntry): string {
+    return `${entry.hash}\n${entry.sourcePath ?? ''}\n${entry.thumb ?? ''}`;
+}
+
+function collectEntryPaths(entry: PhotoEntry): string[] {
+    return [
+        entry.sourcePath,
+        entry.thumb,
+        ...(entry.faces?.crops ?? []),
+    ].filter((path): path is string => Boolean(path));
+}
+
+function buildLocalEntries(records: readonly ManagedFolderRecord[]): PhotoEntry[] {
+    return records.flatMap(record => record.entries);
+}
+
+async function isSameDirectoryHandle(
+    left: FileSystemDirectoryHandle,
+    right: FileSystemDirectoryHandle,
+): Promise<boolean> {
+    const comparable = left as FileSystemDirectoryHandle & {
+        isSameEntry?: (other: FileSystemDirectoryHandle) => Promise<boolean>;
+    };
+
+    if (typeof comparable.isSameEntry === 'function') {
+        try {
+            return await comparable.isSameEntry(right);
+        } catch {
+            return false;
+        }
+    }
+
+    return left === right;
+}
+
+async function isSameFolderPreference(
+    left: PersistedFolderPreference,
+    leftHandle: FileSystemDirectoryHandle,
+    right: PersistedFolderPreference,
+    rightHandle: FileSystemDirectoryHandle,
+): Promise<boolean> {
+    if (left.kind === 'opfs' && right.kind === 'opfs') {
+        return left.path.join('\u0000') === right.path.join('\u0000');
+    }
+
+    if (left.kind === 'handle' && right.kind === 'handle') {
+        return isSameDirectoryHandle(leftHandle, rightHandle);
+    }
+
+    return false;
+}
+
+function normalizeManagedFolder(value: unknown): PersistedManagedFolder | null {
+    if (!value || typeof value !== 'object') {
+        return null;
+    }
+
+    const candidate = value as { id?: unknown; preference?: unknown };
+    const preference = normalizeFolderPreference(candidate.preference);
+    if (!preference) {
+        return null;
+    }
+
+    return {
+        id: typeof candidate.id === 'string' && candidate.id.trim()
+            ? candidate.id
+            : createManagedFolderId(),
+        preference,
+    };
+}
+
+function normalizeManagedFolders(value: unknown): PersistedManagedFolder[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+
+    return value
+        .map(normalizeManagedFolder)
+        .filter((folder): folder is PersistedManagedFolder => folder !== null);
+}
+
+async function saveLastFolderPreference(preference: PersistedFolderPreference): Promise<void> {
+    await savePreference(IDB_LAST_FOLDER_KEY, preference);
+}
+
+async function saveManagedFolderPreferences(records: readonly ManagedFolderRecord[]): Promise<void> {
+    await savePreference(
+        IDB_FOLDERS_KEY,
+        records.map(record => ({
+            id: record.id,
+            preference: {
+                ...record.preference,
+                label: record.label,
+            },
+        })),
+    );
+}
+
+async function saveImportDestinationPreference(preference: PersistedFolderPreference): Promise<void> {
+    await savePreference(IDB_IMPORT_DESTINATION_KEY, preference);
+}
+
+async function loadLastFolderPreference(): Promise<PersistedFolderPreference | null> {
+    return normalizeFolderPreference(await loadPreference<unknown>(IDB_LAST_FOLDER_KEY));
+}
+
+async function loadManagedFolderPreferences(): Promise<PersistedManagedFolder[]> {
+    return normalizeManagedFolders(await loadPreference<unknown>(IDB_FOLDERS_KEY));
+}
+
+async function loadImportDestinationPreference(): Promise<PersistedFolderPreference | null> {
+    return normalizeFolderPreference(await loadPreference<unknown>(IDB_IMPORT_DESTINATION_KEY));
+}
+
+async function ensureDirectoryPermission(
+    handle: FileSystemDirectoryHandle,
+    requestPermission: boolean,
+): Promise<boolean> {
+    const fsHandle = handle as FileSystemDirectoryHandle & {
+        queryPermission?: (descriptor: { mode: 'readwrite' }) => Promise<PermissionState>;
+        requestPermission?: (descriptor: { mode: 'readwrite' }) => Promise<PermissionState>;
+    };
+    const descriptor = { mode: 'readwrite' as const };
+
+    if (typeof fsHandle.queryPermission !== 'function') {
+        return true;
+    }
+
+    try {
+        const current = await fsHandle.queryPermission(descriptor);
+        if (current === 'granted') {
+            return true;
+        }
+        if (current === 'prompt' && requestPermission && typeof fsHandle.requestPermission === 'function') {
+            return (await fsHandle.requestPermission(descriptor)) === 'granted';
+        }
+        return false;
+    } catch {
+        return true;
+    }
+}
+
+async function resolveOpfsDirectory(
+    path: readonly string[],
+): Promise<FileSystemDirectoryHandle | null> {
+    if (typeof navigator === 'undefined' || !('storage' in navigator)) {
+        return null;
+    }
+
+    const storageWithDirectory = navigator.storage as StorageManager & {
+        getDirectory?: () => Promise<FileSystemDirectoryHandle>;
+    };
+    if (typeof storageWithDirectory.getDirectory !== 'function') {
+        return null;
+    }
+
+    const normalizedPath = path.map((segment, index) => sanitizeFolderSegment(
+        segment,
+        index === path.length - 1 ? DEFAULT_LOCAL_FOLDER_NAME : 'library',
+    ));
+
+    let dirHandle = await storageWithDirectory.getDirectory();
+    for (let index = 0; index < normalizedPath.length; index++) {
+        dirHandle = await dirHandle.getDirectoryHandle(normalizedPath[index], { create: true });
+    }
+    return dirHandle;
+}
+
+async function resolveFolderPreference(
+    preference: PersistedFolderPreference,
+    requestPermission: boolean,
+): Promise<FileSystemDirectoryHandle | null> {
+    if (preference.kind === 'handle') {
+        return (await ensureDirectoryPermission(preference.handle, requestPermission))
+            ? preference.handle
+            : null;
+    }
+
+    return resolveOpfsDirectory(preference.path);
+}
+
+/**
+ * Retrieve files stashed by the service worker from a Web Share Target POST.
+ * Returns null if no shared files are pending. The cache is left intact until
+ * the import is committed so desktop can recover after a reload.
+ */
+async function loadSharedFiles(): Promise<File[] | null> {
+    if (!('caches' in window)) return null;
+    const currentUrl = new URL(window.location.href);
+    if (currentUrl.searchParams.has('share')) {
+        currentUrl.searchParams.delete('share');
+        window.history.replaceState({}, '', `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
+    }
+
+    try {
+        const cache = await caches.open('fotos-share');
+        const countResp = await cache.match('/_shared/count');
+        if (!countResp) return null;
+        const count = parseInt(await countResp.text(), 10);
+        if (!count || count <= 0) return null;
+
+        const files: File[] = [];
+        for (let i = 0; i < count; i++) {
+            const resp = await cache.match(`/_shared/${i}`);
+            if (!resp) continue;
+            const blob = await resp.blob();
+            const name = resp.headers.get('X-Filename') || `shared-${i}.jpg`;
+            files.push(new File([blob], name, { type: blob.type }));
+        }
+        return files.length > 0 ? files : null;
+    } catch {
+        return null;
+    }
+}
+
+async function clearSharedFiles(): Promise<void> {
+    if (!('caches' in window)) {
+        return;
+    }
+
+    try {
+        await caches.delete('fotos-share');
+    } catch {
+        // Ignore cache cleanup failures so imports still complete.
+    }
+}
+
+function canUseDirectoryPicker(): boolean {
+    return typeof (window as { showDirectoryPicker?: unknown }).showDirectoryPicker === 'function';
+}
+
+function faceWorkerStatusLabel(progress: FaceWorkerProgress): string | null {
+    switch (progress.stage) {
+        case 'init-start':
+            return 'Starting face analytics...';
+        case 'device-selected':
+            return progress.detail?.device === 'webgpu'
+                ? 'Preparing face analytics on WebGPU...'
+                : 'Preparing face analytics...';
+        case 'detection-init-start':
+            return 'Loading face detector...';
+        case 'detection-init-complete':
+            return 'Face detector ready.';
+        case 'warmup-start':
+            return progress.detail?.scope === 'detection'
+                ? 'Warming up face detector...'
+                : 'Warming up face analytics...';
+        case 'warmup-detection-start':
+            return 'Warming up face detector...';
+        case 'warmup-detection-complete':
+            return 'Face detector warmed up.';
+        case 'warmup-fallback-wasm':
+            return 'WebGPU stalled, switching to WASM...';
+        case 'models-reinit-start':
+            return 'Restarting face analytics on WASM...';
+        case 'models-reinit-complete':
+            return 'Face analytics ready.';
+        case 'recognition-init-start':
+            return 'Loading face recognition...';
+        case 'recognition-init-complete':
+            return 'Face recognition ready.';
+        case 'face-worker-ready':
+            return 'Face analytics ready.';
+        default:
+            return null;
+    }
+}
+
+export interface UseFolderAccessOptions {
+    clusterSensitivity?: number;
+    faceAnalyticsEnabled?: boolean;
+    semanticSearchEnabled?: boolean;
+    receivedEntries?: readonly FotosEntry[];
+    onReceivedPhotoError?: (message: string) => void;
+}
+
+export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAccess {
+    const [initializationComplete, setInitializationComplete] = useState(false);
+    const clusterSensitivity = options.clusterSensitivity ?? DEFAULT_CLUSTER_SENSITIVITY;
+    const faceAnalyticsEnabled = options.faceAnalyticsEnabled ?? false;
+    const semanticSearchEnabled = options.semanticSearchEnabled ?? false;
+    const clusterThreshold = clusterSensitivityToThreshold(clusterSensitivity);
+    const [isOpen, setIsOpen] = useState(false);
+    const [folderName, setFolderName] = useState<string | null>(null);
+    const [folders, setFolders] = useState<ManagedFolderRecord[]>([]);
+    const [entries, setEntries] = useState<PhotoEntry[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [ingestProgress, setIngestProgress] = useState<IngestProgress | null>(null);
+    const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
+    const [claimAuthorshipOnIngest, setClaimAuthorshipOnIngest] = useState(true);
+    const rootHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
+    const foldersRef = useRef<ManagedFolderRecord[]>([]);
+    const entriesRef = useRef<PhotoEntry[]>([]);
+    const currentFolderIdRef = useRef<string | null>(null);
+    const entryFolderIdsRef = useRef<Map<string, string>>(new Map());
+    const pathFolderIdsRef = useRef<Map<string, string>>(new Map());
+    const mobile = isMobile();
+    const surface: GallerySurface = mobile ? 'fotos-browser-mobile' : 'fotos-browser-desktop';
+    const surfaceProfile = getGallerySurfaceProfile(surface);
+    const defaultIntakePlan = planGalleryIntake(surface, surfaceProfile.defaultSource);
+    const shareIntakePlan = planGalleryIntake(surface, 'shared-files');
+    const allowsLocalFaceEnrichment = faceAnalyticsEnabled && defaultIntakePlan.faceEnrichment === 'local';
+    // Cache object URLs to avoid re-reading files
+    const urlCacheRef = useRef<Map<string, string>>(new Map());
+    // Face worker — initialized lazily, persists across ingests
+    const faceWorkerRef = useRef<{ handle: FaceWorkerHandle; terminate: () => void } | null>(null);
+    const facePassProgressRef = useRef<{ total: number; current: number; fileName?: string } | null>(null);
+    const semanticWorkerRef = useRef<ReturnType<typeof createSemanticWorker> | null>(null);
+    const semanticPassPromiseRef = useRef<Promise<void> | null>(null);
+    const facePassPromiseRef = useRef<{handle: FileSystemDirectoryHandle; promise: Promise<void>} | null>(null);
+    // Persistent hidden file input for mobile photo selection — reused across
+    // openFolder calls to avoid iOS Safari PWA issues with dynamic elements.
+    const mobileInputRef = useRef<HTMLInputElement | null>(null);
+    // Face cluster dimension — loaded lazily, persists across face passes
+    const clusterDimRef = useRef<FaceClusterDimension | null>(null);
+    const clusterThresholdRef = useRef<number | null>(null);
+    const previousAllowsLocalFaceEnrichmentRef = useRef(allowsLocalFaceEnrichment);
+    const managedFolders = useMemo<ManagedFolder[]>(() => folders.map(folder => ({
+        id: folder.id,
+        name: folder.label,
+        entryCount: folder.entries.length,
+        isCurrent: folder.isCurrent,
+    })), [folders]);
+
+    useEffect(() => {
+        return () => {
+            faceWorkerRef.current?.terminate();
+            semanticWorkerRef.current?.terminate();
+            const mobileInput = mobileInputRef.current;
+            if (mobileInput?.parentNode) {
+                mobileInput.parentNode.removeChild(mobileInput);
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        foldersRef.current = folders;
+    }, [folders]);
+
+    useEffect(() => {
+        entriesRef.current = entries;
+    }, [entries]);
+
+    const rebuildFolderLookups = useCallback((records: readonly ManagedFolderRecord[]) => {
+        const entryFolders = new Map<string, string>();
+        const pathFolders = new Map<string, string>();
+        const orderedRecords = [
+            ...records.filter(record => record.isCurrent),
+            ...records.filter(record => !record.isCurrent),
+        ];
+
+        for (const record of orderedRecords) {
+            for (const entry of record.entries) {
+                entryFolders.set(entryFolderKey(entry), record.id);
+                for (const path of collectEntryPaths(entry)) {
+                    if (!pathFolders.has(path)) {
+                        pathFolders.set(path, record.id);
+                    }
+                }
+            }
+        }
+
+        entryFolderIdsRef.current = entryFolders;
+        pathFolderIdsRef.current = pathFolders;
+    }, []);
+
+    const applyManagedFolders = useCallback((nextRecords: ManagedFolderRecord[]) => {
+        const current = nextRecords.find(record => record.isCurrent) ?? nextRecords[0] ?? null;
+        const normalizedRecords = nextRecords.map(record => ({
+            ...record,
+            isCurrent: current ? record.id === current.id : false,
+        }));
+        const normalizedCurrent = normalizedRecords.find(record => record.isCurrent) ?? null;
+
+        foldersRef.current = normalizedRecords;
+        currentFolderIdRef.current = normalizedCurrent?.id ?? null;
+        rootHandleRef.current = normalizedCurrent?.handle ?? null;
+        rebuildFolderLookups(normalizedRecords);
+
+        setFolders(normalizedRecords);
+        setFolderName(normalizedCurrent?.label ?? null);
+        setIsOpen(normalizedRecords.length > 0 || entriesRef.current.some(isRemoteGalleryEntry));
+        setEntries(previousEntries => mergeWithRemoteEntries(buildLocalEntries(normalizedRecords), previousEntries));
+    }, [rebuildFolderLookups]);
+
+    const findFolderForEntry = useCallback((entry: PhotoEntry): ManagedFolderRecord | null => {
+        const folderId = entryFolderIdsRef.current.get(entryFolderKey(entry));
+        return foldersRef.current.find(record => record.id === folderId) ?? null;
+    }, []);
+
+    const findFolderForPath = useCallback((relativePath: string): ManagedFolderRecord | null => {
+        const folderId = pathFolderIdsRef.current.get(relativePath);
+        return foldersRef.current.find(record => record.id === folderId) ?? null;
+    }, []);
+
+    useEffect(() => {
+        const pendingFaces = entries.filter(entry => entry.faces === undefined).length;
+        traceHang('folder-state', {
+            isOpen,
+            folderName,
+            entryCount: entries.length,
+            loading,
+            pendingImportCount: pendingImport?.files.length ?? 0,
+            claimAuthorshipOnIngest,
+            pendingFaces,
+            ingestProgress: ingestProgress
+                ? {
+                    phase: ingestProgress.phase,
+                    current: ingestProgress.current,
+                    total: ingestProgress.total,
+                    fileName: ingestProgress.fileName,
+                }
+                : null,
+        });
+    }, [
+        isOpen,
+        folderName,
+        entries.length,
+        loading,
+        pendingImport?.files.length,
+        claimAuthorshipOnIngest,
+        ingestProgress?.phase,
+        ingestProgress?.current,
+        ingestProgress?.total,
+        ingestProgress?.fileName,
+    ]);
+
+    // Both initial manifest projection and live imports use the same materializer.
+    const receiveFotosEntry = useCallback(async (entry: FotosEntry) => {
+        const rootHandle = rootHandleRef.current;
+        const materialized = await materializeRemoteFotosEntry(entry);
+        let shouldKeepRemoteAssets = false;
+        let shouldOpenRemoteGallery = false;
+        let shouldWriteFilesystemFaces = false;
+        let filesystemPhoto: PhotoEntry | null = null;
+
+        const nextEntries = (() => {
+            const prev = entriesRef.current;
+            const idx = prev.findIndex(p => p.hash === entry.contentHash);
+            if (idx < 0) {
+                shouldKeepRemoteAssets = true;
+                shouldOpenRemoteGallery = !rootHandle;
+                console.log(
+                    `[fotos-sync] Remote photo imported: ${materialized.photo.name}`,
+                );
+                return [...prev, materialized.photo];
+            }
+
+            const photo = prev[idx];
+            const nextFaces = shouldAdoptIncomingFaces(photo.faces, materialized.photo.faces)
+                ? (
+                    rootHandle
+                        ? buildFilesystemFaceInfoFromRemoteEntry(photo, entry, materialized.faceData)
+                        : materialized.photo.faces
+                )
+                : photo.faces;
+            const nextPhoto: PhotoEntry = {
+                ...photo,
+                capturedAt: photo.capturedAt ?? materialized.photo.capturedAt,
+                updatedAt: materialized.photo.updatedAt ?? photo.updatedAt,
+                exif: photo.exif ?? materialized.photo.exif,
+                folderPath: photo.folderPath ?? materialized.photo.folderPath,
+                mimeType: photo.mimeType ?? materialized.photo.mimeType,
+                thumb: photo.thumb ?? materialized.photo.thumb,
+                sourcePath: photo.sourcePath ?? materialized.photo.sourcePath,
+                faces: nextFaces,
+            };
+
+            const changed = nextPhoto.capturedAt !== photo.capturedAt
+                || nextPhoto.updatedAt !== photo.updatedAt
+                || nextPhoto.exif !== photo.exif
+                || nextPhoto.folderPath !== photo.folderPath
+                || nextPhoto.mimeType !== photo.mimeType
+                || nextPhoto.thumb !== photo.thumb
+                || nextPhoto.sourcePath !== photo.sourcePath
+                || nextPhoto.faces !== photo.faces;
+            if (!changed) {
+                return prev;
+            }
+
+            shouldKeepRemoteAssets = true;
+            if (rootHandle && nextPhoto.faces !== photo.faces && materialized.faceData) {
+                shouldWriteFilesystemFaces = true;
+                filesystemPhoto = nextPhoto;
+            }
+
+            const updated = [...prev];
+            updated[idx] = nextPhoto;
+
+            console.log(
+                `[fotos-sync] Remote update: ${photo.name}`
+                + (entry.faceCount ? ` → ${entry.faceCount} faces` : ''),
+            );
+            return updated;
+        })();
+        entriesRef.current = nextEntries;
+        setEntries(nextEntries);
+
+        if (shouldKeepRemoteAssets) {
+            for (const [key, url] of materialized.cacheEntries) {
+                const previousUrl = urlCacheRef.current.get(key);
+                if (previousUrl) URL.revokeObjectURL(previousUrl);
+                urlCacheRef.current.set(key, url);
+            }
+        } else {
+            for (const [, url] of materialized.cacheEntries) {
+                URL.revokeObjectURL(url);
+            }
+        }
+
+        if (shouldOpenRemoteGallery) {
+            setFolderName(currentFolderName => currentFolderName ?? 'shared');
+            setIsOpen(true);
+        }
+
+        if (rootHandle && shouldWriteFilesystemFaces && filesystemPhoto && materialized.faceData) {
+            const photoForWrite = filesystemPhoto as PhotoEntry;
+            try {
+                await updateIndexHtmlFaceData(rootHandle, photoForWrite, materialized.faceData.dataAttrs);
+                await writeFaceCropsToFilesystem(
+                    rootHandle,
+                    photoForWrite,
+                    entry.contentHash,
+                    materialized.faceData.cropBlobs,
+                );
+
+                console.log(
+                    `[fotos-sync] Wrote face data to filesystem for ${photoForWrite.name}`,
+                );
+            } catch (err) {
+                console.warn(
+                    `[fotos-sync] Failed to write face data for ${photoForWrite.name}:`,
+                    err,
+                );
+            }
+        }
+    }, []);
+
+    useEffect(() => listenForFotosUpdates(entry => {
+        void receiveFotosEntry(entry).catch(error => {
+            options.onReceivedPhotoError?.(`Could not open shared photo: ${error instanceof Error ? error.message : String(error)}`);
+        });
+    }), [receiveFotosEntry, options.onReceivedPhotoError]);
+
+    // Reopen through the verified share manifests, including while offline. No
+    // transport replay or unscoped storage enumeration is needed to restore them.
+    useEffect(() => {
+        let cancelled = false;
+        void (async () => {
+            for (const entry of options.receivedEntries ?? []) {
+                if (cancelled) return;
+                await receiveFotosEntry(entry);
+            }
+        })().catch(error => {
+            if (!cancelled) options.onReceivedPhotoError?.(`Could not reopen shared gallery: ${error instanceof Error ? error.message : String(error)}`);
+        });
+        return () => { cancelled = true; };
+    }, [options.receivedEntries, receiveFotosEntry, options.onReceivedPhotoError]);
+
+    const updateFacePreparationProgress = useCallback((progress: FaceWorkerProgress) => {
+        const activePass = facePassProgressRef.current;
+        if (!activePass) return;
+
+        const statusLabel = faceWorkerStatusLabel(progress);
+        if (!statusLabel) return;
+
+        setIngestProgress(prev => {
+            if (prev && prev.phase !== 'preparing-faces' && prev.phase !== 'faces') {
+                return prev;
+            }
+            return {
+                phase: 'preparing-faces',
+                current: activePass.current,
+                total: activePass.total,
+                fileName: activePass.fileName,
+                statusLabel,
+            };
+        });
+    }, []);
+
+    const getFaceWorker = useCallback(async (): Promise<FaceWorkerHandle> => {
+        if (faceWorkerRef.current) return faceWorkerRef.current.handle;
+        const fw = createFaceWorker(faceWorkerUrl, {
+            onProgress: updateFacePreparationProgress,
+        });
+        await fw.ready;
+        faceWorkerRef.current = { handle: fw.handle, terminate: fw.terminate };
+        return fw.handle;
+    }, [updateFacePreparationProgress]);
+
+    const getSemanticWorker = useCallback(async () => {
+        if (semanticWorkerRef.current) {
+            return semanticWorkerRef.current.handle;
+        }
+
+        const worker = createSemanticWorker(semanticWorkerUrl);
+        await worker.ready;
+        semanticWorkerRef.current = worker;
+        return worker.handle;
+    }, []);
+
+    const rebuildClustersFromEntries = useCallback(async (
+        handle: FileSystemDirectoryHandle,
+        photos: PhotoEntry[],
+        threshold: number,
+    ): Promise<ClusterRebuildResult> => {
+        const dim = new FaceClusterDimension(threshold);
+        const preferredNames = new Map<string, string>();
+        const preferredPersonIds = new Map<string, string>();
+
+        for (const photo of photos) {
+            const faces = photo.faces;
+            if (!faces?.clusterIds?.length) {
+                continue;
+            }
+
+            for (let faceIndex = 0; faceIndex < faces.clusterIds.length; faceIndex++) {
+                const clusterId = faces.clusterIds[faceIndex];
+                const personName = normalizeClusterName(faces.names?.[faceIndex]);
+                if (clusterId && personName && !preferredNames.has(clusterId)) {
+                    preferredNames.set(clusterId, personName);
+                }
+
+                const personId = normalizePersonId(faces.personIds?.[faceIndex]);
+                if (clusterId && personId && !preferredPersonIds.has(clusterId)) {
+                    preferredPersonIds.set(clusterId, personId);
+                }
+            }
+        }
+
+        const nextEntries = [...photos];
+
+        for (let photoIndex = 0; photoIndex < photos.length; photoIndex++) {
+            const photo = photos[photoIndex];
+            const faceResult = buildFaceAnalysisResultFromEntry(photo);
+            if (!faceResult || faceResult.faces.length === 0) {
+                continue;
+            }
+
+            const clusterInfo: FaceClusterInfo[] = [];
+            for (let faceIndex = 0; faceIndex < faceResult.faces.length; faceIndex++) {
+                const oldClusterId = photo.faces?.clusterIds?.[faceIndex];
+                const preferredName = normalizeClusterName(photo.faces?.names?.[faceIndex])
+                    ?? (oldClusterId ? preferredNames.get(oldClusterId) : undefined);
+                const preferredPersonId = normalizePersonId(photo.faces?.personIds?.[faceIndex])
+                    ?? (oldClusterId ? preferredPersonIds.get(oldClusterId) : undefined);
+                const clusterId = dim.assign(faceResult.faces[faceIndex].embedding, photo.hash, faceIndex);
+                const cluster = dim.getCluster(clusterId);
+                if (preferredName && cluster && !cluster.personName) {
+                    dim.nameCluster(clusterId, preferredName);
+                }
+                clusterInfo.push({
+                    clusterId,
+                    personName: dim.getCluster(clusterId)?.personName,
+                    personId: preferredPersonId,
+                });
+            }
+
+            const nextClusterIds = clusterInfo.map(info => info.clusterId);
+            const nextNames = clusterInfo.map(info => info.personName ?? 'Unknown');
+            const nextPersonIds = clusterInfo.map(info => info.personId ?? '');
+            const changed = !isSameStringArray(photo.faces?.clusterIds, nextClusterIds)
+                || !isSameStringArray(photo.faces?.names, nextNames)
+                || !isSameStringArray(photo.faces?.personIds, nextPersonIds);
+
+            if (!changed) {
+                continue;
+            }
+
+            await updateIndexHtmlFaceData(handle, photo, facesToDataAttrs(faceResult, clusterInfo));
+            nextEntries[photoIndex] = {
+                ...photo,
+                faces: {
+                    ...photo.faces!,
+                    clusterIds: nextClusterIds,
+                    names: nextNames,
+                    personIds: nextPersonIds,
+                },
+            };
+        }
+
+        if (dim.getClusterCount() > 0) {
+            await saveClusterState(handle, dim);
+        }
+
+        return {dim, entries: nextEntries};
+    }, []);
+
+    const ensureClusterDimension = useCallback(async (
+        handle: FileSystemDirectoryHandle,
+        photos: PhotoEntry[],
+        threshold: number,
+    ): Promise<ClusterRebuildResult> => {
+        const stored = await loadClusterState(handle);
+        const hasClusterableFaces = photos.some(photo => {
+            const faces = photo.faces;
+            return Boolean(faces && faces.count > 0 && faces.embeddings);
+        });
+
+        if (stored && isSameThreshold(stored.threshold, threshold)) {
+            // Index rows commit individually. A crash may leave clusters.json
+            // behind them, so derive the cache from the selected accepted rows.
+            // This preserves row-owned cluster IDs and never redetects/reclusters.
+            const accepted = buildClusterDimensionFromMetadata(photos, threshold);
+            for (const cluster of accepted.getAllClusters()) {
+                const storedName = normalizeClusterName(stored.dim.getCluster(cluster.id)?.personName);
+                if (!cluster.personName && storedName) accepted.nameCluster(cluster.id, storedName);
+            }
+            const stale = accepted.getAllClusters().some(cluster => {
+                const cached = stored.dim.getCluster(cluster.id);
+                if (!cached || cached.centroid.length !== EMBEDDING_DIM || !cached.centroid.every(Number.isFinite) || cached.personName !== cluster.personName || cached.members.length !== cluster.members.length) return true;
+                const members = new Set(cached.members.map(member => `${member.photoHash}:${member.faceIndex}`));
+                return cluster.members.some(member => !members.has(`${member.photoHash}:${member.faceIndex}`))
+                    || cluster.centroid.some((value, index) => Math.abs(value - cached.centroid[index]) > 1e-6);
+            }) || accepted.getClusterCount() !== stored.dim.getClusterCount();
+            if (stale) await saveClusterState(handle, accepted);
+            if (rootHandleRef.current === handle) {
+                clusterDimRef.current = accepted;
+                clusterThresholdRef.current = threshold;
+            }
+            return {dim: accepted, entries: photos};
+        }
+
+        if (!hasClusterableFaces) {
+            const dim = new FaceClusterDimension(threshold);
+            if (rootHandleRef.current === handle) {
+                clusterDimRef.current = dim;
+                clusterThresholdRef.current = threshold;
+            }
+            return {dim, entries: photos};
+        }
+
+        const rebuilt = await rebuildClustersFromEntries(handle, photos, threshold);
+        if (rootHandleRef.current === handle) {
+            clusterDimRef.current = rebuilt.dim;
+            clusterThresholdRef.current = threshold;
+        }
+        return rebuilt;
+    }, [rebuildClustersFromEntries]);
+
+    const ensureClusterDimensionForEditing = useCallback(async (): Promise<FaceClusterDimension | null> => {
+        const handle = rootHandleRef.current;
+        if (!handle) {
+            return null;
+        }
+        if (clusterDimRef.current) {
+            return clusterDimRef.current;
+        }
+
+        const ensured = await ensureClusterDimension(handle, entries, clusterThreshold);
+        clusterDimRef.current = ensured.dim;
+        clusterThresholdRef.current = clusterThreshold;
+        if (ensured.entries !== entries) {
+            setEntries(ensured.entries);
+        }
+        return ensured.dim;
+    }, [clusterThreshold, ensureClusterDimension, entries]);
+
+    const scan = useCallback(async (handle: FileSystemDirectoryHandle) => {
+        setLoading(true);
+        setError(null);
+        traceHang('scan-start', { folderName: handle.name });
+        try {
+            const found: PhotoEntry[] = [];
+            await walkForOneIndices(handle, handle, '', found);
+            traceHang('scan-complete', {
+                folderName: handle.name,
+                entryCount: found.length,
+                analyzedCount: found.filter(entry => entry.faces !== undefined).length,
+            });
+            return found;
+        } catch (cause) {
+            const detail = cause instanceof Error ? cause.message : String(cause);
+            const message = `Could not scan “${handle.name}”. ${detail}`;
+            setError(message);
+            traceHang('scan-error', {folderName: handle.name, error: detail});
+            throw cause;
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    // Publish only after the index write commits. Keep folder records and the
+    // visible projection in agreement so subsequent reanalysis sees user edits.
+    const publishAnalysis = useCallback((photo: PhotoEntry, update: Partial<PhotoEntry>) => {
+        const matches = (entry: PhotoEntry) => entry.hash === photo.hash && entry.sourcePath === photo.sourcePath;
+        Object.assign(photo, update);
+        foldersRef.current = foldersRef.current.map(folder => ({
+            ...folder,
+            entries: folder.entries.map(entry => matches(entry) ? {...entry, ...update} : entry),
+        }));
+        entriesRef.current = entriesRef.current.map(entry => matches(entry) ? {...entry, ...update} : entry);
+        setEntries(previous => previous.map(entry => matches(entry) ? {...entry, ...update} : entry));
+    }, []);
+
+    const currentAnalysisPhoto = useCallback((photo: PhotoEntry) => (
+        entriesRef.current.find(entry => entry.hash === photo.hash && entry.sourcePath === photo.sourcePath) ?? photo
+    ), []);
+
+    const runBackgroundFacePass = useCallback((
+        handle: FileSystemDirectoryHandle,
+        photos: PhotoEntry[],
+        force = false,
+    ): Promise<void> => {
+        const active = facePassPromiseRef.current;
+        if (active?.handle === handle && !force) return active.promise;
+        const promise = (async () => {
+            // Another folder owns its failures; its completion still releases
+            // the shared worker for this folder's independently requested pass.
+            if (active) await active.promise.catch(() => {});
+            const pending = photos.filter(photo => (force || photo.faces === undefined)
+                && photo.sourcePath && (!photo.mimeType || photo.mimeType.startsWith('image/')));
+            if (pending.length === 0) return;
+            facePassProgressRef.current = {total: pending.length, current: 0};
+            setIngestProgress({phase: 'preparing-faces', current: 0, total: pending.length, statusLabel: 'Starting face analytics...'});
+            try {
+                const worker = await getFaceWorker();
+                let dim = (rootHandleRef.current === handle ? clusterDimRef.current : null)
+                    ?? (await ensureClusterDimension(handle, photos, clusterThreshold)).dim;
+                const failures: string[] = [];
+                for (let index = 0; index < pending.length; index++) {
+                    const photo = pending[index];
+                    facePassProgressRef.current = {total: pending.length, current: index, fileName: photo.name};
+                    setIngestProgress({phase: 'faces', current: index, total: pending.length, fileName: photo.name});
+                    try {
+                        await replaceFaceAnalysis({
+                            currentPhoto: () => currentAnalysisPhoto(photo),
+                            dimension: dim,
+                            currentDimension: () => rootHandleRef.current === handle ? clusterDimRef.current ?? dim : dim,
+                            acceptedPhotos: () => photos.map(currentAnalysisPhoto),
+                            commit: queueFaceMetadataMutation,
+                            analyze: async () => {
+                                const file = await readAnalysisSourceFile(handle, photo);
+                                // The commit helper remaps worker crop refs to a full
+                                // generation ID before any filesystem writes.
+                                return worker.analyze(file, createExplicitPersonId());
+                            },
+                            writeCrops: async crops => {
+                                if (crops.length === 0) return;
+                                const segments = photo.sourcePath!.split('/').filter(Boolean);
+                                let directory = handle;
+                                for (const segment of segments.slice(0, -1)) directory = await directory.getDirectoryHandle(segment);
+                                const one = await directory.getDirectoryHandle('one', {create: true});
+                                const faces = await one.getDirectoryHandle('faces', {create: true});
+                                for (const crop of crops) {
+                                    const file = await faces.getFileHandle(crop.name.split('/').pop()!, {create: true});
+                                    const writable = await file.createWritable();
+                                    await writable.write(crop.blob);
+                                    await writable.close();
+                                }
+                            },
+                            persist: attrs => updateIndexHtmlFaceData(handle, photo, attrs),
+                            publish: (faces, nextDimension) => {
+                                dim = nextDimension;
+                                if (rootHandleRef.current === handle) clusterDimRef.current = dim;
+                                publishAnalysis(photo, {faces});
+                            },
+                        });
+                    } catch (cause) {
+                        const detail = `${photo.name}: ${cause instanceof Error ? cause.message : String(cause)}`;
+                        failures.push(detail);
+                        setError(`Face analysis failed. ${detail}`);
+                        traceHang('face-pass-photo-failed', {name: photo.name, message: detail});
+                    }
+                    facePassProgressRef.current = {total: pending.length, current: index + 1, fileName: photo.name};
+                    setIngestProgress({phase: 'faces', current: index + 1, total: pending.length, fileName: photo.name});
+                }
+                await queueFaceMetadataMutation(() => saveClusterState(handle, rootHandleRef.current === handle ? clusterDimRef.current ?? dim : dim));
+                if (failures.length) throw new Error(`Face analysis failed for ${failures.length} photo(s). ${failures.join(' ')}`);
+            } catch (cause) {
+                setError(cause instanceof Error ? cause.message : String(cause));
+                // Background callers observe the visible error; explicit reanalysis
+                // also receives the rejection rather than reporting success.
+                if (force) throw cause;
+            } finally {
+                facePassProgressRef.current = null;
+                setIngestProgress(null);
+            }
+        })().finally(() => {
+            if (facePassPromiseRef.current?.promise === promise) facePassPromiseRef.current = null;
+        });
+        facePassPromiseRef.current = {handle, promise};
+        return promise;
+    }, [clusterThreshold, currentAnalysisPhoto, ensureClusterDimension, getFaceWorker, publishAnalysis]);
+
+    const runBackgroundSemanticPass = useCallback(async (
+        handle: FileSystemDirectoryHandle,
+        photos: PhotoEntry[],
+        force = false,
+    ) => {
+        const pending = photos.filter(photo => (force || photo.semantic === undefined)
+            && photo.sourcePath && (!photo.mimeType || photo.mimeType.startsWith('image/')));
+        if (pending.length === 0) return;
+        setIngestProgress({phase: 'preparing-semantic', current: 0, total: pending.length, statusLabel: 'Loading semantic search model...'});
+        try {
+            const worker = await getSemanticWorker();
+            const failures: string[] = [];
+            for (let index = 0; index < pending.length; index++) {
+                const photo = pending[index];
+                setIngestProgress({phase: 'semantic', current: index, total: pending.length, fileName: photo.name, statusLabel: 'Embedding images for semantic search...'});
+                try {
+                    await replaceSemanticAnalysis({
+                        analyze: async () => worker.embedImage(await readAnalysisSourceFile(handle, photo)),
+                        persist: semantic => updateIndexHtmlSemanticData(handle, photo, semanticToDataAttrs(semantic)),
+                        publish: semantic => publishAnalysis(photo, {semantic}),
+                    });
+                } catch (cause) {
+                    const detail = `${photo.name}: ${cause instanceof Error ? cause.message : String(cause)}`;
+                    failures.push(detail);
+                    setError(`Semantic analysis failed. ${detail}`);
+                    traceHang('semantic-pass-photo-failed', {name: photo.name, message: detail});
+                }
+                setIngestProgress({phase: 'semantic', current: index + 1, total: pending.length, fileName: photo.name});
+            }
+            if (failures.length) throw new Error(`Semantic analysis failed for ${failures.length} photo(s). ${failures.join(' ')}`);
+        } catch (cause) {
+            setError(cause instanceof Error ? cause.message : String(cause));
+            throw cause;
+        } finally {
+            setIngestProgress(null);
+        }
+    }, [getSemanticWorker, publishAnalysis]);
+
+    const ensureSemanticEmbeddings = useCallback(async () => {
+        const handle = rootHandleRef.current;
+        if (!handle) {
+            return;
+        }
+        const currentFolder = currentFolderIdRef.current
+            ? foldersRef.current.find(record => record.id === currentFolderIdRef.current) ?? null
+            : null;
+        const targetEntries = currentFolder?.entries ?? entries;
+
+        const hasPending = targetEntries.some(photo => photo.semantic === undefined);
+        if (!hasPending) {
+            return;
+        }
+
+        if (semanticPassPromiseRef.current) {
+            return semanticPassPromiseRef.current;
+        }
+
+        const promise = runBackgroundSemanticPass(handle, targetEntries)
+            .finally(() => {
+                semanticPassPromiseRef.current = null;
+            });
+        semanticPassPromiseRef.current = promise;
+        return promise;
+    }, [entries, runBackgroundSemanticPass]);
+
+    const clearUrlCache = useCallback(() => {
+        for (const [key, url] of urlCacheRef.current.entries()) {
+            if (key.startsWith('remote:') || key.startsWith('remote-face:')) {
+                continue;
+            }
+            URL.revokeObjectURL(url);
+        }
+        for (const key of Array.from(urlCacheRef.current.keys())) {
+            if (key.startsWith('remote:') || key.startsWith('remote-face:')) {
+                continue;
+            }
+
+            urlCacheRef.current.delete(key);
+        }
+    }, []);
+
+    const resolveImportDestination = useCallback(async (
+        source: ImportSource,
+        options: {
+            requestPermission: boolean;
+            allowPicker: boolean;
+            useAppLocalFolder?: boolean;
+        },
+    ): Promise<{
+        handle: FileSystemDirectoryHandle;
+        preference: PersistedFolderPreference;
+    } | null> => {
+        const currentHandle = rootHandleRef.current;
+        if (currentHandle && await ensureDirectoryPermission(currentHandle, options.requestPermission)) {
+            return {
+                handle: currentHandle,
+                preference: {
+                    kind: 'handle',
+                    handle: currentHandle,
+                    label: currentHandle.name,
+                },
+            };
+        }
+
+        const savedPreference = await loadImportDestinationPreference();
+        if (savedPreference) {
+            const savedHandle = await resolveFolderPreference(savedPreference, options.requestPermission);
+            if (savedHandle) {
+                return {
+                    handle: savedHandle,
+                    preference: {
+                        ...savedPreference,
+                        label: savedPreference.label ?? savedHandle.name,
+                    },
+                };
+            }
+        }
+
+        const canUseAppLocalFolder = options.useAppLocalFolder === true || mobile || !canUseDirectoryPicker();
+        if (canUseAppLocalFolder) {
+            const preference: PersistedFolderPreference = {
+                kind: 'opfs',
+                path: [source === 'share-target' ? DEFAULT_SHARED_FOLDER_NAME : DEFAULT_LOCAL_FOLDER_NAME],
+                label: source === 'share-target' ? DEFAULT_SHARED_FOLDER_NAME : DEFAULT_LOCAL_FOLDER_NAME,
+            };
+            const handle = await resolveFolderPreference(preference, false);
+            if (handle) {
+                return {
+                    handle,
+                    preference: {
+                        ...preference,
+                        label: preference.label ?? handle.name,
+                    },
+                };
+            }
+        }
+
+        if (options.allowPicker && canUseDirectoryPicker()) {
+            try {
+                const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
+                return {
+                    handle,
+                    preference: {
+                        kind: 'handle',
+                        handle,
+                        label: handle.name,
+                    },
+                };
+            } catch {
+                return null;
+            }
+        }
+
+        return null;
+    }, [mobile]);
+
+    /** Open a directory handle: scan, ingest if needed, background face pass, sync */
+    const openFromHandle = useCallback(async (
+        handle: FileSystemDirectoryHandle,
+        options: {
+            forceIngest?: boolean;
+            id?: string;
+            label?: string | null;
+            preference?: PersistedFolderPreference;
+        } = {},
+    ) => {
+        const forceIngest = options.forceIngest ?? false;
+        const nextFolderName = options.label ?? handle.name;
+        const preference = options.preference ?? {
+            kind: 'handle' as const,
+            handle,
+            label: nextFolderName,
+        };
+        traceHang('open-folder-start', {
+            folderName: nextFolderName,
+            forceIngest,
+        });
+        rootHandleRef.current = handle;
+        currentFolderIdRef.current = options.id ?? currentFolderIdRef.current;
+        clusterDimRef.current = null;
+        clusterThresholdRef.current = null;
+        semanticPassPromiseRef.current = null;
+        setFolderName(nextFolderName);
+        setIsOpen(true);
+        clearUrlCache();
+
+        const found = forceIngest ? [] : await scan(handle);
+
+        let nextEntries: PhotoEntry[];
+        if (forceIngest || found.length === 0) {
+            traceHang('open-folder-ingest', {
+                folderName: nextFolderName,
+                forceIngest,
+            });
+            setIngestProgress({ phase: 'scanning', current: 0, total: 0 });
+            let faceHandle: FaceWorkerHandle | undefined;
+            if (allowsLocalFaceEnrichment) {
+                try {
+                    faceHandle = await getFaceWorker();
+                } catch (err) {
+                    console.warn('Face detection unavailable:', err);
+                }
+            }
+            await ingestDirectory(handle, setIngestProgress, faceHandle);
+            setIngestProgress(null);
+            let ingested = await scan(handle);
+            if (allowsLocalFaceEnrichment) {
+                const ensured = await ensureClusterDimension(handle, ingested, clusterThreshold);
+                ingested = ensured.entries;
+                void runBackgroundFacePass(handle, ingested);
+            }
+            nextEntries = ingested;
+            syncPhotosToOneCore(ingested, handle, {
+                claimAuthorship: claimAuthorshipOnIngest,
+            }).catch(err =>
+                console.warn('[fotos-sync]', err));
+        } else {
+            traceHang('open-folder-existing-gallery', {
+                folderName: nextFolderName,
+                entryCount: found.length,
+            });
+            let currentEntries = found;
+            if (allowsLocalFaceEnrichment) {
+                const ensured = await ensureClusterDimension(handle, currentEntries, clusterThreshold);
+                currentEntries = ensured.entries;
+                void runBackgroundFacePass(handle, currentEntries);
+            }
+            nextEntries = currentEntries;
+            syncPhotosToOneCore(currentEntries, handle, {
+                claimAuthorship: claimAuthorshipOnIngest,
+            }).catch(err =>
+                console.warn('[fotos-sync]', err));
+        }
+
+        const previousRecords = foldersRef.current;
+        const matchingRecord = options.id
+            ? previousRecords.find(record => record.id === options.id) ?? null
+            : (await (async () => {
+                for (const record of previousRecords) {
+                    if (await isSameFolderPreference(record.preference, record.handle, preference, handle)) {
+                        return record;
+                    }
+                }
+                return null;
+            })());
+        const id = matchingRecord?.id ?? options.id ?? createManagedFolderId();
+        const nextRecord: ManagedFolderRecord = {
+            id,
+            label: nextFolderName,
+            handle,
+            preference: {
+                ...preference,
+                label: nextFolderName,
+            },
+            entries: nextEntries,
+            isCurrent: true,
+        };
+        const nextRecords = [
+            ...previousRecords.filter(record => record.id !== id).map(record => ({
+                ...record,
+                isCurrent: false,
+            })),
+            nextRecord,
+        ];
+        applyManagedFolders(nextRecords);
+        void saveManagedFolderPreferences(nextRecords).catch(() => {});
+        void saveLastFolderPreference(nextRecord.preference).catch(() => {});
+    }, [
+        applyManagedFolders,
+        allowsLocalFaceEnrichment,
+        claimAuthorshipOnIngest,
+        clearUrlCache,
+        clusterThreshold,
+        ensureClusterDimension,
+        getFaceWorker,
+        runBackgroundFacePass,
+        scan,
+    ]);
+
+    const importFilesIntoLibrary = useCallback(async (
+        files: readonly File[],
+        source: ImportSource,
+        options: {
+            requestPermission: boolean;
+            allowPicker: boolean;
+            useAppLocalFolder?: boolean;
+        },
+    ): Promise<boolean> => {
+        const destination = await resolveImportDestination(source, options);
+        if (!destination) {
+            return false;
+        }
+
+        const copied = await copyFilesToDirectory(destination.handle, files);
+        await Promise.all([
+            saveImportDestinationPreference(destination.preference),
+            saveLastFolderPreference(destination.preference),
+        ]);
+
+        if (copied === 0) {
+            if (source === 'share-target') {
+                await clearSharedFiles();
+            }
+            setPendingImport(null);
+            return true;
+        }
+
+        await openFromHandle(destination.handle, {
+            forceIngest: true,
+            label: destination.preference.label ?? destination.handle.name,
+            preference: destination.preference,
+        });
+
+        if (source === 'share-target') {
+            await clearSharedFiles();
+        }
+
+        setPendingImport(null);
+        return true;
+    }, [openFromHandle, resolveImportDestination]);
+
+    // Restore the last persistent folder on mount (runs once).
+    const restoredRef = useRef(false);
+    useEffect(() => {
+        if (restoredRef.current) return;
+        restoredRef.current = true;
+        loadManagedFolderPreferences().then(async (managedPreferences) => {
+            if (managedPreferences.length > 0) {
+                for (const managed of managedPreferences) {
+                    const handle = await resolveFolderPreference(managed.preference, false);
+                    if (!handle) {
+                        continue;
+                    }
+                    await openFromHandle(handle, {
+                        id: managed.id,
+                        label: managed.preference.label ?? handle.name,
+                        preference: managed.preference,
+                    });
+                }
+                return;
+            }
+
+            const preference = await loadLastFolderPreference();
+            if (!preference) return;
+            const handle = await resolveFolderPreference(preference, false);
+            if (!handle) return;
+            await openFromHandle(handle, {
+                label: preference.label ?? handle.name,
+                preference,
+            });
+        }).catch(cause => {
+            const detail = cause instanceof Error ? cause.message : String(cause);
+            setError(`Could not restore your photo folder. ${detail}`);
+            console.error('[fotos-folder-restore]', cause);
+        }).finally(() => setInitializationComplete(true));
+    }, [openFromHandle]);
+
+    // Handle incoming Web Share Target files (runs once on mount)
+    const shareHandledRef = useRef(false);
+    useEffect(() => {
+        if (shareHandledRef.current) return;
+        shareHandledRef.current = true;
+        if (!shareIntakePlan.supported) return;
+        loadSharedFiles().then(async (files) => {
+            if (!files) return;
+            const imported = await importFilesIntoLibrary(files, 'share-target', {
+                requestPermission: false,
+                allowPicker: false,
+            });
+            if (imported) {
+                console.log(`[share-target] Stored ${files.length} shared photos`);
+                return;
+            }
+
+            rootHandleRef.current = null;
+            clusterDimRef.current = null;
+            clusterThresholdRef.current = null;
+            semanticPassPromiseRef.current = null;
+            clearUrlCache();
+            setPendingImport({
+                files,
+                source: 'share-target',
+            });
+            setFolderName(null);
+            setIsOpen(false);
+            console.log(`[share-target] Waiting for folder selection for ${files.length} shared photos`);
+        }).catch(err => console.warn('[share-target]', err));
+    }, [clearUrlCache, importFilesIntoLibrary, shareIntakePlan.supported]);
+
+    // Process files selected via the file/directory fallback input.
+    const handleFallbackFiles = useCallback(async (input: HTMLInputElement) => {
+        const files = input.files ? Array.from(input.files) : [];
+        // Reset so the same selection can be re-picked next time.
+        input.value = '';
+
+        if (files.length === 0) {
+            console.warn('[openFolder] Mobile picker returned no files');
+            return;
+        }
+
+        try {
+            const imported = await importFilesIntoLibrary(files, 'local-picker', {
+                requestPermission: false,
+                allowPicker: false,
+            });
+            if (!imported) {
+                console.warn('[openFolder] No writable local destination was available for imported photos.');
+            }
+        } catch (err) {
+            console.warn('[openFolder] Failed to import mobile photos:', err);
+        }
+    }, [importFilesIntoLibrary]);
+
+    // NOT async — iOS Safari PWA drops user-activation for programmatic
+    // input.click() when the handler is async, causing the photo picker to
+    // silently refuse to open (requiring multiple taps).
+    const openFallbackInput = useCallback((options: { directory: boolean }) => {
+        // Reuse a persistent hidden file input so Safari treats it as a
+        // trusted element.  Creating a fresh <input> on every tap is unreliable
+        // in iOS Safari standalone/PWA mode.
+        if (!mobileInputRef.current) {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.multiple = true;
+            input.accept = 'image/*,video/mp4,video/webm,video/quicktime,.heic,.heif,.mp4,.webm,.mov';
+            // Keep in the DOM but visually hidden.
+            input.style.position = 'fixed';
+            input.style.left = '-9999px';
+            input.style.width = '1px';
+            input.style.height = '1px';
+            input.style.opacity = '0';
+            input.style.pointerEvents = 'none';
+            document.body.appendChild(input);
+            mobileInputRef.current = input;
+        }
+
+        const input = mobileInputRef.current;
+        if (options.directory) {
+            input.setAttribute('webkitdirectory', '');
+            input.setAttribute('directory', '');
+        } else {
+            input.removeAttribute('webkitdirectory');
+            input.removeAttribute('directory');
+        }
+        input.multiple = true;
+        input.accept = 'image/*,video/mp4,video/webm,video/quicktime,.heic,.heif,.mp4,.webm,.mov';
+        // Allow re-selecting the same files.
+        input.value = '';
+        input.onchange = () => {
+            void handleFallbackFiles(input);
+        };
+        input.click();
+        return true;
+    }, [handleFallbackFiles]);
+
+    const openLocalFiles = useCallback(() => openFallbackInput({ directory: false }), [openFallbackInput]);
+
+    const importLocalFiles = useCallback(async (
+        files: readonly File[],
+        options: {useAppLocalFolder?: boolean} = {},
+    ): Promise<boolean> => {
+        return await importFilesIntoLibrary(files, 'local-picker', {
+            requestPermission: false,
+            allowPicker: false,
+            useAppLocalFolder: options.useAppLocalFolder,
+        });
+    }, [importFilesIntoLibrary]);
+
+    const chooseSharedGalleryDestination = useCallback(async (): Promise<boolean> => {
+        if (!mobile && canUseDirectoryPicker()) {
+            try {
+                const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
+                const preference: PersistedFolderPreference = {
+                    kind: 'handle',
+                    handle,
+                    label: handle.name,
+                };
+                await Promise.all([
+                    saveLastFolderPreference(preference),
+                    saveImportDestinationPreference(preference),
+                ]);
+                await openFromHandle(handle, {
+                    label: preference.label ?? handle.name,
+                    preference,
+                });
+                return true;
+            } catch (error) {
+                if (error instanceof DOMException && error.name === 'AbortError') return false;
+                throw error;
+            }
+        }
+
+        const destination = await resolveImportDestination('share-target', {
+            requestPermission: true,
+            allowPicker: false,
+        });
+        if (!destination) throw new Error('Fotos could not open local storage for this gallery.');
+        await Promise.all([
+            saveLastFolderPreference(destination.preference),
+            saveImportDestinationPreference(destination.preference),
+        ]);
+        await openFromHandle(destination.handle, {
+            label: destination.preference.label,
+            preference: destination.preference,
+        });
+        return true;
+    }, [mobile, openFromHandle, resolveImportDestination]);
+
+    const openFolder = useCallback(() => {
+        if (pendingImport?.files.length) {
+            void importFilesIntoLibrary(pendingImport.files, pendingImport.source, {
+                requestPermission: true,
+                allowPicker: true,
+            });
+            return;
+        }
+
+        if (!mobile && canUseDirectoryPicker()) {
+            void (async () => {
+                try {
+                    const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
+                    const preference: PersistedFolderPreference = {
+                        kind: 'handle',
+                        handle,
+                        label: handle.name,
+                    };
+                    void saveLastFolderPreference(preference).catch(() => {});
+                    void saveImportDestinationPreference(preference).catch(() => {});
+                    await openFromHandle(handle, {
+                        label: preference.label ?? handle.name,
+                        preference,
+                    });
+                } catch (cause) {
+                    if (cause instanceof DOMException && cause.name === 'AbortError') return;
+                    const detail = cause instanceof Error ? cause.message : String(cause);
+                    setError(`Could not open the photo folder. ${detail}`);
+                    console.error('[fotos-folder-open]', cause);
+                }
+            })();
+            return;
+        }
+
+        openFallbackInput({ directory: !mobile });
+    }, [importFilesIntoLibrary, mobile, openFallbackInput, openFromHandle, pendingImport]);
+
+    const selectFolder = useCallback((folderId: string) => {
+        const target = foldersRef.current.find(record => record.id === folderId);
+        if (!target) {
+            return;
+        }
+
+        clusterDimRef.current = null;
+        clusterThresholdRef.current = null;
+        semanticPassPromiseRef.current = null;
+        const nextRecords = [
+            ...foldersRef.current
+                .filter(record => record.id !== folderId)
+                .map(record => ({
+                    ...record,
+                    isCurrent: false,
+                })),
+            {
+                ...target,
+                isCurrent: true,
+            },
+        ];
+        applyManagedFolders(nextRecords);
+        void saveManagedFolderPreferences(nextRecords).catch(() => {});
+        void saveLastFolderPreference(target.preference).catch(() => {});
+    }, [applyManagedFolders]);
+
+    const removeFolder = useCallback((folderId: string) => {
+        const previousRecords = foldersRef.current;
+        const removedIndex = previousRecords.findIndex(record => record.id === folderId);
+        const removed = previousRecords[removedIndex];
+        if (!removed) {
+            return null;
+        }
+
+        for (const entry of removed.entries) {
+            for (const key of collectEntryPaths(entry)) {
+                for (const cacheKey of [key, `${removed.id}:${key}`]) {
+                    const cachedUrl = urlCacheRef.current.get(cacheKey);
+                    if (cachedUrl) {
+                        URL.revokeObjectURL(cachedUrl);
+                        urlCacheRef.current.delete(cacheKey);
+                    }
+                }
+            }
+        }
+
+        const remaining = previousRecords.filter(record => record.id !== folderId);
+        const nextCurrentId = removed.isCurrent
+            ? remaining[remaining.length - 1]?.id ?? null
+            : currentFolderIdRef.current;
+        const nextRecords = remaining.map(record => ({
+            ...record,
+            isCurrent: nextCurrentId ? record.id === nextCurrentId : false,
+        }));
+
+        clusterDimRef.current = null;
+        clusterThresholdRef.current = null;
+        semanticPassPromiseRef.current = null;
+        applyManagedFolders(nextRecords);
+        void saveManagedFolderPreferences(nextRecords).catch(() => {});
+        const nextCurrent = nextRecords.find(record => record.isCurrent) ?? null;
+        if (nextCurrent) {
+            void saveLastFolderPreference(nextCurrent.preference).catch(() => {});
+        }
+
+        return () => {
+            if (foldersRef.current.some(record => record.id === removed.id)) {
+                return;
+            }
+            const currentRecords = removed.isCurrent
+                ? foldersRef.current.map(record => ({...record, isCurrent: false}))
+                : foldersRef.current;
+            const insertAt = Math.min(removedIndex, currentRecords.length);
+            const restoredRecords = [
+                ...currentRecords.slice(0, insertAt),
+                removed,
+                ...currentRecords.slice(insertAt),
+            ];
+            clusterDimRef.current = null;
+            clusterThresholdRef.current = null;
+            semanticPassPromiseRef.current = null;
+            applyManagedFolders(restoredRecords);
+            void saveManagedFolderPreferences(restoredRecords).catch(() => {});
+            if (removed.isCurrent) {
+                void saveLastFolderPreference(removed.preference).catch(() => {});
+            }
+        };
+    }, [applyManagedFolders]);
+
+    const rescan = useCallback(async () => {
+        if (!rootHandleRef.current) return;
+        const handle = rootHandleRef.current;
+        const currentFolderId = currentFolderIdRef.current;
+        semanticPassPromiseRef.current = null;
+        clearUrlCache();
+        try {
+            await ingestDirectory(handle, setIngestProgress);
+            let found = await scan(handle);
+            if (allowsLocalFaceEnrichment) {
+                const ensured = await ensureClusterDimension(handle, found, clusterThreshold);
+                found = ensured.entries;
+                void runBackgroundFacePass(handle, found);
+            }
+            const nextRecords = foldersRef.current.map(record => (
+                record.id === currentFolderId
+                    ? { ...record, entries: found }
+                    : record
+            ));
+            applyManagedFolders(nextRecords);
+            void saveManagedFolderPreferences(nextRecords).catch(() => {});
+            syncPhotosToOneCore(found, handle, {
+                claimAuthorship: claimAuthorshipOnIngest,
+            }).catch(err =>
+                console.warn('[fotos-sync]', err));
+        } finally {
+            setIngestProgress(null);
+        }
+    }, [
+        applyManagedFolders,
+        allowsLocalFaceEnrichment,
+        claimAuthorshipOnIngest,
+        clearUrlCache,
+        clusterThreshold,
+        ensureClusterDimension,
+        runBackgroundFacePass,
+        scan,
+    ]);
+
+    const deletePhoto = useCallback(async (hash: string) => {
+        const removedPhoto = entries.find(photo => photo.hash === hash) ?? null;
+        if (!removedPhoto) {
+            return;
+        }
+        const ownerFolder = findFolderForEntry(removedPhoto);
+        const folderRemaining = ownerFolder
+            ? ownerFolder.entries.filter(photo => photo.hash !== hash)
+            : entries.filter(photo => photo.hash !== hash);
+        const nextRecords = ownerFolder
+            ? foldersRef.current.map(record => (
+                record.id === ownerFolder.id
+                    ? { ...record, entries: folderRemaining }
+                    : record
+            ))
+            : foldersRef.current;
+        if (ownerFolder) {
+            applyManagedFolders(nextRecords);
+            void saveManagedFolderPreferences(nextRecords).catch(() => {});
+        } else {
+            setEntries(folderRemaining);
+        }
+
+        const cachedKeys = [
+            removedPhoto.sourcePath,
+            removedPhoto.thumb,
+            `remote:${removedPhoto.hash}`,
+            ...(removedPhoto.faces?.crops ?? []),
+        ].filter((key): key is string => Boolean(key));
+
+        for (const key of cachedKeys) {
+            const ownerId = ownerFolder?.id;
+            for (const cacheKey of ownerId ? [key, `${ownerId}:${key}`] : [key]) {
+                const cachedUrl = urlCacheRef.current.get(cacheKey);
+                if (cachedUrl) {
+                    URL.revokeObjectURL(cachedUrl);
+                    urlCacheRef.current.delete(cacheKey);
+                }
+            }
+        }
+
+        for (const [key, cachedUrl] of Array.from(urlCacheRef.current.entries())) {
+            if (!key.startsWith(`remote-face:${removedPhoto.hash}:`)) {
+                continue;
+            }
+            URL.revokeObjectURL(cachedUrl);
+            urlCacheRef.current.delete(key);
+        }
+
+        const handle = ownerFolder?.handle ?? rootHandleRef.current;
+        if (!handle || !removedPhoto.sourcePath || isRemoteGalleryEntry(removedPhoto)) {
+            if (folderRemaining.length === 0 && foldersRef.current.length === 0) {
+                setIsOpen(false);
+            }
+            return;
+        }
+
+        try {
+            try {
+                await removeLocalPhotoFile(handle, removedPhoto.sourcePath);
+            } catch (fileError) {
+                if (!(fileError instanceof DOMException) || fileError.name !== 'NotFoundError') {
+                    throw fileError;
+                }
+                console.warn('[fotos-delete] Source file was already missing; pruning metadata only:', fileError);
+            }
+            await removeIndexHtmlPhoto(handle, removedPhoto);
+            await Promise.all([
+                removeGeneratedMetadataFile(handle, removedPhoto.thumb),
+                ...(removedPhoto.faces?.crops ?? []).map(crop => removeGeneratedMetadataFile(handle, crop)),
+            ]);
+
+            clusterDimRef.current = await rebuildPersistedClusterStateFromEntries(handle, folderRemaining, clusterThreshold);
+            clusterThresholdRef.current = clusterThreshold;
+            if (folderRemaining.length === 0 && foldersRef.current.length === 0) {
+                setIsOpen(false);
+            }
+        } catch (error) {
+            console.warn('[fotos-delete] Failed to persist deletion:', error);
+            void scan(handle).catch(() => {});
+        }
+    }, [
+        applyManagedFolders,
+        clusterThreshold,
+        entries,
+        findFolderForEntry,
+        rebuildPersistedClusterStateFromEntries,
+        scan,
+    ]);
+
+    const reanalyzeFaces = useCallback(async () => {
+        if (!rootHandleRef.current) {
+            return;
+        }
+
+        const handle = rootHandleRef.current;
+        const currentFolder = currentFolderIdRef.current
+            ? foldersRef.current.find(record => record.id === currentFolderIdRef.current) ?? null
+            : null;
+        const targetEntries = currentFolder?.entries ?? entries;
+        const shouldReanalyzeFaces = allowsLocalFaceEnrichment;
+        const shouldReanalyzeSemantic = semanticSearchEnabled;
+        if (!shouldReanalyzeFaces && !shouldReanalyzeSemantic) {
+            return;
+        }
+
+        // Await the current owner before forcing a replacement; resetting its
+        // promise would admit overlapping writers over the same saved results.
+        await Promise.all([facePassPromiseRef.current?.promise, semanticPassPromiseRef.current]);
+        setError(null);
+        const currentEntries = targetEntries.map(currentAnalysisPhoto);
+        const failures: unknown[] = [];
+        if (shouldReanalyzeFaces) {
+            try {
+                await runBackgroundFacePass(handle, currentEntries, true);
+            } catch (cause) {
+                failures.push(cause);
+            }
+        }
+        if (shouldReanalyzeSemantic) {
+            const semanticPass = runBackgroundSemanticPass(handle, currentEntries, true);
+            semanticPassPromiseRef.current = semanticPass;
+            try {
+                await semanticPass;
+            } catch (cause) {
+                failures.push(cause);
+            } finally {
+                if (semanticPassPromiseRef.current === semanticPass) semanticPassPromiseRef.current = null;
+            }
+        }
+        if (failures.length) {
+            const message = failures.map(cause => cause instanceof Error ? cause.message : String(cause)).join(' ');
+            setError(message);
+            throw new Error(message);
+        }
+    }, [
+        allowsLocalFaceEnrichment,
+        currentAnalysisPhoto,
+        entries,
+        runBackgroundFacePass,
+        runBackgroundSemanticPass,
+        semanticSearchEnabled,
+    ]);
+
+    useEffect(() => {
+        const handle = rootHandleRef.current;
+        const currentDim = clusterDimRef.current;
+        if (!allowsLocalFaceEnrichment || !handle || !isOpen || !currentDim) {
+            return;
+        }
+        if (facePassProgressRef.current) {
+            return;
+        }
+        if (clusterThresholdRef.current !== null && isSameThreshold(clusterThresholdRef.current, clusterThreshold)) {
+            return;
+        }
+        const currentFolder = currentFolderIdRef.current
+            ? foldersRef.current.find(record => record.id === currentFolderIdRef.current) ?? null
+            : null;
+        const targetEntries = currentFolder?.entries ?? entries;
+
+        void ensureClusterDimension(handle, targetEntries, clusterThreshold)
+            .then(result => {
+                if (result.entries !== targetEntries) {
+                    if (currentFolder) {
+                        applyManagedFolders(foldersRef.current.map(record => (
+                            record.id === currentFolder.id
+                                ? { ...record, entries: result.entries }
+                                : record
+                        )));
+                    } else {
+                        setEntries(result.entries);
+                    }
+                }
+            })
+            .catch(err => {
+                console.warn('[FacePass] Failed to rebuild clusters for new sensitivity:', err);
+            });
+    }, [allowsLocalFaceEnrichment, applyManagedFolders, clusterThreshold, entries, ensureClusterDimension, isOpen]);
+
+    useEffect(() => {
+        const handle = rootHandleRef.current;
+        const wasEnabled = previousAllowsLocalFaceEnrichmentRef.current;
+        previousAllowsLocalFaceEnrichmentRef.current = allowsLocalFaceEnrichment;
+
+        if (!allowsLocalFaceEnrichment || wasEnabled || !handle || !isOpen) {
+            return;
+        }
+        if (facePassProgressRef.current) {
+            return;
+        }
+        const currentFolder = currentFolderIdRef.current
+            ? foldersRef.current.find(record => record.id === currentFolderIdRef.current) ?? null
+            : null;
+        const targetEntries = currentFolder?.entries ?? entries;
+        if (!targetEntries.some(entry => entry.faces === undefined)) {
+            return;
+        }
+
+        void ensureClusterDimension(handle, targetEntries, clusterThreshold)
+            .then(result => {
+                if (result.entries !== targetEntries) {
+                    if (currentFolder) {
+                        applyManagedFolders(foldersRef.current.map(record => (
+                            record.id === currentFolder.id
+                                ? { ...record, entries: result.entries }
+                                : record
+                        )));
+                    } else {
+                        setEntries(result.entries);
+                    }
+                }
+                return runBackgroundFacePass(handle, result.entries);
+            })
+            .catch(error => {
+                console.warn('[FacePass] Failed to start after enabling face analytics:', error);
+            });
+    }, [
+        allowsLocalFaceEnrichment,
+        applyManagedFolders,
+        clusterThreshold,
+        entries,
+        ensureClusterDimension,
+        isOpen,
+        runBackgroundFacePass,
+    ]);
+
+    const getFileUrl = useCallback(async (relativePath: string): Promise<string> => {
+        if (relativePath.startsWith('blob:') || relativePath.startsWith('data:')) {
+            return relativePath;
+        }
+
+        const folder = findFolderForPath(relativePath);
+        const cacheKey = folder ? `${folder.id}:${relativePath}` : relativePath;
+        const cached = urlCacheRef.current.get(cacheKey) ?? urlCacheRef.current.get(relativePath);
+        if (cached) return cached;
+
+        const handle = folder?.handle ?? rootHandleRef.current;
+        if (!handle) throw new Error('No folder open');
+        const file = await readFileFromHandle(handle, relativePath);
+        const url = URL.createObjectURL(file);
+        urlCacheRef.current.set(cacheKey, url);
+        return url;
+    }, [findFolderForPath]);
+
+    const getThumbUrl = useCallback(async (entry: PhotoEntry): Promise<string | null> => {
+        if (!entry.thumb) return null;
+
+        if (entry.thumb.startsWith('blob:') || entry.thumb.startsWith('data:')) {
+            return entry.thumb;
+        }
+
+        const folder = findFolderForEntry(entry) ?? findFolderForPath(entry.thumb);
+        const cacheKey = folder ? `${folder.id}:${entry.thumb}` : entry.thumb;
+        const cached = urlCacheRef.current.get(cacheKey) ?? urlCacheRef.current.get(entry.thumb);
+        if (cached) return cached;
+
+        const handle = folder?.handle ?? rootHandleRef.current;
+        if (!handle) return null;
+
+        try {
+            const file = await readFileFromHandle(handle, entry.thumb);
+            const url = URL.createObjectURL(file);
+            urlCacheRef.current.set(cacheKey, url);
+            return url;
+        } catch {
+            return null;
+        }
+    }, [findFolderForEntry, findFolderForPath]);
+
+    const readFile = useCallback(async (relativePath: string): Promise<File> => {
+        const handle = findFolderForPath(relativePath)?.handle ?? rootHandleRef.current;
+        if (!handle) throw new Error('No folder open');
+        return readFileFromHandle(handle, relativePath);
+    }, [findFolderForPath]);
+
+    const ensureSyncedToOneCore = useCallback(async (
+        contentHashes?: readonly string[],
+    ): Promise<void> => {
+        if (!isOpen || entries.length === 0) {
+            return;
+        }
+
+        const requestedHashes = contentHashes ? new Set(contentHashes) : null;
+
+        for (const folder of foldersRef.current) {
+            const localEntries = folder.entries.filter(entry => (
+                !isRemoteGalleryEntry(entry)
+                && (!requestedHashes || requestedHashes.has(entry.hash))
+            ));
+            if (localEntries.length === 0) {
+                continue;
+            }
+
+            await syncPhotosToOneCore(localEntries, folder.handle, {
+                claimAuthorship: claimAuthorshipOnIngest,
+                requireOriginalBlob: true,
+            });
+        }
+    }, [claimAuthorshipOnIngest, entries, isOpen]);
+
+    const renameFace = useCallback(async (clusterId: string, name: string) => queueFaceMetadataMutation(async () => {
+        const currentEntries = entriesRef.current;
+        const handle = rootHandleRef.current;
+        if (!handle) throw new Error('No folder open');
+
+        const dim = await ensureClusterDimensionForEditing();
+        const normalizedName = normalizeClusterName(name) ?? '';
+        const personId = findClusterPersonIdInEntries(currentEntries, clusterId);
+        const affectedClusterIds = new Set(
+            personId
+                ? findClusterIdsForPersonInEntries(currentEntries, personId)
+                : [clusterId],
+        );
+
+        if (dim) {
+            for (const affectedClusterId of affectedClusterIds) {
+                if (dim.getCluster(affectedClusterId)) {
+                    dim.nameCluster(affectedClusterId, normalizedName);
+                }
+            }
+            await saveClusterState(handle, dim);
+        }
+
+        const affectedEntries: PhotoEntry[] = [];
+        currentEntries.forEach(entry => {
+            const faces = entry.faces;
+            if (!faces?.clusterIds) return entry;
+            const names = [...(faces.names ?? faces.clusterIds.map(() => 'Unknown'))];
+            let entryChanged = false;
+
+            faces.clusterIds.forEach((id, index) => {
+                const samePerson = personId
+                    ? normalizePersonId(faces.personIds?.[index]) === personId
+                    : false;
+                if (affectedClusterIds.has(id) || samePerson) {
+                    names[index] = normalizedName || 'Unknown';
+                    entryChanged = true;
+                }
+            });
+
+            if (!entryChanged) {
+                return entry;
+            }
+
+            const updated: PhotoEntry = { ...entry, faces: { ...faces, names } };
+            affectedEntries.push(updated);
+            return updated;
+        });
+
+        for (const entry of affectedEntries) {
+            await updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry));
+            publishAnalysis(entry, {faces: entry.faces});
+        }
+    }), [ensureClusterDimensionForEditing, publishAnalysis]);
+
+    const deleteFace = useCallback(async (clusterId: string) => queueFaceMetadataMutation(async () => {
+        const currentEntries = entriesRef.current;
+        const handle = rootHandleRef.current;
+        if (!handle) throw new Error('No folder open');
+
+        const dim = await ensureClusterDimensionForEditing();
+        if (dim?.getCluster(clusterId)) {
+            (dim as FaceClusterDimension & { removeCluster(id: string): void }).removeCluster(clusterId);
+            await saveClusterState(handle, dim);
+        }
+
+        const affectedEntries: PhotoEntry[] = [];
+        currentEntries.forEach(entry => {
+            if (!entry.faces?.clusterIds) return entry;
+            const idx = entry.faces.clusterIds.indexOf(clusterId);
+            if (idx < 0) return entry;
+            const clusterIds = entry.faces.clusterIds.filter((_, i) => i !== idx);
+            const names = (entry.faces.names ?? []).filter((_, i) => i !== idx);
+            const personIds = (entry.faces.personIds ?? []).filter((_, i) => i !== idx);
+            const bboxes = entry.faces.bboxes.filter((_, i) => i !== idx);
+            const scores = entry.faces.scores.filter((_, i) => i !== idx);
+            const crops = entry.faces.crops.filter((_, i) => i !== idx);
+            const embeddings = removeFaceEmbeddingAtIndex(entry.faces.embeddings, entry.faces.count, idx);
+            const updated = {
+                ...entry,
+                faces: clusterIds.length > 0
+                    ? {
+                        ...entry.faces,
+                        count: clusterIds.length,
+                        clusterIds,
+                        names,
+                        personIds,
+                        bboxes,
+                        scores,
+                        crops,
+                        embeddings,
+                    }
+                    : {
+                        count: 0,
+                        bboxes: [],
+                        scores: [],
+                        embeddings: null,
+                        crops: [],
+                    },
+            };
+            affectedEntries.push(updated);
+            return updated;
+        });
+
+        for (const entry of affectedEntries) {
+            await updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry));
+            publishAnalysis(entry, {faces: entry.faces});
+        }
+    }), [ensureClusterDimensionForEditing, publishAnalysis]);
+
+    const associateFaceWithCluster = useCallback(async (
+        photoHash: string,
+        faceIndex: number,
+        clusterId: string,
+    ) => {
+        const selectedHandle = rootHandleRef.current;
+        const selectedFaces = entriesRef.current.find(entry => entry.hash === photoHash)?.faces;
+        return queueFaceMetadataMutation(async () => {
+            const currentEntries = entriesRef.current;
+            const handle = rootHandleRef.current;
+            if (!handle) throw new Error('No folder open');
+            const currentFaces = currentEntries.find(entry => entry.hash === photoHash)?.faces;
+            // Annotation edits retain detection arrays; replacement and deletion
+            // publish new ones, invalidating the selected positional face index.
+            if (handle !== selectedHandle || currentFaces?.count !== selectedFaces?.count
+                || currentFaces?.bboxes !== selectedFaces?.bboxes || currentFaces?.embeddings !== selectedFaces?.embeddings) {
+                setError('Face analysis changed. Select the face again.');
+                return;
+            }
+
+            const affectedEntries: PhotoEntry[] = [];
+            let updatedTargetName = findClusterNameInEntries(currentEntries, clusterId);
+            const updatedTargetPersonId = findClusterPersonIdInEntries(currentEntries, clusterId);
+            let changed = false;
+
+            const nextEntries = currentEntries.map(entry => {
+                const faces = entry.faces;
+                if (!faces) {
+                    return entry;
+                }
+
+                const clusterIds = faces.clusterIds
+                    ? [...faces.clusterIds]
+                    : Array.from({ length: faces.count }, () => '');
+                const names = faces.names
+                    ? [...faces.names]
+                    : Array.from({ length: faces.count }, () => 'Unknown');
+                const personIds = faces.personIds
+                    ? [...faces.personIds]
+                    : Array.from({ length: faces.count }, () => '');
+
+                while (clusterIds.length < faces.count) {
+                    clusterIds.push('');
+                }
+                while (names.length < faces.count) {
+                    names.push('Unknown');
+                }
+                while (personIds.length < faces.count) {
+                    personIds.push('');
+                }
+
+                let entryChanged = false;
+
+                if (entry.hash === photoHash) {
+                    if (faceIndex < 0 || faceIndex >= faces.count) {
+                        throw new Error(`Face index out of range for ${photoHash}:${faceIndex}`);
+                    }
+
+                    if (clusterIds[faceIndex] !== clusterId) {
+                        clusterIds[faceIndex] = clusterId;
+                        entryChanged = true;
+                        changed = true;
+                    }
+
+                    const currentName = normalizeClusterName(names[faceIndex]);
+                    updatedTargetName = updatedTargetName ?? currentName;
+                    const nextName = updatedTargetName ?? 'Unknown';
+                    if (names[faceIndex] !== nextName) {
+                        names[faceIndex] = nextName;
+                        entryChanged = true;
+                        changed = true;
+                    }
+
+                    const nextPersonId = updatedTargetPersonId ?? '';
+                    if ((personIds[faceIndex] ?? '') !== nextPersonId) {
+                        personIds[faceIndex] = nextPersonId;
+                        entryChanged = true;
+                        changed = true;
+                    }
+                } else if (updatedTargetName) {
+                    for (let index = 0; index < clusterIds.length; index++) {
+                        if (clusterIds[index] !== clusterId || names[index] === updatedTargetName) {
+                            continue;
+                        }
+                        names[index] = updatedTargetName;
+                        entryChanged = true;
+                        changed = true;
+                    }
+                }
+
+                if (!entryChanged) {
+                    return entry;
+                }
+
+                const updated = {
+                    ...entry,
+                    faces: {
+                        ...faces,
+                        clusterIds,
+                        names,
+                        personIds,
+                    },
+                };
+                affectedEntries.push(updated);
+                return updated;
+            });
+
+            if (!changed) {
+                return;
+            }
+
+            for (const entry of affectedEntries) {
+                await updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry));
+                publishAnalysis(entry, {faces: entry.faces});
+            }
+
+            clusterDimRef.current = await rebuildPersistedClusterStateFromEntries(handle, nextEntries, clusterThreshold);
+            clusterThresholdRef.current = clusterThreshold;
+        });
+    }, [clusterThreshold, publishAnalysis]);
+
+    const mergeFaceClusters = useCallback(async (
+        targetClusterId: string,
+        sourceClusterIds: string[],
+    ) => queueFaceMetadataMutation(async () => {
+        const currentEntries = entriesRef.current;
+        const handle = rootHandleRef.current;
+        if (!handle) {
+            throw new Error('No folder open');
+        }
+
+        const sourceSet = new Set(
+            sourceClusterIds
+                .map(id => id.trim())
+                .filter(id => id && id !== targetClusterId),
+        );
+        if (sourceSet.size === 0) {
+            return;
+        }
+
+        const targetName = findClusterNameInEntries(currentEntries, targetClusterId)
+            ?? [...sourceSet].map(clusterId => findClusterNameInEntries(currentEntries, clusterId)).find(Boolean);
+        const targetPersonId = findClusterPersonIdInEntries(currentEntries, targetClusterId)
+            ?? [...sourceSet].map(clusterId => findClusterPersonIdInEntries(currentEntries, clusterId)).find(Boolean);
+
+        const affectedEntries: PhotoEntry[] = [];
+        let changed = false;
+
+        const nextEntries = currentEntries.map(entry => {
+            const faces = entry.faces;
+            if (!faces?.clusterIds?.length) {
+                return entry;
+            }
+
+            const clusterIds = [...faces.clusterIds];
+            const names = faces.names
+                ? [...faces.names]
+                : Array.from({ length: faces.count }, () => 'Unknown');
+            const personIds = faces.personIds
+                ? [...faces.personIds]
+                : Array.from({ length: faces.count }, () => '');
+
+            while (names.length < faces.count) {
+                names.push('Unknown');
+            }
+            while (personIds.length < faces.count) {
+                personIds.push('');
+            }
+
+            let entryChanged = false;
+
+            for (let index = 0; index < clusterIds.length; index++) {
+                const currentClusterId = clusterIds[index];
+                if (!currentClusterId) {
+                    continue;
+                }
+
+                if (sourceSet.has(currentClusterId)) {
+                    if (clusterIds[index] !== targetClusterId) {
+                        clusterIds[index] = targetClusterId;
+                        entryChanged = true;
+                        changed = true;
+                    }
+                }
+
+                if (clusterIds[index] === targetClusterId) {
+                    const nextName = targetName ?? normalizeClusterName(names[index]) ?? 'Unknown';
+                    if (names[index] !== nextName) {
+                        names[index] = nextName;
+                        entryChanged = true;
+                        changed = true;
+                    }
+
+                    const nextPersonId = targetPersonId ?? '';
+                    if ((personIds[index] ?? '') !== nextPersonId) {
+                        personIds[index] = nextPersonId;
+                        entryChanged = true;
+                        changed = true;
+                    }
+                }
+            }
+
+            if (!entryChanged) {
+                return entry;
+            }
+
+            const updated = {
+                ...entry,
+                faces: {
+                    ...faces,
+                    clusterIds,
+                    names,
+                    personIds,
+                },
+            };
+            affectedEntries.push(updated);
+            return updated;
+        });
+
+        if (!changed) {
+            return;
+        }
+
+        for (const entry of affectedEntries) {
+            await updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry));
+            publishAnalysis(entry, {faces: entry.faces});
+        }
+
+        clusterDimRef.current = await rebuildPersistedClusterStateFromEntries(handle, nextEntries, clusterThreshold);
+        clusterThresholdRef.current = clusterThreshold;
+    }), [clusterThreshold, publishAnalysis]);
+
+    const groupFaceClustersAsPerson = useCallback(async (clusterIds: string[], preferredPersonId?: string) => queueFaceMetadataMutation(async () => {
+        const currentEntries = entriesRef.current;
+        const handle = rootHandleRef.current;
+        if (!handle) {
+            throw new Error('No folder open');
+        }
+
+        const uniqueClusterIds = [...new Set(
+            clusterIds
+                .map(clusterId => clusterId.trim())
+                .filter(Boolean),
+        )];
+        if (uniqueClusterIds.length < 2) {
+            return null;
+        }
+
+        const personId = normalizePersonId(preferredPersonId)
+            ?? uniqueClusterIds
+            .map(clusterId => findClusterPersonIdInEntries(currentEntries, clusterId))
+            .find(Boolean)
+            ?? createExplicitPersonId();
+        const personName = uniqueClusterIds
+            .map(clusterId => findClusterNameInEntries(currentEntries, clusterId))
+            .find(Boolean);
+        const clusterIdSet = new Set(uniqueClusterIds);
+
+        const dim = await ensureClusterDimensionForEditing();
+        if (dim && personName) {
+            for (const clusterId of uniqueClusterIds) {
+                if (dim.getCluster(clusterId)) {
+                    dim.nameCluster(clusterId, personName);
+                }
+            }
+            await saveClusterState(handle, dim);
+        }
+
+        const affectedEntries: PhotoEntry[] = [];
+        let changed = false;
+
+        currentEntries.forEach(entry => {
+            const faces = entry.faces;
+            if (!faces?.clusterIds?.length) {
+                return entry;
+            }
+
+            const names = faces.names
+                ? [...faces.names]
+                : Array.from({ length: faces.count }, () => 'Unknown');
+            const personIds = faces.personIds
+                ? [...faces.personIds]
+                : Array.from({ length: faces.count }, () => '');
+
+            while (names.length < faces.count) {
+                names.push('Unknown');
+            }
+            while (personIds.length < faces.count) {
+                personIds.push('');
+            }
+
+            let entryChanged = false;
+
+            for (let index = 0; index < faces.clusterIds.length; index++) {
+                if (!clusterIdSet.has(faces.clusterIds[index])) {
+                    continue;
+                }
+
+                if ((personIds[index] ?? '') !== personId) {
+                    personIds[index] = personId;
+                    entryChanged = true;
+                    changed = true;
+                }
+
+                if (personName && names[index] !== personName) {
+                    names[index] = personName;
+                    entryChanged = true;
+                    changed = true;
+                }
+            }
+
+            if (!entryChanged) {
+                return entry;
+            }
+
+            const updated = {
+                ...entry,
+                faces: {
+                    ...faces,
+                    names,
+                    personIds,
+                },
+            };
+            affectedEntries.push(updated);
+            return updated;
+        });
+
+        if (!changed) {
+            return personId;
+        }
+
+        for (const entry of affectedEntries) {
+            await updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry));
+            publishAnalysis(entry, {faces: entry.faces});
+        }
+        return personId;
+    }), [ensureClusterDimensionForEditing, publishAnalysis]);
+
+    const separatePersonGroup = useCallback(async (personId: string) => queueFaceMetadataMutation(async () => {
+        const currentEntries = entriesRef.current;
+        const handle = rootHandleRef.current;
+        if (!handle) {
+            throw new Error('No folder open');
+        }
+
+        const normalizedPersonId = normalizePersonId(personId);
+        if (!normalizedPersonId) {
+            return [];
+        }
+
+        const affectedEntries: PhotoEntry[] = [];
+        const separatedClusterIds = new Set<string>();
+        let changed = false;
+
+        currentEntries.forEach(entry => {
+            const faces = entry.faces;
+            if (!faces?.personIds?.length) {
+                return entry;
+            }
+
+            const personIds = [...faces.personIds];
+            let entryChanged = false;
+
+            for (let index = 0; index < personIds.length; index++) {
+                if (normalizePersonId(personIds[index]) !== normalizedPersonId) {
+                    continue;
+                }
+
+                const clusterId = faces.clusterIds?.[index];
+                if (clusterId) separatedClusterIds.add(clusterId);
+                personIds[index] = '';
+                entryChanged = true;
+                changed = true;
+            }
+
+            if (!entryChanged) {
+                return entry;
+            }
+
+            const updated = {
+                ...entry,
+                faces: {
+                    ...faces,
+                    personIds,
+                },
+            };
+            affectedEntries.push(updated);
+            return updated;
+        });
+
+        if (!changed) {
+            return [];
+        }
+
+        for (const entry of affectedEntries) {
+            await updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry));
+            publishAnalysis(entry, {faces: entry.faces});
+        }
+        return [...separatedClusterIds];
+    }), [publishAnalysis]);
+
+    return {
+        initializationComplete,
+        isOpen,
+        surface,
+        surfaceProfile,
+        defaultIntakePlan,
+        shareIntakePlan,
+        folderName,
+        folders: managedFolders,
+        entries,
+        loading,
+        error,
+        ingestProgress,
+        pendingImportCount: pendingImport?.files.length ?? 0,
+        mobile,
+        canClaimAuthorshipOnIngest: true,
+        claimAuthorshipOnIngest,
+        setClaimAuthorshipOnIngest,
+        openFolder,
+        selectFolder,
+        removeFolder,
+        chooseSharedGalleryDestination,
+        openLocalFiles,
+        importLocalFiles,
+        rescan,
+        deletePhoto,
+        reanalyzeFaces,
+        ensureSemanticEmbeddings,
+        ensureSyncedToOneCore,
+        getFileUrl,
+        getThumbUrl,
+        readFile,
+        renameFace,
+        deleteFace,
+        associateFaceWithCluster,
+        mergeFaceClusters,
+        groupFaceClustersAsPerson,
+        separatePersonGroup,
+    };
+}

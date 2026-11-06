@@ -149,7 +149,7 @@ recovery are not proven by finding their controls in a browser viewport.
 Aggregate reports are written to:
 
 ```text
-fotos.browser/browser-ui/tests/integration/reports/fotos-<profile>-protocol-<timestamp>.md
+apps/fotos.browser/browser-ui/tests/integration/reports/fotos-<profile>-protocol-<timestamp>.md
 ```
 
 The seeded UI suite writes JSON evidence and failure screenshots beside the run.

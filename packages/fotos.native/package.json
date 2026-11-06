@@ -1,0 +1,37 @@
+{
+  "name": "@refinio/fotos.native",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared source bootstrap and bundler configuration for Fotos native applications",
+  "exports": {
+    "./bootstrap": "./src/bootstrap.ts",
+    "./metro": "./tools/metro.cjs",
+    "./babel-plugin": "./tools/babel-plugin.cjs"
+  },
+  "files": [
+    "src",
+    "tools"
+  ],
+  "peerDependencies": {
+    "@refinio/one.core-expo": "*",
+    "react-native-get-random-values": ">=1.11.0",
+    "expo": "^54.0.34",
+    "nativewind": "^4.2.1",
+    "@refinio/one.core": "*"
+  },
+  "devDependencies": {
+    "@refinio/one.core-expo": "file:../../sources/one/packages/one.core-expo",
+    "react-native-get-random-values": "1.11.0",
+    "expo": "54.0.34",
+    "nativewind": "4.2.3",
+    "@refinio/one.core": "file:../../sources/one/packages/one.core",
+    "expo-crypto": "15.0.9",
+    "expo-file-system": "19.0.22",
+    "expo-secure-store": "15.0.8",
+    "react": "19.1.0",
+    "react-native": "npm:react-native-tvos@0.81.5-2"
+  },
+  "scripts": {
+    "build": "pnpm pack --pack-destination dist"
+  }
+}

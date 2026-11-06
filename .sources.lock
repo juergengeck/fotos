@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "sources": {
+    "one": {
+      "git": "f3c2d152e7e833ea46fd3b517c312238731e7d17"
+    },
+    "udp": {
+      "git": "d544f7e4003a12ea259d202cdcfd15eaf8800e82"
+    },
+    "vger": {
+      "git": "9242551c56636f95c5215418617ee13e83d88c82"
+    }
+  }
+}
