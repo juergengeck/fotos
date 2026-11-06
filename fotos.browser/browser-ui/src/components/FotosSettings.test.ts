@@ -313,6 +313,15 @@ describe('FotosSettings identity flows', () => {
     expect(row?.props.className).toContain('flex');
   });
 
+  it('signs in from the start screen without a library or login hint', async () => {
+    mockGlueSignIn.mockResolvedValue(undefined);
+    setupHookState({ stateValues: [false, null] });
+    const tree = renderNodes(GlueAccountSignIn({label: 'Sign in with glue.one'}));
+    await findButtonByText(tree, 'Sign in with glue.one').props.onClick();
+    expect(mockGlueSignIn).toHaveBeenCalledWith({ loginHint: undefined, signal: expect.any(AbortSignal) });
+    expect(window.location.reload).toHaveBeenCalledTimes(1);
+  });
+
   it('shows a verification failure without reloading the current local account', async () => {
     mockGlueSignIn.mockRejectedValue(new Error('Invalid Glue signature'));
     setupHookState({ stateValues: [false, null] });
