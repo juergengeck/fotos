@@ -61,7 +61,7 @@ function buildVersionPlugin(buildId: string): Plugin {
         configureServer(server) {
             server.middlewares.use((req, res, next) => {
                 const url = new URL(req.url ?? '/', 'http://localhost');
-                if (url.pathname !== '/version.json') {
+                if (!['/version.json', '/app/version.json'].includes(url.pathname)) {
                     next();
                     return;
                 }
@@ -82,7 +82,7 @@ function buildVersionPlugin(buildId: string): Plugin {
 }
 
 function ortRuntimePlugin(): Plugin {
-    const routePrefix = '/ort/';
+    const routePrefix = '/app/ort/';
 
     function isKnownRuntimeFile(fileName: string): fileName is typeof ORT_RUNTIME_FILES[number] {
         return ORT_RUNTIME_FILES.includes(fileName as typeof ORT_RUNTIME_FILES[number]);
@@ -267,9 +267,21 @@ function localPhotosPlugin(): Plugin {
 }
 
 export default defineConfig({
-    base: process.env.VITE_BASE || '/',
+    base: '/app/',
     clearScreen: false,
     plugins: [
+        {
+            name: 'marketing',
+            configureServer(server) {
+                server.middlewares.use((req, res, next) => {
+                    const pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
+                    if (pathname !== '/' && pathname !== '/cam.svg') return next();
+                    const file = pathname === '/' ? 'index.html' : 'cam.svg';
+                    res.setHeader('Content-Type', file.endsWith('.html') ? 'text/html; charset=utf-8' : 'image/svg+xml');
+                    res.end(fs.readFileSync(path.resolve(__dirname, '../public', file)));
+                });
+            },
+        },
         react(),
         nodePolyfills({
             globals: {
@@ -290,16 +302,19 @@ export default defineConfig({
                 name: 'fotos.one',
                 short_name: 'fotos',
                 description: 'Photo management with face recognition',
-                start_url: '/',
+                // Preserve the installed app identity from the former root start URL.
+                id: '/',
+                scope: '/app/',
+                start_url: '/app/',
                 display: 'standalone',
                 background_color: '#111111',
                 theme_color: '#111111',
                 icons: [
-                    { src: '/cam.svg', sizes: 'any', type: 'image/svg+xml' },
-                    { src: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+                    { src: '/app/cam.svg', sizes: 'any', type: 'image/svg+xml' },
+                    { src: '/app/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
                 ],
                 share_target: {
-                    action: '/_share',
+                    action: '/app/_share',
                     method: 'POST',
                     enctype: 'multipart/form-data',
                     params: {
@@ -371,7 +386,7 @@ export default defineConfig({
     server: {
         port: 5188,
         strictPort: true,
-        open: true,
+        open: '/app/',
         ...(DEV_SERVER_HOST ? { host: DEV_SERVER_HOST } : {}),
         ...(DEV_ALLOWED_HOSTS.length > 0 ? { allowedHosts: DEV_ALLOWED_HOSTS } : {}),
         ...(getDevHmrOptions() ? { hmr: getDevHmrOptions() } : {}),

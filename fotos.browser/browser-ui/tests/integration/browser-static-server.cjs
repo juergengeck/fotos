@@ -50,6 +50,9 @@ const CONTENT_TYPES = {
   '.jpg': 'image/jpeg',
   '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.wasm': 'application/wasm',
+  '.webmanifest': 'application/manifest+json',
   '.map': 'application/json; charset=utf-8',
   '.png': 'image/png',
   '.svg': 'image/svg+xml',
@@ -92,10 +95,11 @@ function sendFile(response, filePath) {
 }
 
 function resolveRequestPath(urlPathname) {
-  const decodedPath = decodeURIComponent(urlPathname || '/');
+  const decodedPath = decodeURIComponent(urlPathname || '/').replace(/^\/app(?:\/|$)/, '/');
   const normalizedPath = decodedPath === '/' ? 'index.html' : decodedPath.replace(/^\/+/, '');
   const safeRelativePath = path.normalize(normalizedPath).replace(/^(\.\.(\/|\\|$))+/, '');
-  return path.join(rootDir, safeRelativePath);
+  const filePath = path.join(rootDir, safeRelativePath);
+  return !path.extname(filePath) && fs.existsSync(`${filePath}.html`) ? `${filePath}.html` : filePath;
 }
 
 const server = http.createServer((request, response) => {
@@ -127,6 +131,11 @@ const server = http.createServer((request, response) => {
       return;
     }
 
+    if (path.extname(requestUrl.pathname)) {
+      response.writeHead(404, {'Content-Type': 'text/plain'});
+      response.end('Not Found');
+      return;
+    }
     sendFile(response, indexPath);
   });
 });

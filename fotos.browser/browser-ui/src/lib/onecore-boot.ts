@@ -326,7 +326,7 @@ async function initModules(
   if (syncEnabled && publicationIdentity) {
     const nextConnectionModule = new ConnectionModule(
       commServerUrl,
-      window.location.origin,
+      new URL('/app/', window.location.origin).toString(),
       undefined,
       API_BASE,
     );

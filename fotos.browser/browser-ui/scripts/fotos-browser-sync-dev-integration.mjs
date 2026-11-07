@@ -254,7 +254,7 @@ async function main() {
   const vitePort = Number(process.env.FOTOS_SMOKE_PORT || await getFreePort());
   const commUrl = `ws://localhost:${commPort}`;
   const headlessUrl = `http://localhost:${headlessPort}`;
-  const viteUrl = `http://localhost:${vitePort}/`;
+  const viteUrl = `http://localhost:${vitePort}/app/`;
   const storageDir = mkdtempSync(path.join(tmpdir(), 'fotos-browser-sync-headless-'));
   const browserBuildDir = mkdtempSync(path.join(tmpdir(), 'fotos-browser-sync-dist-'));
 

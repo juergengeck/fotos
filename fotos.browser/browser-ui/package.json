@@ -20,7 +20,8 @@
     "typecheck": "tsc --noEmit",
     "test:integration:restore": "node --test tests/integration/fotos-library-restore.test.mjs",
     "test:integration:gallery": "node --test tests/integration/fotos-gallery-scroll.test.mjs tests/integration/fotos-fullscreen-gallery.test.mjs",
-    "test:integration:media": "node ./tests/integration/fotos-media-playback-suite.mjs"
+    "test:integration:media": "node ./tests/integration/fotos-media-playback-suite.mjs",
+    "test:integration:site": "node ../scripts/assemble-site.mjs && node ./tests/integration/fotos-site-split.mjs"
   },
   "dependencies": {
     "@glueone/auth.core": "workspace:*",

@@ -278,7 +278,7 @@ async function main() {
   const browserPort = Number(process.env.FOTOS_INTEGRATION_BROWSER_PORT || await getFreePort());
   const commUrl = `ws://localhost:${commPort}`;
   const headlessUrl = `http://localhost:${headlessPort}`;
-  const browserUrl = `http://localhost:${browserPort}/`;
+  const browserUrl = `http://localhost:${browserPort}/app/`;
   const storageDir = mkdtempSync(path.join(tmpdir(), 'fotos-id-share-headless-'));
   const browserBuildDir = mkdtempSync(path.join(tmpdir(), 'fotos-id-share-dist-'));
   const debugRegistrationToken = process.env.GLUE_DEBUG_REGISTRATION_TOKEN || randomUUID();

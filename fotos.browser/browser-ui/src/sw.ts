@@ -12,10 +12,10 @@ self.addEventListener('activate', (event: ExtendableEvent) => {
     event.waitUntil(self.clients.claim());
 });
 
-// ── Share Target: intercept POST to /_share ──────────────────────────
+// ── Share Target: intercept POST to /app/_share ──────────────────────────
 self.addEventListener('fetch', (event: FetchEvent) => {
     const url = new URL(event.request.url);
-    if (url.pathname === '/_share' && event.request.method === 'POST') {
+    if (url.pathname === '/app/_share' && event.request.method === 'POST') {
         event.respondWith(handleShareTarget(event));
     }
 });
@@ -44,7 +44,7 @@ async function handleShareTarget(event: FetchEvent): Promise<Response> {
         await cache.put('/_shared/count', new Response(String(files.length)));
     }
 
-    return Response.redirect('/?share=1', 303);
+    return Response.redirect(new URL('/app/?share=1', self.location.origin).href, 303);
 }
 
 // Skip waiting when told by the app

@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '../../..');
-const DEFAULT_BASE_URL = 'https://fotos.one/';
+const DEFAULT_BASE_URL = 'https://fotos.one/app/';
 const READY_TIMEOUT_MS = Number(process.env.FOTOS_LIVE_READY_TIMEOUT_MS || 180_000);
 const PRESENCE_TIMEOUT_MS = Number(process.env.FOTOS_LIVE_PRESENCE_TIMEOUT_MS || 120_000);
 const CONNECTION_TIMEOUT_MS = Number(process.env.FOTOS_LIVE_CONNECTION_TIMEOUT_MS || 90_000);

@@ -2,8 +2,8 @@ type ModelStatus = 'unloaded' | 'downloading' | 'loading' | 'ready' | 'error';
 type MultimodalEmbeddingModel = 'clip-vit-base-patch32';
 
 const ORT_WASM_PATHS = {
-    mjs: '/ort/ort-wasm-simd-threaded.mjs',
-    wasm: '/ort/ort-wasm-simd-threaded.wasm',
+    mjs: '/app/ort/ort-wasm-simd-threaded.mjs',
+    wasm: '/app/ort/ort-wasm-simd-threaded.wasm',
 } as const;
 
 function l2Normalize(values: ArrayLike<number>): number[] {
