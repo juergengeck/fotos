@@ -1,8 +1,30 @@
 import {
     createPersistedTrieNodeRecipe,
     createPersistedTrieRootRecipe,
+    type PersistedTrieNode,
+    type PersistedTrieRoot,
 } from '@refinio/trie.core';
 import type {Recipe} from '@refinio/one.core/lib/recipes.js';
+
+type GalleryTrieKind = 'Capture' | 'Updated' | 'Folder' | 'Tag' | 'Person' | 'FaceGroup' | 'DetectedFace';
+type GalleryTrieNodeType = `Gallery${GalleryTrieKind}TrieNode`;
+type GalleryTrieRootType = `Gallery${GalleryTrieKind}TrieRoot`;
+
+export type GalleryTrieNode<Name extends GalleryTrieNodeType = GalleryTrieNodeType> =
+    PersistedTrieNode & {$type$: Name};
+export type GalleryTrieRoot<Name extends GalleryTrieRootType = GalleryTrieRootType> =
+    PersistedTrieRoot & {$type$: Name};
+
+type GalleryTrieNodeObjects = {[Name in GalleryTrieNodeType]: GalleryTrieNode<Name>};
+type GalleryTrieRootObjects = {[Name in GalleryTrieRootType]: GalleryTrieRoot<Name>};
+type GalleryTrieIdObjects = {
+    [Name in GalleryTrieNodeType | GalleryTrieRootType]: {$type$: Name; id: string};
+};
+
+declare module '@OneObjectInterfaces' {
+    interface OneIdObjectInterfaces extends GalleryTrieIdObjects {}
+    interface OneVersionedObjectInterfaces extends GalleryTrieNodeObjects, GalleryTrieRootObjects {}
+}
 
 export const GalleryCaptureTrieNodeRecipe = createPersistedTrieNodeRecipe(
     'GalleryCaptureTrieNode',

@@ -240,6 +240,7 @@ export {
     GalleryDetectedFaceTrieNodeRecipe,
     GalleryDetectedFaceTrieRootRecipe,
 } from './recipes/GalleryTrieRecipes.js';
+export type {GalleryTrieNode, GalleryTrieRoot} from './recipes/GalleryTrieRecipes.js';
 
 export {recordFotosAcquisition, traceFotosAcquisitions} from './media-acquisition.js';
 export type {RecordFotosAcquisitionParams} from './media-acquisition.js';

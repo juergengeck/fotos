@@ -31,6 +31,7 @@ interface StoredFotosAccount {
   creds?: FotosBootCreds;
   localIdentity?: Omit<FotosBootCreds, 'secret'>;
   glueSubject?: string;
+  localCredentialSubject?: string;
   /** Public creation journal; removed before this identity can open ONE. */
   pendingCreation?: 'persistent' | 'session';
   storageDirectory: string;
@@ -78,6 +79,7 @@ function readAccountIndex(): StoredFotosAccountIndex {
       storageDirectory: typeof value.storageDirectory === 'string' && value.storageDirectory ? value.storageDirectory : storageDirectoryForAccount(value.id),
       createdAt: typeof value.createdAt === 'string' ? value.createdAt : now,
       updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : now,
+      ...(typeof value.localCredentialSubject === 'string' && value.localCredentialSubject ? { localCredentialSubject: value.localCredentialSubject } : {}),
       ...(value.pendingCreation ? { pendingCreation: value.pendingCreation } : {}),
     };
     if (value.glueSubject !== undefined) {
@@ -103,9 +105,25 @@ function metadata(id: string, creds: Omit<FotosBootCreds, 'secret'>, storageDire
 }
 async function requireLocalCreds(account: StoredFotosAccount, vault: FotosCredentialVault): Promise<FotosBootCreds> {
   if (!account.localIdentity || account.glueSubject) throw new Error('Invalid saved local account');
-  const secret = await vault.read(FOTOS_CREDENTIAL_ISSUER, account.id);
+  const secret = await vault.read(FOTOS_CREDENTIAL_ISSUER, account.localCredentialSubject ?? account.id);
   if (!secret) throw new Error('The saved Fotos account credential is unavailable on this device');
   return { ...account.localIdentity, secret };
+}
+
+/** Account IDs from old Web Storage are labels, not globally unique vault identities.
+ * Keep immutable vault records intact and bind each imported account to its own slot.
+ * Reading before importing also makes interrupted migrations reuse the exact seal. */
+async function sealAccountCredential(account: StoredFotosAccount, secret: string, vault: FotosCredentialVault): Promise<void> {
+  const base = account.localCredentialSubject ?? account.id;
+  for (let slot = 0; slot < 1000; slot++) {
+    const subject = slot === 0 ? base : `${base}:migration:${slot}`;
+    const stored = await vault.read(FOTOS_CREDENTIAL_ISSUER, subject);
+    if (stored !== undefined && stored !== secret) continue;
+    await vault.import(FOTOS_CREDENTIAL_ISSUER, subject, secret);
+    if (subject !== account.id) account.localCredentialSubject = subject;
+    return;
+  }
+  throw new Error('Fotos credential migration has too many occupied slots');
 }
 
 /** Seal every legacy entry before publishing metadata or removing plaintext keys.
@@ -116,7 +134,7 @@ async function migrateAccounts(vault: FotosCredentialVault): Promise<{ index: St
   let sessionMigrated = false;
   for (const account of index.accounts) {
     if (!account.creds) continue;
-    await vault.import(FOTOS_CREDENTIAL_ISSUER, account.id, account.creds.secret);
+    await sealAccountCredential(account, account.creds.secret, vault);
     const { email, instanceName } = account.creds;
     account.localIdentity = { email, instanceName };
     delete account.creds;
@@ -136,8 +154,9 @@ async function migrateAccounts(vault: FotosCredentialVault): Promise<{ index: St
     if (!matching) {
       const id = index.accounts.some(account => account.id === LEGACY_ACCOUNT_ID) ? alternateId : LEGACY_ACCOUNT_ID;
       if (index.accounts.some(account => account.id === id)) throw new Error('Legacy Fotos credentials conflict with a saved account');
-      await vault.import(FOTOS_CREDENTIAL_ISSUER, id, creds.secret);
-      index.accounts.push(metadata(id, creds, DEFAULT_STORAGE_DIRECTORY));
+      const migrated = metadata(id, creds, DEFAULT_STORAGE_DIRECTORY);
+      await sealAccountCredential(migrated, creds.secret, vault);
+      index.accounts.push(migrated);
       changed = true;
       sessionMigrated ||= key === SESSION_KEY && id === LEGACY_ACCOUNT_ID;
     }
