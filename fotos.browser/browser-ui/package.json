@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:qa": "node scripts/serve-qa.mjs",
+    "prebuild": "npm --prefix ../../fotos.ui run build",
     "build": "vite build",
     "test:integration:fotos-share": "node ./scripts/fotos-browser-sync-dev-integration.mjs",
     "test:integration:fotos-ui": "node ./tests/integration/fotos-ui-flow-suite.mjs",
@@ -16,6 +17,7 @@
     "test:live:fotos-share": "node ./scripts/fotos-live-integration.mjs",
     "test:live:fotos-id-share": "node ./tests/integration/fotos-id-share-suite.mjs",
     "test:live:fotos-adhoc-gallery-share": "node ./tests/integration/fotos-adhoc-gallery-share-suite.mjs",
+    "pretest": "npm --prefix ../../fotos.ui run build",
     "test": "node ./scripts/run-vitest.mjs run",
     "typecheck": "tsc --noEmit",
     "test:integration:restore": "node --test tests/integration/fotos-library-restore.test.mjs",
