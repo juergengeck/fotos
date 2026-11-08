@@ -11,6 +11,7 @@
 import {HNSWIndex} from '@refinio/meaning.core/vector-index/HNSWIndex.js';
 import type {HNSWSearchResult} from '@refinio/meaning.core/vector-index/HNSWIndex.js';
 import {EMBEDDING_DIM} from './faces.js';
+import {SIMILARITY_THRESHOLDS} from './similarity.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -51,14 +52,14 @@ interface SerializedState {
 // FaceClusterDimension
 // ---------------------------------------------------------------------------
 
-const DEFAULT_SIMILARITY_THRESHOLD = 0.55;
+const DEFAULT_SIMILARITY_THRESHOLD = SIMILARITY_THRESHOLDS.faceClusterAssignment;
 
 export class FaceClusterDimension {
     private readonly hnsw: HNSWIndex;
     private readonly clusters: Map<string, FaceCluster> = new Map();
     private readonly threshold: number;
 
-    constructor(threshold = DEFAULT_SIMILARITY_THRESHOLD) {
+    constructor(threshold: number = DEFAULT_SIMILARITY_THRESHOLD) {
         this.threshold = threshold;
         this.hnsw = new HNSWIndex(EMBEDDING_DIM, 'cosine');
     }

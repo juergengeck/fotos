@@ -15,6 +15,10 @@
       "import": "./dist/faces.js",
       "types": "./dist/faces.d.ts"
     },
+    "./similarity": {
+      "import": "./dist/similarity.js",
+      "types": "./dist/similarity.d.ts"
+    },
     "./ingest": {
       "import": "./dist/ingest/index.js",
       "types": "./dist/ingest/index.d.ts"

@@ -82,14 +82,31 @@ export {
     analyzeImage,
     iou,
     nms,
-    l2Normalize,
-    cosineSimilarity,
     facesToDataAttrs,
     dataAttrsToFaces,
     dataAttrsToFaceExport,
     hwcToCHW_det,
     hwcToCHW_rec,
 } from './faces.js';
+export {
+    FACE_DETECTION_MODEL_ID,
+    FACE_EMBEDDING_MODEL_ID,
+    SEMANTIC_EMBEDDING_MODEL_ID,
+    SIMILARITY_THRESHOLDS,
+    cosineSimilarity,
+    embeddingAt,
+    faceEmbeddingRows,
+    l2Normalize,
+    rankBySimilarity,
+} from './similarity.js';
+export type {FaceRow, SimilarityCandidate, SimilarityMatch} from './similarity.js';
+export {
+    FOTOS_EMBEDDING_SET_MIME,
+    decodeEmbeddingSet,
+    embeddingSetCount,
+    encodeEmbeddingSet,
+} from './embedding-set.js';
+export type {EmbeddingSet} from './embedding-set.js';
 export {
     getGallerySurfaceProfile,
     getGallerySourceCapabilities,

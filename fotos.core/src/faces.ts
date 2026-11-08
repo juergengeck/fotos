@@ -12,6 +12,8 @@ import type {
     BBox, FaceDetection, FaceResult, FaceAnalysisResult,
     FacePlatform, OnnxSession,
 } from './types.js';
+import {cosineSimilarity, l2Normalize} from './similarity.js';
+export {cosineSimilarity, l2Normalize};
 
 export const DET_INPUT_SIZE = 640;
 export const REC_INPUT_SIZE = 112;
@@ -276,22 +278,6 @@ export function nms(faces: FaceDetection[], threshold: number): FaceDetection[] 
         }
     }
     return keep;
-}
-
-export function l2Normalize(v: Float32Array): number[] {
-    let norm = 0;
-    for (let i = 0; i < v.length; i++) norm += v[i] * v[i];
-    norm = Math.sqrt(norm);
-    const out = new Array<number>(v.length);
-    for (let i = 0; i < v.length; i++) out[i] = v[i] / norm;
-    return out;
-}
-
-/** Cosine similarity between two L2-normalized embeddings (= dot product) */
-export function cosineSimilarity(a: ArrayLike<number>, b: ArrayLike<number>): number {
-    let dot = 0;
-    for (let i = 0; i < a.length; i++) dot += a[i] * b[i];
-    return dot;
 }
 
 // ---------------------------------------------------------------------------
