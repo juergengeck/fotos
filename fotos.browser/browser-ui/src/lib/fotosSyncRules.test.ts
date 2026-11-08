@@ -73,8 +73,6 @@ describe('fotosSyncRules', () => {
             thumb: 'thumb-hash',
             variants: new Set(['variant-a', 'variant-b']),
             faceCount: 2,
-            faceEmbeddings: 'embedding-hash',
-            faceCrops: 'crops-hash',
         })).toBe(true);
     });
 

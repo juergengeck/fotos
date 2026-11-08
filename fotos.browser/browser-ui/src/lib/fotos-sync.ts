@@ -27,13 +27,10 @@ import {
     addEntryToManifest,
     readFotosManifestSnapshot,
 } from './fotos-manifest.js';
-import {EMBEDDING_DIM, facesToDataAttrs} from '@refinio/fotos.core';
+import {hasCurrentAnalysisVariants, storeAnalysisVariants} from './analysis-variants.js';
+import {isMissingVersionedObject} from './one-storage-errors.js';
 import {getMediaMimeType} from '@refinio/media.core/media-types';
-import type {
-    FaceResult,
-    FaceAnalysisResult,
-    FotosEntry,
-} from '@refinio/fotos.core';
+import type {FotosEntry} from '@refinio/fotos.core';
 import type {PhotoEntry} from '@/types/fotos';
 import {
     createFotosAuthenticityAttestation,
@@ -234,6 +231,8 @@ async function isPhotoAlreadySynced(
     const originalVariant = await findCompleteOriginalVariant(current, entryIdHash, photo);
     if (!originalVariant) return false;
 
+    if (!await hasCurrentAnalysisVariants(current, entryIdHash, photo)) return false;
+
     const requiredAttestation = requiredAuthenticitySigner === undefined
         ? undefined
         : requiredAuthenticitySigner === null
@@ -259,15 +258,6 @@ async function isPhotoAlreadySynced(
     // including none when the thumbnail cannot be read.
     const expectedThumbHash = await storePhotoThumbnail(photo, rootHandle);
     return String(current.thumb ?? '') === String(expectedThumbHash ?? '');
-}
-
-function isMissingVersionedObject(error: unknown): boolean {
-    if (!error || typeof error !== 'object') return false;
-    const name = String((error as {name?: unknown}).name ?? '');
-    const message = String((error as {message?: unknown}).message ?? '').toLowerCase();
-    return name === 'FileNotFoundError'
-        || message.includes('not found')
-        || message.includes('sb-read2');
 }
 
 /** Adapt ONE.core's throwing lookup to source.media's optional-read contract. */
@@ -650,6 +640,15 @@ async function storeFotosMediaState(
     variants.add(originalVariantResult.hash as SHA256Hash<FotosMediaVariant>);
     variantIdHashes.add(originalVariantResult.idHash as SHA256IdHash<FotosMediaVariant>);
 
+    for (const analysis of await storeAnalysisVariants(
+        photo,
+        entryIdHash,
+        originalVariantResult.idHash as SHA256IdHash<FotosMediaVariant>,
+    )) {
+        variants.add(analysis.hash);
+        variantIdHashes.add(analysis.idHash);
+    }
+
     const locatorTimestamp = photo.updatedAt ?? photo.addedAt ?? photo.capturedAt;
     for (const relativePath of collectOriginalVariantLocators(photo)) {
         const storedLocator = await storeBrowserLocator({
@@ -694,91 +693,6 @@ async function storeFotosMediaState(
     return { originalVariant: originalVariantResult.hash as SHA256Hash<FotosMediaVariant>, variants, locators, variantIdHashes, locatorIdHashes };
 }
 
-// ---------------------------------------------------------------------------
-// Face data extraction from CHUM-synced FotosEntry BLOBs
-// ---------------------------------------------------------------------------
-
-export interface ExtractedFaceData {
-    /** Face analysis result with bboxes, embeddings, crop paths */
-    faces: FaceAnalysisResult;
-    /** Data attributes ready for one/index.html writing */
-    dataAttrs: Record<string, string>;
-    /** Raw crop image data (array of JPEG blobs), one per face */
-    cropBlobs: ArrayBuffer[];
-}
-
-/**
- * Extract face data from a CHUM-synced FotosEntry.
- *
- * Reads faceEmbeddings and faceCrops BLOBs from ONE.core storage, deserializes
- * them, and returns a structure ready for writing to one/index.html and one/faces/.
- *
- * The embeddings BLOB contains a raw Float32Array (512 floats per face, concatenated).
- * The crops BLOB contains concatenated JPEGs separated by a 4-byte length prefix
- * per image: [uint32 length][jpeg bytes][uint32 length][jpeg bytes]...
- *
- * If only faceCount is available (no BLOBs), returns minimal face data with count only.
- */
-export async function extractFaceDataFromEntry(entry: FotosEntry): Promise<ExtractedFaceData | null> {
-    if (!entry.faceCount || entry.faceCount <= 0) return null;
-
-    const faceCount = entry.faceCount;
-    const faceResults: FaceResult[] = [];
-    const cropBlobs: ArrayBuffer[] = [];
-
-    // Load embeddings BLOB if present
-    let embeddings: Float32Array | null = null;
-    if (entry.faceEmbeddings) {
-        try {
-            const buffer = await readBlobAsArrayBuffer(entry.faceEmbeddings);
-            embeddings = new Float32Array(buffer);
-        } catch (err) {
-            console.warn('[fotos-sync] Failed to read faceEmbeddings BLOB:', err);
-        }
-    }
-
-    // Load face crops BLOB if present
-    // Format: [uint32 length][jpeg bytes][uint32 length][jpeg bytes]...
-    if (entry.faceCrops) {
-        try {
-            const buffer = await readBlobAsArrayBuffer(entry.faceCrops);
-            const view = new DataView(buffer);
-            let offset = 0;
-            while (offset + 4 <= buffer.byteLength) {
-                const len = view.getUint32(offset, true); // little-endian
-                offset += 4;
-                if (offset + len > buffer.byteLength) break;
-                cropBlobs.push(buffer.slice(offset, offset + len));
-                offset += len;
-            }
-        } catch (err) {
-            console.warn('[fotos-sync] Failed to read faceCrops BLOB:', err);
-        }
-    }
-
-    // Build FaceResult array
-    for (let i = 0; i < faceCount; i++) {
-        const embedding = embeddings
-            ? Array.from(embeddings.slice(i * EMBEDDING_DIM, (i + 1) * EMBEDDING_DIM))
-            : new Array<number>(EMBEDDING_DIM).fill(0);
-
-        const cropPath = cropBlobs.length > i
-            ? `faces/${entry.contentHash}-face-${i}.jpg`
-            : undefined;
-
-        faceResults.push({
-            detection: {bbox: [0, 0, 0, 0], score: 0, landmarks: []},
-            embedding,
-            cropPath,
-        });
-    }
-
-    const faces: FaceAnalysisResult = {faces: faceResults};
-    const dataAttrs = facesToDataAttrs(faces);
-
-    return {faces, dataAttrs, cropBlobs};
-}
-
 export async function extractThumbUrlFromEntry(entry: FotosEntry): Promise<string | null> {
     if (!entry.thumb) {
         return null;
@@ -792,38 +706,6 @@ export async function extractThumbUrlFromEntry(entry: FotosEntry): Promise<strin
     } catch (err) {
         console.warn('[fotos-sync] Failed to read thumb BLOB:', err);
         return null;
-    }
-}
-
-/**
- * Write face crop images to one/faces/ directory via File System Access API.
- *
- * Each crop is written as {contentHash}-face-{index}.jpg.
- */
-export async function writeFaceCropsToFilesystem(
-    rootHandle: FileSystemDirectoryHandle,
-    photo: PhotoEntry,
-    contentHash: string,
-    cropBlobs: ArrayBuffer[]
-): Promise<void> {
-    if (cropBlobs.length === 0) return;
-
-    // Navigate to photo's parent directory
-    const segments = (photo.sourcePath ?? '').split('/').filter(Boolean);
-    let dirHandle = rootHandle;
-    for (let i = 0; i < segments.length - 1; i++) {
-        dirHandle = await dirHandle.getDirectoryHandle(segments[i]);
-    }
-
-    const oneDir = await dirHandle.getDirectoryHandle('one', {create: true});
-    const facesDir = await oneDir.getDirectoryHandle('faces', {create: true});
-
-    for (let i = 0; i < cropBlobs.length; i++) {
-        const cropName = `${contentHash}-face-${i}.jpg`;
-        const fh = await facesDir.getFileHandle(cropName, {create: true});
-        const wr = await fh.createWritable();
-        await wr.write(cropBlobs[i]);
-        await wr.close();
     }
 }
 
@@ -1045,10 +927,11 @@ export function syncPhotosToOneCore(
 /**
  * Listen for FotosEntry objects arriving via CHUM sync from remote peers.
  *
- * When a peer enriches a FotosEntry with face data (faceCount, faceEmbeddings,
- * faceCrops), the updated version propagates via CHUM. This listener detects
- * those incoming versions and calls the callback so the UI can merge the
- * enrichment into in-memory PhotoEntry state.
+ * When a peer enriches a FotosEntry (for example an updated faceCount), the
+ * updated version propagates via CHUM. Face embeddings and detections
+ * themselves travel as analysis-output variants, not entry fields. This
+ * listener detects those incoming versions and calls the callback so the UI
+ * can merge the enrichment into in-memory PhotoEntry state.
  *
  * Skips entries with status 'exists' (already in storage) to avoid processing
  * objects we just stored ourselves.

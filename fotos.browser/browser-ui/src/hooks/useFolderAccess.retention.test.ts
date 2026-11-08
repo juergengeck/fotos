@@ -11,8 +11,9 @@ vi.mock('react', () => ({
     useCallback: (value: unknown) => value, useMemo: (factory: () => unknown) => factory(), useEffect: () => {},
 }));
 vi.mock('@/lib/fotos-sync', () => ({
-    syncPhotosToOneCore: vi.fn(), listenForFotosUpdates: vi.fn(), extractFaceDataFromEntry: vi.fn(), extractThumbUrlFromEntry: vi.fn(), writeFaceCropsToFilesystem: vi.fn(),
+    syncPhotosToOneCore: vi.fn(), listenForFotosUpdates: vi.fn(), extractThumbUrlFromEntry: vi.fn(),
 }));
+vi.mock('@/lib/analysis-variants', () => ({extractRemoteAnalysis: vi.fn(async () => ({}))}));
 vi.mock('@/lib/platform', () => ({isMobile: () => false}));
 vi.mock('@/lib/hangTrace', () => ({traceHang: vi.fn()}));
 vi.mock('@/workers/face.worker.ts?worker&url', () => ({default: 'face-worker'}));

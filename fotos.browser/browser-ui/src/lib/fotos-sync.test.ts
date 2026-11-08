@@ -18,6 +18,8 @@ const {
     readFotosManifestSnapshotMock,
     existsMock,
     recordFotosAcquisitionMock,
+    storeAnalysisVariantsMock,
+    hasCurrentAnalysisVariantsMock,
 } = vi.hoisted(() => ({
     storeVersionedObjectMock: vi.fn(async (obj: Record<string, unknown>) => ({
         hash: `${String(obj.$type$)}-hash`,
@@ -57,6 +59,10 @@ const {
     })),
     recordFotosAcquisitionMock: vi.fn(async () => 'acquisition-observation-hash'),
     existsMock: vi.fn(async () => true),
+    storeAnalysisVariantsMock: vi.fn(async () => [
+        {hash: 'analysis-variant-hash', idHash: 'analysis-variant-id-hash'},
+    ]),
+    hasCurrentAnalysisVariantsMock: vi.fn(async () => true),
 }));
 
 vi.mock('@refinio/one.core/lib/storage-versioned-objects.js', () => ({
@@ -134,6 +140,11 @@ vi.mock('@refinio/source.media/services', () => ({
 vi.mock('./fotos-authenticity.js', () => ({
     resolveFotosAuthenticityContext: resolveFotosAuthenticityContextMock,
     createFotosAuthenticityAttestation: createFotosAuthenticityAttestationMock,
+}));
+
+vi.mock('./analysis-variants.js', () => ({
+    storeAnalysisVariants: storeAnalysisVariantsMock,
+    hasCurrentAnalysisVariants: hasCurrentAnalysisVariantsMock,
 }));
 
 import {
@@ -297,6 +308,8 @@ describe('fotos sync authorship toggle', () => {
             resolvedAttestations: [],
         });
         existsMock.mockReset().mockResolvedValue(true);
+        storeAnalysisVariantsMock.mockClear();
+        hasCurrentAnalysisVariantsMock.mockReset().mockResolvedValue(true);
     });
 
     it('claims authorship by default', () => {
@@ -325,6 +338,27 @@ describe('fotos sync authorship toggle', () => {
 
     it('adapts a missing ONE.core version head to an optional source.media read', async () => {
         await expect(getVersionedObjectIfPresent('missing-id' as any)).resolves.toBeUndefined();
+    });
+
+    it('publishes analysis variants derived from the original variant and lists them on the entry', async () => {
+        await syncPhotosToOneCore([{
+            hash: 'photo-hash',
+            name: 'photo.jpg',
+            size: 4,
+            managed: 'metadata',
+            tags: [],
+            addedAt: '2026-11-08T00:00:00.000Z',
+        }], null, {claimAuthorship: false});
+
+        expect(storeAnalysisVariantsMock).toHaveBeenCalledWith(
+            expect.objectContaining({hash: 'photo-hash'}),
+            'FotosEntry-id-hash',
+            'FotosMediaVariant-id-hash',
+        );
+        const entry = storeVersionedObjectMock.mock.calls
+            .map(([object]) => object)
+            .find(object => object.$type$ === 'FotosEntry');
+        expect([...(entry!.variants as Set<string>)]).toContain('analysis-variant-hash');
     });
 
     it('lets ingestion opt out of claiming authorship', async () => {
