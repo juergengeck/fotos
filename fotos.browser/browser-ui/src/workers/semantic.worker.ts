@@ -1,8 +1,9 @@
 import { BrowserMultimodalEmbeddingProvider } from '@/lib/BrowserMultimodalEmbeddingProvider';
+import {SEMANTIC_EMBEDDING_MODEL_ID} from '@refinio/fotos.core/similarity';
 
-type MultimodalEmbeddingModel = 'clip-vit-base-patch32';
+type MultimodalEmbeddingModel = typeof SEMANTIC_EMBEDDING_MODEL_ID;
 
-const MODEL_ID: MultimodalEmbeddingModel = 'clip-vit-base-patch32';
+const MODEL_ID: MultimodalEmbeddingModel = SEMANTIC_EMBEDDING_MODEL_ID;
 
 type WorkerInMessage =
     | { type: 'init' }
