@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import type { GalleryEntry, DayGroup } from '../types/gallery.js'
 import { formatDayLabel } from '../lib/grouping.js'
 import { isVideoMimeType } from '../lib/media.js'
+import { GalleryVideo, type GalleryVideoPlayback } from './GalleryVideo.js'
 
 export interface GalleryGridProps<T extends GalleryEntry = GalleryEntry> {
   dayGroups: DayGroup<T>[]
@@ -19,6 +20,8 @@ export interface GalleryGridProps<T extends GalleryEntry = GalleryEntry> {
   columns?: number
   /** Called after immersive row dimensions or columns change and the browser has laid them out. */
   onLayoutChange?: () => void
+  /** Opt into visibility-based playback. Keep positions alive across grid remounts and set active to false under a modal. */
+  videoPlayback?: GalleryVideoPlayback
   /** Offset sticky day labels when an app header overlays the scroll surface. */
   stickyHeaderOffset?: number
   /** Render sticky day headers inside the grid (default true). */
@@ -35,6 +38,7 @@ function GalleryCard<T extends GalleryEntry>({
   aspectRatio,
   placement,
   onMediaDimensions,
+  videoPlayback,
 }: {
   entry: T
   url: string | undefined
@@ -44,9 +48,9 @@ function GalleryCard<T extends GalleryEntry>({
   aspectRatio?: number
   placement?: { row: number; width: number; offset: number }
   onMediaDimensions?: (url: string, width: number, height: number) => void
+  videoPlayback?: GalleryVideoPlayback
 }) {
   const [loadedUrl, setLoadedUrl] = useState<string>()
-  const videoRef = useRef<HTMLVideoElement>(null)
   const loaded = !!url && loadedUrl === url
   const isVideo = isVideoMimeType(entry.mimeType)
   const Card = isVideo ? 'div' : 'button'
@@ -94,19 +98,18 @@ function GalleryCard<T extends GalleryEntry>({
         cursor: isVideo ? undefined : 'zoom-in',
       }}
     >
-      {url && (isVideo ? (
-        <video
-          ref={videoRef}
-          src={url}
-          aria-label={entry.name}
-          controls
-          playsInline
-          preload="metadata"
-          onLoadedMetadata={event => mediaLoaded(event.currentTarget.videoWidth, event.currentTarget.videoHeight)}
-          onResize={event => mediaLoaded(event.currentTarget.videoWidth, event.currentTarget.videoHeight)}
+      {isVideo ? (
+        <GalleryVideo
+          id={entry.hash}
+          name={entry.name}
+          url={url}
+          loaded={loaded}
           style={mediaStyle}
+          playback={videoPlayback}
+          onDimensions={mediaLoaded}
+          onOpen={onClick}
         />
-      ) : (
+      ) : url && (
         <img
           src={url}
           alt={entry.name}
@@ -114,7 +117,7 @@ function GalleryCard<T extends GalleryEntry>({
           onLoad={event => mediaLoaded(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)}
           style={mediaStyle}
         />
-      ))}
+      )}
       {(!url || !loaded) && (
         <div
           style={{
@@ -132,38 +135,6 @@ function GalleryCard<T extends GalleryEntry>({
         >
           {entry.name}
         </div>
-      )}
-      {isVideo && (
-        <button
-          type="button"
-          data-gallery-open
-          aria-label={`Open ${entry.name}`}
-          title={`Open ${entry.name}`}
-          onClick={() => {
-            videoRef.current?.pause()
-            onClick()
-          }}
-          style={{
-            position: 'absolute',
-            insetInlineEnd: 4,
-            top: '50%',
-            transform: 'translateY(-50%)',
-            display: 'grid',
-            placeItems: 'center',
-            width: 28,
-            height: 28,
-            padding: 0,
-            border: '1px solid rgba(255,255,255,0.3)',
-            borderRadius: 6,
-            color: '#fff',
-            background: 'rgba(0,0,0,0.65)',
-            cursor: 'zoom-in',
-          }}
-        >
-          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 2h5v5M14 2 9 7M7 14H2V9m0 5 5-5" />
-          </svg>
-        </button>
       )}
       {!isVideo && layout !== 'immersive' && (
         <>
@@ -228,6 +199,7 @@ export function GalleryGrid<T extends GalleryEntry>({
   layout = 'grid',
   columns = 1,
   onLayoutChange,
+  videoPlayback,
   stickyHeaderOffset = 0,
   showDayHeaders = true,
   emptyLabel = 'no images yet',
@@ -272,6 +244,7 @@ export function GalleryGrid<T extends GalleryEntry>({
         aspectRatio={url ? mediaRatios.get(url) : undefined}
         placement={placement}
         onMediaDimensions={layout === 'immersive' ? reportMediaDimensions : undefined}
+        videoPlayback={videoPlayback}
         url={url}
         onClick={() => onPhotoClick(index)}
       />
