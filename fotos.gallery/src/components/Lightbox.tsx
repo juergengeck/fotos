@@ -4,6 +4,7 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from 'react'
 import type { GalleryEntry } from '../types/gallery.js'
+import { isVideoMimeType } from '../lib/media.js'
 
 const MIN_SCALE = 1
 const MAX_SCALE = 20
@@ -344,6 +345,7 @@ export function Lightbox<T extends GalleryEntry = GalleryEntry>({
   renderTopRight,
 }: LightboxProps<T>) {
   const entry = items[index]
+  const isVideo = isVideoMimeType(entry?.mimeType)
   const stageRef = useRef<HTMLDivElement | null>(null)
   const activePointersRef = useRef(new Map<number, Point>())
   const interactionRef = useRef<InteractionState>({
@@ -527,8 +529,10 @@ export function Lightbox<T extends GalleryEntry = GalleryEntry>({
       }
 
       if (event.key === 'Escape') onClose()
+      if (event.target instanceof HTMLVideoElement) return
       if (event.key === 'ArrowLeft' && index > 0) onIndexChange(index - 1)
       if (event.key === 'ArrowRight' && index < items.length - 1) onIndexChange(index + 1)
+      if (isVideo) return
       if (event.key === 'f' || event.key === 'F') resetZoom()
       if (event.key === '1') zoomToActualPixels()
       if (event.key === '-' || event.key === '_') zoomBy(0.85)
@@ -537,7 +541,7 @@ export function Lightbox<T extends GalleryEntry = GalleryEntry>({
 
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [index, items.length, onClose, onIndexChange])
+  }, [index, isVideo, items.length, onClose, onIndexChange])
 
   useEffect(() => {
     resetZoom()
@@ -563,7 +567,7 @@ export function Lightbox<T extends GalleryEntry = GalleryEntry>({
 
   useEffect(() => {
     const stage = stageRef.current
-    if (!stage) return
+    if (!stage || isVideo) return
 
     // React delegates wheel events through a passive listener. Zoom needs to
     // cancel scrolling, so own a non-passive listener on this stage instead.
@@ -575,7 +579,7 @@ export function Lightbox<T extends GalleryEntry = GalleryEntry>({
     }
     stage.addEventListener('wheel', onWheel, { passive: false })
     return () => stage.removeEventListener('wheel', onWheel)
-  }, [entry])
+  }, [entry, isVideo])
 
   if (!entry) return null
 
@@ -847,7 +851,7 @@ export function Lightbox<T extends GalleryEntry = GalleryEntry>({
             </div>
           </SidebarSection>
         )}
-        {!compactLayout && (
+        {!compactLayout && !isVideo && (
           <SidebarSection label="View">
             <ViewControls
               scalePercent={scalePercent}
@@ -998,12 +1002,12 @@ export function Lightbox<T extends GalleryEntry = GalleryEntry>({
           >
             <div
               ref={stageRef}
-              onPointerDown={handlePointerDown}
-              onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
-              onPointerCancel={handlePointerCancel}
-              onDoubleClick={handleDoubleClick}
-              onClick={handleStageClick}
+              onPointerDown={isVideo ? undefined : handlePointerDown}
+              onPointerMove={isVideo ? undefined : handlePointerMove}
+              onPointerUp={isVideo ? undefined : handlePointerUp}
+              onPointerCancel={isVideo ? undefined : handlePointerCancel}
+              onDoubleClick={isVideo ? undefined : handleDoubleClick}
+              onClick={isVideo ? undefined : handleStageClick}
               style={{
                 position: 'relative',
                 flex: 1,
@@ -1013,8 +1017,8 @@ export function Lightbox<T extends GalleryEntry = GalleryEntry>({
                 alignItems: 'center',
                 justifyContent: 'center',
                 overflow: 'hidden',
-                touchAction: 'none',
-                cursor: scale > 1 ? 'grab' : 'zoom-in',
+                touchAction: isVideo ? undefined : 'none',
+                cursor: isVideo ? undefined : scale > 1 ? 'grab' : 'zoom-in',
               }}
             >
               {canPrev && (
@@ -1044,7 +1048,19 @@ export function Lightbox<T extends GalleryEntry = GalleryEntry>({
                 </button>
               )}
 
-              {url ? (
+              {!url ? (
+                <div style={{ color: 'rgba(255,255,255,0.72)', fontSize: 14 }}>{entry.name}</div>
+              ) : isVideo ? (
+                <video
+                  key={entry.hash}
+                  src={url}
+                  aria-label={entry.name}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain' }}
+                />
+              ) : (
                 <img
                   src={url}
                   alt={entry.name}
@@ -1071,13 +1087,11 @@ export function Lightbox<T extends GalleryEntry = GalleryEntry>({
                     cursor: scale > 1 ? 'grab' : 'zoom-in',
                   }}
                 />
-              ) : (
-                <div style={{ color: 'rgba(255,255,255,0.72)', fontSize: 14 }}>{entry.name}</div>
               )}
             </div>
           </div>
 
-          {showFloatingControls && (
+          {showFloatingControls && !isVideo && (
             <div
               style={{
                 position: 'absolute',

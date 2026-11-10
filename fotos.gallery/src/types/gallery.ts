@@ -5,7 +5,7 @@
  * with their own fields (exif, faces, semantic for fotos; messageId for chat).
  */
 
-/** Minimal gallery entry — any image with a hash, name, and timestamp */
+/** Minimal gallery entry — any image or video with a hash, name, and timestamp */
 export interface GalleryEntry {
   hash: string
   name: string
