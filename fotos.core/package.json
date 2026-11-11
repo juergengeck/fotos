@@ -15,6 +15,10 @@
       "import": "./dist/faces.js",
       "types": "./dist/faces.d.ts"
     },
+    "./catalog": {
+      "import": "./dist/fotos-catalog.js",
+      "types": "./dist/fotos-catalog.d.ts"
+    },
     "./similarity": {
       "import": "./dist/similarity.js",
       "types": "./dist/similarity.d.ts"

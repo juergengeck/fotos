@@ -1,11 +1,11 @@
+import {EMBEDDING_DIM} from '@refinio/fotos.core/faces';
 import {
     cosineSimilarity,
-    EMBEDDING_DIM,
     embeddingAt,
     faceEmbeddingRows,
     rankBySimilarity,
     SIMILARITY_THRESHOLDS,
-} from '@refinio/fotos.core';
+} from '@refinio/fotos.core/similarity';
 import type {PhotoEntry, SemanticInfo} from '../types/fotos.js';
 
 export interface DayGroup<TPhoto extends PhotoEntry = PhotoEntry> {
