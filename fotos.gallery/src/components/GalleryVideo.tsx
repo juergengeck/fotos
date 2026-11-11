@@ -30,8 +30,8 @@ export function GalleryVideo({
   loaded: boolean
   style: CSSProperties
   playback?: GalleryVideoPlayback
-  onDimensions: (width: number, height: number) => void
-  onOpen: () => void
+  onDimensions?: (width: number, height: number) => void
+  onOpen?: () => void
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [muted, setMuted] = useState(Boolean(playback))
@@ -64,10 +64,14 @@ export function GalleryVideo({
       if (!fullyVisible || document.visibilityState !== 'visible') video.pause()
       else if (!video.ended) void video.play().catch(() => {})
     }
-    const observer = new IntersectionObserver(([entry]) => {
-      fullyVisible = entry.isIntersecting && entry.intersectionRatio === 1
+    // Allow subpixel rounding at a scroll boundary. Use the most recent
+    // observation when a resize or scroll crossed several thresholds.
+    const fullVisibilityThreshold = 0.999
+    const observer = new IntersectionObserver(entries => {
+      const entry = entries.at(-1)
+      fullyVisible = Boolean(entry?.isIntersecting && entry.intersectionRatio >= fullVisibilityThreshold)
       sync()
-    }, { threshold: [0, 1] })
+    }, { threshold: [0, fullVisibilityThreshold] })
     observer.observe(video)
     document.addEventListener('visibilitychange', sync)
 
@@ -93,9 +97,9 @@ export function GalleryVideo({
           onLoadedMetadata={({ currentTarget: video }) => {
             const position = positions?.get(id)
             if (position !== undefined && position < video.duration) video.currentTime = position
-            onDimensions(video.videoWidth, video.videoHeight)
+            onDimensions?.(video.videoWidth, video.videoHeight)
           }}
-          onResize={({ currentTarget: video }) => onDimensions(video.videoWidth, video.videoHeight)}
+          onResize={({ currentTarget: video }) => onDimensions?.(video.videoWidth, video.videoHeight)}
           onVolumeChange={({ currentTarget: video }) => setMuted(video.muted)}
           style={style}
         />
@@ -123,7 +127,7 @@ export function GalleryVideo({
           </svg>
         </button>
       )}
-      <button
+      {onOpen && <button
         type="button"
         data-gallery-open
         aria-label={`Open ${name}`}
@@ -137,7 +141,7 @@ export function GalleryVideo({
         <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="M9 2h5v5M14 2 9 7M7 14H2V9m0 5 5-5" />
         </svg>
-      </button>
+      </button>}
     </>
   )
 }
