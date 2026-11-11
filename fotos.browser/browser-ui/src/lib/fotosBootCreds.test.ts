@@ -173,12 +173,34 @@ describe('sealed Fotos boot credentials', () => {
     expect((await resolveFotosBootCreds({ vault })).creds).toEqual(legacyCreds);
   });
 
-  it('rejects immutable migration conflicts without overwriting or removing legacy credentials', async () => {
+  it('migrates a different identity without overwriting an occupied immutable credential', async () => {
     await vault.import(FOTOS_CREDENTIAL_ISSUER, LEGACY_ACCOUNT_ID, 'already-sealed');
     localStorage.setItem(PERSISTENT_KEY, JSON.stringify(legacyCreds));
-    await expect(resolveFotosBootCreds({ vault })).rejects.toThrow('conflicts');
+    const migrated = await resolveFotosBootCreds({ vault });
+    expect(migrated.creds).toEqual(legacyCreds);
+    expect(migrated.storageDirectory).toBe('fotos.one.storage');
+    expect((await resolveFotosBootCreds({ vault })).creds).toEqual(legacyCreds);
     expect(await vault.read(FOTOS_CREDENTIAL_ISSUER, LEGACY_ACCOUNT_ID)).toBe('already-sealed');
-    expect(localStorage.getItem(PERSISTENT_KEY)).toBe(JSON.stringify(legacyCreds));
+    expect(localStorage.getItem(PERSISTENT_KEY)).toBeNull();
+    expect(publicStorage()).not.toContain(legacyCreds.secret);
+  });
+
+  it('retries an indexed identity collision after a failed metadata commit without replacing either seal', async () => {
+    await vault.import(FOTOS_CREDENTIAL_ISSUER, LEGACY_ACCOUNT_ID, 'other-identity');
+    localStorage.setItem(ACCOUNTS_KEY, JSON.stringify({version: 1, accounts: [
+      {id: LEGACY_ACCOUNT_ID, creds: legacyCreds, storageDirectory: 'original-library'},
+    ]}));
+    const write = vi.spyOn(localStorage, 'setItem').mockImplementation(() => { throw new Error('Storage full'); });
+    await expect(resolveFotosBootAccount({vault})).rejects.toThrow('Storage full');
+    expect(records.size).toBe(2);
+    write.mockRestore();
+    const result = await resolveFotosBootAccount({vault});
+    expect(result.creds).toEqual(legacyCreds);
+    expect(result.storageDirectory).toBe('original-library');
+    expect((await resolveFotosBootAccount({vault})).creds).toEqual(legacyCreds);
+    expect(records.size).toBe(2);
+    expect(await vault.read(FOTOS_CREDENTIAL_ISSUER, LEGACY_ACCOUNT_ID)).toBe('other-identity');
+    expect(publicStorage()).not.toContain(legacyCreds.secret);
   });
 
   it.each(['invalid-json', '{"version":1,"accounts":[{"id":"lost"}]}'])('does not reset malformed saved account metadata: %s', async raw => {

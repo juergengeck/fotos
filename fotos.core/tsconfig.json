@@ -13,8 +13,37 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+  "composite": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/**/*.test.ts"]
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts"],
+  "references": [
+  {
+    "path": "../../one/packages/meaning.core/tsconfig.json"
+  },
+  {
+    "path": "../../one/packages/one.core/src/tsconfig.json"
+  },
+  {
+    "path": "../../one/packages/one.models/src/tsconfig.json"
+  },
+  {
+    "path": "../../one/packages/provenance.core/tsconfig.json"
+  },
+  {
+    "path": "../../one/packages/sync.core/tsconfig.json"
+  },
+  {
+    "path": "../../one/packages/trie.core/tsconfig.json"
+  },
+  {
+    "path": "../../one/packages/trust.core/tsconfig.json"
+  }
+],
+  "files": [
+    "../../one/packages/meaning.core/@OneObjectInterfaces.d.ts",
+    "../../one/packages/one.core/@OneObjectInterfaces.d.ts",
+    "../../one/packages/one.models/@OneObjectInterfaces.d.ts"
+  ]
 }

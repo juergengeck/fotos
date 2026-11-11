@@ -1,6 +1,6 @@
 import QRCode from 'qrcode';
 
-const FOTOS_BASE_URL = 'https://fotos.one';
+const FOTOS_BASE_URL = 'https://fotos.one/app';
 
 export function faceClusterUrl(clusterId: string): string {
     return `${FOTOS_BASE_URL}/faces/${encodeURIComponent(clusterId)}`;

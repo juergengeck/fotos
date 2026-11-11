@@ -27,10 +27,12 @@ import { isMobile } from '@/lib/platform';
 import {
     syncPhotosToOneCore,
     listenForFotosUpdates,
-    extractFaceDataFromEntry,
     extractThumbUrlFromEntry,
-    writeFaceCropsToFilesystem,
 } from '@/lib/fotos-sync';
+import {extractRemoteAnalysis} from '@/lib/analysis-variants';
+import type {RemoteAnalysis, RemoteFaceAnalysis} from '@/lib/analysis-variants';
+import {calculateIdHashOfObj} from '@refinio/one.core/lib/util/object.js';
+import type {SHA256IdHash} from '@refinio/one.core/lib/util/type-checks.js';
 import { traceHang } from '@/lib/hangTrace';
 import type { FaceWorkerProgress } from '@/lib/faceWorkerClient';
 import faceWorkerUrl from '@/workers/face.worker.ts?worker&url';
@@ -572,82 +574,20 @@ function buildExifFromFotosEntry(entry: FotosEntry): ExifData | undefined {
     return Object.keys(exif).length > 0 ? exif : undefined;
 }
 
-function buildFaceInfoFromExtractedEntry(
-    entry: FotosEntry,
-    cropPaths: string[],
-    faceData: Awaited<ReturnType<typeof extractFaceDataFromEntry>>,
-): FaceInfo | undefined {
+/** FaceInfo for a remote entry: real detections when they have arrived, count-only while pending. */
+function faceInfoFromRemoteAnalysis(entry: FotosEntry, faces: RemoteFaceAnalysis | undefined): FaceInfo | undefined {
     if (!entry.faceCount || entry.faceCount <= 0) {
         return undefined;
     }
-
-    if (!faceData) {
-        return {
-            count: entry.faceCount,
-            bboxes: [],
-            scores: [],
-            embeddings: null,
-            crops: [],
-        };
+    if (!faces) {
+        return {count: entry.faceCount, bboxes: [], scores: [], embeddings: null, crops: []};
     }
-
-    const faces = faceData.faces.faces;
     return {
-        count: faces.length,
-        bboxes: faces.map(face => face.detection.bbox),
-        scores: faces.map(face => face.detection.score),
-        embeddings: faces.some(face => face.embedding.some(value => value !== 0))
-            ? (() => {
-                const flat = new Float32Array(faces.length * EMBEDDING_DIM);
-                for (let index = 0; index < faces.length; index++) {
-                    flat.set(faces[index].embedding, index * EMBEDDING_DIM);
-                }
-                return flat;
-            })()
-            : null,
-        crops: cropPaths,
-    };
-}
-
-function buildFilesystemFaceInfoFromRemoteEntry(
-    photo: PhotoEntry,
-    entry: FotosEntry,
-    faceData: Awaited<ReturnType<typeof extractFaceDataFromEntry>>,
-): FaceInfo | undefined {
-    if (!entry.faceCount || entry.faceCount <= 0) {
-        return undefined;
-    }
-
-    const relPath = (photo.sourcePath ?? '').includes('/')
-        ? (photo.sourcePath ?? '').split('/').slice(0, -1).join('/')
-        : '';
-    const prefix = relPath ? `${relPath}/one/` : 'one/';
-
-    if (!faceData) {
-        return {
-            count: entry.faceCount,
-            bboxes: [],
-            scores: [],
-            embeddings: null,
-            crops: [],
-        };
-    }
-
-    const faces = faceData.faces.faces;
-    return {
-        count: faces.length,
-        bboxes: faces.map(face => face.detection.bbox),
-        scores: faces.map(face => face.detection.score),
-        embeddings: faces.some(face => face.embedding.some(value => value !== 0))
-            ? (() => {
-                const flat = new Float32Array(faces.length * EMBEDDING_DIM);
-                for (let index = 0; index < faces.length; index++) {
-                    flat.set(faces[index].embedding, index * EMBEDDING_DIM);
-                }
-                return flat;
-            })()
-            : null,
-        crops: faces.map(face => face.cropPath ? `${prefix}${face.cropPath}` : ''),
+        count: faces.count,
+        bboxes: faces.bboxes,
+        scores: faces.scores,
+        embeddings: faces.embeddings,
+        crops: [],
     };
 }
 
@@ -656,23 +596,19 @@ async function materializeRemoteFotosEntry(
 ): Promise<{
     photo: PhotoEntry;
     cacheEntries: Array<[key: string, url: string]>;
-    faceData: Awaited<ReturnType<typeof extractFaceDataFromEntry>>;
+    analysis: RemoteAnalysis;
 }> {
     const thumbUrl = await extractThumbUrlFromEntry(entry);
-    const faceData = await extractFaceDataFromEntry(entry);
+    const analysis = await extractRemoteAnalysis(
+        entry,
+        await calculateIdHashOfObj(entry as any) as SHA256IdHash<FotosEntry>,
+    );
     const cacheEntries: Array<[key: string, url: string]> = [];
     const remoteSourceKey = thumbUrl ? `remote:${entry.contentHash}` : undefined;
 
     if (thumbUrl && remoteSourceKey) {
         cacheEntries.push([remoteSourceKey, thumbUrl]);
     }
-
-    const cropPaths = (faceData?.cropBlobs ?? []).map((cropBlob, index) => {
-        const cropKey = `remote-face:${entry.contentHash}:${index}`;
-        const cropUrl = URL.createObjectURL(new Blob([cropBlob], { type: 'image/jpeg' }));
-        cacheEntries.push([cropKey, cropUrl]);
-        return cropKey;
-    });
 
     const capturedAt = entry.capturedAt
         ?? buildExifFromFotosEntry(entry)?.date
@@ -700,10 +636,11 @@ async function materializeRemoteFotosEntry(
             exif: buildExifFromFotosEntry(entry),
             addedAt: updatedAt,
             size: entry.size,
-            faces: buildFaceInfoFromExtractedEntry(entry, cropPaths, faceData),
+            faces: faceInfoFromRemoteAnalysis(entry, analysis.faces),
+            ...(analysis.semantic ? {semantic: analysis.semantic} : {}),
         },
         cacheEntries,
-        faceData,
+        analysis,
     };
 }
 
@@ -1863,6 +1800,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         let shouldKeepRemoteAssets = false;
         let shouldOpenRemoteGallery = false;
         let shouldWriteFilesystemFaces = false;
+        let shouldWriteFilesystemSemantic = false;
         let filesystemPhoto: PhotoEntry | null = null;
 
         const nextEntries = (() => {
@@ -1879,11 +1817,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
 
             const photo = prev[idx];
             const nextFaces = shouldAdoptIncomingFaces(photo.faces, materialized.photo.faces)
-                ? (
-                    rootHandle
-                        ? buildFilesystemFaceInfoFromRemoteEntry(photo, entry, materialized.faceData)
-                        : materialized.photo.faces
-                )
+                ? materialized.photo.faces
                 : photo.faces;
             const nextPhoto: PhotoEntry = {
                 ...photo,
@@ -1895,6 +1829,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                 thumb: photo.thumb ?? materialized.photo.thumb,
                 sourcePath: photo.sourcePath ?? materialized.photo.sourcePath,
                 faces: nextFaces,
+                semantic: photo.semantic ?? materialized.photo.semantic,
             };
 
             const changed = nextPhoto.capturedAt !== photo.capturedAt
@@ -1904,14 +1839,19 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
                 || nextPhoto.mimeType !== photo.mimeType
                 || nextPhoto.thumb !== photo.thumb
                 || nextPhoto.sourcePath !== photo.sourcePath
-                || nextPhoto.faces !== photo.faces;
+                || nextPhoto.faces !== photo.faces
+                || nextPhoto.semantic !== photo.semantic;
             if (!changed) {
                 return prev;
             }
 
             shouldKeepRemoteAssets = true;
-            if (rootHandle && nextPhoto.faces !== photo.faces && materialized.faceData) {
+            if (rootHandle && nextPhoto.faces !== photo.faces && materialized.analysis.faces) {
                 shouldWriteFilesystemFaces = true;
+                filesystemPhoto = nextPhoto;
+            }
+            if (rootHandle && nextPhoto.semantic !== photo.semantic && nextPhoto.semantic) {
+                shouldWriteFilesystemSemantic = true;
                 filesystemPhoto = nextPhoto;
             }
 
@@ -1944,16 +1884,15 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             setIsOpen(true);
         }
 
-        if (rootHandle && shouldWriteFilesystemFaces && filesystemPhoto && materialized.faceData) {
+        if (rootHandle && filesystemPhoto && (shouldWriteFilesystemFaces || shouldWriteFilesystemSemantic)) {
             const photoForWrite = filesystemPhoto as PhotoEntry;
             try {
-                await updateIndexHtmlFaceData(rootHandle, photoForWrite, materialized.faceData.dataAttrs);
-                await writeFaceCropsToFilesystem(
-                    rootHandle,
-                    photoForWrite,
-                    entry.contentHash,
-                    materialized.faceData.cropBlobs,
-                );
+                if (shouldWriteFilesystemFaces && materialized.analysis.faces) {
+                    await updateIndexHtmlFaceData(rootHandle, photoForWrite, materialized.analysis.faces.dataAttrs);
+                }
+                if (shouldWriteFilesystemSemantic && photoForWrite.semantic) {
+                    await updateIndexHtmlSemanticData(rootHandle, photoForWrite, semanticToDataAttrs(photoForWrite.semantic));
+                }
 
                 console.log(
                     `[fotos-sync] Wrote face data to filesystem for ${photoForWrite.name}`,

@@ -1,3 +1,4 @@
+import { isDeviceInvitationPath } from '../lib/appUrls';
 import { DevicesManager } from '@vger/vger.ui/components/device/DevicesManager';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Shield, ExternalLink, Check, KeyRound, GripVertical, X, Loader2, LogOut, Key } from 'lucide-react';
@@ -825,8 +826,8 @@ export function FotosSettings({
 
     return (
         <>
-        <CollapsibleSection label="Devices" defaultOpen={window.location.pathname.replace(/\/$/, '') === '/invites/inviteDevice'}>
-            <DevicesManager scanInvitations active={active} devices={model?.devicesPlan} pairing={model?.connectionModule?.connectionPlan} settings={model?.settingsPlan} />
+        <CollapsibleSection label="Devices" defaultOpen={isDeviceInvitationPath(window.location.pathname)}>
+            <DevicesManager invitationPath="/app/invites/inviteDevice" scanInvitations active={active} devices={model?.devicesPlan} pairing={model?.connectionModule?.connectionPlan} settings={model?.settingsPlan} />
         </CollapsibleSection>
         <CollapsibleSection label="fotos id">
             <div className="space-y-2">

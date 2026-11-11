@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>fotos.one — we do not want your fotos.</title>
-  <meta name="description" content="fotos.one — we do not want your fotos. Private, local-first photo management.">
+  <meta name="description" content="fotos.one — we do not want your fotos. Browse, organize, and share your photos with a private library that runs in your browser.">
   <meta property="og:title" content="fotos.one">
   <meta property="og:description" content="we do not want your fotos.">
   <meta property="og:type" content="website">
@@ -140,6 +140,19 @@
       color: var(--accent);
     }
 
+    .description {
+      max-width: 36rem;
+      color: var(--text-muted);
+      font-size: 1rem;
+      line-height: 1.8;
+    }
+
+    .app-hint {
+      margin-top: -1.5rem;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
     .slogan {
       font-family: var(--font-body);
       font-size: clamp(1.1rem, 2.5vw, 1.4rem);
@@ -263,7 +276,7 @@
   </button>
 
   <main>
-    <a href="/" class="icon-link icon" id="cam-link">
+    <a href="/app/" class="icon-link icon" id="cam-link">
       <svg viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;">
         <g transform="matrix(1,0,0,1,-3551.880629,-5235.902133)">
           <g id="cam" transform="matrix(1.293103,0,0,1.293103,4516.53915,5353.811637)">
@@ -281,10 +294,15 @@
       <p class="slogan">we do not want your fotos.<br>use our software, keep them.</p>
     </div>
 
-    <a href="/" class="cta" id="cta-link">
+    <p class="description">Fotos is a private photo library that runs in your browser.
+      Browse your folders, find people, and organize collections while keeping your originals on your own device.
+      Connect your devices or share selected photos when you choose.</p>
+
+    <a href="/app/" class="cta" id="cta-link">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      import your image folder
+      Open Fotos
     </a>
+    <p class="app-hint">Start with a photo folder on your device.</p>
   </main>
 
   <footer>
@@ -328,6 +346,12 @@
   </div>
 
   <script>
+    // Preserve old root app links and launches from already-installed PWAs.
+    const appParams = ['fotosShare', 'fotosAccount', 'fotosAcceptAsNew', 'one_token', 'invited', 'invite', 'photo', 'task', 'share', 'view'];
+    if (appParams.some(key => new URLSearchParams(location.search).has(key)) ||
+        matchMedia('(display-mode: standalone)').matches || navigator.standalone) {
+      location.replace('/app/' + location.search + location.hash);
+    }
     function toggleTheme() {
       const html = document.documentElement;
       const current = html.getAttribute('data-theme');

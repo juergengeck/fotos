@@ -1,23 +1,27 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import type { GalleryEntry, DayGroup } from '../types/gallery.js'
 import { formatDayLabel } from '../lib/grouping.js'
+import { isVideoMimeType } from '../lib/media.js'
+import { GalleryVideo, type GalleryVideoPlayback } from './GalleryVideo.js'
 
 export interface GalleryGridProps<T extends GalleryEntry = GalleryEntry> {
   dayGroups: DayGroup<T>[]
   /** Total flat count (for empty state) */
   totalCount: number
-  /** Resolve entry hash to a displayable image URL */
+  /** Resolve entry hash to a displayable media URL */
   getImageUrl: (entry: T) => string | undefined
-  /** Called when user clicks a photo. Index is flat across all groups. */
+  /** Called when user opens a tile. Index is flat across all groups. */
   onPhotoClick: (flatIndex: number) => void
   /** Minimum column width in px (default 148) */
   minColumnWidth?: number
-  /** Stream shows uncropped images; immersive fills rows at natural image proportions without gutters. */
+  /** Stream shows uncropped media; immersive fills rows at natural proportions without gutters. */
   layout?: 'grid' | 'stream' | 'immersive'
-  /** Number of images per immersive row (default 1). */
+  /** Number of tiles per immersive row (default 1). */
   columns?: number
   /** Called after immersive row dimensions or columns change and the browser has laid them out. */
   onLayoutChange?: () => void
+  /** Opt into visibility-based playback. Keep positions alive across grid remounts and set active to false under a modal. */
+  videoPlayback?: GalleryVideoPlayback
   /** Offset sticky day labels when an app header overlays the scroll surface. */
   stickyHeaderOffset?: number
   /** Render sticky day headers inside the grid (default true). */
@@ -33,7 +37,8 @@ function GalleryCard<T extends GalleryEntry>({
   day,
   aspectRatio,
   placement,
-  onImageDimensions,
+  onMediaDimensions,
+  videoPlayback,
 }: {
   entry: T
   url: string | undefined
@@ -42,19 +47,35 @@ function GalleryCard<T extends GalleryEntry>({
   day: string
   aspectRatio?: number
   placement?: { row: number; width: number; offset: number }
-  onImageDimensions?: (url: string, width: number, height: number) => void
+  onMediaDimensions?: (url: string, width: number, height: number) => void
+  videoPlayback?: GalleryVideoPlayback
 }) {
   const [loadedUrl, setLoadedUrl] = useState<string>()
   const loaded = !!url && loadedUrl === url
+  const isVideo = isVideoMimeType(entry.mimeType)
+  const Card = isVideo ? 'div' : 'button'
   const time = new Date(entry.timestamp).toLocaleTimeString(undefined, {
     hour: '2-digit',
     minute: '2-digit',
   })
+  const mediaStyle: CSSProperties = {
+    width: '100%',
+    height: layout === 'grid' ? '100%' : 'auto',
+    objectFit: layout === 'grid' ? 'cover' : 'contain',
+    display: 'block',
+    opacity: loaded ? 1 : 0,
+    transition: 'opacity 0.2s',
+  }
+
+  const mediaLoaded = (width: number, height: number) => {
+    if (!url) return
+    setLoadedUrl(url)
+    onMediaDimensions?.(url, width, height)
+  }
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <Card
+      {...(!isVideo && { type: 'button', onClick })}
       title={entry.name}
       data-gallery-day={layout === 'immersive' ? day : undefined}
       data-gallery-photo={layout === 'immersive' ? true : undefined}
@@ -74,26 +95,27 @@ function GalleryCard<T extends GalleryEntry>({
         borderRadius: layout === 'grid' ? 14 : 0,
         padding: 0,
         background: 'var(--bg-secondary, #1a1a1a)',
-        cursor: 'zoom-in',
+        cursor: isVideo ? undefined : 'zoom-in',
       }}
     >
-      {url && (
+      {isVideo ? (
+        <GalleryVideo
+          id={entry.hash}
+          name={entry.name}
+          url={url}
+          loaded={loaded}
+          style={mediaStyle}
+          playback={videoPlayback}
+          onDimensions={mediaLoaded}
+          onOpen={onClick}
+        />
+      ) : url && (
         <img
           src={url}
           alt={entry.name}
           loading="lazy"
-          onLoad={event => {
-            setLoadedUrl(url)
-            onImageDimensions?.(url, event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)
-          }}
-          style={{
-            width: '100%',
-            height: layout === 'grid' ? '100%' : 'auto',
-            objectFit: layout === 'grid' ? 'cover' : 'contain',
-            display: 'block',
-            opacity: loaded ? 1 : 0,
-            transition: 'opacity 0.2s',
-          }}
+          onLoad={event => mediaLoaded(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)}
+          style={mediaStyle}
         />
       )}
       {(!url || !loaded) && (
@@ -114,7 +136,7 @@ function GalleryCard<T extends GalleryEntry>({
           {entry.name}
         </div>
       )}
-      {layout !== 'immersive' && (
+      {!isVideo && layout !== 'immersive' && (
         <>
           <div
             style={{
@@ -164,7 +186,7 @@ function GalleryCard<T extends GalleryEntry>({
           </div>
         </>
       )}
-    </button>
+    </Card>
   )
 }
 
@@ -177,24 +199,25 @@ export function GalleryGrid<T extends GalleryEntry>({
   layout = 'grid',
   columns = 1,
   onLayoutChange,
+  videoPlayback,
   stickyHeaderOffset = 0,
   showDayHeaders = true,
   emptyLabel = 'no images yet',
 }: GalleryGridProps<T>) {
-  const [imageRatios, setImageRatios] = useState<Map<string, number>>(() => new Map())
+  const [mediaRatios, setMediaRatios] = useState<Map<string, number>>(() => new Map())
   const columnCount = Number.isFinite(columns) ? Math.max(1, Math.floor(columns)) : 1
 
   useEffect(() => {
     if (layout !== 'immersive' || !onLayoutChange) return
     const frame = requestAnimationFrame(onLayoutChange)
     return () => cancelAnimationFrame(frame)
-  }, [layout, columnCount, imageRatios, dayGroups, onLayoutChange])
+  }, [layout, columnCount, mediaRatios, dayGroups, onLayoutChange])
 
-  const reportImageDimensions = (url: string, width: number, height: number) => {
+  const reportMediaDimensions = (url: string, width: number, height: number) => {
     if (width <= 0 || height <= 0) return
     const ratio = width / height
     if (!Number.isFinite(ratio)) return
-    setImageRatios(previous => {
+    setMediaRatios(previous => {
       if (previous.get(url) === ratio) return previous
       const next = new Map(previous)
       next.set(url, ratio)
@@ -218,9 +241,10 @@ export function GalleryGrid<T extends GalleryEntry>({
         entry={entry}
         layout={layout}
         day={day}
-        aspectRatio={url ? imageRatios.get(url) : undefined}
+        aspectRatio={url ? mediaRatios.get(url) : undefined}
         placement={placement}
-        onImageDimensions={layout === 'immersive' ? reportImageDimensions : undefined}
+        onMediaDimensions={layout === 'immersive' ? reportMediaDimensions : undefined}
+        videoPlayback={videoPlayback}
         url={url}
         onClick={() => onPhotoClick(index)}
       />
@@ -239,7 +263,7 @@ export function GalleryGrid<T extends GalleryEntry>({
 
     for (let i = 0; i < entries.length; i += columnCount) {
       const row = entries.slice(i, i + columnCount)
-      const ratios = row.map(({ url }) => imageRatios.get(url ?? '') ?? 1)
+      const ratios = row.map(({ url }) => mediaRatios.get(url ?? '') ?? 1)
       const totalRatio = ratios.reduce((total, ratio) => total + ratio, 0)
       let offset = 0
       for (const [index, { entry, day, url }] of row.entries()) {
@@ -263,7 +287,7 @@ export function GalleryGrid<T extends GalleryEntry>({
           padding: 0,
         }}
       >
-        {/* Keep photos as stable siblings: changing rows must not reload or fade them. */}
+        {/* Stable siblings preserve each tile's load and playback state when rows change. */}
         {photos}
       </div>
     )

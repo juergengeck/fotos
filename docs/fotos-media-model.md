@@ -117,6 +117,26 @@ Examples:
 
 Locators are explicitly not identity. They are runtime- and device-specific.
 
+### 4. Analysis variants
+
+Per-photo analysis is synced as `FotosMediaVariant` objects with role
+`analysis-output`, `derivedFrom` the original variant:
+
+| label (model id)        | mime                                          | payload |
+|-------------------------|-----------------------------------------------|---------|
+| `arcface-w600k-r50`     | `application/vnd.fotos.embedding-set`         | one 512-dim face embedding per detected face |
+| `retinaface-det-10g`    | `application/vnd.fotos.face-detections+json`  | `{modelId, faces: [{bbox, score}]}`, same order |
+| `clip-vit-base-patch32` | `application/vnd.fotos.embedding-set`         | one CLIP image embedding |
+
+`contentHash` is the SHA-256 of the payload bytes and the variant carries no
+timestamp, so identical analysis converges across devices and re-analysis
+produces a new variant. The embedding-set format is defined in
+[`embedding-set.ts`](../fotos.core/src/embedding-set.ts); readers reject a
+payload whose embedded model id differs from the variant label.
+
+Face crops are not synced yet. Similarity thresholds and model ids live in
+[`similarity.ts`](../fotos.core/src/similarity.ts).
+
 ## Why this split matters
 
 The system has to hold several concerns at once:

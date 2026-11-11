@@ -314,8 +314,8 @@ async function main() {
   const recipientPort = Number(process.env.FOTOS_ADHOC_RECIPIENT_PORT || await getFreePort());
   const commUrl = `ws://localhost:${commPort}`;
   const headlessUrl = `http://localhost:${headlessPort}`;
-  const senderUrl = `http://localhost:${senderPort}/`;
-  const recipientUrl = `http://localhost:${recipientPort}/`;
+  const senderUrl = `http://localhost:${senderPort}/app/`;
+  const recipientUrl = `http://localhost:${recipientPort}/app/`;
   const storageDir = mkdtempSync(path.join(tmpdir(), 'fotos-adhoc-share-headless-'));
   const browserBuildDir = mkdtempSync(path.join(tmpdir(), 'fotos-adhoc-share-dist-'));
   const debugRegistrationToken = process.env.GLUE_DEBUG_REGISTRATION_TOKEN || randomUUID();

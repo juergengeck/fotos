@@ -263,8 +263,8 @@ async function handleInit(): Promise<void> {
     // it at the JSEP artifacts leaves WebGPU half-initialized and ORT silently
     // drops to slow WASM with `webgpuInit is not a function`.
     ort.env.wasm.wasmPaths = {
-        mjs: '/ort/ort-wasm-simd-threaded.mjs',
-        wasm: '/ort/ort-wasm-simd-threaded.wasm',
+        mjs: '/app/ort/ort-wasm-simd-threaded.mjs',
+        wasm: '/app/ort/ort-wasm-simd-threaded.wasm',
     };
     ort.env.wasm.numThreads = 1;
 

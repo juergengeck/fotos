@@ -231,9 +231,7 @@ export function canImportFotosEntry(context: SyncContextLike, obj?: object): boo
             || (typeof faceCount === 'number'
                 && Number.isInteger(faceCount)
                 && faceCount >= 0
-                && faceCount <= MAX_FACE_COUNT))
-        && isOptionalReference(entry.faceEmbeddings)
-        && isOptionalReference(entry.faceCrops);
+                && faceCount <= MAX_FACE_COUNT));
 }
 
 export function canImportFotosShareManifest(context: SyncContextLike, obj?: object): boolean {

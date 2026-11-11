@@ -290,7 +290,7 @@ describe('FotosSettings identity flows', () => {
   });
 
   it('enables the shared invitation scanner in Devices', () => {
-    window.location.pathname = '/invites/inviteDevice';
+    window.location.pathname = '/app/invites/inviteDevice';
     renderSettings([]);
     expect(mockDevicesManager).toHaveBeenCalledWith(expect.objectContaining({scanInvitations: true, active: true}));
   });

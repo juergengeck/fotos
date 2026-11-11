@@ -1,4 +1,4 @@
-import { cosineSimilarity, EMBEDDING_DIM } from '@refinio/fotos.core';
+import {EMBEDDING_DIM, faceEmbeddingRows, rankBySimilarity, SIMILARITY_THRESHOLDS} from '@refinio/fotos.core';
 import type { PhotoEntry } from '@/types/fotos';
 
 export interface FaceClusterSummary {
@@ -99,37 +99,23 @@ export function buildFaceClusterSummaries(photos: PhotoEntry[]): FaceClusterSumm
 export function buildSimilarFaceMatches(
     photos: PhotoEntry[],
     searchFace: Float32Array,
-    minSimilarity = 0.35,
+    minSimilarity: number = SIMILARITY_THRESHOLDS.faceSearchMatch,
 ): SimilarFaceMatch[] {
-    const matches: SimilarFaceMatch[] = [];
+    const candidates = photos.flatMap(photo => photo.faces?.embeddings
+        ? faceEmbeddingRows(photo, photo.faces.embeddings, photo.faces.count, EMBEDDING_DIM)
+        : []);
 
-    for (const photo of photos) {
-        const faces = photo.faces;
-        if (!faces?.embeddings) {
-            continue;
-        }
-
-        for (let index = 0; index < faces.count; index++) {
-            const embedding = faces.embeddings.slice(
-                index * EMBEDDING_DIM,
-                (index + 1) * EMBEDDING_DIM,
-            );
-            const similarity = cosineSimilarity(searchFace, embedding);
-            if (similarity < minSimilarity) {
-                continue;
-            }
-
-            matches.push({
-                photo,
-                faceIndex: index,
-                similarity,
-                cropPath: faces.crops[index] || undefined,
-                clusterId: faces.clusterIds?.[index],
-                personId: faces.personIds?.[index]?.trim() || undefined,
-                personName: faces.names?.[index],
-            });
-        }
-    }
-
-    return matches.sort((left, right) => right.similarity - left.similarity);
+    return rankBySimilarity(searchFace, candidates, minSimilarity).map(({item, similarity}) => {
+        const {owner: photo, faceIndex} = item;
+        const faces = photo.faces!;
+        return {
+            photo,
+            faceIndex,
+            similarity,
+            cropPath: faces.crops[faceIndex] || undefined,
+            clusterId: faces.clusterIds?.[faceIndex],
+            personId: faces.personIds?.[faceIndex]?.trim() || undefined,
+            personName: faces.names?.[faceIndex],
+        };
+    });
 }

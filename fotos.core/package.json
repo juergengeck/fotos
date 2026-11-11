@@ -15,6 +15,14 @@
       "import": "./dist/faces.js",
       "types": "./dist/faces.d.ts"
     },
+    "./catalog": {
+      "import": "./dist/fotos-catalog.js",
+      "types": "./dist/fotos-catalog.d.ts"
+    },
+    "./similarity": {
+      "import": "./dist/similarity.js",
+      "types": "./dist/similarity.d.ts"
+    },
     "./ingest": {
       "import": "./dist/ingest/index.js",
       "types": "./dist/ingest/index.d.ts"
@@ -45,7 +53,7 @@
     "src"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --build",
     "clean": "rm -rf dist",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"

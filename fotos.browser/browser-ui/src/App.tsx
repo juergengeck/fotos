@@ -1,3 +1,5 @@
+import { LibraryStart } from './components/LibraryStart';
+import { isDeviceInvitationPath } from './lib/appUrls';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Impressum } from '@/components/Impressum';
 import { GalleryBreadcrumbs } from '@/components/GalleryBreadcrumbs';
@@ -405,7 +407,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
     const [headlessUrl, setHeadlessUrl] = useState<string | null>(null);
     const [headlessInput, setHeadlessInput] = useState('');
     const [showHeadlessConnect, setShowHeadlessConnect] = useState(false);
-    const [sidebarTab, setSidebarTab] = useState<SidebarTab>(() => window.location.pathname.replace(/\/$/, '') === '/invites/inviteDevice' ? 'settings' : readStoredSidebarTab() ?? 'browse');
+    const [sidebarTab, setSidebarTab] = useState<SidebarTab>(() => isDeviceInvitationPath(window.location.pathname) ? 'settings' : readStoredSidebarTab() ?? 'browse');
     const [sidebarVisible, setSidebarVisible] = useState(true);
     const [fullscreenGallery, setFullscreenGallery] = useState(false);
     const galleryScrollTopRef = useRef(0);
@@ -1691,12 +1693,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
             undefined,
             { mode: 'standard' },
         );
-        const shareBaseUrl = new URL(window.location.href);
-        shareBaseUrl.searchParams.delete('fotosShare');
-        shareBaseUrl.searchParams.delete('fotosAccount');
-        shareBaseUrl.searchParams.delete('fotosAcceptAsNew');
-        shareBaseUrl.searchParams.delete('one_token');
-        shareBaseUrl.hash = '';
+        const shareBaseUrl = new URL('/app/', window.location.href);
         const invite = await createFotosShareInvite({
             baseUrl: shareBaseUrl.toString(),
             pairingInvitation,
@@ -1905,7 +1902,9 @@ export function App({ fotosModel: initialModel }: AppProps) {
         : intakePlan.actionLabel;
     const primaryIntakeSummary = pendingImportCount > 0
         ? 'Shared photos are waiting for a destination folder. Choose where to store them and fotos will ingest them into the local library.'
-        : intakePlan.summary;
+        : intakePlan.source === 'filesystem'
+            ? 'Fotos saves library information alongside your photos so you can reopen this folder later.'
+            : 'Choose the photos you want to keep in this device’s Fotos library.';
     const canRunFaceAnalytics = settings.analysis.faceAnalyticsEnabled
         && intakePlan.faceEnrichment === 'local';
     const canReanalyze = canRunFaceAnalytics || settings.analysis.semanticSearchEnabled;
@@ -3651,7 +3650,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
             return (
                 <div className="h-screen flex flex-col bg-[#111] view-enter">
                     <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-5 p-6 text-center">
-                        <img src="/cam.svg" className="h-40 w-40 invert opacity-15" style={{ objectFit: 'contain' }} />
+                        <img src="/app/cam.svg" className="h-40 w-40 invert opacity-15" style={{ objectFit: 'contain' }} />
                         <div className="space-y-2">
                             <div className="text-lg font-medium text-white/82">Downloading shared gallery</div>
                             <p className="max-w-md text-sm leading-relaxed text-white/55">
@@ -3667,78 +3666,58 @@ export function App({ fotosModel: initialModel }: AppProps) {
             );
         }
 
-        // No folder open yet — show landing page
+        // Keep the empty library inside a distinct application workspace.
         if (!gallery.folder.isOpen) {
             return (
-                <div className="h-screen flex flex-col bg-[#111] view-enter">
-                    <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-5 p-6 text-center">
-                        <img src="/cam.svg" alt="" className="h-36 w-36 invert opacity-20" />
-                        <div className="space-y-2">
-                            <h1 className="text-2xl font-semibold text-white/90">Your photos, on your device</h1>
-                            <p className="max-w-md text-sm leading-relaxed text-white/60">
-                                Open a library to start browsing. Fotos keeps your originals in place and does not upload them to a cloud photo service.
-                            </p>
-                        </div>
-                        {pendingImportCount > 0 && (
-                            <div className="w-full max-w-lg rounded-2xl border border-[#e94560]/30 bg-[#2b0f16]/80 px-4 py-3 text-sm text-white/80 shadow-[0_16px_40px_rgba(0,0,0,0.25)]">
-                                {pendingImportCount} shared photo{pendingImportCount === 1 ? ' is' : 's are'} ready to be stored locally.
-                            </div>
-                        )}
+                <LibraryStart
+                    onOpenFolder={gallery.folder.openFolder}
+                    selectPhotos={intakePlan.source === 'photo-library'}
+                    actionLabel={primaryIntakeActionLabel}
+                    summary={primaryIntakeSummary}
+                    pendingImportCount={pendingImportCount}
+                >
+                    {import.meta.env.DEV && (!showHeadlessConnect ? (
                         <button
-                            onClick={gallery.folder.openFolder}
-                            className="min-h-11 rounded-lg bg-[#e94560] px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-[#d13354] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff9db0]"
+                            onClick={() => setShowHeadlessConnect(true)}
+                            className="min-h-11 rounded-lg px-4 text-xs text-white/55 hover:bg-white/5 hover:text-white/80"
                         >
-                            {primaryIntakeActionLabel}
+                            Advanced: connect to server
                         </button>
-
-                        {import.meta.env.DEV && (!showHeadlessConnect ? (
+                    ) : (
+                        <div className="flex gap-2 w-full max-w-lg">
+                            <input
+                                type="text"
+                                value={headlessInput}
+                                onChange={e => setHeadlessInput(e.target.value)}
+                                onKeyDown={e => {
+                                    if (e.key === 'Enter' && headlessInput.trim()) {
+                                        setHeadlessUrl(headlessInput.trim().replace(/\/+$/, ''));
+                                    }
+                                }}
+                                placeholder="http://192.168.1.100:3000"
+                                className="flex-1 px-3 py-2 rounded-lg border border-white/15 bg-black/30 text-white text-sm placeholder:text-white/55 focus:outline-none focus:border-white/30"
+                                autoFocus
+                            />
                             <button
-                                onClick={() => setShowHeadlessConnect(true)}
-                                className="min-h-11 rounded-lg px-4 text-xs text-white/55 hover:bg-white/5 hover:text-white/80"
+                                onClick={() => {
+                                    if (headlessInput.trim()) {
+                                        setHeadlessUrl(headlessInput.trim().replace(/\/+$/, ''));
+                                    }
+                                }}
+                                disabled={!headlessInput.trim()}
+                                className="px-4 py-2 rounded-lg bg-white/10 text-white/70 text-sm font-medium hover:bg-white/15 hover:text-white/90 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                             >
-                                Advanced: connect to server
+                                Connect
                             </button>
-                        ) : (
-                            <div className="flex gap-2 w-full max-w-lg">
-                                <input
-                                    type="text"
-                                    value={headlessInput}
-                                    onChange={e => setHeadlessInput(e.target.value)}
-                                    onKeyDown={e => {
-                                        if (e.key === 'Enter' && headlessInput.trim()) {
-                                            setHeadlessUrl(headlessInput.trim().replace(/\/+$/, ''));
-                                        }
-                                    }}
-                                    placeholder="http://192.168.1.100:3000"
-                                    className="flex-1 px-3 py-2 rounded-lg border border-white/15 bg-black/30 text-white text-sm placeholder:text-white/55 focus:outline-none focus:border-white/30"
-                                    autoFocus
-                                />
-                                <button
-                                    onClick={() => {
-                                        if (headlessInput.trim()) {
-                                            setHeadlessUrl(headlessInput.trim().replace(/\/+$/, ''));
-                                        }
-                                    }}
-                                    disabled={!headlessInput.trim()}
-                                    className="px-4 py-2 rounded-lg bg-white/10 text-white/70 text-sm font-medium hover:bg-white/15 hover:text-white/90 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                                >
-                                    Connect
-                                </button>
-                            </div>
-                        ))}
-
-                        <p className="max-w-md text-center text-xs text-white/55">
-                            {primaryIntakeSummary}
-                        </p>
-                        <div className="flex flex-col items-center gap-2">
-                            <GlueAccountSignIn label="Sign in with glue.one" />
-                            <p className="max-w-md text-xs text-white/55">
-                                Sign in to your account before adding photos. No library is required.
-                            </p>
                         </div>
+                    ))}
+                    <div className="flex flex-col items-center gap-2">
+                        <GlueAccountSignIn label="Sign in with glue.one" />
+                        <p className="max-w-md text-xs text-white/55">
+                            Sign in to your account before adding photos. No library is required.
+                        </p>
                     </div>
-                    <Impressum />
-                </div>
+                </LibraryStart>
             );
         }
 

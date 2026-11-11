@@ -73,7 +73,7 @@ export function FotosTestRunnerPanel() {
             const response = await fetch('/__fotos-tests/run', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({profile, baseUrl: `${window.location.origin}/`}),
+                body: JSON.stringify({profile, baseUrl: `${window.location.origin}/app/`}),
             });
             const value = await response.json();
             if (!response.ok) {

@@ -8,7 +8,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const browserUiRoot = resolve(here, '../..');
 const repoRoot = resolve(browserUiRoot, '../..');
 const sharedVgerRoot = resolve(repoRoot, '../vger');
-const baseUrl = process.env.FOTOS_QA_URL || 'http://127.0.0.1:5188/';
+const baseUrl = process.env.FOTOS_QA_URL || 'http://127.0.0.1:5188/app/';
 const artifactDir = process.env.FOTOS_QA_ARTIFACT_DIR || resolve(here, 'reports/ui-latest');
 const fixturePaths = [
   resolve(browserUiRoot, 'src/lib/__fixtures__/photos/rose-detail.png'),
@@ -124,13 +124,13 @@ async function runDesktop(browser) {
   try {
     await runStep('cold-start', 'Cold start and intake affordances', async () => {
       await page.goto(new URL('?fotosDebug=1&qa=desktop', baseUrl).toString(), {waitUntil: 'domcontentloaded'});
-      await expectOne(page.getByRole('heading', {name: 'Your photos, on your device'}), 'landing heading');
+      await expectOne(page.getByRole('heading', {name: 'Open your photo library'}), 'landing heading');
       await expectOne(page.getByRole('button', {name: 'Open Photo Folder'}), 'intake button');
       await expectOne(page.getByRole('button', {name: 'Advanced: connect to server'}), 'headless connection affordance');
       await clickOne(page.getByRole('button', {name: 'Impressum'}), 'legal notice');
       await expectOne(page.getByRole('dialog'), 'legal notice dialog');
       await clickOne(page.getByRole('button', {name: 'Close legal notice'}), 'close legal notice');
-      return {headline: 'Your photos, on your device'};
+      return {headline: 'Open your photo library'};
     });
 
     await runStep('intake', 'Seeded folder intake and product-state projection', async () => {

@@ -1,4 +1,5 @@
 import {describe, expect, it} from 'vitest';
+import {EMBEDDING_DIM} from '@refinio/fotos.core';
 import type {PhotoEntry} from '../types/fotos.js';
 import {
     collectTagCounts,
@@ -87,6 +88,47 @@ describe('gallery helpers', () => {
 
         expect(filterGalleryPhotos(photos, {searchFace}).map(photo => photo.hash)).toEqual(['a', 'b']);
         expect(filterGalleryPhotos(photos, {activeTag: 'travel', searchQuery: 'ber'}).map(photo => photo.hash)).toEqual(['c']);
+    });
+
+    it('ranks photos by their best-matching face and drops photos with no face above threshold', () => {
+        const dim = EMBEDDING_DIM;
+        const face = (hot: number, weight = 1) => {
+            const v = new Float32Array(dim);
+            v[0] = weight;
+            v[hot] = Math.sqrt(1 - weight * weight);
+            return v;
+        };
+        const flat = (...faces: Float32Array[]) => {
+            const out = new Float32Array(faces.length * dim);
+            faces.forEach((f, i) => out.set(f, i * dim));
+            return out;
+        };
+        const faces = (embeddings: Float32Array, count: number) => ({
+            count, bboxes: [], scores: [], embeddings, crops: [],
+        });
+        const photos = [
+            makePhoto('weak', '2026-03-10T10:00:00.000Z', {faces: faces(flat(face(1, 0.4)), 1)}),
+            makePhoto('strong', '2026-03-09T10:00:00.000Z', {faces: faces(flat(face(2, 0.1), face(3, 0.9)), 2)}),
+            makePhoto('none', '2026-03-08T10:00:00.000Z', {faces: faces(flat(face(4, 0.2)), 1)}),
+        ];
+        const searchFace = face(5, 1);
+
+        expect(filterGalleryPhotos(photos, {searchFace}).map(photo => photo.hash)).toEqual(['strong', 'weak']);
+    });
+
+    it('returns no photos when a semantic query matches nothing, even if the text would match', () => {
+        const photos = [
+            makePhoto('a', '2026-03-10T10:00:00.000Z', {
+                name: 'schuhe.jpg',
+                semantic: {modelId: 'clip-vit-base-patch32', embedding: new Float32Array([0, 1, 0])},
+            }),
+            makePhoto('b', '2026-03-09T10:00:00.000Z', {name: 'schuhe-2.jpg'}),
+        ];
+
+        expect(filterGalleryPhotos(photos, {
+            searchQuery: 'schuhe',
+            searchEmbedding: {modelId: 'clip-vit-base-patch32', embedding: new Float32Array([1, 0, 0])},
+        })).toEqual([]);
     });
 
     it('prefers semantic matches for text search when embeddings are available', () => {

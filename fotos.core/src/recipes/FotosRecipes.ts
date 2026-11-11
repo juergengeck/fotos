@@ -50,8 +50,6 @@ export interface FotosEntry {
     variants?: Set<SHA256Hash<FotosMediaVariant>>;
     acquisitionObservations?: Set<SHA256Hash<ProvenanceObservation>>;
     faceCount?: number;
-    faceEmbeddings?: SHA256Hash<BLOB>;
-    faceCrops?: SHA256Hash<BLOB>;
 }
 
 export const FOTOS_AUTHENTICITY_SCHEME = 'fotos-authenticity-v1';
@@ -210,9 +208,7 @@ export const FotosEntryRecipe: Recipe = {
             }
         },
         {itemprop: 'acquisitionObservations', optional: true, itemtype: {type: 'set', item: {type: 'referenceToObj', allowedTypes: new Set(['ProvenanceObservation'])}}},
-        {itemprop: 'faceCount', optional: true, itemtype: {type: 'integer'}},
-        {itemprop: 'faceEmbeddings', optional: true, itemtype: {type: 'referenceToBlob'}},
-        {itemprop: 'faceCrops', optional: true, itemtype: {type: 'referenceToBlob'}}
+        {itemprop: 'faceCount', optional: true, itemtype: {type: 'integer'}}
     ]
 };
 

@@ -326,7 +326,7 @@ async function initModules(
   if (syncEnabled && publicationIdentity) {
     const nextConnectionModule = new ConnectionModule(
       commServerUrl,
-      window.location.origin,
+      new URL('/app/', window.location.origin).toString(),
       undefined,
       API_BASE,
     );
@@ -412,15 +412,6 @@ async function initModules(
       getPresenceStoredSnapshot: limit => browserGlueModule.getPresenceStoredSnapshot(limit),
       getPresenceTrace: limit => browserGlueModule.getPresenceTrace(limit),
     });
-
-    // Incoming CHUM admission boundary
-    connectionModule.setUnknownPeerIdentityMatcher((remotePersonId, remotePublicKey) => {
-      const personId = String(remotePersonId);
-      return browserGlueModule.shouldAcceptIncomingPeer?.(personId, remotePublicKey) ?? false;
-    });
-    nextConnectionModule.setDirectPeerSyncMatcher((remotePersonId, remotePublicKey) =>
-      browserGlueModule.shouldAcceptIncomingPeer(String(remotePersonId), remotePublicKey),
-    );
 
     registry.register(glueModule);
   }

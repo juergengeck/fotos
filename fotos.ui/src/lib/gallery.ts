@@ -1,4 +1,11 @@
-import {cosineSimilarity, EMBEDDING_DIM} from '@refinio/fotos.core';
+import {EMBEDDING_DIM} from '@refinio/fotos.core/faces';
+import {
+    cosineSimilarity,
+    embeddingAt,
+    faceEmbeddingRows,
+    rankBySimilarity,
+    SIMILARITY_THRESHOLDS,
+} from '@refinio/fotos.core/similarity';
 import type {PhotoEntry, SemanticInfo} from '../types/fotos.js';
 
 export interface DayGroup<TPhoto extends PhotoEntry = PhotoEntry> {
@@ -12,8 +19,6 @@ export interface GalleryFilterOptions {
     searchFace?: Float32Array | null;
     searchEmbedding?: SemanticInfo | null;
 }
-
-const SEMANTIC_SIMILARITY_THRESHOLD = 0.18;
 
 export function photoDate(photo: PhotoEntry): string {
     const raw = photo.capturedAt ?? photo.exif?.date ?? photo.addedAt;
@@ -70,70 +75,44 @@ function sortByDateDescending(photos: PhotoEntry[]): PhotoEntry[] {
 
 function findMatchingClusterId(photos: PhotoEntry[], searchFace: Float32Array): string | undefined {
     for (const photo of photos) {
-        if (!photo.faces?.embeddings || !photo.faces.clusterIds) {
+        const faces = photo.faces;
+        if (!faces?.embeddings || !faces.clusterIds) {
             continue;
         }
-
-        for (let index = 0; index < photo.faces.count; index++) {
-            const embedding = photo.faces.embeddings.slice(
-                index * EMBEDDING_DIM,
-                (index + 1) * EMBEDDING_DIM
-            );
-            if (cosineSimilarity(searchFace, embedding) > 0.99) {
-                return photo.faces.clusterIds[index];
+        for (let index = 0; index < faces.count; index++) {
+            const similarity = cosineSimilarity(searchFace, embeddingAt(faces.embeddings, index, EMBEDDING_DIM));
+            if (similarity > SIMILARITY_THRESHOLDS.faceIdentity) {
+                return faces.clusterIds[index];
             }
         }
     }
-
     return undefined;
 }
 
 function scorePhotosByFaceSimilarity(photos: PhotoEntry[], searchFace: Float32Array): PhotoEntry[] {
-    const scored: Array<{photo: PhotoEntry; similarity: number}> = [];
+    const candidates = photos.flatMap(photo => photo.faces?.embeddings
+        ? faceEmbeddingRows(photo, photo.faces.embeddings, photo.faces.count, EMBEDDING_DIM)
+        : []);
+    const ranked = rankBySimilarity(searchFace, candidates, SIMILARITY_THRESHOLDS.faceSearchPhoto);
 
-    for (const photo of photos) {
-        if (!photo.faces?.embeddings) {
-            continue;
-        }
-
-        let bestSimilarity = -1;
-        for (let index = 0; index < photo.faces.count; index++) {
-            const embedding = photo.faces.embeddings.slice(
-                index * EMBEDDING_DIM,
-                (index + 1) * EMBEDDING_DIM
-            );
-            const similarity = cosineSimilarity(searchFace, embedding);
-            if (similarity > bestSimilarity) {
-                bestSimilarity = similarity;
-            }
-        }
-
-        if (bestSimilarity > 0.3) {
-            scored.push({photo, similarity: bestSimilarity});
+    // Ranked best-first, so the first face seen per photo is that photo's best face.
+    const seen = new Set<PhotoEntry>();
+    const result: PhotoEntry[] = [];
+    for (const {item} of ranked) {
+        if (!seen.has(item.owner)) {
+            seen.add(item.owner);
+            result.push(item.owner);
         }
     }
-
-    scored.sort((a, b) => b.similarity - a.similarity);
-    return scored.map(entry => entry.photo);
+    return result;
 }
 
 function scorePhotosBySemanticSimilarity(photos: PhotoEntry[], searchEmbedding: SemanticInfo): PhotoEntry[] {
-    const scored: Array<{photo: PhotoEntry; similarity: number}> = [];
-
-    for (const photo of photos) {
-        const semantic = photo.semantic;
-        if (!semantic || semantic.modelId !== searchEmbedding.modelId) {
-            continue;
-        }
-
-        const similarity = cosineSimilarity(searchEmbedding.embedding, semantic.embedding);
-        if (similarity > SEMANTIC_SIMILARITY_THRESHOLD) {
-            scored.push({photo, similarity});
-        }
-    }
-
-    scored.sort((left, right) => right.similarity - left.similarity);
-    return scored.map(entry => entry.photo);
+    const candidates = photos.flatMap(photo => photo.semantic && photo.semantic.modelId === searchEmbedding.modelId
+        ? [{item: photo, embedding: photo.semantic.embedding}]
+        : []);
+    return rankBySimilarity(searchEmbedding.embedding, candidates, SIMILARITY_THRESHOLDS.semanticSearch)
+        .map(match => match.item);
 }
 
 export function filterGalleryPhotos(
@@ -156,10 +135,7 @@ export function filterGalleryPhotos(
         : photos;
     const query = searchQuery?.trim().toLowerCase() ?? '';
     if (searchEmbedding) {
-        const semanticMatches = scorePhotosBySemanticSimilarity(candidates, searchEmbedding);
-        if (semanticMatches.length > 0) {
-            return semanticMatches;
-        }
+        return scorePhotosBySemanticSimilarity(candidates, searchEmbedding);
     }
 
     const filtered = candidates.filter(photo => {

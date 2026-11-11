@@ -1,28 +1,12 @@
+import {l2Normalize, SEMANTIC_EMBEDDING_MODEL_ID} from '@refinio/fotos.core/similarity';
+
 type ModelStatus = 'unloaded' | 'downloading' | 'loading' | 'ready' | 'error';
-type MultimodalEmbeddingModel = 'clip-vit-base-patch32';
+type MultimodalEmbeddingModel = typeof SEMANTIC_EMBEDDING_MODEL_ID;
 
 const ORT_WASM_PATHS = {
-    mjs: '/ort/ort-wasm-simd-threaded.mjs',
-    wasm: '/ort/ort-wasm-simd-threaded.wasm',
+    mjs: '/app/ort/ort-wasm-simd-threaded.mjs',
+    wasm: '/app/ort/ort-wasm-simd-threaded.wasm',
 } as const;
-
-function l2Normalize(values: ArrayLike<number>): number[] {
-    let norm = 0;
-    for (let index = 0; index < values.length; index++) {
-        norm += values[index] * values[index];
-    }
-
-    const scale = Math.sqrt(norm);
-    if (scale === 0) {
-        throw new Error('Cannot normalize a zero-length embedding');
-    }
-
-    const normalized = new Array<number>(values.length);
-    for (let index = 0; index < values.length; index++) {
-        normalized[index] = values[index] / scale;
-    }
-    return normalized;
-}
 
 function extractRows(data: ArrayLike<number>, rows: number, dimensions: number): number[][] {
     if (data.length !== rows * dimensions) {

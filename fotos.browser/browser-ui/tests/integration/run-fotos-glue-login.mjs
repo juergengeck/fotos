@@ -56,7 +56,7 @@ try {
   const commPort = await tcp(), apiPort = await tcp(), browserPort = await tcp(), quicPort = await udp();
   const token = randomUUID();
   const base = `http://127.0.0.1:${apiPort}`;
-  const appUrl = `http://localhost:${browserPort}/`;
+  const appUrl = `http://localhost:${browserPort}/app/`;
   start(process.execPath, [resolve(workspace, '../one/packages/one.models/comm_server.bundle.js'),
     '-h', 'localhost', '-p', String(commPort), '-l'], workspace);
   const api = start('pnpm', ['exec', 'tsx', 'src/cli.ts', '--port', String(apiPort),

@@ -11,7 +11,7 @@ function readJsonResponse(response: Response): Promise<any> {
 }
 
 function getFotosIdPopupUrl(mode: 'recover', displayName?: string): string {
-    const url = new URL('/fotos-id', window.location.href);
+    const url = new URL('/app/fotos-id', window.location.href);
     url.searchParams.set('mode', mode);
     if (displayName) {
         url.searchParams.set('displayName', displayName);

@@ -236,6 +236,18 @@ async function ensureBuiltPrerequisites() {
 }
 
 async function buildBrowserUi(env, outDir) {
+  // fotos.ui (and, via project references, fotos.core) is consumed from dist.
+  // Rebuild it first so vite never bundles a stale dist; tsc --build is a
+  // no-op when everything is fresh.
+  await runCheckedCommand(
+    'npm',
+    ['--prefix', resolve(BROWSER_UI_ROOT, '../../fotos.ui'), 'run', 'build'],
+    {
+      cwd: BROWSER_UI_ROOT,
+      env,
+    },
+    '[fotos.ui build]',
+  );
   await runCheckedCommand(
     process.execPath,
     [VITE_BIN, 'build', '--outDir', outDir, '--emptyOutDir'],
@@ -254,7 +266,7 @@ async function main() {
   const vitePort = Number(process.env.FOTOS_SMOKE_PORT || await getFreePort());
   const commUrl = `ws://localhost:${commPort}`;
   const headlessUrl = `http://localhost:${headlessPort}`;
-  const viteUrl = `http://localhost:${vitePort}/`;
+  const viteUrl = `http://localhost:${vitePort}/app/`;
   const storageDir = mkdtempSync(path.join(tmpdir(), 'fotos-browser-sync-headless-'));
   const browserBuildDir = mkdtempSync(path.join(tmpdir(), 'fotos-browser-sync-dist-'));
 

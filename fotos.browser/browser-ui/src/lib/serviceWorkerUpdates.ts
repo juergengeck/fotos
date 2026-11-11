@@ -22,7 +22,7 @@ type PersistedBuildUpdate = {
 
 export const SERVICE_WORKER_RELOAD_PARAM = '__sw_reload__';
 
-const BUILD_METADATA_PATH = '/version.json';
+const BUILD_METADATA_PATH = '/app/version.json';
 const BUILD_CHECK_INTERVAL_MS = 60 * 1000;
 const FOREGROUND_RETRY_DELAYS_MS = [1_500, 4_000, 8_000, 15_000];
 const BUILD_UPDATE_STORAGE_KEY = 'fotos.browser.deployed-build-update';

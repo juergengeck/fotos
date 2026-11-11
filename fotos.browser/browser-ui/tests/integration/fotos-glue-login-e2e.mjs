@@ -15,7 +15,7 @@ const root = fileURLToPath(new URL('../../../..', import.meta.url));
 assert.ok(process.env.FOTOS_GLUE_QA_STATE, 'Run through run-fotos-glue-login.mjs');
 const state = JSON.parse(readFileSync(process.env.FOTOS_GLUE_QA_STATE, 'utf8'));
 assert.ok(['127.0.0.1', 'localhost'].includes(new URL(state.base).hostname), 'Use a disposable local registrar');
-const appUrl = process.env.FOTOS_GLUE_QA_URL || 'http://localhost:5397/';
+const appUrl = process.env.FOTOS_GLUE_QA_URL || 'http://localhost:5397/app/';
 const mode = process.env.FOTOS_GLUE_QA_MODE || 'popup';
 assert.ok(['popup', 'redirect'].includes(mode));
 const artifacts = resolve(state.dir, `browser-${mode}`);

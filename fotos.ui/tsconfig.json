@@ -1,16 +1,35 @@
 {
   "compilerOptions": {
+    "incremental": true,
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
     "strict": true,
-    "baseUrl": ".",
-    "paths": {
-      "@refinio/fotos.core": ["../fotos.core/src/index.ts"]
-    },
     "skipLibCheck": true,
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "composite": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/**/*.test.ts"]
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts"],
+  "references": [
+    {
+      "path": "../fotos.core/tsconfig.json"
+    },
+    {
+      "path": "../../one/packages/one.core/src/tsconfig.json"
+    },
+    {
+      "path": "../../one/packages/one.models/src/tsconfig.json"
+    }
+  ],
+  "files": [
+    "../../one/packages/one.core/@OneObjectInterfaces.d.ts",
+    "../../one/packages/one.models/@OneObjectInterfaces.d.ts"
+  ]
 }

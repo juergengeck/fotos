@@ -2,7 +2,8 @@
 
 Privacy-first photo management with face recognition. Runs entirely in the browser — no server uploads, no cloud storage. Syncs between your devices via encrypted CHUM.
 
-**Live**: https://fotos.one
+**Marketing**: https://fotos.one/
+**App**: https://fotos.one/app/
 **Deploy**: Cloudflare Pages (`fotos-one`)
 
 > *we do not want your fotos.*
@@ -25,7 +26,7 @@ cd /Users/gecko/src/one
 ONNXRUNTIME_NODE_INSTALL=skip corepack pnpm install --frozen-lockfile
 
 cd ../fotos/fotos.browser/browser-ui
-pnpm dev          # http://localhost:5188
+pnpm dev          # http://localhost:5188/app/
 ```
 
 The web clients and shared Fotos packages are members of the `../one` workspace.
@@ -37,6 +38,21 @@ separate vendored install, sourcing ONE-owned packages from `../one/packages`.
 ```bash
 cd /Users/gecko/src/fotos/fotos.browser
 ./deploy.sh       # builds, strips large WASM, deploys to Cloudflare Pages
+```
+
+The deployment contains the static marketing page at `/` and the browser build at
+`/app/`. App assets, recovery popup, device invitations, PWA scope/start URL and
+share target all live under `/app/`. The Pages worker serves the app shell only
+for app navigations and redirects legacy root app links while preserving their
+query parameters and invitation fragments. `/sw.js` retires the old root-scoped
+worker without deleting local photos, credentials, or IndexedDB storage.
+
+To assemble a build for inspection without deploying:
+
+```bash
+cd /Users/gecko/src/fotos/fotos.browser/browser-ui
+pnpm build
+node ../scripts/assemble-site.mjs
 ```
 
 ## Architecture
