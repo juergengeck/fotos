@@ -16,6 +16,11 @@ import {
   AssemblyCoreReverseMaps,
 } from '@refinio/assembly.core';
 import GlueContentRecipes from '@glueone/glue.core/recipes/GlueContentRecipes.js';
+import {
+  GlueAuthorityCertificateRecipe,
+  GlueAuthoritySourceRecipe,
+} from '@glueone/glue.core/recipes/GlueAuthorityRecipes.js';
+import { GlueInstanceAuthorizationRecipes } from '@glueone/glue.core/recipes/GlueInstanceAuthorization.js';
 import PresenceRecipes from '@glueone/glue.core/recipes/PresenceRecipes.js';
 import TimeTrieRecipes from '@glueone/glue.core/recipes/TimeTrieRecipes.js';
 import {
@@ -51,6 +56,9 @@ export const FotosOneCoreRecipes: Recipe[] = [
   ...RecipesStable,
   ...RecipesExperimental,
   ...GlueContentRecipes,
+  GlueAuthorityCertificateRecipe,
+  GlueAuthoritySourceRecipe,
+  ...GlueInstanceAuthorizationRecipes,
   ...PresenceRecipes,
   ...TimeTrieRecipes,
   ...TrustCoreRecipes,

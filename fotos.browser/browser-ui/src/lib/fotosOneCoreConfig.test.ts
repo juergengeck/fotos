@@ -16,6 +16,13 @@ describe('Fotos ONE.core runtime configuration', () => {
     expect(recipeNames).toContain('OwnerCredentialTrustProjection');
   });
 
+  it('registers the glue authority recipes used after reboot with a persisted identity', () => {
+    const recipeNames = new Set(FotosOneCoreRecipes.map(recipe => recipe.name));
+
+    expect(recipeNames).toContain('GlueAuthorityCertificate');
+    expect(recipeNames).toContain('GlueInstanceAuthorization');
+  });
+
   it('keeps every property when reverse-map packages overlap', () => {
     const merged = mergeReverseMapDefinitions(
       new Map([['SharedType', new Set(['subject'])]]),
