@@ -33,6 +33,7 @@ import { getInstanceOwnerIdHash } from '@refinio/one.core/lib/instance.js';
 import { getObject } from '@refinio/one.core/lib/storage-unversioned-objects.js';
 import { calculateIdHashOfObj } from '@refinio/one.core/lib/util/object.js';
 import {getOwnedFotosManifestId} from '../../../../fotos.core/src/owned-fotos-manifest.js';
+import {projectFotosEntryReferences, type FotosEntryReference} from '../../../../fotos.core/src/fotos-entry-projection.js';
 
 // Cached idHash for the singleton manifest (calculated once, deterministic)
 let cachedManifestIdHash: SHA256IdHash<FotosManifest> | null = null;
@@ -130,7 +131,7 @@ export async function readNativeOwnedFotosEntries(owner: string): Promise<FotosE
     if (manifest.$type$ !== 'FotosManifest' || manifest.id !== id || !(manifest.entries instanceof Set)) {
         throw new Error('Malformed native owned Fotos manifest');
     }
-    const entries: FotosEntry[] = [];
+    const entries: FotosEntryReference[] = [];
     for (const hash of manifest.entries) {
         if (typeof hash !== 'string' || !/^[a-f0-9]{64}$/.test(hash)) throw new Error('Malformed native Fotos entry reference');
         const entry = await getObject(hash);
@@ -138,10 +139,10 @@ export async function readNativeOwnedFotosEntries(owner: string): Promise<FotosE
             || typeof entry.mime !== 'string' || !Number.isSafeInteger(entry.size) || entry.size < 0) {
             throw new Error('Malformed native owned Fotos entry');
         }
-        entries.push(entry);
+        entries.push({hash, entry});
     }
     if (selectedManifestId() !== id) throw new Error('Fotos library context changed while reading its entries');
-    return entries;
+    return projectFotosEntryReferences(entries).map(reference => reference.entry);
 }
 
 async function resolveManifestContentHashes(

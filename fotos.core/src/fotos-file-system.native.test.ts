@@ -9,7 +9,7 @@ import {createAccess} from '@refinio/one.core/lib/access.js';
 import {SET_ACCESS_MODE} from '@refinio/one.core/lib/storage-base-common.js';
 import {beginAccessManagerChumSession, endAccessManagerChumSession, getAccessibleRootHashes, getChildren,
     isAccessibleBy} from '@refinio/one.core/lib/accessManager.js';
-import {getObjectByIdHash} from '@refinio/one.core/lib/storage-versioned-objects.js';
+import {getObjectByIdHash, storeVersionedObject} from '@refinio/one.core/lib/storage-versioned-objects.js';
 import {getObject} from '@refinio/one.core/lib/storage-unversioned-objects.js';
 import {readBlobAsArrayBuffer} from '@refinio/one.core/lib/storage-blob.js';
 import {calculateIdHashOfObj} from '@refinio/one.core/lib/util/object.js';
@@ -109,6 +109,31 @@ describe('Fotos filesystem thumbnail publication on native ONE', () => {
             expect(await isAccessibleBy(stranger, entry.thumb!)).toBe(false);
         } finally {endAccessManagerChumSession(owner); endAccessManagerChumSession(stranger);}
     });
+
+    it('projects 100 exact metadata versions as one immutable original without rewriting the owner root on reads', async () => {
+        const fs = new FotosFileSystem(getOwnedFotosManifestId(getInstanceOwnerIdHash()!), true);
+        const rootId = await fs.getRootId();
+        const original = await getObjectByIdHash(rootId);
+        const entry = await getObject([...original.obj.entries][0]);
+        const refs = [];
+        for (let faceCount = 0; faceCount < 100; faceCount++) {
+            refs.push((await storeVersionedObject({...entry, faceCount})).hash);
+        }
+        const snapshot = await storeVersionedObject({...original.obj, entries: new Set(refs)});
+        expect(await fs.readDir('/')).toEqual({children: ['original.png']});
+        const before = await fs.stat('/original.png');
+        expect(before.contentHash).toBe(entry.contentHash);
+        expect(new Uint8Array((await fs.readFile('/original.png')).content)).toEqual(new Uint8Array(ORIGINAL));
+        expect((await getObjectByIdHash(rootId)).hash).toBe(snapshot.hash);
+        await storeVersionedObject({...snapshot.obj, entries: new Set([...refs].reverse())});
+        expect(await fs.stat('/original.png')).toEqual(before);
+        await storeVersionedObject({...snapshot.obj, entries: new Set(refs.slice(0, 99))});
+        expect((await fs.stat('/original.png')).metadataHash).not.toBe(before.metadataHash);
+
+        const distinct = await storeVersionedObject({...entry, contentHash: 'a'.repeat(64)});
+        await storeVersionedObject({$type$: 'FotosManifest', id: 'fotos', entries: new Set([refs[0], distinct.hash])});
+        await expect(new FotosFileSystem('fotos').readDir('/')).rejects.toMatchObject({code: -17});
+    }, 15000);
 
     it.each(['failed', 'empty', 'oversized', 'missing'] as const)('leaves the manifest unchanged when the adapter returns %s output', async kind => {
         const adapter: FotosThumbnailAdapter = async () => {

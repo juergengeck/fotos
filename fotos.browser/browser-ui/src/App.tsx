@@ -1724,7 +1724,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
 
         await gallery.folder.ensureSyncedToOneCore();
         const manifestSnapshot = await fotosShareController.refreshManifest();
-        const sharedCount = manifestSnapshot?.entryCount ?? 0;
+        const sharedCount = manifestSnapshot?.contentHashes.length ?? 0;
         if (sharedCount === 0) {
             throw new Error('No photos are ready to share yet.');
         }

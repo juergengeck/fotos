@@ -14,6 +14,7 @@ import type {FotosEntry, FotosManifest} from './recipes/FotosRecipes.js';
 import type {FotosMediaVariant} from './recipes/FotosMediaRecipes.js';
 import {createFotosMediaVariant} from './media-model.js';
 import {createCryptoHash} from '@refinio/one.core/lib/system/crypto-helpers.js';
+import {getFotosEntryProjectionVersion, projectFotosEntryReferences, type FotosEntryReference} from './fotos-entry-projection.js';
 
 export const FOTOS_THUMBNAIL_MAX_EDGE = 512;
 export const FOTOS_THUMBNAIL_MAX_BYTES = 2 * 1024 * 1024;
@@ -47,7 +48,7 @@ function thumbnailDimensions(content: ArrayBuffer): {width: number; height: numb
     throw new Error('Fotos thumbnail has invalid or oversized JPEG dimensions');
 }
 
-type ProjectedEntry = {path: string; hash: SHA256Hash<FotosEntry>; entry: FotosEntry};
+type ProjectedEntry = {path: string; hash: string; entry: FotosEntry};
 
 /** Filesystem projection over one explicit Fotos manifest and its media DAG. */
 export class FotosFileSystem {
@@ -91,17 +92,22 @@ export class FotosFileSystem {
     /** Resolve only entry references reachable from the configured manifest. */
     private async entries(): Promise<ProjectedEntry[]> {
         const {obj} = await this.readManifest();
-        const paths = new Set<string>();
-        const entries: ProjectedEntry[] = [];
+        const paths = new Map<string, string>();
+        const references: FotosEntryReference[] = [];
         for (const hash of obj.entries) {
             const entry = await getObject(hash);
             if (!entry.sourcePath) throw new Error(`Fotos entry ${entry.contentHash} has no sourcePath`);
             const path = this.path('/' + entry.sourcePath);
-            if (paths.has(path)) throw new Error(`Conflicting Fotos paths: ${path}`);
-            paths.add(path);
-            entries.push({path, hash, entry});
+            if (paths.has(path) && paths.get(path) !== entry.contentHash) {
+                throw Object.assign(new Error(`Conflicting Fotos paths: ${path}`), {code: -17});
+            }
+            paths.set(path, entry.contentHash);
+            references.push({hash, entry});
         }
-        return entries.sort((a, b) => a.path.localeCompare(b.path));
+        return Promise.all(projectFotosEntryReferences(references).map(async reference => ({
+            path: '/' + reference.entry.sourcePath,
+            hash: await getFotosEntryProjectionVersion(reference, createCryptoHash), entry: reference.entry,
+        })));
     }
 
     /** Require a canonical absolute virtual path, never a host filesystem path. */

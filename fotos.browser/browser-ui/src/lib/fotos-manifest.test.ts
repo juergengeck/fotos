@@ -337,6 +337,19 @@ describe('admitted native owned Fotos manifest reopening', () => {
         expect(mocks.createAccess).not.toHaveBeenCalled();
     });
 
+    it('restores one deterministic exact representative for 100 metadata refs of one owned image', async () => {
+        setFotosNativeOwnerContext(owner);
+        const hashes = Array.from({length: 100}, (_, index) => index.toString(16).padStart(64, '0'));
+        mocks.getObjectByIdHash.mockResolvedValue({hash: 'multi-version-root', obj: {
+            $type$: 'FotosManifest', id: rootId, entries: new Set([...hashes].reverse()),
+        }} as any);
+        mocks.getObject.mockImplementation(async hash => ({...entry, faceCount: hashes.indexOf(hash!)}));
+        expect(await readNativeOwnedFotosEntries(owner)).toEqual([{...entry, faceCount: 0}]);
+        expect(mocks.getObject).toHaveBeenCalledTimes(100);
+        expect(mocks.storeVersionedObject).not.toHaveBeenCalled();
+        expect(mocks.createAccess).not.toHaveBeenCalled();
+    });
+
     it('retains the legacy root after the native context is cleared', async () => {
         setFotosNativeOwnerContext(owner);
         await readNativeOwnedFotosEntries(owner);

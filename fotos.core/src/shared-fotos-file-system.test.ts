@@ -1,4 +1,4 @@
-import {describe, expect, it} from 'vitest';
+import {describe, expect, it, vi} from 'vitest';
 import type {FotosEntry} from './recipes/FotosRecipes.js';
 import {getSharedFotosCollectionPath, SharedFotosFileSystem} from './shared-fotos-file-system.js';
 
@@ -55,9 +55,9 @@ function code(error: unknown): number | undefined {
 }
 
 describe('SharedFotosFileSystem projection lifecycle', () => {
-    it('reports exact conflicting entry versions without hiding duplicate paths', async () => {
+    it('reports distinct-image path conflicts without hiding either exact reference', async () => {
         const previous = {...first, faceCount: 1};
-        const incoming = {...first, faceCount: 2};
+        const incoming = {...first, contentHash: 'different-content', faceCount: 2};
         const deps = dependencies(async () => active([previous, incoming]));
         deps.hashEntry = async entry => `exact-entry-${entry.faceCount}`;
         const fs = new SharedFotosFileSystem('subject', async () => true, deps);
@@ -66,7 +66,30 @@ describe('SharedFotosFileSystem projection lifecycle', () => {
         expect(result.message).toContain(`"path":"${collection}/first.png"`);
         expect(result.message).toContain('"certificateIdHash":"certificate-id"');
         expect(result.message).toContain('"previous":{"hash":"exact-entry-1","contentHash":"first-content"}');
-        expect(result.message).toContain('"incoming":{"hash":"exact-entry-2","contentHash":"first-content"}');
+        expect(result.message).toContain('"incoming":{"hash":"exact-entry-2","contentHash":"different-content"}');
+    });
+
+    it('projects 100 exact metadata versions as one authorized original with stable order-independent versions', async () => {
+        const versions = Array.from({length: 100}, (_, faceCount) => ({...first, faceCount}));
+        let selected = versions;
+        const readOriginal = vi.fn(async (entry: FotosEntry) => ({content: new Uint8Array(entry.size).buffer}));
+        const deps = dependencies(async () => active(selected), readOriginal);
+        deps.hashEntry = async entry => `exact-${String(entry.faceCount).padStart(3, '0')}`;
+        const fs = new SharedFotosFileSystem('subject', async () => true, deps);
+        expect(await fs.readDir(collection)).toEqual({children: ['first.png']});
+        const before = await fs.stat(`${collection}/first.png`);
+        const root = await fs.stat('/');
+        await fs.readFile(`${collection}/first.png`);
+        expect(readOriginal).toHaveBeenCalledExactlyOnceWith(versions[0]);
+        expect(before.metadataHash).toContain('exact-099');
+        selected = [...versions].reverse();
+        fs.invalidate();
+        expect(await fs.readDir(collection)).toEqual({children: ['first.png']});
+        expect(await fs.stat(`${collection}/first.png`)).toEqual(before);
+        expect(await fs.stat('/')).toEqual(root);
+        selected = versions.slice(0, 99);
+        fs.invalidate();
+        expect((await fs.stat(`${collection}/first.png`)).metadataHash).not.toBe(before.metadataHash);
     });
 
     it('shares one projection and verification across concurrent and sequential filesystem calls', async () => {
