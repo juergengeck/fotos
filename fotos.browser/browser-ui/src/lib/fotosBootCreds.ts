@@ -1,4 +1,4 @@
-import { createBrowserCredentialVault } from '@glueone/auth.core';
+import { createBrowserCredentialVault, glueEnrollmentInstanceKeyPairs, type GlueEnrollmentReceipt } from '@glueone/auth.core';
 
 export const PERSISTENT_KEY = 'fotos_creds';
 export const SESSION_KEY = 'fotos_creds_session';
@@ -23,6 +23,8 @@ export interface FotosBootCredResolution {
   sessionScoped: boolean;
   source: 'persistent' | 'migrated-session' | 'visitor-created';
   storageDirectory: string;
+  nativeEnrollment?: GlueEnrollmentReceipt;
+  nativeEnrollmentPendingInstall?: boolean;
 }
 export type FotosCredentialVault = Pick<ReturnType<typeof createBrowserCredentialVault>, 'read' | 'import'>;
 interface StoredFotosAccount {
@@ -31,6 +33,7 @@ interface StoredFotosAccount {
   creds?: FotosBootCreds;
   localIdentity?: Omit<FotosBootCreds, 'secret'>;
   glueSubject?: string;
+  nativeEnrollmentInstanceId?: string;
   localCredentialSubject?: string;
   /** Public creation journal; removed before this identity can open ONE. */
   pendingCreation?: 'persistent' | 'session';
@@ -82,6 +85,18 @@ function readAccountIndex(): StoredFotosAccountIndex {
       ...(typeof value.localCredentialSubject === 'string' && value.localCredentialSubject ? { localCredentialSubject: value.localCredentialSubject } : {}),
       ...(value.pendingCreation ? { pendingCreation: value.pendingCreation } : {}),
     };
+    if (value.nativeEnrollmentInstanceId !== undefined) {
+      const instanceId = value.nativeEnrollmentInstanceId;
+      if (typeof instanceId !== 'string' || !/^[a-f0-9]{64}$/.test(instanceId)
+        || value.id !== `glue-native-${instanceId}` || value.pendingCreation !== undefined
+        || value.creds !== undefined || value.glueSubject !== undefined || value.localCredentialSubject !== undefined
+        || !value.localIdentity || typeof value.localIdentity.email !== 'string' || !value.localIdentity.email
+        || typeof value.localIdentity.instanceName !== 'string' || !value.localIdentity.instanceName
+        || 'secret' in value.localIdentity) throw new Error('Invalid saved native Glue account');
+      return { ...base, nativeEnrollmentInstanceId: instanceId,
+        localIdentity: { email: value.localIdentity.email, instanceName: value.localIdentity.instanceName },
+        storageDirectory: storageDirectoryForAccount(value.id) };
+    }
     if (value.glueSubject !== undefined) {
       if (typeof value.glueSubject !== 'string' || !/^[a-fA-F0-9]{64}$/.test(value.glueSubject)
         || value.pendingCreation !== undefined || value.id !== `glue-${value.glueSubject}` || value.creds !== undefined || value.localIdentity !== undefined) throw new Error('Invalid saved Glue account');
@@ -184,6 +199,52 @@ async function selectGlueAccount(subject: string, vault: FotosCredentialVault, o
   const now = new Date().toISOString();
   const account = { id, glueSubject: subject, storageDirectory: storageDirectoryForAccount(id), createdAt: previous?.createdAt ?? now, updatedAt: now };
   const next = { version: 1 as const, accounts: [...index.accounts.filter(entry => entry.id !== id), account] };
+  return commitAccountSelection(next, id, options);
+}
+
+/** Seal a verified native enrollment in a distinct account; legacy identities stay intact. */
+export async function selectFotosNativeGlueAccount(receipt: GlueEnrollmentReceipt, vault: FotosCredentialVault = getVault(), options: { signal?: AbortSignal } = {}): Promise<string> {
+  glueEnrollmentInstanceKeyPairs(receipt);
+  if (receipt.creds.email !== receipt.person.email || receipt.creds.instanceName !== receipt.request.instanceName
+    || !receipt.creds.secret || !/^[a-f0-9]{64}$/.test(receipt.instanceId)
+    || receipt.personId !== receipt.instanceAuthorization.person || receipt.instanceId !== receipt.instanceAuthorization.instance
+    || receipt.identity !== receipt.instanceAuthorization.identity) throw new Error('Invalid native Glue enrollment binding');
+  return withAccountLock(async () => {
+    const { index } = await migrateAccounts(vault);
+    const id = `glue-native-${receipt.instanceId}`;
+    const sealed = JSON.stringify(receipt);
+    const saved = await vault.import(FOTOS_CREDENTIAL_ISSUER, id, sealed);
+    if (saved !== sealed || await vault.read(FOTOS_CREDENTIAL_ISSUER, id) !== sealed) throw new Error('Native Glue enrollment conflicts with saved custody');
+    options.signal?.throwIfAborted();
+    const previous = index.accounts.find(account => account.id === id);
+    const account = { ...metadata(id, receipt.creds), nativeEnrollmentInstanceId: receipt.instanceId,
+      ...(previous ? { createdAt: previous.createdAt } : {}) };
+    return commitAccountSelection({ version: 1, accounts: [...index.accounts.filter(entry => entry.id !== id), account] }, id, options);
+  }, options.signal);
+}
+
+/** Bind private admission evidence to the exact immutable encrypted enrollment. */
+async function nativeGlueAdmissionReceipt(sealedEnrollment: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sealedEnrollment));
+  const receiptHash = Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('');
+  return JSON.stringify({ version: 1, enrollmentSha256: receiptHash });
+}
+
+/** Seal admission only after native authority installation and owning settings commit. */
+export async function markFotosNativeGlueEnrollmentInstalled(accountId: string, receipt: GlueEnrollmentReceipt, vault: FotosCredentialVault = getVault()): Promise<void> {
+  return withAccountLock(async () => {
+    const account = readAccountIndex().accounts.find(entry => entry.id === accountId);
+    if (!account?.nativeEnrollmentInstanceId || account.nativeEnrollmentInstanceId !== receipt.instanceId) throw new Error('Missing native Glue account');
+    const sealed = await vault.read(FOTOS_CREDENTIAL_ISSUER, accountId);
+    if (!sealed || sealed !== JSON.stringify(receipt)) throw new Error('Native Glue admission differs from saved custody');
+    const acceptance = await nativeGlueAdmissionReceipt(sealed);
+    const subject = `${accountId}:admitted`;
+    if (await vault.import(FOTOS_CREDENTIAL_ISSUER, subject, acceptance) !== acceptance
+      || await vault.read(FOTOS_CREDENTIAL_ISSUER, subject) !== acceptance) throw new Error('Native Glue admission conflicts with saved acceptance');
+  });
+}
+
+function commitAccountSelection(next: StoredFotosAccountIndex, id: string, options: { signal?: AbortSignal; preservePendingCreation?: boolean }): string {
   const oldIndex = localStorage.getItem(ACCOUNTS_KEY);
   const oldActive = localStorage.getItem(ACTIVE_ACCOUNT_KEY);
   const oldSession = sessionStorage.getItem(SESSION_ACTIVE_ACCOUNT_KEY);
@@ -274,6 +335,8 @@ async function resolveBootAccount(options: { accountSelector?: string | null; va
     ?? index.accounts.find(entry => !entry.pendingCreation);
   if (account?.pendingCreation) return finishAccountCreation(index, account, vault);
   let creds: FotosBootCreds;
+  let nativeEnrollment: GlueEnrollmentReceipt | undefined;
+  let nativeEnrollmentPendingInstall = false;
   if (!account) {
     const id = requested === 'new' ? `acct-${randomHex(6)}` : LEGACY_ACCOUNT_ID;
     account = metadata(id, { email: `fotos-visitor-${randomHex(5)}@fotos.one`, instanceName: DEFAULT_VISITOR_INSTANCE_NAME });
@@ -285,6 +348,21 @@ async function resolveBootAccount(options: { accountSelector?: string | null; va
     // Journal public metadata before creating the immutable vault record.
     writeAccountIndex(pendingIndex);
     return finishAccountCreation(pendingIndex, account, vault);
+  } else if (account.nativeEnrollmentInstanceId) {
+    const sealed = await vault.read(FOTOS_CREDENTIAL_ISSUER, account.id);
+    if (!sealed) throw new Error('The saved native Glue enrollment is unavailable on this device');
+    nativeEnrollment = JSON.parse(sealed) as GlueEnrollmentReceipt;
+    glueEnrollmentInstanceKeyPairs(nativeEnrollment);
+    if (nativeEnrollment.instanceId !== account.nativeEnrollmentInstanceId
+      || nativeEnrollment.creds.email !== account.localIdentity?.email
+      || nativeEnrollment.creds.instanceName !== account.localIdentity.instanceName
+      || nativeEnrollment.creds.email !== nativeEnrollment.person.email
+      || nativeEnrollment.creds.instanceName !== nativeEnrollment.request.instanceName
+      || !nativeEnrollment.creds.secret) throw new Error('Saved native Glue enrollment identity mismatch');
+    const acceptance = await vault.read(FOTOS_CREDENTIAL_ISSUER, `${account.id}:admitted`);
+    if (acceptance !== undefined && acceptance !== await nativeGlueAdmissionReceipt(sealed)) throw new Error('Saved native Glue admission does not match enrollment custody');
+    nativeEnrollmentPendingInstall = acceptance === undefined;
+    creds = nativeEnrollment.creds;
   } else if (account.glueSubject) {
     const secret = await vault.read('https://glue.one', account.glueSubject);
     if (!secret) throw new Error('The saved Glue account credential is unavailable on this device');
@@ -298,7 +376,7 @@ async function resolveBootAccount(options: { accountSelector?: string | null; va
     sessionStorage.setItem(SESSION_ACTIVE_ACCOUNT_KEY, account.id);
     if (rawSessionJournal !== null) sessionStorage.removeItem(SESSION_PENDING_ACCOUNT_KEY);
   } else if (!sessionScoped) localStorage.setItem(ACTIVE_ACCOUNT_KEY, account.id);
-  return { creds, accountId: account.id, persistent: true, sessionScoped, source, storageDirectory: account.storageDirectory };
+  return { creds, accountId: account.id, persistent: true, sessionScoped, source, storageDirectory: account.storageDirectory, ...(nativeEnrollment ? { nativeEnrollment, nativeEnrollmentPendingInstall } : {}) };
 }
 
 export const resolveFotosBootCreds = resolveFotosBootAccount;

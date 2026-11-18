@@ -9,9 +9,43 @@ import {getObjectByIdHash, storeVersionedObject} from '@refinio/one.core/lib/sto
 import {readBlobAsArrayBuffer, storeArrayBufferAsBlob} from '@refinio/one.core/lib/storage-blob.js';
 import {hashImageBytes} from './ingest/hash.js';
 export {FotosRecipes} from './recipes/FotosRecipes.js';
+export {getOwnedFotosManifestId} from './owned-fotos-manifest.js';
 import type {FotosEntry, FotosManifest} from './recipes/FotosRecipes.js';
 import type {FotosMediaVariant} from './recipes/FotosMediaRecipes.js';
 import {createFotosMediaVariant} from './media-model.js';
+import {createCryptoHash} from '@refinio/one.core/lib/system/crypto-helpers.js';
+
+export const FOTOS_THUMBNAIL_MAX_EDGE = 512;
+export const FOTOS_THUMBNAIL_MAX_BYTES = 2 * 1024 * 1024;
+/** Platform-owned decoding and resizing; return an actual bounded JPEG image. */
+export type FotosThumbnailAdapter = (content: ArrayBuffer, mime: string) => Promise<ArrayBuffer>;
+
+/** Read JPEG frame dimensions without accepting an unbounded or mislabeled derivative. */
+function thumbnailDimensions(content: ArrayBuffer): {width: number; height: number} {
+    const bytes = new Uint8Array(content);
+    if (bytes.length < 4 || bytes.length > FOTOS_THUMBNAIL_MAX_BYTES || bytes[0] !== 0xff || bytes[1] !== 0xd8
+        || bytes[bytes.length - 2] !== 0xff || bytes[bytes.length - 1] !== 0xd9) {
+        throw new Error('Fotos thumbnail must be a bounded JPEG');
+    }
+    let offset = 2;
+    while (offset + 4 < bytes.length) {
+        if (bytes[offset] !== 0xff) break;
+        while (bytes[offset + 1] === 0xff) offset++;
+        const marker = bytes[offset + 1];
+        if (marker === 0xda || marker === 0xd9) break;
+        const length = bytes[offset + 2] * 256 + bytes[offset + 3];
+        if (length < 2 || offset + 2 + length > bytes.length) break;
+        if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) {
+            if (length < 8) break;
+            const height = bytes[offset + 5] * 256 + bytes[offset + 6];
+            const width = bytes[offset + 7] * 256 + bytes[offset + 8];
+            if (width < 1 || height < 1 || width > FOTOS_THUMBNAIL_MAX_EDGE || height > FOTOS_THUMBNAIL_MAX_EDGE) break;
+            return {width, height};
+        }
+        offset += 2 + length;
+    }
+    throw new Error('Fotos thumbnail has invalid or oversized JPEG dimensions');
+}
 
 type ProjectedEntry = {path: string; hash: SHA256Hash<FotosEntry>; entry: FotosEntry};
 
@@ -23,6 +57,7 @@ export class FotosFileSystem {
         readonly manifestId: string,
         private readonly writable = false,
         private readonly resolveOriginal?: (entry: FotosEntry) => Promise<ArrayBuffer>,
+        private readonly createThumbnail?: FotosThumbnailAdapter,
     ) {
         if (!manifestId) throw new Error('Fotos manifest id is required');
     }
@@ -98,14 +133,19 @@ export class FotosFileSystem {
         if (item) return {
             mode: 0o100444, size: item.entry.size,
             contentHash: item.entry.contentHash, metadataHash: item.hash, mimeType: item.entry.mime,
+            canAddChildren: false,
             acquisitionObservations: [...item.entry.acquisitionObservations ?? []],
         };
         if (path !== '/' && !entries.some(item => item.path.startsWith(path + '/'))) {
             throw new Error(`Fotos path does not exist: ${path}`);
         }
         const root = await this.readManifest();
-        return {mode: path === '/' && this.writable ? 0o040755 : 0o040555, size: 0,
-            contentHash: root.hash, metadataHash: root.hash};
+        const canAddChildren = path === '/' && this.writable;
+        const mode = canAddChildren ? 0o040755 : 0o040555;
+        // Native publication carries explicit capabilities rather than POSIX mode.
+        // Version their presentation so a cached read-only item is invalidated.
+        const metadataHash = await createCryptoHash(JSON.stringify({manifest: root.hash, path, mode, canAddChildren}));
+        return {mode, size: 0, canAddChildren, contentHash: root.hash, metadataHash};
     }
 
     /** Materialize the original through its explicit variant BLOB or owning adapter. */
@@ -153,6 +193,9 @@ export class FotosFileSystem {
             if (entries.some(item => item.entry.contentHash === contentHash)) {
                 throw new Error('This original already belongs to the Fotos manifest');
             }
+            const thumbnail = this.createThumbnail ? await this.createThumbnail(content, mime) : undefined;
+            if (this.createThumbnail && !(thumbnail instanceof ArrayBuffer)) throw new Error('Fotos thumbnail adapter returned no JPEG');
+            const dimensions = thumbnail ? thumbnailDimensions(thumbnail) : undefined;
             const entry: FotosEntry = {$type$: 'FotosEntry', contentHash, streamId: contentHash,
                 mime, size: content.byteLength, sourcePath: name};
             const family = await calculateIdHashOfObj(entry);
@@ -160,6 +203,15 @@ export class FotosFileSystem {
                 contentHash, family, role: 'original', mime, byteSize: content.byteLength, blob,
             }));
             entry.variants = new Set([variant.hash]);
+            if (thumbnail && dimensions) {
+                const thumb = await storeArrayBufferAsBlob(thumbnail);
+                entry.thumb = thumb.hash;
+                const derived = await storeVersionedObject(createFotosMediaVariant({
+                    contentHash: thumb.hash, family, role: 'thumbnail', mime: 'image/jpeg',
+                    byteSize: thumbnail.byteLength, ...dimensions, blob: thumb.hash, derivedFrom: variant.idHash,
+                }));
+                entry.variants.add(derived.hash);
+            }
             const observer = getInstanceOwnerIdHash();
             if (!observer) throw new Error('Fotos acquisition requires the local owner identity');
             const previous = await getObjectByIdHash(family).catch(error => {

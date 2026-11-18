@@ -7,7 +7,7 @@
  * Keyed by contentHash (isId) -- all instances converge on the same object.
  *
  * FotosManifest: singleton versioned object listing all FotosEntry refs.
- * Fixed id 'fotos' ensures deterministic idHash across all instances.
+ * Legacy id 'fotos' is retained; admitted native owners use 'fotos:<Person id>'.
  * IdAccess grants on this manifest gate who can sync photo metadata.
  */
 import type {BLOB, CLOB, Person, Recipe, VersionNode} from '@refinio/one.core/lib/recipes.js';
@@ -219,7 +219,7 @@ export const FotosManifestRecipe: Recipe = {
         {
             itemprop: 'id',
             isId: true,
-            itemtype: {type: 'string', regexp: /^fotos$/}
+            itemtype: {type: 'string', regexp: /^fotos(?::[a-f0-9]{64})?$/}
         },
         {
             itemprop: 'entries',

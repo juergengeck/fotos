@@ -3,7 +3,8 @@ import {SyncFilterFactory} from '@refinio/sync.core/services/SyncFilterFactory.j
 import {contentRules} from '@refinio/sync.core/rules/default-rules.js';
 import type {EffectivePersonalTrust} from '@refinio/trust.core/types/personal-trust.js';
 import type {TrustLevel} from '@refinio/trust.core/types/trust-types.js';
-import {fotosContentRules} from './sync-rules.js';
+import {canImportFotosManifest, fotosContentRules} from './sync-rules.js';
+import {getOwnedFotosManifestId} from './owned-fotos-manifest.js';
 
 const chain = {
     $type$: 'FotosShareCertificateChain',
@@ -49,6 +50,64 @@ function importFilter(trustLevel: TrustLevel, rules = fotosContentRules) {
 }
 
 describe('Fotos root admission through SyncFilterFactory', () => {
+    const owner = 'a'.repeat(64);
+    const otherOwner = 'b'.repeat(64);
+    const ownedRoot = {$type$: 'FotosManifest', id: getOwnedFotosManifestId(owner), entries: new Set(['entry-hash'])};
+
+    it('admits full and ID-only scoped roots for the exact authenticated owner self lane', async () => {
+        const factory = new SyncFilterFactory({rules: fotosContentRules});
+        factory.preparePeerTrust(owner, {kind: 'self', ownerId: owner});
+        const filter = factory.createImportFilter(owner);
+        expect(await filter('owned-version', 'FotosManifest', ownedRoot, 'object')).toBe(true);
+        expect(await filter('owned-id', 'FotosManifest', {$type$: 'FotosManifest', id: ownedRoot.id}, 'id')).toBe(true);
+    });
+
+    it('denies another scoped owner even on an accepted self lane', async () => {
+        const factory = new SyncFilterFactory({rules: fotosContentRules});
+        factory.preparePeerTrust(otherOwner, {kind: 'self', ownerId: otherOwner});
+        const filter = factory.createImportFilter(otherOwner);
+        expect(await filter('foreign-version', 'FotosManifest', ownedRoot, 'object')).toBe(false);
+        expect(await filter('foreign-id', 'FotosManifest', {$type$: 'FotosManifest', id: ownedRoot.id}, 'id')).toBe(false);
+    });
+
+    it.each([false, true])('denies external personal-trust admission even when IoM promotion is %s', async iom => {
+        const factory = new SyncFilterFactory({rules: fotosContentRules});
+        factory.preparePeerTrust(owner, {kind: 'personal', projection: {
+            owner: otherOwner, subject: owner, scope: 'personal', trustLevel: 'trusted', state: 'effective',
+            sourceKind: 'direct', projectionHash: 'trust-evidence', sourceBundleHashes: ['trust-source'],
+        } as EffectivePersonalTrust});
+        const filter = factory.createImportFilter(owner, async () => iom);
+        expect(await filter('external-version', 'FotosManifest', ownedRoot, 'object')).toBe(false);
+        expect(await filter('external-id', 'FotosManifest', {$type$: 'FotosManifest', id: ownedRoot.id}, 'id')).toBe(false);
+    });
+
+    it('denies scoped roots with missing owner facts, ignored trust, or noncanonical authenticated ids', () => {
+        expect(canImportFotosManifest({peerTrustLevel: 'me', remotePersonId: owner}, ownedRoot)).toBe(false);
+        expect(canImportFotosManifest({peerTrustLevel: 'me', remotePersonId: owner,
+            peerTrust: {kind: 'self', ownerId: otherOwner}}, ownedRoot)).toBe(false);
+        expect(canImportFotosManifest({peerTrustLevel: 'ignore', remotePersonId: owner,
+            peerTrust: {kind: 'self', ownerId: owner}}, ownedRoot)).toBe(false);
+        expect(canImportFotosManifest({peerTrustLevel: 'me', remotePersonId: owner.toUpperCase(),
+            peerTrust: {kind: 'self', ownerId: owner.toUpperCase()}}, ownedRoot)).toBe(false);
+    });
+
+    it('continues to validate scoped version payloads rather than treating a missing payload as an ID object', async () => {
+        const factory = new SyncFilterFactory({rules: fotosContentRules});
+        factory.preparePeerTrust(owner, {kind: 'self', ownerId: owner});
+        const filter = factory.createImportFilter(owner);
+        expect(await filter('bad-version', 'FotosManifest', {...ownedRoot, entries: ['entry-hash']}, 'object')).toBe(false);
+        expect(await filter('bad-version', 'FotosManifest', {...ownedRoot, entries: undefined, extra: true}, 'object')).toBe(false);
+        expect(await filter('missing-payload', 'FotosManifest', {$type$: 'FotosManifest', id: ownedRoot.id}, 'object')).toBe(false);
+        expect(await filter('missing-version', 'FotosManifest', undefined, 'object')).toBe(false);
+        expect(await filter('wrong-namespace', 'FotosManifest', {...ownedRoot, id: `fotos:${owner}:extra`}, 'object')).toBe(false);
+    });
+
+    it('preserves both legacy root forms for existing non-native accounts', async () => {
+        const filter = importFilter('low');
+        expect(await filter('legacy-version', 'FotosManifest', {...ownedRoot, id: 'fotos'}, 'object')).toBe(true);
+        expect(await filter('legacy-id', 'FotosManifest', {$type$: 'FotosManifest', id: 'fotos'}, 'id')).toBe(true);
+    });
+
     it('admits shared manifest and certificate chain roots that generic content rules deny', async () => {
         const genericFilter = importFilter('trusted', contentRules);
         const fotosFilter = importFilter('trusted');

@@ -2,8 +2,8 @@
  * FotosManifest access helper -- create, populate, and grant access.
  *
  * Mirrors the glue-manifest-access.ts pattern from connection.core.
- * The manifest has a fixed identity (id: 'fotos') so all instances share
- * the same deterministic idHash. Sharing grants the manifest root and the
+ * Legacy accounts retain id 'fotos'; admitted native owners use an owner-scoped
+ * deterministic root. Sharing grants the manifest root and the
  * current Fotos-owned content object roots referenced by the manifest.
  */
 
@@ -33,12 +33,35 @@ import { getInstanceOwnerIdHash } from '@refinio/one.core/lib/instance.js';
 import { getObject } from '@refinio/one.core/lib/storage-unversioned-objects.js';
 import { calculateIdHashOfObj } from '@refinio/one.core/lib/util/object.js';
 import { mergeFotosManifestState } from './fotosManifestMerge.js';
+import {getOwnedFotosManifestId} from '../../../../fotos.core/src/owned-fotos-manifest.js';
 
 // Cached idHash for the singleton manifest (calculated once, deterministic)
 let cachedManifestIdHash: SHA256IdHash<FotosManifest> | null = null;
+let nativeOwnerContext: string | null = null;
 let fotosManifestConvergenceRefs = 0;
 let stopFotosManifestConvergence: (() => void) | null = null;
 const grantedFotosPeersByRootIdHash = new Map<string, Set<string>>();
+
+/** Select a native library only after boot has verified admission and exact local custody. */
+export function setFotosNativeOwnerContext(owner: string | null): void {
+    if (owner !== null) {
+        getOwnedFotosManifestId(owner);
+        if (getInstanceOwnerIdHash() !== owner) throw new Error('Native Fotos context differs from the active owner');
+    }
+    nativeOwnerContext = owner;
+    cachedManifestIdHash = null;
+    grantedFotosPeersByRootIdHash.clear();
+}
+
+/** Return boot-fed native admission, never infer it from publication identity equality. */
+export function getFotosNativeOwnerContext(): string | null { return nativeOwnerContext; }
+
+/** Preserve the legacy namespace unless native boot explicitly selected its admitted owner. */
+function selectedManifestId(): string {
+    if (!nativeOwnerContext) return 'fotos';
+    if (getInstanceOwnerIdHash() !== nativeOwnerContext) throw new Error('Native Fotos context no longer owns the active store');
+    return getOwnedFotosManifestId(nativeOwnerContext);
+}
 
 export function resetFotosManifestGrantStateForTests(): void {
     grantedFotosPeersByRootIdHash.clear();
@@ -85,18 +108,49 @@ export interface FotosManifestResolvedAuthenticityAttestation {
  * Cached after first calculation since it never changes.
  */
 async function getManifestIdHash(): Promise<SHA256IdHash<FotosManifest>> {
+    const id = selectedManifestId();
     if (cachedManifestIdHash) {
         return cachedManifestIdHash;
     }
 
-    cachedManifestIdHash = await calculateIdHashOfObj({
+    const idHash = await calculateIdHashOfObj({
         $type$: 'FotosManifest',
-        id: 'fotos',
+        id,
         entries: new Set(),
         authenticityAttestations: new Set(),
     } as any) as SHA256IdHash<FotosManifest>;
+    if (selectedManifestId() !== id) throw new Error('Fotos library context changed while resolving its root');
+    cachedManifestIdHash = idHash;
+    return idHash;
+}
 
-    return cachedManifestIdHash;
+/** Restore only exact entry references in the admitted native owner's accepted root. */
+export async function readNativeOwnedFotosEntries(owner: string): Promise<FotosEntry[]> {
+    if (!nativeOwnerContext) return [];
+    if (owner !== nativeOwnerContext) throw new Error('Native Fotos reader does not match its admitted owner');
+    const id = selectedManifestId();
+    let manifest: FotosManifest;
+    try {
+        manifest = (await getObjectByIdHash(await getManifestIdHash())).obj as unknown as FotosManifest;
+    } catch (error) {
+        if (error instanceof Error && error.name === 'FileNotFoundError') return [];
+        throw error;
+    }
+    if (manifest.$type$ !== 'FotosManifest' || manifest.id !== id || !(manifest.entries instanceof Set)) {
+        throw new Error('Malformed native owned Fotos manifest');
+    }
+    const entries: FotosEntry[] = [];
+    for (const hash of manifest.entries) {
+        if (typeof hash !== 'string' || !/^[a-f0-9]{64}$/.test(hash)) throw new Error('Malformed native Fotos entry reference');
+        const entry = await getObject(hash);
+        if (entry.$type$ !== 'FotosEntry' || !/^[a-f0-9]{64}$/.test(entry.contentHash)
+            || typeof entry.mime !== 'string' || !Number.isSafeInteger(entry.size) || entry.size < 0) {
+            throw new Error('Malformed native owned Fotos entry');
+        }
+        entries.push(entry);
+    }
+    if (selectedManifestId() !== id) throw new Error('Fotos library context changed while reading its entries');
+    return entries;
 }
 
 async function resolveManifestContentHashes(
@@ -331,7 +385,8 @@ export async function readFotosManifestSnapshot(): Promise<FotosManifestSnapshot
             existing.obj as unknown as FotosManifest,
             String(existing.hash),
         );
-    } catch {
+    } catch (error) {
+        if (!(error instanceof Error) || error.name !== 'FileNotFoundError') throw error;
         return await toManifestSnapshot(manifestIdHash, null, null);
     }
 }
@@ -345,7 +400,7 @@ export function listenForFotosManifestUpdates(
         }
 
         const manifest = result.obj as unknown as FotosManifest;
-        if (manifest.id !== 'fotos') {
+        if (manifest.id !== selectedManifestId()) {
             return;
         }
 
@@ -361,8 +416,12 @@ async function convergeImportedManifest(
     manifest: FotosManifest,
     incomingHash: string | null,
 ): Promise<void> {
+    const id = selectedManifestId();
     const manifestIdHash = await getManifestIdHash();
-    const existing = await getObjectByIdHash(manifestIdHash).catch(() => null);
+    const existing = await getObjectByIdHash(manifestIdHash).catch(error => {
+        if (error instanceof Error && error.name === 'FileNotFoundError') return null;
+        throw error;
+    });
     if (incomingHash && existing?.hash && String(existing.hash) === incomingHash) {
         return;
     }
@@ -375,10 +434,11 @@ async function convergeImportedManifest(
     if (!merged.changed) {
         return;
     }
+    if (selectedManifestId() !== id) throw new Error('Fotos library context changed before manifest convergence');
 
     await storeVersionedObject({
         $type$: 'FotosManifest',
-        id: 'fotos',
+        id,
         entries: merged.entries,
         authenticityAttestations: merged.authenticityAttestations,
     } as any);
@@ -402,7 +462,7 @@ export function retainFotosManifestConvergence(): () => void {
             }
 
             const manifest = result.obj as unknown as FotosManifest;
-            if (manifest.id !== 'fotos') {
+            if (manifest.id !== selectedManifestId()) {
                 return;
             }
 
@@ -433,16 +493,19 @@ export function retainFotosManifestConvergence(): () => void {
  * @returns The idHash of the FotosManifest singleton
  */
 export async function ensureFotosManifest(): Promise<SHA256IdHash<FotosManifest>> {
+    const id = selectedManifestId();
     const manifestIdHash = await getManifestIdHash();
 
     try {
         await getObjectByIdHash(manifestIdHash);
         console.log('[fotos-manifest] Manifest exists');
-    } catch {
+    } catch (error) {
+        if (!(error instanceof Error) || error.name !== 'FileNotFoundError') throw error;
+        if (selectedManifestId() !== id) throw new Error('Fotos library context changed before manifest creation');
         console.log('[fotos-manifest] Manifest does not exist — creating empty one');
         await storeVersionedObject({
             $type$: 'FotosManifest',
-            id: 'fotos',
+            id,
             entries: new Set(),
             authenticityAttestations: new Set(),
         } as any);
@@ -485,10 +548,11 @@ export async function addEntryToManifest(entryHash: SHA256Hash<FotosEntry>): Pro
     ) {
         return;
     }
+    if (selectedManifestId() !== manifest.id) throw new Error('Fotos library context changed before entry publication');
 
     const storedManifest = await storeVersionedObject({
         $type$: 'FotosManifest',
-        id: 'fotos',
+        id: manifest.id,
         entries,
         authenticityAttestations,
     } as any);
@@ -515,10 +579,11 @@ export async function addAuthenticityAttestationToManifest(
     }
 
     authenticityAttestations.add(attestationHash);
+    if (selectedManifestId() !== manifest.id) throw new Error('Fotos library context changed before attestation publication');
 
     const storedManifest = await storeVersionedObject({
         $type$: 'FotosManifest',
-        id: 'fotos',
+        id: manifest.id,
         entries,
         authenticityAttestations,
     } as any);
@@ -560,14 +625,16 @@ export async function grantFotosAccess(remotePersonId: SHA256IdHash<Person>): Pr
     console.log(`[fotos-manifest] IdAccess granted, contentRoots=${contentGrantCount}`);
 }
 
-/** Retire pre-certificate gallery grants while leaving already exported copies intact. */
+/** Retire external gallery grants while retaining the owner's IoM library root. */
 export async function revokeLegacyFotosManifestAccess(): Promise<void> {
+    const owner = getInstanceOwnerIdHash();
+    if (!owner) throw new Error('An active owner is required for Fotos library access');
     const manifestIdHash = await ensureFotosManifest();
     const currentManifestVersion = await getObjectByIdHash(manifestIdHash);
     await createAccess([
         {
             id: manifestIdHash,
-            person: [],
+            person: [owner],
             hashGroup: [],
             mode: SET_ACCESS_MODE.REPLACE,
         },

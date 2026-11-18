@@ -1,11 +1,24 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
+import { createFotosEnrollmentFixture } from './fotosGlueEnrollment.test-fixture.js';
 
 const runtime = vi.hoisted(() => ({
   instanceId: undefined as string | undefined,
   syncEnabled: false,
+  ownerId: 'owner',
+  settingsValues: {} as Record<string, unknown>,
+  updateSettings: vi.fn(),
   order: [] as string[],
   credentials: vi.fn(),
   login: vi.fn(),
+  nativeLogin: vi.fn(),
+  register: vi.fn(),
+  exists: vi.fn(),
+  validateKeys: vi.fn(),
+  verifyReceipt: vi.fn(),
+  installEnrollment: vi.fn(),
+  assertCustody: vi.fn(),
+  nativeManifestOwner: vi.fn(),
+  markInstalled: vi.fn(),
   logout: vi.fn(),
   prepareTrustStorage: vi.fn(),
   init: vi.fn(),
@@ -14,6 +27,16 @@ const runtime = vi.hoisted(() => ({
   constructed: vi.fn(),
   glueModule: null as {publishOwnPresence: boolean} | null,
 }));
+
+vi.mock('@glueone/auth.core', async importOriginal => ({
+  ...await importOriginal<typeof import('@glueone/auth.core')>(),
+  glueEnrollmentInstanceKeyPairs: runtime.validateKeys,
+  verifyGlueEnrollmentReceipt: runtime.verifyReceipt,
+  installNativeGlueEnrollment: runtime.installEnrollment,
+  assertNativeGlueEnrollmentCustody: runtime.assertCustody,
+}));
+vi.mock('./fotosBootCreds.js', () => ({ markFotosNativeGlueEnrollmentInstalled: runtime.markInstalled }));
+vi.mock('./fotos-manifest.js', () => ({setFotosNativeOwnerContext: runtime.nativeManifestOwner}));
 
 vi.mock('@refinio/one.models/lib/models/Authenticator/MultiUser.js', () => ({
   default: class {
@@ -24,6 +47,16 @@ vi.mock('@refinio/one.models/lib/models/Authenticator/MultiUser.js', () => ({
       await runtime.login();
       this.authState.currentState = 'logged_in';
     }
+    async login(...args: unknown[]) {
+      runtime.instanceId = 'instance';
+      await runtime.nativeLogin(...args);
+      this.authState.currentState = 'logged_in';
+    }
+    async registerWithIdentityKeys(...args: unknown[]) {
+      runtime.instanceId = 'instance';
+      await runtime.register(...args);
+      this.authState.currentState = 'logged_in';
+    }
     async logout() {
       await runtime.logout();
       runtime.order.push('storage-close');
@@ -32,8 +65,9 @@ vi.mock('@refinio/one.models/lib/models/Authenticator/MultiUser.js', () => ({
   },
 }));
 vi.mock('@refinio/one.core/lib/instance.js', () => ({
+  instanceExists: runtime.exists,
   getInstanceIdHash: () => runtime.instanceId,
-  getInstanceOwnerIdHash: () => 'owner',
+  getInstanceOwnerIdHash: () => runtime.ownerId,
   closeInstance: () => {
     runtime.order.push('storage-close');
     runtime.instanceId = undefined;
@@ -87,12 +121,22 @@ vi.mock('@refinio/settings.devices', () => ({registerDeviceSettings() {}}));
 vi.mock('@refinio/device.core', () => ({createLocalDevicesPlan: async () => ({})}));
 vi.mock('@refinio/settings.core', () => ({
   InstanceSettingsStorage: class {},
-  SettingsPlan: class { async getSection() { return {values: {syncEnabled: runtime.syncEnabled}}; } },
+  SettingsPlan: class {
+    async getSection() { return {values: {syncEnabled: runtime.syncEnabled, ...runtime.settingsValues}}; }
+    async updateSection(request: {values: Record<string, unknown>}) {
+      await runtime.updateSettings(request);
+      runtime.settingsValues = {...runtime.settingsValues, ...request.values};
+      runtime.syncEnabled = runtime.settingsValues.syncEnabled === true;
+    }
+  },
   registerRefinioSettings() {},
   registerSubscriptionSettings() {},
   registerGlueSettings() {},
 }));
-vi.mock('./glueIdentityState.js', () => ({resolveGluePublicationIdentity: () => runtime.syncEnabled ? 'publication' : null}));
+vi.mock('./glueIdentityState.js', async importOriginal => ({
+  ...await importOriginal<typeof import('./glueIdentityState.js')>(),
+  resolveGluePublicationIdentity: (values: Record<string, unknown>) => values.publicationIdentity ?? (runtime.syncEnabled ? 'publication' : null),
+}));
 vi.mock('./fotosHistorySettings.js', () => ({registerFotosHistorySettings() {}}));
 vi.mock('./fotosSettings.js', () => ({registerFotosSettings() {}}));
 vi.mock('./fotosSyncRules.js', () => ({fotosContentRules: []}));
@@ -113,9 +157,20 @@ describe('Fotos runtime ownership', () => {
     runtime.order = [];
     runtime.instanceId = undefined;
     runtime.syncEnabled = false;
+    runtime.ownerId = 'owner';
+    runtime.settingsValues = {};
+    runtime.updateSettings.mockResolvedValue(undefined);
     runtime.glueModule = null;
     runtime.credentials.mockResolvedValue({creds: {email: 'visitor@fotos.one', secret: 'local-secret', instanceName: 'visitor'}});
     runtime.login.mockResolvedValue(undefined);
+    runtime.nativeLogin.mockResolvedValue(undefined);
+    runtime.register.mockResolvedValue(undefined);
+    runtime.exists.mockResolvedValue(false);
+    runtime.validateKeys.mockReturnValue({});
+    runtime.verifyReceipt.mockResolvedValue(undefined);
+    runtime.installEnrollment.mockResolvedValue(undefined);
+    runtime.assertCustody.mockResolvedValue(undefined);
+    runtime.markInstalled.mockResolvedValue(undefined);
     runtime.logout.mockResolvedValue(undefined);
     runtime.prepareTrustStorage.mockResolvedValue({changed: false});
     runtime.init.mockResolvedValue(undefined);
@@ -129,12 +184,94 @@ describe('Fotos runtime ownership', () => {
     vi.unstubAllGlobals();
   });
 
+  it('registers canonical native keys and installs authority before starting the service graph', async () => {
+    const receipt = await createFotosEnrollmentFixture();
+    runtime.ownerId = receipt.personId;
+    runtime.credentials.mockResolvedValue({creds: receipt.creds, accountId: `glue-native-${receipt.instanceId}`,
+      nativeEnrollment: receipt, nativeEnrollmentPendingInstall: true});
+    await bootFotosModel();
+    expect(runtime.register).toHaveBeenCalledWith(receipt.keys, receipt.creds);
+    expect(runtime.login).not.toHaveBeenCalled();
+    expect(runtime.updateSettings).toHaveBeenCalledWith(expect.objectContaining({moduleId: 'glue', values: expect.objectContaining({
+      syncEnabled: true, publicationIdentity: receipt.personId, glueDisplayName: receipt.identity,
+    })}));
+    expect(runtime.verifyReceipt.mock.invocationCallOrder[0]).toBeLessThan(runtime.register.mock.invocationCallOrder[0]);
+    expect(runtime.register.mock.invocationCallOrder[0]).toBeLessThan(runtime.installEnrollment.mock.invocationCallOrder[0]);
+    expect(runtime.installEnrollment.mock.invocationCallOrder[0]).toBeLessThan(runtime.updateSettings.mock.invocationCallOrder[0]);
+    expect(runtime.updateSettings.mock.invocationCallOrder[0]).toBeLessThan(runtime.markInstalled.mock.invocationCallOrder[0]);
+    expect(runtime.verifyReceipt.mock.calls[0][2].signal).toBeInstanceOf(AbortSignal);
+    expect(runtime.markInstalled.mock.invocationCallOrder[0]).toBeLessThan(runtime.init.mock.invocationCallOrder[0]);
+    expect(runtime.nativeManifestOwner).toHaveBeenCalledWith(receipt.personId);
+    expect(runtime.installEnrollment.mock.invocationCallOrder[0]).toBeLessThan(runtime.nativeManifestOwner.mock.invocationCallOrder[0]);
+    expect(runtime.nativeManifestOwner.mock.invocationCallOrder[0]).toBeLessThan(runtime.init.mock.invocationCallOrder[0]);
+  });
+
+  it('reopens admitted native owner and exact instance offline with custody checks', async () => {
+    const receipt = await createFotosEnrollmentFixture();
+    runtime.ownerId = receipt.personId;
+    runtime.exists.mockResolvedValue(true);
+    runtime.credentials.mockResolvedValue({creds: receipt.creds, nativeEnrollment: receipt, nativeEnrollmentPendingInstall: false});
+    await bootFotosModel();
+    expect(runtime.nativeLogin).toHaveBeenCalledWith(receipt.creds.email, receipt.creds.secret, receipt.creds.instanceName);
+    expect(runtime.assertCustody).toHaveBeenCalledWith(receipt);
+    expect(runtime.updateSettings).not.toHaveBeenCalled();
+    expect(runtime.verifyReceipt).not.toHaveBeenCalled();
+    expect(runtime.installEnrollment).not.toHaveBeenCalled();
+    expect(runtime.register).not.toHaveBeenCalled();
+    expect(runtime.assertCustody.mock.invocationCallOrder[0]).toBeLessThan(runtime.init.mock.invocationCallOrder[0]);
+    expect(runtime.nativeManifestOwner).toHaveBeenCalledWith(receipt.personId);
+    expect(runtime.assertCustody.mock.invocationCallOrder[0]).toBeLessThan(runtime.nativeManifestOwner.mock.invocationCallOrder[0]);
+  });
+
+  it('completes interrupted native authority admission before starting transports', async () => {
+    const receipt = await createFotosEnrollmentFixture();
+    runtime.ownerId = receipt.personId;
+    runtime.exists.mockResolvedValue(true);
+    runtime.credentials.mockResolvedValue({creds: receipt.creds, accountId: 'saved-account', nativeEnrollment: receipt, nativeEnrollmentPendingInstall: true});
+    await bootFotosModel();
+    expect(runtime.register).not.toHaveBeenCalled();
+    expect(runtime.installEnrollment).toHaveBeenCalledWith(receipt);
+    expect(runtime.markInstalled).toHaveBeenCalledWith('saved-account', receipt);
+  });
+
+  it('rejects a saved native custody mismatch before initializing modules', async () => {
+    const receipt = await createFotosEnrollmentFixture();
+    runtime.ownerId = receipt.personId;
+    runtime.exists.mockResolvedValue(true);
+    runtime.credentials.mockResolvedValue({creds: receipt.creds, nativeEnrollment: receipt, nativeEnrollmentPendingInstall: false});
+    runtime.assertCustody.mockRejectedValueOnce(new Error('Native private key custody mismatch'));
+    await expect(bootFotosModel()).rejects.toThrow('Native private key custody mismatch');
+    expect(runtime.init).not.toHaveBeenCalled();
+    expect(runtime.installEnrollment).not.toHaveBeenCalled();
+  });
+
+  it('keeps admission pending and transports stopped when native installation fails', async () => {
+    const receipt = await createFotosEnrollmentFixture();
+    runtime.ownerId = receipt.personId;
+    runtime.credentials.mockResolvedValue({creds: receipt.creds, accountId: 'native-account', nativeEnrollment: receipt, nativeEnrollmentPendingInstall: true});
+    runtime.installEnrollment.mockRejectedValueOnce(new Error('authority installation failed'));
+    await expect(bootFotosModel()).rejects.toThrow('authority installation failed');
+    expect(runtime.markInstalled).not.toHaveBeenCalled();
+    expect(runtime.init).not.toHaveBeenCalled();
+  });
+
+  it('does not create a store when a fresh receipt fails authority verification', async () => {
+    const receipt = await createFotosEnrollmentFixture();
+    runtime.ownerId = receipt.personId;
+    runtime.credentials.mockResolvedValue({creds: receipt.creds, nativeEnrollment: receipt, nativeEnrollmentPendingInstall: true});
+    runtime.verifyReceipt.mockRejectedValueOnce(new Error('Enrollment Person mismatch'));
+    await expect(bootFotosModel()).rejects.toThrow('Enrollment Person mismatch');
+    expect(runtime.register).not.toHaveBeenCalled();
+    expect(runtime.init).not.toHaveBeenCalled();
+  });
+
   it('can retry credential resolution without opening a replacement runtime', async () => {
     const failure = new Error('vault unavailable');
     runtime.credentials.mockRejectedValueOnce(failure);
     await expect(bootFotosModel()).rejects.toBe(failure);
     expect(runtime.constructed).not.toHaveBeenCalled();
     await expect(bootFotosModel()).resolves.toMatchObject({initialized: true});
+    expect(runtime.nativeManifestOwner).toHaveBeenLastCalledWith(null);
   });
 
   it('closes storage acquired by a failed login before allowing retry', async () => {

@@ -14,11 +14,10 @@ export {
 
 export async function sha256Hex(data: ArrayBuffer | ArrayBufferView): Promise<string> {
     const hash = createHash('sha256');
-    if (data instanceof ArrayBuffer) {
-        hash.update(Buffer.from(data));
-    } else {
-        hash.update(Buffer.from(data.buffer, data.byteOffset, data.byteLength));
-    }
+    const bytes = data instanceof ArrayBuffer
+        ? new Uint8Array(data)
+        : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    hash.update(bytes);
     return hash.digest('hex');
 }
 

@@ -137,6 +137,7 @@ export {
     listFotosFaceGroups,
 } from './fotos-catalog.js';
 export {FotosCatalogTrie} from './fotos-catalog-trie.js';
+export {getOwnedFotosManifestId} from './owned-fotos-manifest.js';
 export {FOTOS_BUNDLE_MANIFEST, createFotosBundleManifest} from './fotos-bundle.js';
 export {
     makeFotosDeviceBookId,

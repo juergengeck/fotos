@@ -48,6 +48,7 @@ function makeHandlers(): FotosQaOperationHandlers {
             personIds: ['bob'],
             transitions: [{personId: 'bob', status: 'active' as const}],
         })),
+        createDeviceEnrollmentInvitation: vi.fn(async () => ({url: 'https://example.test/app/invites/inviteDevice'})),
         createPairingInvitation: vi.fn(async () => ({
             token: 'token',
             publicKey: 'a'.repeat(64) as any,

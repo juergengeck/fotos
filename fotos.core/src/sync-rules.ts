@@ -1,11 +1,13 @@
 import { contentRules } from '@refinio/sync.core/rules/default-rules.js';
 import type { TrustLevel } from '@refinio/trust.core/types/trust-types.js';
+import type {PeerTrustFact} from '@refinio/sync.core/types/sync-types.js';
 import {
     buildFotosShareCertificateId,
     buildFotosShareCertificateChainId,
     buildFotosShareManifestId,
 } from './share-model.js';
 import { buildFotosSharePinProofId } from './share-pin-proof.js';
+import {getOwnedFotosManifestId} from './owned-fotos-manifest.js';
 
 type SyncRule = typeof contentRules extends Map<string, infer Value> ? Value : never;
 
@@ -34,6 +36,9 @@ const FOTOS_SHARE_SCOPE_KINDS = new Set(['gallery', 'collection', 'person']);
 
 interface SyncContextLike {
     peerTrustLevel: TrustLevel;
+    remotePersonId?: string;
+    peerTrust?: PeerTrustFact;
+    objectKind?: 'object' | 'id';
 }
 
 type ImportedObject = Record<string, unknown>;
@@ -172,16 +177,22 @@ export function canImportFotosManifest(context: SyncContextLike, obj?: object): 
     }
 
     const manifest = obj as ImportedObject;
+    // Scoped libraries belong only to an authenticated same-Person lane. An IoM
+    // trust-level promotion alone is not the owner's accepted reflexive fact.
+    const remote = context.remotePersonId;
+    const isOwnScopedRoot = context.peerTrustLevel === 'me' && context.peerTrust?.kind === 'self'
+        && context.peerTrust.ownerId === remote && typeof remote === 'string' && /^[a-f0-9]{64}$/.test(remote)
+        && manifest.id === getOwnedFotosManifestId(remote);
+    if (manifest.id !== 'fotos' && !isOwnScopedRoot) return false;
     if (isIdOnlyObject(manifest, new Set(['$type$', 'id']), 'id', MAX_PATH_LENGTH)) {
-        return manifest.id === 'fotos';
+        return manifest.id === 'fotos' || context.objectKind === 'id';
     }
 
-    return manifest.id === 'fotos'
-        && isStringSetWithinBounds(
-            manifest.entries,
-            MAX_FOTOS_MANIFEST_ENTRIES,
-            MAX_REFERENCE_LENGTH,
-        )
+    return isStringSetWithinBounds(
+        manifest.entries,
+        MAX_FOTOS_MANIFEST_ENTRIES,
+        MAX_REFERENCE_LENGTH,
+    )
         && (
             manifest.authenticityAttestations === undefined
             || isStringSetWithinBounds(

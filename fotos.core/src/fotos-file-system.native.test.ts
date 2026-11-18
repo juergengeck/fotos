@@ -1,0 +1,129 @@
+import '@refinio/one.core/lib/system/load-nodejs.js';
+import {afterAll, beforeAll, describe, expect, it, vi} from 'vitest';
+import {mkdtemp, rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {closeInstance, getInstanceOwnerIdHash, initInstance} from '@refinio/one.core/lib/instance.js';
+import {resetBaseDirOrName} from '@refinio/one.core/lib/system/storage-base.js';
+import {createAccess} from '@refinio/one.core/lib/access.js';
+import {SET_ACCESS_MODE} from '@refinio/one.core/lib/storage-base-common.js';
+import {beginAccessManagerChumSession, endAccessManagerChumSession, getAccessibleRootHashes, getChildren,
+    isAccessibleBy} from '@refinio/one.core/lib/accessManager.js';
+import {getObjectByIdHash} from '@refinio/one.core/lib/storage-versioned-objects.js';
+import {getObject} from '@refinio/one.core/lib/storage-unversioned-objects.js';
+import {readBlobAsArrayBuffer} from '@refinio/one.core/lib/storage-blob.js';
+import {calculateIdHashOfObj} from '@refinio/one.core/lib/util/object.js';
+import type {Person} from '@refinio/one.core/lib/recipes.js';
+import type {SHA256Hash, SHA256IdHash} from '@refinio/one.core/lib/util/type-checks.js';
+import {FotosRecipes} from './recipes/FotosRecipes.js';
+import {FotosFileSystem, getOwnedFotosManifestId, type FotosThumbnailAdapter} from './fotos-file-system.js';
+
+// A real one-pixel JPEG, generated with an image decoder; not original bytes relabeled as a thumbnail.
+const JPEG = Buffer.from('/9j/4AAQSkZJRgABAQAASABIAAD/4QCARXhpZgAATU0AKgAAAAgABAEaAAUAAAABAAAAPgEbAAUAAAABAAAARgEoAAMAAAABAAIAAIdpAAQAAAABAAAATgAAAAAAAABIAAAAAQAAAEgAAAABAAOgAQADAAAAAQABAACgAgAEAAAAAQAAAAGgAwAEAAAAAQAAAAEAAAAA/+0AOFBob3Rvc2hvcCAzLjAAOEJJTQQEAAAAAAAAOEJJTQQlAAAAAAAQ1B2M2Y8AsgTpgAmY7PhCfv/AABEIAAEAAQMBIgACEQEDEQH/xAAfAAABBQEBAQEBAQAAAAAAAAAAAQIDBAUGBwgJCgv/xAC1EAACAQMDAgQDBQUEBAAAAX0BAgMABBEFEiExQQYTUWEHInEUMoGRoQgjQrHBFVLR8CQzYnKCCQoWFxgZGiUmJygpKjQ1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4eLj5OXm5+jp6vHy8/T19vf4+fr/xAAfAQADAQEBAQEBAQEBAAAAAAAAAQIDBAUGBwgJCgv/xAC1EQACAQIEBAMEBwUEBAABAncAAQIDEQQFITEGEkFRB2FxEyIygQgUQpGhscEJIzNS8BVictEKFiQ04SXxFxgZGiYnKCkqNTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqCg4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2dri4+Tl5ufo6ery8/T19vf4+fr/2wBDAAICAgICAgMCAgMFAwMDBQYFBQUFBggGBgYGBggKCAgICAgICgoKCgoKCgoMDAwMDAwODg4ODg8PDw8PDw8PDw//2wBDAQICAgQEBAcEBAcQCwkLEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBD/3QAEAAH/2gAMAwEAAhEDEQA/APuyiiiviz+mD//Z', 'base64');
+const ORIGINAL = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64');
+/** Copy fixture bytes into an ordinary ArrayBuffer. */
+function buffer(bytes: Uint8Array): ArrayBuffer { return Uint8Array.from(bytes).buffer; }
+
+describe('Fotos filesystem thumbnail publication on native ONE', () => {
+    let directory: string;
+    beforeAll(async () => {
+        directory = await mkdtemp(join(tmpdir(), 'fotos-thumbnail-publication-'));
+        await initInstance({directory, name: 'fotos-thumbnail-test', email: 'fotos-thumbnail@test.invalid',
+            secret: 'test-secret', encryptStorage: false, initialRecipes: FotosRecipes});
+    }, 30_000);
+    afterAll(async () => {
+        closeInstance(); resetBaseDirOrName();
+        await rm(directory, {recursive: true, force: true});
+    });
+
+    it('publishes exact original and thumbnail bytes with acquisition and owner-only access through the scoped root', async () => {
+        const createThumbnail = vi.fn<FotosThumbnailAdapter>(async () => buffer(JPEG));
+        const owner = getInstanceOwnerIdHash()!;
+        const fs = new FotosFileSystem(getOwnedFotosManifestId(owner), true, undefined, createThumbnail);
+        const rootId = await fs.getRootId();
+        expect(rootId).not.toBe(await new FotosFileSystem('fotos').getRootId());
+        expect(rootId).not.toBe(await new FotosFileSystem(getOwnedFotosManifestId('b'.repeat(64))).getRootId());
+        // Identical to native composition: establish the owner grant before the root exists.
+        await createAccess([{id: rootId, person: [owner], hashGroup: [], mode: SET_ACCESS_MODE.ADD}]);
+        await fs.init();
+        const beforeImport = await fs.stat('/');
+        expect(beforeImport.mode).toBe(0o040755);
+        expect(beforeImport.canAddChildren).toBe(true);
+        const readOnlyView = new FotosFileSystem(getOwnedFotosManifestId(owner));
+        const readOnlyRoot = await readOnlyView.stat('/');
+        expect(readOnlyRoot.mode).toBe(0o040555);
+        expect(readOnlyRoot.canAddChildren).toBe(false);
+        expect(readOnlyRoot.contentHash).toBe(beforeImport.contentHash);
+        expect(readOnlyRoot.metadataHash).not.toBe(beforeImport.metadataHash);
+        await fs.importFile('original.png', buffer(ORIGINAL));
+        const afterImport = await fs.stat('/');
+        expect(afterImport.mode).toBe(0o040755);
+        expect(afterImport.canAddChildren).toBe(true);
+        expect(afterImport.contentHash).not.toBe(beforeImport.contentHash);
+        expect(afterImport.metadataHash).not.toBe(beforeImport.metadataHash);
+        const immutableOriginal = await fs.stat('/original.png');
+        expect(immutableOriginal.mode).toBe(0o100444);
+        expect(immutableOriginal.canAddChildren).toBe(false);
+        await expect(readOnlyView.importFile('forbidden.png', buffer(ORIGINAL))).rejects.toThrow('writable Fotos root');
+        expect(createThumbnail).toHaveBeenCalledWith(buffer(ORIGINAL), 'image/png');
+        const manifest = await getObjectByIdHash(rootId);
+        expect(manifest.obj.id).toBe(getOwnedFotosManifestId(owner));
+        const [entryHash] = [...manifest.obj.entries];
+        const entry = await getObject(entryHash);
+        expect(entry.thumb).toBeDefined();
+        expect(new Uint8Array(await readBlobAsArrayBuffer(entry.thumb!))).toEqual(new Uint8Array(JPEG));
+        expect(new Uint8Array((await fs.readFile('/original.png')).content)).toEqual(new Uint8Array(ORIGINAL));
+        const variants = await Promise.all([...entry.variants!].map(hash => getObject(hash)));
+        const original = variants.find(variant => variant.role === 'original')!;
+        const thumbnail = variants.find(variant => variant.role === 'thumbnail')!;
+        expect(variants).toHaveLength(2);
+        expect(thumbnail).toMatchObject({mime: 'image/jpeg', width: 1, height: 1, byteSize: JPEG.length, blob: entry.thumb,
+            derivedFrom: await calculateIdHashOfObj(original)});
+        const observation = await getObject([...entry.acquisitionObservations!][0]);
+        expect(observation.observer).toBe(owner);
+
+        const accessId = await calculateIdHashOfObj({$type$: 'IdAccess', id: rootId});
+        expect((await getObjectByIdHash(accessId)).obj).toMatchObject({person: [owner], hashGroup: []});
+        const stranger = 'ab'.repeat(32) as SHA256IdHash<Person>;
+        beginAccessManagerChumSession(owner); beginAccessManagerChumSession(stranger);
+        try {
+            await getAccessibleRootHashes(owner);
+            const queue: SHA256Hash[] = [manifest.hash];
+            const visited = new Set<string>();
+            // Exercise canonical authorization edge by edge, with a strict bound on this fixture's DAG.
+            while (queue.length > 0) {
+                const hash = queue.shift()!;
+                if (visited.has(hash)) continue;
+                if (visited.size >= 64) throw new Error('Unexpectedly large fixture media graph');
+                visited.add(hash);
+                expect(await isAccessibleBy(owner, hash)).toBe(true);
+                for (const child of await getChildren(owner, hash)) {
+                    if (child.type === 'object') queue.push(child.hash as SHA256Hash);
+                }
+            }
+            expect(await isAccessibleBy(owner, original.blob!)).toBe(true);
+            expect(await isAccessibleBy(owner, entry.thumb!)).toBe(true);
+            await getAccessibleRootHashes(stranger);
+            expect(await isAccessibleBy(stranger, manifest.hash)).toBe(false);
+            expect(await isAccessibleBy(stranger, original.blob!)).toBe(false);
+            expect(await isAccessibleBy(stranger, entry.thumb!)).toBe(false);
+        } finally {endAccessManagerChumSession(owner); endAccessManagerChumSession(stranger);}
+    });
+
+    it.each(['failed', 'empty', 'oversized', 'missing'] as const)('leaves the manifest unchanged when the adapter returns %s output', async kind => {
+        const adapter: FotosThumbnailAdapter = async () => {
+            if (kind === 'failed') throw new Error('Decoder failed');
+            if (kind === 'empty') return new ArrayBuffer(0);
+            if (kind === 'missing') return undefined as never;
+            const bytes = Uint8Array.from(JPEG);
+            const frame = bytes.findIndex((value, index) => value === 0xff && bytes[index + 1] === 0xc0);
+            bytes[frame + 7] = 2; bytes[frame + 8] = 1;
+            return bytes.buffer;
+        };
+        const fs = new FotosFileSystem(getOwnedFotosManifestId(getInstanceOwnerIdHash()!), true, undefined, adapter);
+        const before = await getObjectByIdHash(await fs.getRootId());
+        const changed = Uint8Array.from(ORIGINAL); changed[changed.length - 1] ^= kind.length;
+        await expect(fs.importFile(`${kind}.png`, changed.buffer)).rejects.toThrow();
+        expect((await getObjectByIdHash(await fs.getRootId())).hash).toBe(before.hash);
+    });
+});

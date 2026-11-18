@@ -9,6 +9,7 @@ import {
     getGallerySurfaceProfile,
     planGalleryIntake,
 } from '@refinio/fotos.core';
+import {readFotosOriginal} from '@refinio/fotos.core/filesystem';
 import type {
     FaceAnalysisResult,
     FaceClusterInfo,
@@ -604,7 +605,7 @@ async function materializeRemoteFotosEntry(
         await calculateIdHashOfObj(entry as any) as SHA256IdHash<FotosEntry>,
     );
     const cacheEntries: Array<[key: string, url: string]> = [];
-    const remoteSourceKey = thumbUrl ? `remote:${entry.contentHash}` : undefined;
+    const remoteSourceKey = `remote:${entry.contentHash}`;
 
     if (thumbUrl && remoteSourceKey) {
         cacheEntries.push([remoteSourceKey, thumbUrl]);
@@ -626,10 +627,10 @@ async function materializeRemoteFotosEntry(
             hash: entry.contentHash,
             name: remoteName,
             managed: 'metadata',
-            ...(remoteSourceKey ? { sourcePath: remoteSourceKey } : {}),
+            sourcePath: remoteSourceKey,
             ...(folderPath ? { folderPath } : {}),
             ...(entry.mime ? { mimeType: entry.mime } : {}),
-            ...(remoteSourceKey ? { thumb: remoteSourceKey } : {}),
+            ...(thumbUrl ? { thumb: remoteSourceKey } : {}),
             tags: folderPath ? [folderPath.split('/')[0]!] : [],
             capturedAt,
             updatedAt,
@@ -1683,6 +1684,8 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     const clusterDimRef = useRef<FaceClusterDimension | null>(null);
     const clusterThresholdRef = useRef<number | null>(null);
     const previousAllowsLocalFaceEnrichmentRef = useRef(allowsLocalFaceEnrichment);
+    // Exact admitted snapshots feed original reads; version heads may arrive later.
+    const remoteOriginalEntriesRef = useRef<Map<string, FotosEntry>>(new Map());
     const managedFolders = useMemo<ManagedFolder[]>(() => folders.map(folder => ({
         id: folder.id,
         name: folder.label,
@@ -1795,8 +1798,10 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
 
     // Both initial manifest projection and live imports use the same materializer.
     const receiveFotosEntry = useCallback(async (entry: FotosEntry) => {
+        if (!/^[a-f0-9]{64}$/.test(entry.contentHash)) throw new Error('Invalid received Fotos content hash');
         const rootHandle = rootHandleRef.current;
         const materialized = await materializeRemoteFotosEntry(entry);
+        remoteOriginalEntriesRef.current.set(`remote:${entry.contentHash}`, entry);
         let shouldKeepRemoteAssets = false;
         let shouldOpenRemoteGallery = false;
         let shouldWriteFilesystemFaces = false;
@@ -2938,6 +2943,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             setEntries(folderRemaining);
         }
 
+        remoteOriginalEntriesRef.current.delete(`remote:${removedPhoto.hash}`);
         const cachedKeys = [
             removedPhoto.sourcePath,
             removedPhoto.thumb,
@@ -3186,6 +3192,16 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     }, [findFolderForEntry, findFolderForPath]);
 
     const readFile = useCallback(async (relativePath: string): Promise<File> => {
+        if (relativePath.startsWith('remote:')) {
+            const match = /^remote:([a-f0-9]{64})$/.exec(relativePath);
+            if (!match) throw new Error('Invalid remote Fotos source path');
+            const entry = remoteOriginalEntriesRef.current.get(relativePath);
+            if (!entry || entry.contentHash !== match[1]) throw new Error('Remote Fotos original has no matching admitted entry');
+            const name = basenameFromPath(entry.sourcePath);
+            if (!name || !entry.mime?.trim()) throw new Error('Remote Fotos original metadata is missing its filename or MIME type');
+            const {content} = await readFotosOriginal(entry);
+            return new File([content], name, {type: entry.mime});
+        }
         const handle = findFolderForPath(relativePath)?.handle ?? rootHandleRef.current;
         if (!handle) throw new Error('No folder open');
         return readFileFromHandle(handle, relativePath);
