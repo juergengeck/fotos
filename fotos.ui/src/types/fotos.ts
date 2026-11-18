@@ -1,4 +1,5 @@
-import { DEFAULT_FOTOS_CONFIG, EMBEDDING_DIM } from '@refinio/fotos.core';
+import {DEFAULT_FOTOS_CONFIG} from '@refinio/fotos.core/catalog';
+import {EMBEDDING_DIM} from '@refinio/fotos.core/faces';
 
 export type StorageMode = 'reference' | 'metadata' | 'ingest';
 

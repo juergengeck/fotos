@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {EMBEDDING_DIM} from '@refinio/fotos.core';
+import {EMBEDDING_DIM} from '@refinio/fotos.core/faces';
 import type {PhotoEntry} from '../types/fotos.js';
 import {
     collectTagCounts,
