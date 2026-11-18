@@ -165,8 +165,14 @@ export class SharedFotosFileSystem {
       for (const entry of scope.entries) {
         if (!entry.sourcePath) failure(-22, 'Shared Fotos entry has no source path');
         const path = canonical(`${root}/${entry.sourcePath}`);
-        if (photos.some(photo => photo.path === path)) failure(-17, 'Conflicting paths in a shared Fotos collection');
-        photos.push({path, entry, hash: await this.hashEntry(entry)});
+        const hash = await this.hashEntry(entry);
+        const previous = photos.find(photo => photo.path === path);
+        if (previous) failure(-17, `Conflicting paths in a shared Fotos collection: ${JSON.stringify({
+          path, issuer: scope.issuer, scope: scope.scope, certificateIdHash: scope.certificateIdHash,
+          previous: {hash: previous.hash, contentHash: previous.entry.contentHash},
+          incoming: {hash, contentHash: entry.contentHash},
+        })}`);
+        photos.push({path, entry, hash});
         let parent = path.slice(0, path.lastIndexOf('/'));
         while (parent !== root) { directories.add(parent); parent = parent.slice(0, parent.lastIndexOf('/')); }
       }

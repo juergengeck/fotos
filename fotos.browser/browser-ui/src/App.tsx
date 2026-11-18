@@ -45,7 +45,6 @@ import {
 import { isSnapshotEqual, type FotosBreadcrumbSnapshot } from '@/lib/fotosHistorySettings';
 import {
     grantFotosAccess,
-    retainFotosManifestConvergence,
     revokeLegacyFotosManifestAccess,
     getFotosNativeOwnerContext,
     readNativeOwnedFotosEntries,
@@ -2581,14 +2580,6 @@ export function App({ fotosModel: initialModel }: AppProps) {
         return () => {
             fotosShareController.stop();
         };
-    }, [fotosModel?.initialized]);
-
-    useEffect(() => {
-        if (!fotosModel?.initialized) {
-            return;
-        }
-
-        return retainFotosManifestConvergence();
     }, [fotosModel?.initialized]);
 
     useEffect(() => {

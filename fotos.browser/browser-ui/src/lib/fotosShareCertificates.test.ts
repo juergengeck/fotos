@@ -44,6 +44,21 @@ function makeDeps() {
 describe('commitFotosShareScope', () => {
     beforeEach(() => resetFotosShareTraceForTests());
 
+    it('grants the scope identity and retires legacy exact snapshot access', async () => {
+        const {deps, setAccess} = makeDeps();
+        await commitFotosShareScope({
+            issuer: 'issuer' as any,
+            scope: {kind: 'collection', id: 'summer'},
+            previousPersonIds: ['ben'],
+            nextPersonIds: ['ben'],
+            entryHashes: ['entry-a' as any],
+        }, deps);
+        expect(setAccess).toHaveBeenCalledExactlyOnceWith([
+            {id: 'manifest-id', person: ['ben'], hashGroup: [], mode: SET_ACCESS_MODE.REPLACE},
+            {object: 'current-manifest-hash', person: [], hashGroup: [], mode: SET_ACCESS_MODE.REPLACE},
+        ]);
+    });
+
     it('publishes a newer revocation before replacing photo-root access', async () => {
         const {calls, deps, setAccess, storeVersioned} = makeDeps();
         const result = await commitFotosShareScope({

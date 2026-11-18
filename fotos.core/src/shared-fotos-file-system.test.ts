@@ -55,6 +55,20 @@ function code(error: unknown): number | undefined {
 }
 
 describe('SharedFotosFileSystem projection lifecycle', () => {
+    it('reports exact conflicting entry versions without hiding duplicate paths', async () => {
+        const previous = {...first, faceCount: 1};
+        const incoming = {...first, faceCount: 2};
+        const deps = dependencies(async () => active([previous, incoming]));
+        deps.hashEntry = async entry => `exact-entry-${entry.faceCount}`;
+        const fs = new SharedFotosFileSystem('subject', async () => true, deps);
+        const result = await fs.stat('/').catch(error => error);
+        expect(result.code).toBe(-17);
+        expect(result.message).toContain(`"path":"${collection}/first.png"`);
+        expect(result.message).toContain('"certificateIdHash":"certificate-id"');
+        expect(result.message).toContain('"previous":{"hash":"exact-entry-1","contentHash":"first-content"}');
+        expect(result.message).toContain('"incoming":{"hash":"exact-entry-2","contentHash":"first-content"}');
+    });
+
     it('shares one projection and verification across concurrent and sequential filesystem calls', async () => {
         const pending = deferred<any>();
         let projects = 0;

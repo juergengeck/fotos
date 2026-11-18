@@ -4,7 +4,7 @@
  * Mirrors the glue-manifest-access.ts pattern from connection.core.
  * Legacy accounts retain id 'fotos'; admitted native owners use an owner-scoped
  * deterministic root. Sharing grants the manifest root and the
- * current Fotos-owned content object roots referenced by the manifest.
+ * referenced content through ONE's identity-root traversal.
  */
 
 import type { SHA256Hash, SHA256IdHash } from '@refinio/one.core/lib/util/type-checks.js';
@@ -32,15 +32,11 @@ import {
 import { getInstanceOwnerIdHash } from '@refinio/one.core/lib/instance.js';
 import { getObject } from '@refinio/one.core/lib/storage-unversioned-objects.js';
 import { calculateIdHashOfObj } from '@refinio/one.core/lib/util/object.js';
-import { mergeFotosManifestState } from './fotosManifestMerge.js';
 import {getOwnedFotosManifestId} from '../../../../fotos.core/src/owned-fotos-manifest.js';
 
 // Cached idHash for the singleton manifest (calculated once, deterministic)
 let cachedManifestIdHash: SHA256IdHash<FotosManifest> | null = null;
 let nativeOwnerContext: string | null = null;
-let fotosManifestConvergenceRefs = 0;
-let stopFotosManifestConvergence: (() => void) | null = null;
-const grantedFotosPeersByRootIdHash = new Map<string, Set<string>>();
 
 /** Select a native library only after boot has verified admission and exact local custody. */
 export function setFotosNativeOwnerContext(owner: string | null): void {
@@ -50,7 +46,6 @@ export function setFotosNativeOwnerContext(owner: string | null): void {
     }
     nativeOwnerContext = owner;
     cachedManifestIdHash = null;
-    grantedFotosPeersByRootIdHash.clear();
 }
 
 /** Return boot-fed native admission, never infer it from publication identity equality. */
@@ -61,10 +56,6 @@ function selectedManifestId(): string {
     if (!nativeOwnerContext) return 'fotos';
     if (getInstanceOwnerIdHash() !== nativeOwnerContext) throw new Error('Native Fotos context no longer owns the active store');
     return getOwnedFotosManifestId(nativeOwnerContext);
-}
-
-export function resetFotosManifestGrantStateForTests(): void {
-    grantedFotosPeersByRootIdHash.clear();
 }
 
 export interface FotosManifestSnapshot {
@@ -168,12 +159,7 @@ async function resolveManifestContentHashes(
     return [...new Set(contentHashes.filter((value): value is string => Boolean(value)))].sort();
 }
 
-function rememberGrantedFotosPeer(rootIdHash: string, remotePersonId: string): void {
-    const peers = grantedFotosPeersByRootIdHash.get(rootIdHash) ?? new Set<string>();
-    peers.add(remotePersonId);
-    grantedFotosPeersByRootIdHash.set(rootIdHash, peers);
-}
-
+/** Grant the identity lineage and retire its legacy exact current-snapshot grant. */
 async function buildGrantedRootAccessEntries(
     remotePersonId: SHA256IdHash<Person>,
     rootIdHash: string,
@@ -188,58 +174,10 @@ async function buildGrantedRootAccessEntries(
         mode: SET_ACCESS_MODE.ADD,
     }, {
         object: currentVersion.hash as SHA256Hash,
-        person: [remotePersonId],
+        person: [],
         hashGroup: [],
-        mode: SET_ACCESS_MODE.ADD,
+        mode: SET_ACCESS_MODE.REPLACE,
     }];
-}
-
-function buildObjectAccessEntries(
-    remotePersonId: SHA256IdHash<Person>,
-    objectHashes: Iterable<string>,
-): Array<Record<string, unknown>> {
-    const uniqueObjectHashes = [...new Set(Array.from(objectHashes).filter(hash => hash.trim().length > 0))];
-
-    return uniqueObjectHashes.map(objectHash => ({
-        object: objectHash as SHA256Hash,
-        person: [remotePersonId],
-        hashGroup: [],
-        mode: SET_ACCESS_MODE.ADD,
-    }));
-}
-
-async function grantManifestContentAccess(
-    remotePersonId: SHA256IdHash<Person>,
-    manifest: FotosManifest,
-): Promise<number> {
-    const objectAccessEntries = buildObjectAccessEntries(remotePersonId, [
-        ...Array.from(manifest.entries ?? [], entryHash => String(entryHash)),
-        ...Array.from(manifest.authenticityAttestations ?? [], attestationHash => String(attestationHash)),
-    ]);
-
-    if (objectAccessEntries.length === 0) {
-        return 0;
-    }
-
-    await createAccess(objectAccessEntries as any);
-    return objectAccessEntries.length;
-}
-
-async function grantObjectAccessToRememberedPeers(
-    rootIdHash: string,
-    objectHashes: Iterable<string>,
-): Promise<void> {
-    const grantedFotosPeerIds = grantedFotosPeersByRootIdHash.get(rootIdHash);
-    if (!grantedFotosPeerIds || grantedFotosPeerIds.size === 0) {
-        return;
-    }
-
-    await Promise.all(Array.from(grantedFotosPeerIds, remotePersonId =>
-        createAccess(buildObjectAccessEntries(
-            remotePersonId as SHA256IdHash<Person>,
-            objectHashes,
-        ) as any),
-    ));
 }
 
 function basenameFromPath(pathValue: string | null | undefined): string | null {
@@ -412,78 +350,6 @@ export function listenForFotosManifestUpdates(
     });
 }
 
-async function convergeImportedManifest(
-    manifest: FotosManifest,
-    incomingHash: string | null,
-): Promise<void> {
-    const id = selectedManifestId();
-    const manifestIdHash = await getManifestIdHash();
-    const existing = await getObjectByIdHash(manifestIdHash).catch(error => {
-        if (error instanceof Error && error.name === 'FileNotFoundError') return null;
-        throw error;
-    });
-    if (incomingHash && existing?.hash && String(existing.hash) === incomingHash) {
-        return;
-    }
-
-    const merged = mergeFotosManifestState(
-        existing?.obj as FotosManifest | null,
-        manifest,
-    );
-
-    if (!merged.changed) {
-        return;
-    }
-    if (selectedManifestId() !== id) throw new Error('Fotos library context changed before manifest convergence');
-
-    await storeVersionedObject({
-        $type$: 'FotosManifest',
-        id,
-        entries: merged.entries,
-        authenticityAttestations: merged.authenticityAttestations,
-    } as any);
-
-    console.log(
-        `[fotos-manifest] Merged imported manifest additions: +${merged.addedEntryCount} entries, +${merged.addedAuthenticityCount} attestations`,
-    );
-}
-
-export function retainFotosManifestConvergence(): () => void {
-    fotosManifestConvergenceRefs += 1;
-
-    if (!stopFotosManifestConvergence) {
-        stopFotosManifestConvergence = onVersionedObj.addListener(result => {
-            if (result.status === 'exists') {
-                return;
-            }
-
-            if ((result.obj as { $type$: string }).$type$ !== 'FotosManifest') {
-                return;
-            }
-
-            const manifest = result.obj as unknown as FotosManifest;
-            if (manifest.id !== selectedManifestId()) {
-                return;
-            }
-
-            void convergeImportedManifest(
-                manifest,
-                typeof result.hash === 'string' ? result.hash : null,
-            ).catch(error => {
-                console.warn('[fotos-manifest] Failed to converge imported manifest:', error);
-            });
-        });
-    }
-
-    return () => {
-        fotosManifestConvergenceRefs = Math.max(0, fotosManifestConvergenceRefs - 1);
-        if (fotosManifestConvergenceRefs === 0 && stopFotosManifestConvergence) {
-            stopFotosManifestConvergence();
-            stopFotosManifestConvergence = null;
-        }
-    };
-}
-
 /**
  * Ensure the FotosManifest singleton exists.
  *
@@ -550,16 +416,12 @@ export async function addEntryToManifest(entryHash: SHA256Hash<FotosEntry>): Pro
     }
     if (selectedManifestId() !== manifest.id) throw new Error('Fotos library context changed before entry publication');
 
-    const storedManifest = await storeVersionedObject({
+    await storeVersionedObject({
         $type$: 'FotosManifest',
         id: manifest.id,
         entries,
         authenticityAttestations,
     } as any);
-    await grantObjectAccessToRememberedPeers(String(manifestIdHash), [
-        String(storedManifest.hash),
-        String(entryHash),
-    ]);
 
     console.log(`[fotos-manifest] Added entry ${(entryHash as string).substring(0, 12)}, total: ${entries.size}`);
 }
@@ -581,16 +443,12 @@ export async function addAuthenticityAttestationToManifest(
     authenticityAttestations.add(attestationHash);
     if (selectedManifestId() !== manifest.id) throw new Error('Fotos library context changed before attestation publication');
 
-    const storedManifest = await storeVersionedObject({
+    await storeVersionedObject({
         $type$: 'FotosManifest',
         id: manifest.id,
         entries,
         authenticityAttestations,
     } as any);
-    await grantObjectAccessToRememberedPeers(String(manifestIdHash), [
-        String(storedManifest.hash),
-        String(attestationHash),
-    ]);
 
     console.log(
         `[fotos-manifest] Added authenticity ${(attestationHash as string).substring(0, 12)}, total: ${authenticityAttestations.size}`,
@@ -607,9 +465,6 @@ export async function addAuthenticityAttestationToManifest(
  */
 export async function grantFotosAccess(remotePersonId: SHA256IdHash<Person>): Promise<void> {
     const manifestIdHash = await ensureFotosManifest();
-    const currentManifestVersion = await getObjectByIdHash(manifestIdHash);
-    const manifest = currentManifestVersion.obj as unknown as FotosManifest;
-
     console.log(
         `[fotos-manifest] Granting IdAccess on FotosManifest idHash=${(manifestIdHash as string).substring(0, 12)}` +
         ` to person=${(remotePersonId as string).substring(0, 12)}`
@@ -618,11 +473,7 @@ export async function grantFotosAccess(remotePersonId: SHA256IdHash<Person>): Pr
     await createAccess(
         await buildGrantedRootAccessEntries(remotePersonId, String(manifestIdHash)) as any,
     );
-    const contentGrantCount = await grantManifestContentAccess(remotePersonId, manifest);
-
-    rememberGrantedFotosPeer(String(manifestIdHash), String(remotePersonId));
-
-    console.log(`[fotos-manifest] IdAccess granted, contentRoots=${contentGrantCount}`);
+    console.log('[fotos-manifest] IdAccess granted');
 }
 
 /** Retire external gallery grants while retaining the owner's IoM library root. */
@@ -645,7 +496,6 @@ export async function revokeLegacyFotosManifestAccess(): Promise<void> {
             mode: SET_ACCESS_MODE.REPLACE,
         },
     ] as any);
-    grantedFotosPeersByRootIdHash.delete(String(manifestIdHash));
 }
 
 export interface GrantFotosDeviceBookAccessOptions {
@@ -687,9 +537,6 @@ export async function grantFotosDeviceBookAccess(
         ...(await buildGrantedRootAccessEntries(remotePersonId, deviceBookIdHash)),
         ...(await buildGrantedRootAccessEntries(remotePersonId, mediaBookIdHash)),
     ] as any);
-
-    rememberGrantedFotosPeer(deviceBookIdHash, String(remotePersonId));
-    rememberGrantedFotosPeer(mediaBookIdHash, String(remotePersonId));
 
     return { deviceBookIdHash, mediaBookIdHash };
 }

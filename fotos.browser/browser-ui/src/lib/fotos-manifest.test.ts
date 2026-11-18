@@ -118,7 +118,6 @@ import {
     grantFotosAccess,
     grantFotosDeviceBookAccess,
     revokeLegacyFotosManifestAccess,
-    resetFotosManifestGrantStateForTests,
     readFotosManifestSnapshot,
     setFotosNativeOwnerContext,
     getFotosNativeOwnerContext,
@@ -131,7 +130,6 @@ afterEach(() => {setFotosNativeOwnerContext(null);});
 
 describe('grantFotosAccess', () => {
     beforeEach(() => {
-        resetFotosManifestGrantStateForTests();
         mocks.createAccess.mockClear();
         mocks.getObjectByIdHash.mockClear().mockResolvedValue({
             hash: 'manifest-version-hash',
@@ -159,10 +157,14 @@ describe('grantFotosAccess', () => {
         }));
     });
 
-    it('grants manifest access through the access-manager feed-forward path', async () => {
+    it('grants only the manifest identity and retires legacy current-snapshot access', async () => {
         await grantFotosAccess('remote-person-id' as any);
 
-        expect(mocks.createAccess).toHaveBeenCalledOnce();
+        expect(mocks.createAccess).toHaveBeenCalledExactlyOnceWith([
+            {id: 'manifest-id-hash', person: ['remote-person-id'], hashGroup: [], mode: 'add'},
+            {object: 'manifest-version-hash', person: [], hashGroup: [], mode: 'replace'},
+        ]);
+        expect(mocks.getObject).not.toHaveBeenCalled();
     });
 
     it('retires external recipients while retaining the owner IoM root grant', async () => {
@@ -221,27 +223,25 @@ describe('grantFotosAccess', () => {
             role: 'compute',
         });
 
-        expect(mocks.createAccess).toHaveBeenCalledOnce();
-        expect(mocks.createAccess).toHaveBeenCalledWith(expect.arrayContaining([
-            expect.objectContaining({ id: 'device-book-id-hash' }),
-            expect.objectContaining({ id: 'media-book-id-hash' }),
-        ]));
+        expect(mocks.createAccess).toHaveBeenCalledExactlyOnceWith([
+            {id: 'device-book-id-hash', person: ['remote-person-id'], hashGroup: [], mode: 'add'},
+            {object: 'device-book-version-hash', person: [], hashGroup: [], mode: 'replace'},
+            {id: 'media-book-id-hash', person: ['remote-person-id'], hashGroup: [], mode: 'add'},
+            {object: 'media-book-version-hash', person: [], hashGroup: [], mode: 'replace'},
+        ]);
         expect(mocks.calculateIdHashOfObj).toHaveBeenCalledWith(expect.objectContaining({
             $type$: 'Book',
             author: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         }));
     });
 
-    it('extends remembered peer access when a new manifest entry is added later', async () => {
+    it('publishes later manifest entries through the granted identity without per-update access grants', async () => {
         await grantFotosAccess('remote-person-id' as any);
         mocks.createAccess.mockClear();
 
         await addEntryToManifest('entry-hash' as any);
 
-        expect(mocks.createAccess).toHaveBeenCalledWith(expect.arrayContaining([
-            expect.objectContaining({ object: 'stored-manifest-hash' }),
-            expect.objectContaining({ object: 'entry-hash' }),
-        ]));
+        expect(mocks.createAccess).not.toHaveBeenCalled();
         expect(mocks.storeVersionedObject).toHaveBeenCalledWith(expect.objectContaining({
             $type$: 'FotosManifest',
             id: 'fotos',
@@ -273,16 +273,13 @@ describe('grantFotosAccess', () => {
         }));
     });
 
-    it('extends remembered peer access when a new authenticity attestation is added later', async () => {
+    it('publishes later authenticity references without per-update access grants', async () => {
         await grantFotosAccess('remote-person-id' as any);
         mocks.createAccess.mockClear();
 
         await addAuthenticityAttestationToManifest('auth-hash' as any);
 
-        expect(mocks.createAccess).toHaveBeenCalledWith(expect.arrayContaining([
-            expect.objectContaining({ object: 'stored-manifest-hash' }),
-            expect.objectContaining({ object: 'auth-hash' }),
-        ]));
+        expect(mocks.createAccess).not.toHaveBeenCalled();
         expect(mocks.storeVersionedObject).toHaveBeenCalledWith(expect.objectContaining({
             $type$: 'FotosManifest',
             id: 'fotos',
@@ -361,9 +358,13 @@ describe('admitted native owned Fotos manifest reopening', () => {
         expect(mocks.getObjectByIdHash).toHaveBeenLastCalledWith(`fotos:${nextOwner}`);
     });
 
-    it('does not retain another runtime\'s remembered peer grants for the same owner root', async () => {
+    it('keeps owner-root publication independent of browser grant history after reopening', async () => {
         setFotosNativeOwnerContext(owner);
         await grantFotosAccess(owner as any);
+        expect(mocks.createAccess).toHaveBeenCalledExactlyOnceWith([
+            {id: rootId, person: [owner], hashGroup: [], mode: 'add'},
+            {object: 'native-manifest-version', person: [], hashGroup: [], mode: 'replace'},
+        ]);
         mocks.createAccess.mockClear();
         setFotosNativeOwnerContext(owner);
         await addEntryToManifest('f'.repeat(64) as any);

@@ -327,7 +327,9 @@ export async function commitFotosShareScope(
         },
         {
             object: currentManifest.hash,
-            person: committedRecipients,
+            // IdAccess publishes the scope's causal head. Retire the redundant
+            // exact snapshot grant retained by earlier publishers.
+            person: [],
             hashGroup: [],
             mode: SET_ACCESS_MODE.REPLACE,
         },
