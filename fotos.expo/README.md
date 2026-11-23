@@ -45,6 +45,11 @@ JPEG previews. Reference intake transfers the preview to ONE and keeps a
 device-local locator for original access. The library screen offers a separate
 download action for iCloud-only assets on iOS.
 
+Fotos registers authenticated QUICVC, outgoing WebSocket, and WebRTC data
+channels on iOS and Android. Local discovery advertises the Fotos UDP listener
+on port 49498 when discovery is enabled. WebRTC uses the commserver for
+signaling, and the existing relay remains available for peer sync.
+
 Imported user albums store content hashes of synced members. Full Photos access
 allows membership reconciliation. Limited access preserves members and albums
 outside the visible selection.

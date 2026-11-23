@@ -65,10 +65,10 @@ export function getFotosPlatformCapabilities(): FotosPlatformCapabilities {
     return {
       currentPlatform,
       platformLabel: 'Android',
-      supportsLocalNetworkDiscovery: false,
+      supportsLocalNetworkDiscovery: true,
       supportsVerifiedPeerCollection: false,
-      supportsPeerPairing: false,
-      supportsUdpHandshake: false,
+      supportsPeerPairing: true,
+      supportsUdpHandshake: true,
       supportsPhotoLibrarySync: true,
       supportsShareInbox: false,
       supportsLocalModels: false,

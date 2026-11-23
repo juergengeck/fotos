@@ -86,6 +86,10 @@
       "path": "../../one/packages/transport.core"
     },
     {
+      "name": "@refinio/transport.browser",
+      "path": "../../one/packages/transport.browser"
+    },
+    {
       "name": "@refinio/trie.core",
       "path": "../../one/packages/trie.core"
     },

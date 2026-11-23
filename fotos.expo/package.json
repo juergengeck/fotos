@@ -101,7 +101,10 @@
     "@refinio/ui.core": "file:./vendor/refinio-ui.core-1.0.0-6b0e27e286eeb1c1.tgz",
     "@refinio/media.core": "file:./vendor/refinio-media.core-0.1.0-63071d5123c7ede1.tgz",
     "@refinio/media.expo": "file:./vendor/refinio-media.expo-0.1.0-92a4226276bd2344.tgz",
-    "@refinio/source.media": "file:./vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz"
+    "@refinio/source.media": "file:./vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz",
+    "react-native-udp": "4.1.7",
+    "react-native-webrtc": "155.0.1",
+    "@refinio/transport.browser": "file:./vendor/refinio-transport.browser-0.1.0-ec9047b37aa2fc05.tgz"
   },
   "devDependencies": {
     "@types/react": "~19.2.4",
@@ -145,7 +148,8 @@
     "@refinio/media.expo": "file:./vendor/refinio-media.expo-0.1.0-92a4226276bd2344.tgz",
     "@refinio/source.media": "file:./vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz",
     "@refinio/provenance.core": "file:./vendor/refinio-provenance.core-0.1.0-d7102e0b17edd221.tgz",
-    "@refinio/fotos.core": "file:./vendor/refinio-fotos.core-0.1.0-8e0ecd28b12f03ed.tgz"
+    "@refinio/fotos.core": "file:./vendor/refinio-fotos.core-0.1.0-8e0ecd28b12f03ed.tgz",
+    "@refinio/transport.browser": "file:./vendor/refinio-transport.browser-0.1.0-ec9047b37aa2fc05.tgz"
   },
   "pnpm": {
     "overrides": {
@@ -184,7 +188,11 @@
       "@refinio/media.expo": "file:./vendor/refinio-media.expo-0.1.0-92a4226276bd2344.tgz",
       "@refinio/source.media": "file:./vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz",
       "@refinio/provenance.core": "file:./vendor/refinio-provenance.core-0.1.0-d7102e0b17edd221.tgz",
-      "@refinio/fotos.core": "file:./vendor/refinio-fotos.core-0.1.0-8e0ecd28b12f03ed.tgz"
+      "@refinio/fotos.core": "file:./vendor/refinio-fotos.core-0.1.0-8e0ecd28b12f03ed.tgz",
+      "@refinio/transport.browser": "file:./vendor/refinio-transport.browser-0.1.0-ec9047b37aa2fc05.tgz"
+    },
+    "patchedDependencies": {
+      "react-native-udp@4.1.7": "patches/react-native-udp@4.1.7.patch"
     }
   },
   "packageManager": "pnpm@9.15.0"

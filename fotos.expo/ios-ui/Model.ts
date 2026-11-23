@@ -51,7 +51,7 @@ import { normalizeFotosSettingsSection, registerFotosSettings } from './fotos-se
 // Module system
 import { operationRegistry } from '@refinio/api/registry';
 
-// iOS-specific mDNS discovery provider (matches vger.cube's MDNSDiscoveryAdapter)
+// Native mDNS discovery for direct peer routes.
 import { iOSMDNSDiscoveryAdapter, type iOSMDNSConfig } from './services/iOSMDNSDiscoveryAdapter';
 import {
     getDiscoveryCollectionSettings,
@@ -67,6 +67,7 @@ import type { FotosShareInboxStatus } from './services/FotosShareInbox';
 
 // Discovery collection adapter (verified peer discovery)
 import { DiscoveryCollectionAdapter } from './services/DiscoveryCollectionAdapter';
+import { createFotosDirectTransports } from './services/FotosDirectTransports';
 
 interface ModelOptions {
     webUrl?: string;
@@ -128,6 +129,7 @@ export default class Model {
 
     // Discovery collection adapter (verified peer discovery via handshake)
     private discoveryCollectionAdapter: DiscoveryCollectionAdapter | null = null;
+    private directTransports: Awaited<ReturnType<typeof createFotosDirectTransports>> | null = null;
 
     // Settings storage (lazy initialized)
     private _settingsStorage: InstanceSettingsStorage | null = null;
@@ -243,8 +245,9 @@ export default class Model {
             console.log('[Model] ===== Initialization complete =====');
         } catch (error) {
             console.error('[Model] Initialization failed:', error);
-            this.initialized = false;
-            this.runtimeCoreInitialized = false;
+            try { await this.shutdown(); } catch (cleanupError) {
+                throw new AggregateError([error, cleanupError], 'Fotos runtime startup and cleanup failed', {cause: error});
+            }
             throw error;
         }
     }
@@ -274,7 +277,22 @@ export default class Model {
                 PostStoreImportBatch: onChumImportBatch,
             },
             storageFunction: storeVersionedObject,
-            beforeInit: async () => {
+            beforeInit: async registry => {
+                if (this.currentPlatformCapabilities.supportsUdpHandshake) {
+                    const ownerId = getInstanceOwnerIdHash();
+                    const instanceId = getInstanceIdHash();
+                    if (!ownerId || !instanceId) throw new Error('Direct transports require a Fotos instance identity');
+                    this.directTransports = await createFotosDirectTransports({
+                        connection, ownerId, instanceId, commServerUrl: this.commServerUrl,
+                        assertCurrent: () => {
+                            if (this.ownerId !== ownerId || this.instanceId !== instanceId) {
+                                throw new Error('Fotos direct transport identity was retired');
+                            }
+                        },
+                    });
+                    registry.supply('QuicVCProvider', this.directTransports.manager);
+                    registry.supply('TransportMatcher', this.directTransports.matcher);
+                }
                 if (this.currentPlatformCapabilities.supportsLocalNetworkDiscovery) {
                     connection.setLocalDiscoveryProvider(
                         new iOSMDNSDiscoveryAdapter(await this.buildMDNSConfig()), discoveryEnabled);
@@ -333,11 +351,8 @@ export default class Model {
             throw new Error('[Model] Cannot build mDNS config - ownerId or instanceId not available');
         }
 
-        const cryptoApi = await createCryptoApiFromDefaultKeys(instanceId as SHA256IdHash<Instance>);
-        const pubKeyHex = Array.from(cryptoApi.publicEncryptionKey)
-            .map(b => b.toString(16).padStart(2, '0'))
-            .join('');
-        console.log('[Model] Got mDNS encryption public key:', pubKeyHex.substring(0, 16) + '...');
+        const direct = this.directTransports;
+        if (!direct) throw new Error('mDNS discovery requires the bound Fotos direct transport');
 
         const { getInstanceOwnerEmail } = await import('@refinio/one.core/lib/instance.js');
         const email = getInstanceOwnerEmail();
@@ -367,13 +382,13 @@ export default class Model {
 
         return {
             deviceId: instanceId,
-            pubKey: pubKeyHex,
+            pubKey: direct.localPublicKeyHex,
             personId: ownerId,
             ...(email ? { email } : {}),
             displayName,
             deviceType: this.modelOptions.localDeviceType,
-            ...(this.currentPlatformCapabilities.supportsUdpHandshake ? { quicvcPort: 49497 } : {}),
-            capabilities: this.currentPlatformCapabilities.supportsUdpHandshake ? ['quicvc'] : [],
+            quicvcPort: direct.port,
+            capabilities: ['quicvc', 'webrtc', 'commserver-relay'],
         };
     }
 
@@ -439,6 +454,8 @@ export default class Model {
      */
     private async postInit(instanceName?: string): Promise<void> {
         console.log('[Model] Phase 5: Post-init...');
+
+        this.directTransports?.start(this.trustModel);
 
         // Create retroactive Assemblies for Instance and Owner
         await this.createInstanceAssemblies(instanceName);
@@ -524,6 +541,7 @@ export default class Model {
      * Initialize discovery collection adapter with required dependencies.
      */
     private async initializeDiscoveryCollection(): Promise<void> {
+        if (!this.currentPlatformCapabilities.supportsVerifiedPeerCollection) return;
         try {
             const coreModule = this.modules.get('core');
 
@@ -570,38 +588,31 @@ export default class Model {
 
     async shutdown(): Promise<void> {
         console.log('[Model] Shutting down...');
-
-        try {
-            await this._fotosMediaLibrarySync?.dispose();
-
-            // Shutdown discovery collection adapter
-            if (this.discoveryCollectionAdapter) {
-                await this.discoveryCollectionAdapter.shutdown();
-                this.discoveryCollectionAdapter = null;
-            }
-            this.settingsUnsubscribe?.();
-            this.settingsUnsubscribe = null;
-
-            // Shutdown all modules in reverse order through the shared init context.
-            await this.moduleRegistry?.shutdownAll();
-
-            this.initialized = false;
-            this.runtimeCoreInitialized = false;
-            this.moduleRegistry = null;
-            this.modules.clear();
-            this._settingsStorage = null;
-            this._settingsPlan = null;
-            this._secretsPlan = null;
-            this._devicesPlan = null;
-            this._fotosMediaLibrarySync = null;
-            // Note: ownerId/instanceId are getters from ONE.core - cleared automatically on logout
-            this.lastDiscoveryEnabled = null;
-
-            console.log('[Model] Shutdown complete');
-        } catch (error) {
-            console.error('[Model] Shutdown error:', error);
-            throw error;
+        const errors: unknown[] = [];
+        for (const cleanup of [
+            () => this._fotosMediaLibrarySync?.dispose(),
+            () => this.discoveryCollectionAdapter?.shutdown(),
+            () => this.settingsUnsubscribe?.(),
+            () => this.directTransports?.stop(),
+            () => this.moduleRegistry?.shutdownAll(),
+        ]) {
+            try { await cleanup(); } catch (error) { errors.push(error); }
         }
+        this.settingsUnsubscribe = null;
+        this.discoveryCollectionAdapter = null;
+        this.directTransports = null;
+        this.initialized = false;
+        this.runtimeCoreInitialized = false;
+        this.moduleRegistry = null;
+        this.modules.clear();
+        this._settingsStorage = null;
+        this._settingsPlan = null;
+        this._secretsPlan = null;
+        this._devicesPlan = null;
+        this._fotosMediaLibrarySync = null;
+        this.lastDiscoveryEnabled = null;
+        if (errors.length) throw new AggregateError(errors, 'Fotos runtime shutdown failed');
+        console.log('[Model] Shutdown complete');
     }
 
     // --- Core Module ---
