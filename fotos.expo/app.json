@@ -7,7 +7,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "fotos.ios",
@@ -51,6 +50,7 @@
           "savePhotosPermission": "Allow $(PRODUCT_NAME) to save photos you export to Apple Photos."
         }
       ],
+      "@refinio/media.expo/app.plugin.cjs",
       "expo-secure-store",
       "expo-font"
     ],

@@ -1,5 +1,7 @@
 # Fotos Expo runtime
 
+Fotos uses Expo SDK 57, React Native 0.86, React 19.2, and TypeScript 6.
+
 Use `corepack pnpm@9.15.0` for this standalone Expo install. pnpm 10 resolves
 unpublished internal peers differently from the ONE workspace's pinned version.
 
@@ -34,15 +36,12 @@ Native dependency changes require a fresh Expo prebuild and CocoaPods install
 before an Xcode build. An existing Pods directory can still contain removed
 inference packages.
 
-React Native 0.81 codegen requires the pinned `@dr.pogodin/react-native-fs`
-version. The newer native spec uses `ArrayBuffer` fields that this codegen
-cannot parse.
-
-The local `FotosPhotoKit` module provides Photo Library intake on iOS. Native
-code streams originals to temporary files, hashes the encoded content, and
-supplies bounded JPEG previews. Reference intake transfers the preview to ONE
-and keeps a device-local Photos identifier for original access. The library
-screen offers a separate download action for iCloud-only assets.
+The shared `@refinio/media.expo` package provides Photo Library intake on iOS.
+Native code streams originals to temporary files, hashes the encoded content,
+and supplies bounded JPEG previews. Reference intake transfers the preview to
+ONE and keeps a device-local Photos identifier for original access. The library
+screen offers a separate download action for iCloud-only assets. The package
+also autolinks its MediaStore module on Android.
 
 Imported user albums store content hashes of synced members. Full Photos access
 allows membership reconciliation. Limited access preserves members and albums

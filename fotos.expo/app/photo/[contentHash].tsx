@@ -122,7 +122,10 @@ export default function PhotoLightbox() {
                 setOriginal({entry, uri});
             }
             if (save) {
-                await MediaLibrary.saveToLibraryAsync(uri);
+                const existing = await MediaLibrary.getPermissionsAsync(true);
+                const access = existing.granted ? existing : await MediaLibrary.requestPermissionsAsync(true);
+                if (!access.granted) throw new Error('Allow fotos to add photos to your library to save this original.');
+                await MediaLibrary.Asset.create(uri);
                 if (alive.current) setMessage('Saved to Apple Photos.');
             }
         } catch (error) {
