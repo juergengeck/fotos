@@ -54,6 +54,10 @@
     "./sync-rules": {
       "import": "./dist/sync-rules.js",
       "types": "./dist/sync-rules.d.ts"
+    },
+    "./one-core-config": {
+      "import": "./dist/one-core-config.js",
+      "types": "./dist/one-core-config.d.ts"
     }
   },
   "files": [

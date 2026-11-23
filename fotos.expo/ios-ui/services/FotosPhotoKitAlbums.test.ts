@@ -1,8 +1,9 @@
 import {createHash} from 'node:crypto';
 import {describe, expect, it, vi} from 'vitest';
-import type {SHA256Hash} from '@refinio/one.core/lib/util/type-checks.js';
-import type {FotosCollection} from '@refinio/fotos.core';
+import type {SHA256Hash, SHA256IdHash} from '@refinio/one.core/lib/util/type-checks.js';
+import type {FotosCollection, FotosGalleryAlbumBinding} from '@refinio/fotos.core';
 import {createFotosAlbumCollection, isFotosAlbumCollectionFromLibrary} from '@refinio/fotos.core';
+import {createFotosGalleryAlbumBinding} from '../../../fotos.core/src/fotos-gallery-album-binding';
 import {
     reconcileFotosPhotoKitAlbums,
     type FotosPhotoKitAlbumNative,
@@ -10,7 +11,10 @@ import {
 } from './FotosPhotoKitAlbums';
 
 // Exercise the canonical collection implementation without loading unrelated core services.
-vi.mock('@refinio/fotos.core', async () => await import('../../../fotos.core/src/fotos-collection.js'));
+vi.mock('@refinio/fotos.core', async () => ({
+    ...await import('../../../fotos.core/src/fotos-collection.js'),
+    ...await import('../../../fotos.core/src/fotos-gallery-albums.js'),
+}));
 
 const OWNER = 'a'.repeat(64);
 const LIBRARY = 'b'.repeat(64);
@@ -18,6 +22,7 @@ const PHOTO_A = '1'.repeat(64);
 const PHOTO_B = '2'.repeat(64);
 const PHOTO_C = '3'.repeat(64);
 type Ref = SHA256Hash<FotosCollection>;
+type AlbumBindingRef = SHA256Hash<FotosGalleryAlbumBinding>;
 type Album = {id: string; name: string; kind: 'user' | 'smart'};
 
 function reference(collection: FotosCollection): Ref {
@@ -28,6 +33,8 @@ function reference(collection: FotosCollection): Ref {
 
 function harness(albums: Album[] = []) {
     const objects = new Map<Ref, FotosCollection>();
+    const bindings = new Map<AlbumBindingRef, FotosGalleryAlbumBinding>();
+    let nextUuid = 0;
     const native = {
         listAlbums: vi.fn<FotosPhotoKitAlbumNative['listAlbums']>(async () => ({albums})),
         listAlbumMembers: vi.fn<FotosPhotoKitAlbumNative['listAlbumMembers']>(async () => ({assetIds: []})),
@@ -37,6 +44,9 @@ function harness(albums: Album[] = []) {
         native, ownerId: OWNER, libraryId: LIBRARY, fullAccess: true,
         assetHashes: new Map([['local-a', PHOTO_A], ['local-b', PHOTO_B], ['local-c', PHOTO_C]]),
         existingRefs: new Set(),
+        bindingRefs: new Set(),
+        allocateCollectionUuid: () => `8408c40f-dc51-4f7a-a4f6-${String(++nextUuid).padStart(12, '0')}`,
+        calculateCollectionId: async collection => createHash('sha256').update(collection.id).digest('hex') as SHA256IdHash<FotosCollection>,
         readCollection: vi.fn(async ref => {
             const value = objects.get(ref);
             if (!value) throw new Error('Missing stored collection');
@@ -47,6 +57,17 @@ function harness(albums: Album[] = []) {
             objects.set(ref, value);
             return ref;
         }),
+        readBinding: vi.fn(async ref => {
+            const value = bindings.get(ref);
+            if (!value) throw new Error('Missing stored album binding');
+            return value;
+        }),
+        storeBinding: vi.fn(async value => {
+            const ref = createHash('sha256').update(JSON.stringify({...value, photoHashes: [...value.photoHashes].sort()}))
+                .digest('hex') as AlbumBindingRef;
+            bindings.set(ref, value);
+            return ref;
+        }),
     };
     function seed(albumId: string, name: string, photos: string[], owner = OWNER, libraryId = LIBRARY) {
         const collection = createFotosAlbumCollection({owner, libraryId, albumId, name, photoHashes: photos});
@@ -55,7 +76,7 @@ function harness(albums: Album[] = []) {
         (params.existingRefs as Set<Ref>).add(ref);
         return ref;
     }
-    return {params, native, objects, seed};
+    return {params, native, objects, bindings, seed};
 }
 
 const userAlbum = (id: string, name = id): Album => ({id, name, kind: 'user'});
@@ -67,7 +88,10 @@ describe('PhotoKit album reconciliation', () => {
         h.params.assetHashes = new Map([['copy-a', PHOTO_A], ['local-a', PHOTO_A], ['local-b', PHOTO_B]]);
         h.native.listAlbumMembers.mockResolvedValue({assetIds: ['local-b', 'copy-a', 'local-a', 'unknown']});
         const result = await reconcileFotosPhotoKitAlbums(h.params);
-        expect(result).toEqual({collections: new Set([old]), changed: false});
+        expect(result).toMatchObject({collections: new Set([old]), changed: true});
+        expect(result.albumBindings.size).toBe(1);
+        h.params.bindingRefs = result.albumBindings;
+        expect(await reconcileFotosPhotoKitAlbums(h.params)).toEqual({...result, changed: false});
         expect(h.params.storeCollection).not.toHaveBeenCalled();
     });
 
@@ -128,13 +152,13 @@ describe('PhotoKit album reconciliation', () => {
         h.params.fullAccess = false;
         const visible = h.seed('visible', 'visible', [PHOTO_A]);
         const hidden = h.seed('hidden', 'hidden', [PHOTO_B]);
-        expect(await reconcileFotosPhotoKitAlbums(h.params)).toEqual({
-            collections: new Set([visible, hidden]), changed: false,
+        const seen = await reconcileFotosPhotoKitAlbums(h.params);
+        expect(seen).toMatchObject({
+            collections: new Set([visible, hidden]), changed: true,
         });
+        h.params.bindingRefs = seen.albumBindings;
         h.native.listAlbums.mockResolvedValue({albums: []});
-        expect(await reconcileFotosPhotoKitAlbums(h.params)).toEqual({
-            collections: new Set([visible, hidden]), changed: false,
-        });
+        expect(await reconcileFotosPhotoKitAlbums(h.params)).toEqual({...seen, changed: false});
         expect(h.params.storeCollection).not.toHaveBeenCalled();
     });
 
@@ -142,7 +166,31 @@ describe('PhotoKit album reconciliation', () => {
         const h = harness();
         h.seed('removed', 'removed', [PHOTO_A]);
         const foreign = h.seed('foreign', 'foreign', [PHOTO_A], OWNER, 'c'.repeat(64));
-        expect(await reconcileFotosPhotoKitAlbums(h.params)).toEqual({collections: new Set([foreign]), changed: true});
+        expect(await reconcileFotosPhotoKitAlbums(h.params)).toEqual({
+            collections: new Set([foreign]), albumBindings: new Set(), changed: true,
+        });
+    });
+
+    it('keeps a portable collection when only its iOS source disappears', async () => {
+        const h = harness([userAlbum('album/L0/001', 'Trip')]);
+        h.native.listAlbumMembers.mockResolvedValue({assetIds: ['local-a']});
+        const imported = await reconcileFotosPhotoKitAlbums(h.params);
+        const original = h.objects.get([...imported.collections][0])!;
+        expect(original.id).toMatch(/^fotos-gallery-collection:v1:/);
+        expect(original.id).not.toContain(LIBRARY);
+        const [iosRef] = imported.albumBindings;
+        const androidRef = await h.params.storeBinding(createFotosGalleryAlbumBinding({
+            owner: OWNER, platform: 'android', libraryId: 'f'.repeat(64), albumId: 'Camera/Trip',
+            collection: h.bindings.get(iosRef)!.collection, name: 'Trip', photoHashes: [PHOTO_B],
+        }));
+        h.params.existingRefs = imported.collections;
+        h.params.bindingRefs = new Set([iosRef, androidRef]);
+        h.native.listAlbums.mockResolvedValue({albums: []});
+        const next = await reconcileFotosPhotoKitAlbums(h.params);
+        expect(next.albumBindings).toEqual(new Set([androidRef]));
+        expect(h.objects.get([...next.collections][0])).toMatchObject({
+            id: original.id, name: 'Trip', photoHashes: new Set([PHOTO_B]),
+        });
     });
 
     it('reads album and membership pages with a bounded limit and deduplicates hashes across pages', async () => {

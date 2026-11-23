@@ -271,6 +271,23 @@ export type {GalleryTrieNode, GalleryTrieRoot} from './recipes/GalleryTrieRecipe
 
 export {recordFotosAcquisition, traceFotosAcquisitions} from './media-acquisition.js';
 export {projectFotosEntryReferences} from './fotos-entry-projection.js';
+export {applyGalleryDelta, type FotosGalleryDelta} from './fotos-gallery-delta.js';
+export {
+    FOTOS_CAPABILITY_VERSION, FOTOS_CAPABILITY_METHODS, FOTOS_ENRICHMENT_MODELS,
+    FOTOS_LIBRARY, FOTOS_ENRICHMENT, FOTOS_SHARING, fotosSupplierRoles,
+} from './fotos-capabilities.js';
+export type {
+    FotosCapability, FotosCapabilityAdvertisement, FotosSupplierBinding,
+    FotosEnrichmentModel, FotosEnrichmentRequest, FotosEnrichmentResult,
+} from './fotos-capabilities.js';
+export {
+    reconcileFotosGalleryAlbums, type FotosObservedGalleryAlbum, type ReconcileFotosGalleryAlbumsParams,
+} from './fotos-gallery-albums.js';
+export {
+    buildFotosGalleryAlbumBindingId, createFotosGalleryAlbumBinding, isFotosGalleryAlbumBindingFromLibrary,
+    type FotosGalleryAlbumPlatform,
+} from './fotos-gallery-album-binding.js';
+export type {FotosGalleryAlbumBinding} from './recipes/FotosRecipes.js';
 export {decodeFotosFaceDetections, FACE_DETECTIONS_MIME, FOTOS_MAX_FACE_DETECTIONS_BYTES, normalizeFotosFaceName} from './face-detections.js';
 export type {FotosFaceDetection, FotosFaceDetections} from './face-detections.js';
 export type {RecordFotosAcquisitionParams} from './media-acquisition.js';

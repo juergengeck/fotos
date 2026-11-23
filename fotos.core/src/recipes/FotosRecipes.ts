@@ -87,13 +87,24 @@ export interface FotosManifest {
     entries: Set<SHA256Hash<FotosEntry>>;
     authenticityAttestations?: Set<SHA256Hash<FotosAuthenticityAttestation>>;
     collections?: Set<SHA256Hash<FotosCollection>>;
+    albumBindings?: Set<SHA256Hash<FotosGalleryAlbumBinding>>;
 }
 
-/** An imported user album in one owner's library. Members refer to media identities. */
+/** A collection in one owner's gallery. Members refer to media identities. */
 export interface FotosCollection {
     $type$: 'FotosCollection';
     $versionHash$?: SHA256Hash<VersionNode>;
     id: string;
+    name: string;
+    photoHashes: Set<string>;
+}
+
+/** One native album source bound to an independent gallery collection identity. */
+export interface FotosGalleryAlbumBinding {
+    $type$: 'FotosGalleryAlbumBinding';
+    $versionHash$?: SHA256Hash<VersionNode>;
+    id: string;
+    collection: SHA256IdHash<FotosCollection>;
     name: string;
     photoHashes: Set<string>;
 }
@@ -178,6 +189,7 @@ declare module '@OneObjectInterfaces' {
         FotosEntry: Pick<FotosEntry, '$type$' | 'contentHash'>;
         FotosManifest: Pick<FotosManifest, '$type$' | 'id'>;
         FotosCollection: Pick<FotosCollection, '$type$' | 'id'>;
+        FotosGalleryAlbumBinding: Pick<FotosGalleryAlbumBinding, '$type$' | 'id'>;
         FotosAuthenticityAttestation: Pick<FotosAuthenticityAttestation, '$type$' | 'id'>;
         FotosShareManifest: Pick<FotosShareManifest, '$type$' | 'id'>;
         FotosShareCertificate: Pick<FotosShareCertificate, '$type$' | 'id'>;
@@ -189,6 +201,7 @@ declare module '@OneObjectInterfaces' {
         FotosEntry: FotosEntry;
         FotosManifest: FotosManifest;
         FotosCollection: FotosCollection;
+        FotosGalleryAlbumBinding: FotosGalleryAlbumBinding;
         FotosAuthenticityAttestation: FotosAuthenticityAttestation;
         FotosShareManifest: FotosShareManifest;
         FotosShareCertificate: FotosShareCertificate;
@@ -276,6 +289,14 @@ export const FotosManifestRecipe: Recipe = {
                 type: 'set',
                 item: {type: 'referenceToObj', allowedTypes: new Set(['FotosCollection'])}
             }
+        },
+        {
+            itemprop: 'albumBindings',
+            optional: true,
+            itemtype: {
+                type: 'set',
+                item: {type: 'referenceToObj', allowedTypes: new Set(['FotosGalleryAlbumBinding'])}
+            }
         }
     ]
 };
@@ -285,6 +306,17 @@ export const FotosCollectionRecipe: Recipe = {
     name: 'FotosCollection',
     rule: [
         {itemprop: 'id', isId: true, itemtype: {type: 'string'}},
+        {itemprop: 'name', itemtype: {type: 'string'}},
+        {itemprop: 'photoHashes', itemtype: {type: 'set', item: {type: 'string'}}}
+    ]
+};
+
+export const FotosGalleryAlbumBindingRecipe: Recipe = {
+    $type$: 'Recipe',
+    name: 'FotosGalleryAlbumBinding',
+    rule: [
+        {itemprop: 'id', isId: true, itemtype: {type: 'string'}},
+        {itemprop: 'collection', itemtype: {type: 'referenceToId', allowedTypes: new Set(['FotosCollection'])}},
         {itemprop: 'name', itemtype: {type: 'string'}},
         {itemprop: 'photoHashes', itemtype: {type: 'set', item: {type: 'string'}}}
     ]
@@ -413,6 +445,7 @@ export const FotosRecipes: Recipe[] = [
     FotosEntryRecipe,
     FotosManifestRecipe,
     FotosCollectionRecipe,
+    FotosGalleryAlbumBindingRecipe,
     FotosAuthenticityAttestationRecipe,
     FotosShareManifestRecipe,
     FotosShareCertificateRecipe,

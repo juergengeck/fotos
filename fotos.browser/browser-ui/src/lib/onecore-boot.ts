@@ -58,7 +58,6 @@ import { onChumImportBatch } from '@refinio/one.core/lib/chum-sync.js';
 
 import { registerFotosHistorySettings } from './fotosHistorySettings.js';
 import { registerFotosSettings } from './fotosSettings.js';
-import { fotosContentRules } from './fotosSyncRules.js';
 import { API_BASE, COMM_SERVER_URL } from '../config.js';
 import { markFotosNativeGlueEnrollmentInstalled } from './fotosBootCreds.js';
 import { getFotosGlueLogin } from './fotosGlueLogin.js';
@@ -68,6 +67,7 @@ import {
   FotosOneCoreRecipes,
   FotosReverseMaps,
   FotosReverseMapsForIdObjects,
+  FotosSyncRules,
 } from './fotosOneCoreConfig.js';
 
 // ---------------------------------------------------------------------------
@@ -307,7 +307,7 @@ async function initModules(
   };
   registry.supply('OneCore', oneCore);
   // Trust modules compose rules with owner-bound handlers for this runtime.
-  registry.supply('SyncRules', new Map(fotosContentRules));
+  registry.supply('SyncRules', new Map(FotosSyncRules));
   registry.supply('PostStoreImportBatch', onChumImportBatch);
   registry.supply('SettingsPlan', settingsPlan);
   registry.supply('DevicesPlan', devicesPlan);

@@ -10,6 +10,7 @@ import { buildFotosSharePinProofId } from './share-pin-proof.js';
 import {getOwnedFotosManifestId} from './owned-fotos-manifest.js';
 import {FOTOS_MEDIA_SUBTYPES, MAX_FOTOS_ENTRY_TAGS, MAX_FOTOS_TAG_LENGTH} from './recipes/FotosRecipes.js';
 import {getFotosCollectionOwner, isFotosCollectionMembership, isFotosCollectionName} from './fotos-collection.js';
+import {getFotosGalleryAlbumBindingOwner} from './fotos-gallery-album-binding.js';
 
 type SyncRule = typeof contentRules extends Map<string, infer Value> ? Value : never;
 
@@ -213,7 +214,10 @@ export function canImportFotosManifest(context: SyncContextLike, obj?: object): 
             )
         )
         && (manifest.collections === undefined || (isOwnScopedRoot
-            && isStringSetWithinBounds(manifest.collections, MAX_FOTOS_COLLECTIONS, MAX_REFERENCE_LENGTH)));
+            && isStringSetWithinBounds(manifest.collections, MAX_FOTOS_COLLECTIONS, MAX_REFERENCE_LENGTH)))
+        && (manifest.albumBindings === undefined || (isOwnScopedRoot
+            && isStringSetWithinBounds(manifest.albumBindings, MAX_FOTOS_COLLECTIONS, 64)
+            && Array.from(manifest.albumBindings).every(hash => /^[a-f0-9]{64}$/.test(hash))));
 }
 
 export function canImportFotosCollection(context: SyncContextLike, obj?: object): boolean {
@@ -225,6 +229,18 @@ export function canImportFotosCollection(context: SyncContextLike, obj?: object)
         return context.objectKind === 'id';
     }
     return isFotosCollectionName(collection.name) && isFotosCollectionMembership(collection.photoHashes);
+}
+
+export function canImportFotosGalleryAlbumBinding(context: SyncContextLike, obj?: object): boolean {
+    const remote = selfPeerId(context);
+    if (!remote || !obj) return false;
+    const binding = obj as ImportedObject;
+    if (typeof binding.id !== 'string' || getFotosGalleryAlbumBindingOwner(binding.id) !== remote) return false;
+    if (isIdOnlyObject(binding, new Set(['$type$', 'id']), 'id', MAX_PATH_LENGTH)) {
+        return context.objectKind === 'id';
+    }
+    return typeof binding.collection === 'string' && /^[a-f0-9]{64}$/.test(binding.collection)
+        && isFotosCollectionName(binding.name) && isFotosCollectionMembership(binding.photoHashes);
 }
 
 export function canImportFotosEntry(context: SyncContextLike, obj?: object): boolean {
@@ -473,6 +489,7 @@ export function canImportFotosMediaLocator(context: SyncContextLike, obj?: objec
 
 const fotosManifestRule = fotosImportRule('FotosManifest', canImportFotosManifest);
 const fotosCollectionRule = fotosImportRule('FotosCollection', canImportFotosCollection);
+const fotosGalleryAlbumBindingRule = fotosImportRule('FotosGalleryAlbumBinding', canImportFotosGalleryAlbumBinding);
 const fotosEntryRule = fotosImportRule('FotosEntry', canImportFotosEntry);
 const fotosShareManifestRule = fotosImportRule('FotosShareManifest', canImportFotosShareManifest);
 const fotosShareCertificateRule = fotosImportRule('FotosShareCertificate', canImportFotosShareCertificate);
@@ -492,6 +509,7 @@ const fotosMediaLocatorRule = fotosImportRule('FotosMediaLocator', canImportFoto
 export const fotosContentRules = new Map(contentRules);
 fotosContentRules.set('FotosManifest', fotosManifestRule);
 fotosContentRules.set('FotosCollection', fotosCollectionRule);
+fotosContentRules.set('FotosGalleryAlbumBinding', fotosGalleryAlbumBindingRule);
 fotosContentRules.set('FotosEntry', fotosEntryRule);
 fotosContentRules.set('FotosShareManifest', fotosShareManifestRule);
 fotosContentRules.set('FotosShareCertificate', fotosShareCertificateRule);

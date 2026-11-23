@@ -14,8 +14,7 @@ import { AssemblyCoreRecipes, AssemblyCoreReverseMaps } from '@refinio/assembly.
 import { CHAT_CORE_RECIPES } from '@refinio/chat.core/recipes/index.js';
 import { AllRecipes as TrustCoreRecipes, AllReverseMaps as TrustCoreReverseMaps } from '@refinio/trust.core/recipes/index.js';
 import { PersonalTrustRecipes, PersonalTrustReverseMaps } from '@refinio/trust.me/recipes';
-import { FotosRecipes } from '@refinio/fotos.core';
-import { FotosShareReverseMaps } from '@refinio/fotos.core/shared-filesystem';
+import {createFotosOneCoreConfig} from '@refinio/fotos.core/one-core-config';
 import { DeviceCoreRecipes, DeviceCoreReverseMaps } from '@refinio/device.core/recipes/index.js';
 import { SettingsRecipes } from '@refinio/settings.core/recipes/index.js';
 
@@ -31,7 +30,6 @@ export function getFotosRuntimeRecipeConfig() {
         { name: 'trust.me', recipes: PersonalTrustRecipes },
         { name: 'device.core', recipes: DeviceCoreRecipes },
         { name: 'settings.core', recipes: SettingsRecipes },
-        { name: 'fotos.core', recipes: FotosRecipes as any[] },
     ];
 
     const recipes: any[] = [];
@@ -70,20 +68,10 @@ export function getFotosRuntimeRecipeConfig() {
         throw new Error(`[Model] Duplicate recipes detected: ${duplicateNames.map(([name]) => name).join(', ')}`);
     }
 
-    return {
+    return createFotosOneCoreConfig({
         recipes,
-        reverseMaps: new Map([
-            ...ReverseMapsStable,
-            ...ReverseMapsExperimental,
-            ...TrustCoreReverseMaps,
-            ...PersonalTrustReverseMaps,
-            ...AssemblyCoreReverseMaps,
-            ...(DeviceCoreReverseMaps || []),
-            ...FotosShareReverseMaps
-        ]) as any,
-        reverseMapsForIdObjects: new Map([
-            ...ReverseMapsForIdObjectsStable,
-            ...ReverseMapsForIdObjectsExperimental
-        ]),
-    };
+        reverseMaps: [ReverseMapsStable, ReverseMapsExperimental, TrustCoreReverseMaps,
+            PersonalTrustReverseMaps, AssemblyCoreReverseMaps, DeviceCoreReverseMaps],
+        reverseMapsForIdObjects: [ReverseMapsForIdObjectsStable, ReverseMapsForIdObjectsExperimental],
+    });
 }

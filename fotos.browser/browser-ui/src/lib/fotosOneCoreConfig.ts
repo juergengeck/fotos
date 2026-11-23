@@ -33,63 +33,48 @@ import { CubeCoreRecipes } from '@refinio/cube.core/recipes/index.js';
 import { CHAT_CORE_RECIPES } from '@refinio/chat.core/recipes/index.js';
 import { ConnectionPhoneBookRecipes } from '@refinio/connection.core/recipes';
 import { SettingsRecipes } from '@refinio/settings.core';
-import { FotosRecipes } from '../../../../fotos.core/src/recipes/FotosRecipes.js';
+import { createFotosOneCoreConfig } from '@refinio/fotos.core/one-core-config';
 import { SourceCoreRecipes } from '@refinio/source.core/recipes';
 
-type ReverseMapDefinitions = Iterable<readonly [string, ReadonlySet<string>]>;
+export {mergeReverseMapDefinitions} from '@refinio/fotos.core/one-core-config';
 
-export function mergeReverseMapDefinitions(
-  ...definitions: ReverseMapDefinitions[]
-): Map<string, Set<string>> {
-  const merged = new Map<string, Set<string>>();
-  for (const definition of definitions) {
-    for (const [objectType, properties] of definition) {
-      const target = merged.get(objectType) ?? new Set<string>();
-      for (const property of properties) target.add(property);
-      merged.set(objectType, target);
-    }
-  }
-  return merged;
-}
+const config = createFotosOneCoreConfig({
+  recipes: [
+    ...RecipesStable,
+    ...RecipesExperimental,
+    ...GlueContentRecipes,
+    GlueAuthorityCertificateRecipe,
+    GlueAuthoritySourceRecipe,
+    ...GlueInstanceAuthorizationRecipes,
+    ...PresenceRecipes,
+    ...TimeTrieRecipes,
+    ...TrustCoreRecipes,
+    ...PersonalTrustRecipes,
+    ...CubeCoreRecipes,
+    ...SettingsRecipes,
+    ...DeviceCoreRecipes,
+    ...CHAT_CORE_RECIPES,
+    ...AssemblyCoreRecipes,
+    ...ConnectionPhoneBookRecipes,
+    ...SourceCoreRecipes,
+    ...RefinioApiRecipes,
+  ] as Recipe[],
+  reverseMaps: [
+    DeviceCoreReverseMaps,
+    ReverseMapsStable,
+    ReverseMapsExperimental,
+    TrustCoreReverseMaps,
+    PersonalTrustReverseMaps,
+    AssemblyCoreReverseMaps,
+  ],
+  reverseMapsForIdObjects: [
+    ReverseMapsForIdObjectsStable,
+    ReverseMapsForIdObjectsExperimental,
+    TrustCoreReverseMapsForIdObjects,
+  ],
+});
 
-export const FotosOneCoreRecipes: Recipe[] = [
-  ...RecipesStable,
-  ...RecipesExperimental,
-  ...GlueContentRecipes,
-  GlueAuthorityCertificateRecipe,
-  GlueAuthoritySourceRecipe,
-  ...GlueInstanceAuthorizationRecipes,
-  ...PresenceRecipes,
-  ...TimeTrieRecipes,
-  ...TrustCoreRecipes,
-  ...PersonalTrustRecipes,
-  ...CubeCoreRecipes,
-  ...SettingsRecipes,
-  ...DeviceCoreRecipes,
-  ...CHAT_CORE_RECIPES,
-  ...AssemblyCoreRecipes,
-  ...ConnectionPhoneBookRecipes,
-  ...SourceCoreRecipes,
-  ...RefinioApiRecipes,
-  ...FotosRecipes,
-] as Recipe[];
-
-export const FotosReverseMaps = mergeReverseMapDefinitions(
-  new Map(DeviceCoreReverseMaps),
-  ReverseMapsStable,
-  ReverseMapsExperimental,
-  TrustCoreReverseMaps,
-  new Map(PersonalTrustReverseMaps),
-  AssemblyCoreReverseMaps,
-  new Map([
-    ['FotosShareCertificate', new Set(['subject', 'issuer'])],
-    ['FotosShareCertificateChain', new Set(['subject', 'issuer'])],
-    ['FotosSharePinProof', new Set(['sender', 'prover'])],
-  ]),
-);
-
-export const FotosReverseMapsForIdObjects = mergeReverseMapDefinitions(
-  ReverseMapsForIdObjectsStable,
-  ReverseMapsForIdObjectsExperimental,
-  TrustCoreReverseMapsForIdObjects,
-);
+export const FotosOneCoreRecipes = config.recipes;
+export const FotosReverseMaps = config.reverseMaps;
+export const FotosReverseMapsForIdObjects = config.reverseMapsForIdObjects;
+export const FotosSyncRules = config.syncRules;

@@ -139,8 +139,9 @@ vi.mock('./glueIdentityState.js', async importOriginal => ({
 }));
 vi.mock('./fotosHistorySettings.js', () => ({registerFotosHistorySettings() {}}));
 vi.mock('./fotosSettings.js', () => ({registerFotosSettings() {}}));
-vi.mock('./fotosSyncRules.js', () => ({fotosContentRules: []}));
-vi.mock('./fotosOneCoreConfig.js', () => ({FotosOneCoreRecipes: [], FotosReverseMaps: [], FotosReverseMapsForIdObjects: []}));
+vi.mock('./fotosOneCoreConfig.js', () => ({
+  FotosOneCoreRecipes: [], FotosReverseMaps: [], FotosReverseMapsForIdObjects: [], FotosSyncRules: new Map(),
+}));
 vi.mock('./fotosGlueLogin.js', () => ({getFotosGlueLogin: () => ({resolveBoot: runtime.credentials})}));
 
 import {bootFotosModel, setModelUpdater, shutdownFotosModel} from './onecore-boot.js';

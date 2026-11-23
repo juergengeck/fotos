@@ -3,9 +3,14 @@ import {SyncFilterFactory} from '@refinio/sync.core/services/SyncFilterFactory.j
 import {contentRules} from '@refinio/sync.core/rules/default-rules.js';
 import type {EffectivePersonalTrust} from '@refinio/trust.core/types/personal-trust.js';
 import type {TrustLevel} from '@refinio/trust.core/types/trust-types.js';
-import {canImportFotosEntry, canImportFotosManifest, fotosContentRules} from './sync-rules.js';
+import type {SHA256IdHash} from '@refinio/one.core/lib/util/type-checks.js';
+import type {FotosCollection} from './recipes/FotosRecipes.js';
+import {canImportFotosEntry, canImportFotosGalleryAlbumBinding, canImportFotosManifest, fotosContentRules} from './sync-rules.js';
 import {getOwnedFotosManifestId} from './owned-fotos-manifest.js';
-import {createFotosAlbumCollection, createFotosManualCollection} from './fotos-collection.js';
+import {createFotosAlbumCollection, createFotosGalleryCollection, createFotosManualCollection,
+    getFotosCollectionOwner, isFotosManualCollectionForOwner} from './fotos-collection.js';
+import {buildFotosGalleryAlbumBindingId, createFotosGalleryAlbumBinding,
+    isFotosGalleryAlbumBindingFromLibrary} from './fotos-gallery-album-binding.js';
 
 const chain = {
     $type$: 'FotosShareCertificateChain',
@@ -93,6 +98,78 @@ describe('Fotos root admission through SyncFilterFactory', () => {
         });
         expect(await filter('manual-collection', 'FotosCollection', manual, 'object')).toBe(true);
         expect(await otherFilter('foreign-manual-collection', 'FotosCollection', manual, 'object')).toBe(false);
+    });
+
+    it('keeps native source identities stable across metadata edits and distinct across libraries and platforms', () => {
+        const source = {owner, platform: 'ios' as const, libraryId: 'c'.repeat(64), albumId: 'Photos/L0:001 🏖'};
+        const params = {...source, collection: 'e'.repeat(64) as SHA256IdHash<FotosCollection>,
+            name: 'Trip', photoHashes: ['d'.repeat(64)]};
+        const binding = createFotosGalleryAlbumBinding(params);
+        expect(createFotosGalleryAlbumBinding({...params, name: 'Summer Trip', photoHashes: []}).id).toBe(binding.id);
+        expect(isFotosGalleryAlbumBindingFromLibrary(binding.id, owner, 'ios', source.libraryId)).toBe(true);
+        expect(isFotosGalleryAlbumBindingFromLibrary(binding.id, owner, 'android', source.libraryId)).toBe(false);
+        expect(isFotosGalleryAlbumBindingFromLibrary(binding.id, otherOwner, 'ios', source.libraryId)).toBe(false);
+        expect(buildFotosGalleryAlbumBindingId({...source, platform: 'android'})).not.toBe(binding.id);
+        expect(buildFotosGalleryAlbumBindingId({...source, libraryId: 'f'.repeat(64)})).not.toBe(binding.id);
+        expect(() => buildFotosGalleryAlbumBindingId({...source, owner: owner.toUpperCase()})).toThrow();
+        expect(() => buildFotosGalleryAlbumBindingId({...source, libraryId: 'native-library-id'})).toThrow();
+        expect(() => buildFotosGalleryAlbumBindingId({...source, albumId: ''})).toThrow();
+        expect(() => buildFotosGalleryAlbumBindingId({...source, albumId: 'a'.repeat(4096)})).toThrow();
+        expect(() => createFotosGalleryAlbumBinding({...params, collection: 'native-album-id' as SHA256IdHash<FotosCollection>})).toThrow();
+        expect(() => createFotosGalleryAlbumBinding({...params, name: ''})).toThrow();
+        expect(() => createFotosGalleryAlbumBinding({...params, photoHashes: ['filename.jpg']})).toThrow();
+    });
+
+    it('creates gallery collections independent of source album IDs while preserving manual and old album identities', async () => {
+        const params = {owner, uuid: '60796074-0163-4a40-8677-26830240e6ea', name: 'Trip', photoHashes: ['d'.repeat(64)]};
+        const collection = createFotosGalleryCollection(params);
+        expect(collection.id).toBe(`fotos-gallery-collection:v1:${owner}:${params.uuid}`);
+        expect(getFotosCollectionOwner(collection.id)).toBe(owner);
+        expect(isFotosManualCollectionForOwner(collection.id, owner)).toBe(false);
+        expect(createFotosGalleryCollection({...params, name: 'Summer Trip', photoHashes: []}).id).toBe(collection.id);
+        expect(() => createFotosGalleryCollection({...params, uuid: 'native-album-id'})).toThrow();
+        expect(() => createFotosGalleryCollection({...params, owner: owner.toUpperCase()})).toThrow();
+        expect(() => createFotosGalleryCollection({...params, photoHashes: ['filename.jpg']})).toThrow();
+        expect(createFotosAlbumCollection({...params, libraryId: 'c'.repeat(64), albumId: 'Photos/L0/001'}).id)
+            .toBe(`fotos-album:v1:${owner}:${'c'.repeat(64)}:Photos%2FL0%2F001`);
+        expect(isFotosManualCollectionForOwner(createFotosManualCollection(params).id, owner)).toBe(true);
+        const factory = new SyncFilterFactory({rules: fotosContentRules});
+        factory.preparePeerTrust(owner, {kind: 'self', ownerId: owner});
+        const filter = factory.createImportFilter(owner);
+        expect(await filter('gallery-collection', 'FotosCollection', collection, 'object')).toBe(true);
+    });
+
+    it('admits typed album binding versions, identities and exact manifest refs only on the owner self lane', async () => {
+        const binding = createFotosGalleryAlbumBinding({owner, platform: 'ios', libraryId: 'c'.repeat(64),
+            albumId: 'Photos/L0/001', collection: 'e'.repeat(64) as SHA256IdHash<FotosCollection>,
+            name: 'Trip', photoHashes: ['d'.repeat(64)]});
+        const root = {...ownedRoot, albumBindings: new Set(['f'.repeat(64)])};
+        const factory = new SyncFilterFactory({rules: fotosContentRules});
+        factory.preparePeerTrust(owner, {kind: 'self', ownerId: owner});
+        factory.preparePeerTrust(otherOwner, {kind: 'self', ownerId: otherOwner});
+        const filter = factory.createImportFilter(owner);
+        const otherFilter = factory.createImportFilter(otherOwner);
+        const id = {$type$: binding.$type$, id: binding.id};
+        expect(await filter('binding-version', binding.$type$, binding, 'object')).toBe(true);
+        expect(await filter('binding-id', binding.$type$, id, 'id')).toBe(true);
+        expect(await filter('binding-missing-payload', binding.$type$, id, 'object')).toBe(false);
+        expect(await filter('binding-root', 'FotosManifest', root, 'object')).toBe(true);
+        expect(await otherFilter('foreign-binding-version', binding.$type$, binding, 'object')).toBe(false);
+        expect(await otherFilter('foreign-binding-id', binding.$type$, id, 'id')).toBe(false);
+        expect(await otherFilter('foreign-binding-root', 'FotosManifest', root, 'object')).toBe(false);
+        expect(await importFilter('trusted')('external-binding-version', binding.$type$, binding, 'object')).toBe(false);
+        expect(await filter('legacy-binding-root', 'FotosManifest', {...root, id: 'fotos'}, 'object')).toBe(false);
+        expect(await filter('binding-root-array', 'FotosManifest', {...root, albumBindings: [...root.albumBindings]}, 'object')).toBe(false);
+        expect(await filter('binding-root-bad-hash', 'FotosManifest', {...root, albumBindings: new Set(['version-hash'])}, 'object')).toBe(false);
+        const context = {peerTrustLevel: 'me' as const, remotePersonId: owner,
+            peerTrust: {kind: 'self' as const, ownerId: owner}};
+        for (const change of [
+            {collection: 'native-album-id'}, {name: ''}, {photoHashes: new Set(['filename.jpg'])},
+            {id: binding.id.replace(':ios:', ':web:')}, {id: binding.id.replace('%2F', '%2f')},
+            {id: binding.id.replace('Photos%2F', '%FF')},
+        ]) expect(canImportFotosGalleryAlbumBinding(context, {...binding, ...change})).toBe(false);
+        expect(canImportFotosGalleryAlbumBinding({...context, peerTrust: undefined}, binding)).toBe(false);
+        expect(canImportFotosGalleryAlbumBinding({...context, peerTrustLevel: 'ignore'}, binding)).toBe(false);
     });
 
     it('accepts bounded gallery metadata while validating its values', () => {

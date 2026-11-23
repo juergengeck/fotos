@@ -4,6 +4,7 @@ import * as MediaLibrary from 'expo-media-library';
 import { Platform } from 'react-native';
 import {
     appendFotosDeviceBookContent,
+    applyGalleryDelta,
     createFotosManualCollection,
     createFotosMediaLocator,
     createFotosMediaVariant,
@@ -18,6 +19,7 @@ import {
     projectFotosEntryReferences,
     type FotosDeviceBook,
     type FotosCollection,
+    type FotosGalleryAlbumBinding,
     recordFotosAcquisition,
     type FotosEntry,
     type FotosManifest,
@@ -564,9 +566,7 @@ export class FotosMediaLibrarySync {
             if (thumbnail) mergedVariants.add(thumbnail.hash as SHA256Hash<FotosMediaVariant>);
 
             const mergedEntry: FotosEntry = {
-                ...(existingEntry ?? {}),
-                ...entry,
-                streamId: existingEntry?.streamId ?? entry.streamId,
+                ...applyGalleryDelta(existingEntry ?? undefined, {observed: entry}),
                 ...(thumbnail ? {thumb: thumbnail.blob} : {}),
                 variants: mergedVariants,
             };
@@ -1073,6 +1073,9 @@ export class FotosMediaLibrarySync {
             }
             await this.ensureLocalAssetIndex();
             const removed = new Set(change.removed);
+            if (removed.size && permission.accessPrivileges === 'all') {
+                await this.retireLocalPhotoLocators(removed);
+            }
             for (const assetId of removed) {
                 this.albumAssetHashes.delete(assetId);
                 this.assetVerificationTimes.delete(assetId);
@@ -1103,6 +1106,27 @@ export class FotosMediaLibrarySync {
         });
     }
 
+    private async retireLocalPhotoLocators(removed: ReadonlySet<string>): Promise<void> {
+        const deviceId = this.deps.getInstanceId();
+        if (!deviceId) throw new Error('PhotoKit requires the local device identity');
+        const idHash = await this.deps.calculateIdHashOfObj({$type$: 'FotosDeviceBook', id: makeFotosDeviceBookId(deviceId)});
+        const book = await this.readVersionedObject<FotosDeviceBook>(idHash);
+        if (!book?.locators?.size) return;
+        const locators = new Set<SHA256Hash<FotosMediaLocator>>();
+        for (const ref of book.locators) {
+            const locator = await getObject(ref);
+            if (locator.deviceId === deviceId && locator.kind === 'phasset' && locator.platform === 'ios'
+                && locator.scope === 'device-local' && removed.has(locator.locator)) continue;
+            locators.add(ref);
+        }
+        if (locators.size !== book.locators.size) {
+            const access = await MediaLibrary.getPermissionsAsync(false, ['photo', 'video']);
+            if (access.granted && access.accessPrivileges === 'all') {
+                await this.deps.storeVersionedObject({...book, locators, updatedAt: Math.max(Date.now(), book.updatedAt)});
+            }
+        }
+    }
+
     private async syncAlbums(native: FotosPhotoKitNative, fullAccess: boolean): Promise<void> {
         const owner = this.requireOwner();
         const deviceId = this.deps.getInstanceId();
@@ -1110,11 +1134,18 @@ export class FotosMediaLibrarySync {
         const id = getOwnedFotosManifestId(owner);
         const manifestIdHash = await this.deps.calculateIdHashOfObj({$type$: 'FotosManifest', id}) as SHA256IdHash<FotosManifest>;
         const manifest = await this.readVersionedObject<FotosManifest>(manifestIdHash);
-        const {collections, changed} = await reconcileFotosPhotoKitAlbums({
+        const {collections, albumBindings, changed} = await reconcileFotosPhotoKitAlbums({
             native, ownerId: owner, libraryId: await this.digestBytes(new TextEncoder().encode(deviceId)),
             fullAccess, assetHashes: this.albumAssetHashes, existingRefs: manifest?.collections ?? new Set(),
+            bindingRefs: manifest?.albumBindings ?? new Set(),
+            allocateCollectionUuid: Crypto.randomUUID,
+            calculateCollectionId: async collection => await this.deps.calculateIdHashOfObj(
+                {$type$: 'FotosCollection', id: collection.id},
+            ) as SHA256IdHash<FotosCollection>,
             readCollection: hash => getObject(hash),
+            readBinding: hash => getObject(hash),
             storeCollection: async collection => (await this.deps.storeVersionedObject(collection)).hash as SHA256Hash<FotosCollection>,
+            storeBinding: async binding => (await this.deps.storeVersionedObject(binding)).hash as SHA256Hash<FotosGalleryAlbumBinding>,
         });
         if (!changed) return;
         const currentAccess = await MediaLibrary.getPermissionsAsync(false, ['photo', 'video']);
@@ -1122,7 +1153,7 @@ export class FotosMediaLibrarySync {
             throw new Error('Photos access changed during album reconciliation');
         }
         await this.storeOwnedManifest(owner, manifestIdHash, {
-            ...(manifest ?? {}), $type$: 'FotosManifest', id, entries: manifest?.entries ?? new Set(), collections,
+            ...(manifest ?? {}), $type$: 'FotosManifest', id, entries: manifest?.entries ?? new Set(), collections, albumBindings,
         });
     }
 

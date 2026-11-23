@@ -21,7 +21,8 @@ const mocks = vi.hoisted(() => ({
     listener: undefined as undefined | ((change: FotosPhotoKitChange) => void),
 }));
 vi.mock('react-native', () => ({Platform: {OS: 'ios'}}));
-vi.mock('expo-crypto', () => ({CryptoDigestAlgorithm: {SHA256: 'SHA256'}, digest: async (_algorithm: string, bytes: Uint8Array) =>
+vi.mock('expo-crypto', () => ({randomUUID: () => '22b699dd-136c-407b-83f4-48f2e47b2b18',
+    CryptoDigestAlgorithm: {SHA256: 'SHA256'}, digest: async (_algorithm: string, bytes: Uint8Array) =>
     Uint8Array.from((await import('node:crypto')).createHash('sha256').update(bytes).digest()).buffer}));
 vi.mock('expo-file-system', () => ({
     File: class {
@@ -49,6 +50,8 @@ vi.mock('@refinio/fotos.core', async () => ({
     ...await import('../../../fotos.core/src/content-hash.js'),
     ...await import('../../../fotos.core/src/fotos-collection.js'),
     ...await import('../../../fotos.core/src/fotos-entry-projection.js'),
+    ...await import('../../../fotos.core/src/fotos-gallery-delta.js'),
+    ...await import('../../../fotos.core/src/fotos-gallery-albums.js'),
     MAX_FOTOS_ENTRY_TAGS: 64, MAX_FOTOS_TAG_LENGTH: 80,
     getOwnedFotosManifestId: (owner: string) => `fotos:${owner}`,
     makeFotosDeviceBookId: (deviceId: string) => `fotos-device-book:${deviceId}`,
@@ -60,7 +63,7 @@ vi.mock('@refinio/fotos.core', async () => ({
         const idHash = await deps.calculateIdHashOfObj({$type$: 'FotosDeviceBook', id});
         let current: any;
         try {current = (await deps.getObjectByIdHash(idHash)).obj;} catch {current = {};}
-        await deps.storeVersionedObject({$type$: 'FotosDeviceBook', id, deviceId: params.deviceId,
+        await deps.storeVersionedObject({$type$: 'FotosDeviceBook', id, deviceId: params.deviceId, updatedAt: Date.now(),
             entries: new Set([...(current.entries ?? []), ...params.entries]),
             locators: new Set([...(current.locators ?? []), ...params.locators])});
     },
@@ -77,6 +80,7 @@ vi.mock('./FotosMobileCollectionShare', () => ({shareFotosMobileCollection: vi.f
 import {FotosMediaLibrarySync, type FotosIntakeMode} from './FotosMediaLibrarySync';
 function idOf(obj: any): string {
     if (obj.$type$ === 'FotosEntry') return `entry:${obj.contentHash}`;
+    if (obj.$type$ === 'FotosCollection') return createHash('sha256').update(`collection:${obj.id}`).digest('hex');
     if (obj.$type$ === 'FotosMediaVariant') return `variant:${obj.contentHash}:${obj.role}`;
     if (obj.$type$ === 'FotosMediaLocator') return `locator:${obj.variant}:${obj.locator}`;
     return `${obj.$type$}:${obj.id ?? obj.locator ?? ''}`;
@@ -263,6 +267,11 @@ describe('Expo reference-first media acquisition', () => {
         expect(await service.syncAssetIds(['asset-1'])).toMatchObject({syncedCount: 1});
         const collection = writes.find(obj => obj.$type$ === 'FotosCollection');
         expect(collection).toMatchObject({name: 'Trip', photoHashes: new Set([CONTENT])});
+        expect(collection.id).toBe(`fotos-gallery-collection:v1:${OWNER}:22b699dd-136c-407b-83f4-48f2e47b2b18`);
+        expect(writes.find(obj => obj.$type$ === 'FotosGalleryAlbumBinding')).toMatchObject({
+            name: 'Trip', collection: idOf(collection), photoHashes: new Set([CONTENT]),
+        });
+        expect(stored.get(`FotosManifest:fotos:${OWNER}`).albumBindings.size).toBe(1);
         expect(stored.get(`FotosManifest:fotos:${OWNER}`).collections.size).toBe(1);
         expect(mocks.listAlbumMembers).toHaveBeenCalledExactlyOnceWith('user-album', 0, 100, undefined);
     });
@@ -298,7 +307,7 @@ describe('Expo reference-first media acquisition', () => {
         expect(writes).toEqual([]);
     });
     it('applies incremental PhotoKit changes and drops removed local locators', async () => {
-        const {service, stored} = fixture();
+        const {service, stored, deps} = fixture();
         await service.syncAssetIds(['removed']);
         mocks.listener?.({inserted: ['inserted'], changed: [], removed: ['removed'],
             albumsChanged: true, requiresReload: false});
@@ -306,8 +315,23 @@ describe('Expo reference-first media acquisition', () => {
         expect(mocks.inspect).toHaveBeenLastCalledWith('inserted', false, 512);
         await service.resolveOriginal(stored.get(`entry:${CONTENT}`));
         expect(mocks.originalFile).toHaveBeenCalledExactlyOnceWith('inserted', false);
+        const book = stored.get('FotosDeviceBook:fotos-device-book:device-1');
+        expect([...book.locators].map(ref => mocks.objects.get(ref as string).locator)).toEqual(['inserted']);
+        expect(await new FotosMediaLibrarySync(deps).getLocalPhotoHashes()).toEqual(new Map([['inserted', CONTENT]]));
+        expect(stored.get(`entry:${CONTENT}`)).toMatchObject({contentHash: CONTENT});
         await service.dispose();
         expect(mocks.unsubscribe).toHaveBeenCalledOnce();
+    });
+    it('does not persist locator retirement for removals reported under limited Photos access', async () => {
+        const {service, stored, deps} = fixture();
+        await service.syncAssetIds(['still-owned']);
+        const before = stored.get('FotosDeviceBook:fotos-device-book:device-1');
+        mocks.permissions.mockResolvedValue({granted: true, accessPrivileges: 'limited'});
+        mocks.listener?.({inserted: [], changed: [], removed: ['still-owned'], albumsChanged: false, requiresReload: false});
+        await service.syncAssetIds([]);
+        expect(await service.getLocalPhotoHashes()).toEqual(new Map());
+        expect(stored.get('FotosDeviceBook:fotos-device-book:device-1')).toBe(before);
+        expect(await new FotosMediaLibrarySync(deps).getLocalPhotoHashes()).toEqual(new Map([['still-owned', CONTENT]]));
     });
     it('serializes concurrent service and inbox publication, preserving manifest extensions', async () => {
         const {service, deps, stored} = fixture();

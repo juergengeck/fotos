@@ -37,7 +37,6 @@ import {
     type FotosPlatformCapabilities,
 } from '../src/mobile-platform';
 
-import { fotosContentRules } from '@refinio/fotos.core/sync-rules';
 // Settings.core recipes and storage (for IoM-compatible settings)
 import {
     SettingsPlan,
@@ -122,6 +121,7 @@ export default class Model {
     private readonly webUrl: string;
     private readonly modelOptions: ResolvedModelOptions;
     private readonly currentPlatformCapabilities: FotosPlatformCapabilities;
+    private readonly fotosOneCoreConfig = getFotosRuntimeRecipeConfig();
 
     // MultiUser instance (ONE.core authentication and storage)
     public one: MultiUser;
@@ -198,9 +198,12 @@ export default class Model {
      * Create MultiUser instance with all recipes.
      */
     private createMultiUser(): MultiUser {
+        const {recipes, reverseMaps, reverseMapsForIdObjects} = this.fotosOneCoreConfig;
         return new MultiUser({
             directory: this.modelOptions.storageDirectory,
-            ...getFotosRuntimeRecipeConfig(),
+            recipes,
+            reverseMaps: reverseMaps as never,
+            reverseMapsForIdObjects,
             storageInitTimeout: 20000
         });
     }
@@ -267,7 +270,7 @@ export default class Model {
                 SettingsPlan: this._settingsPlan,
                 SecretsPlan: this._secretsPlan,
                 DevicesPlan: this._devicesPlan,
-                SyncRules: fotosContentRules,
+                SyncRules: new Map(this.fotosOneCoreConfig.syncRules),
                 PostStoreImportBatch: onChumImportBatch,
             },
             storageFunction: storeVersionedObject,

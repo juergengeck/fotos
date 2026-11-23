@@ -1,31 +1,24 @@
 import {
-    buildFotosAlbumCollectionId,
-    createFotosAlbumCollection,
-    isFotosAlbumCollectionFromLibrary,
-    type FotosCollection,
+    reconcileFotosGalleryAlbums,
+    type FotosObservedGalleryAlbum,
+    type ReconcileFotosGalleryAlbumsParams,
 } from '@refinio/fotos.core';
-import type {SHA256Hash} from '@refinio/one.core/lib/util/type-checks.js';
 import type {FotosPhotoKitNative} from './FotosPhotoKit';
 import {visitFotosPhotoKitPages} from './FotosPhotoKitPaging';
 
 export type FotosPhotoKitAlbumNative = Pick<FotosPhotoKitNative, 'listAlbums' | 'listAlbumMembers' | 'releaseCursor'>;
 
-export interface ReconcileFotosPhotoKitAlbumsParams {
+export interface ReconcileFotosPhotoKitAlbumsParams extends Omit<
+    ReconcileFotosGalleryAlbumsParams, 'owner' | 'platform' | 'complete' | 'observed' | 'collectionRefs'
+> {
     native: FotosPhotoKitAlbumNative;
     ownerId: string;
-    libraryId: string;
     fullAccess: boolean;
     assetHashes: ReadonlyMap<string, string>;
-    existingRefs: ReadonlySet<SHA256Hash<FotosCollection>>;
-    readCollection(hash: SHA256Hash<FotosCollection>): Promise<FotosCollection>;
-    storeCollection(collection: FotosCollection): Promise<SHA256Hash<FotosCollection>>;
+    existingRefs: ReconcileFotosGalleryAlbumsParams['collectionRefs'];
 }
 
 const PAGE_SIZE = 100;
-
-function sameSet<T>(left: ReadonlySet<T>, right: ReadonlySet<T>): boolean {
-    return left.size === right.size && [...left].every(value => right.has(value));
-}
 
 function checkPage(items: unknown, nextOffset?: number): asserts items is unknown[] {
     if (!Array.isArray(items) || items.length > PAGE_SIZE) {
@@ -36,92 +29,45 @@ function checkPage(items: unknown, nextOffset?: number): asserts items is unknow
     }
 }
 
-/** Reconcile immutable album references; the caller publishes its root only after success. */
-export async function reconcileFotosPhotoKitAlbums(
-    params: ReconcileFotosPhotoKitAlbumsParams,
-): Promise<{collections: Set<SHA256Hash<FotosCollection>>; changed: boolean}> {
-    const existing = new Map<string, Array<{hash: SHA256Hash<FotosCollection>; collection: FotosCollection}>>();
-    const collections = new Set<SHA256Hash<FotosCollection>>();
-    for (const hash of params.existingRefs) {
-        const collection = await params.readCollection(hash);
-        if (collection.$type$ !== 'FotosCollection' || typeof collection.id !== 'string'
-            || !(collection.photoHashes instanceof Set)) {
-            throw new Error('Invalid stored Fotos album collection');
-        }
-        if (!isFotosAlbumCollectionFromLibrary(collection.id, params.ownerId, params.libraryId)) {
-            collections.add(hash);
-            continue;
-        }
-        const versions = existing.get(collection.id) ?? [];
-        versions.push({hash, collection});
-        existing.set(collection.id, versions);
-    }
-
-    const visible = new Map<string, {id: string; name: string}>();
-    const seenAlbumIds = new Set<string>();
-    const releaseCursor = (cursor: string) => params.native.releaseCursor(cursor);
+/** Finish the native scan before applying an owner-scoped gallery observation. */
+export async function reconcileFotosPhotoKitAlbums(params: ReconcileFotosPhotoKitAlbumsParams) {
+    const {native, ownerId, fullAccess, assetHashes, existingRefs, ...storage} = params;
+    const visible: Array<{id: string; name: string}> = [];
+    const seen = new Set<string>();
+    const releaseCursor = (cursor: string) => native.releaseCursor(cursor);
     await visitFotosPhotoKitPages(
-        (offset, cursor) => params.native.listAlbums(offset, PAGE_SIZE, cursor),
-        releaseCursor,
+        (offset, cursor) => native.listAlbums(offset, PAGE_SIZE, cursor), releaseCursor,
         page => {
             checkPage(page.albums, page.nextOffset);
             for (const album of page.albums) {
-                if (!album || typeof album.id !== 'string' || album.id.length === 0
-                    || typeof album.name !== 'string' || (album.kind !== 'user' && album.kind !== 'smart')
-                    || seenAlbumIds.has(album.id)) {
+                if (!album || typeof album.id !== 'string' || !album.id || typeof album.name !== 'string'
+                    || (album.kind !== 'user' && album.kind !== 'smart') || seen.has(album.id)) {
                     throw new Error('Invalid or duplicate PhotoKit album');
                 }
-                seenAlbumIds.add(album.id);
-                if (album.kind === 'user') {
-                    visible.set(buildFotosAlbumCollectionId(params.ownerId, params.libraryId, album.id), album);
-                }
+                seen.add(album.id);
+                if (album.kind === 'user') visible.push(album);
             }
         },
     );
 
-    // Finish every native read before writing collections, so an incomplete scan never
-    // produces a reconciliation result or stores a partial replacement snapshot.
-    const pending: FotosCollection[] = [];
-    for (const [id, album] of visible) {
+    const observed: FotosObservedGalleryAlbum[] = [];
+    for (const album of visible) {
         const photoHashes = new Set<string>();
-        if (!params.fullAccess) {
-            for (const version of existing.get(id) ?? []) {
-                for (const hash of version.collection.photoHashes) photoHashes.add(hash);
-            }
-        }
         await visitFotosPhotoKitPages(
-            (offset, cursor) => params.native.listAlbumMembers(album.id, offset, PAGE_SIZE, cursor),
-            releaseCursor,
+            (offset, cursor) => native.listAlbumMembers(album.id, offset, PAGE_SIZE, cursor), releaseCursor,
             page => {
                 checkPage(page.assetIds, page.nextOffset);
                 for (const assetId of page.assetIds) {
-                    if (typeof assetId !== 'string' || assetId.length === 0) {
-                        throw new Error('Invalid PhotoKit album member');
-                    }
-                    const hash = params.assetHashes.get(assetId);
+                    if (typeof assetId !== 'string' || !assetId) throw new Error('Invalid PhotoKit album member');
+                    const hash = assetHashes.get(assetId);
                     if (hash !== undefined) photoHashes.add(hash);
                 }
             },
         );
-        pending.push(createFotosAlbumCollection({
-            owner: params.ownerId,
-            libraryId: params.libraryId,
-            albumId: album.id,
-            name: album.name,
-            photoHashes,
-        }));
+        observed.push({id: album.id, name: album.name, photoHashes});
     }
 
-    if (!params.fullAccess) {
-        for (const [id, versions] of existing) {
-            if (!visible.has(id)) for (const version of versions) collections.add(version.hash);
-        }
-    }
-    for (const collection of pending) {
-        const reusable = existing.get(collection.id)?.find(version =>
-            version.collection.name === collection.name
-            && sameSet(version.collection.photoHashes, collection.photoHashes));
-        collections.add(reusable?.hash ?? await params.storeCollection(collection));
-    }
-    return {collections, changed: !sameSet(collections, params.existingRefs)};
+    return reconcileFotosGalleryAlbums({
+        ...storage, owner: ownerId, platform: 'ios', complete: fullAccess, observed, collectionRefs: existingRefs,
+    });
 }
