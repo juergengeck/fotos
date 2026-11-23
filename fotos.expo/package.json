@@ -7,16 +7,17 @@
   "private": true,
   "main": "index.ts",
   "scripts": {
-    "start": "expo start",
-    "android": "expo run:android",
-    "ios": "expo run:ios",
+    "start": "pnpm run verify:vendor-install && expo start",
+    "android": "pnpm run verify:vendor-install && expo run:android",
+    "ios": "pnpm run verify:vendor-install && expo run:ios",
     "web": "expo start --web",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "vendor:pack": "node scripts/vendor-pack.js",
     "vendor:clean": "node scripts/vendor-clean.js",
     "vendor:prune-installed": "node scripts/vendor-prune-installed.js",
-    "vendor:setup": "corepack pnpm@9.15.0 run vendor:pack && corepack pnpm@9.15.0 install --ignore-workspace && node scripts/vendor-normalize-lockfile.js",
+    "vendor:setup": "corepack pnpm@9.15.0 run vendor:pack && corepack pnpm@9.15.0 install --ignore-workspace && node scripts/vendor-normalize-lockfile.js && pnpm run verify:vendor-install",
+    "verify:vendor-install": "node scripts/verify-vendor-install.js",
     "test": "vitest run",
     "test:auth": "vitest run ios-ui/hooks/useGlueLogin.test.ts ios-ui/components/GlueLoginField.test.ts ios-ui/services/glue-login.test.ts ios-ui/hooks/useAuth.glue-session.test.ts"
   },
@@ -92,21 +93,21 @@
     "@refinio/group.core": "file:./vendor/refinio-group.core-0.1.0-be4db4417d19d502.tgz",
     "@glueone/auth.core": "file:./vendor/glueone-auth.core-1.0.0-bf585e917f2bcb20.tgz",
     "expo-web-browser": "~57.0.3",
-    "@refinio/provenance.core": "link:../../one/packages/provenance.core",
-    "@refinio/fotos.core": "link:../fotos.core",
+    "@refinio/provenance.core": "file:./vendor/refinio-provenance.core-0.1.0-d7102e0b17edd221.tgz",
+    "@refinio/fotos.core": "file:./vendor/refinio-fotos.core-0.1.0-8e0ecd28b12f03ed.tgz",
     "@refinio/trust.me": "file:./vendor/refinio-trust.me-1.0.0-5a567b9c183ac45c.tgz",
     "@refinio/trust.api": "file:./vendor/refinio-trust.api-1.0.0-ca6e8d65f5560a62.tgz",
     "@refinio/instrumentation.core": "file:./vendor/refinio-instrumentation.core-0.1.0-30a210dfb6ad98e6.tgz",
     "@refinio/ui.core": "file:./vendor/refinio-ui.core-1.0.0-6b0e27e286eeb1c1.tgz",
     "@refinio/media.core": "file:./vendor/refinio-media.core-0.1.0-63071d5123c7ede1.tgz",
-    "@refinio/media.expo": "file:./vendor/refinio-media.expo-0.1.0-6613ca4d2970f064.tgz",
+    "@refinio/media.expo": "file:./vendor/refinio-media.expo-0.1.0-68993681ed41aee6.tgz",
     "@refinio/source.media": "file:./vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz"
   },
   "devDependencies": {
-    "@refinio/one.core-expo": "file:./vendor/refinio-one.core-expo-0.1.0.tgz",
     "@types/react": "~19.2.4",
     "typescript": "~6.0.3",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "yaml": "^2.8.4"
   },
   "overrides": {
     "@refinio/assembly.core": "file:./vendor/refinio-assembly.core-1.0.0-8e8233f68e7da49e.tgz",
@@ -141,8 +142,10 @@
     "@refinio/trust.pdf": "file:./vendor/refinio-trust.pdf-0.1.0-689c3f9ad2d82758.tgz",
     "@refinio/contact.core": "file:./vendor/refinio-contact.core-0.1.0-bb2711c1aff19a5f.tgz",
     "@refinio/media.core": "file:./vendor/refinio-media.core-0.1.0-63071d5123c7ede1.tgz",
-    "@refinio/media.expo": "file:./vendor/refinio-media.expo-0.1.0-6613ca4d2970f064.tgz",
-    "@refinio/source.media": "file:./vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz"
+    "@refinio/media.expo": "file:./vendor/refinio-media.expo-0.1.0-68993681ed41aee6.tgz",
+    "@refinio/source.media": "file:./vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz",
+    "@refinio/provenance.core": "file:./vendor/refinio-provenance.core-0.1.0-d7102e0b17edd221.tgz",
+    "@refinio/fotos.core": "file:./vendor/refinio-fotos.core-0.1.0-8e0ecd28b12f03ed.tgz"
   },
   "pnpm": {
     "overrides": {
@@ -178,8 +181,10 @@
       "@refinio/trust.pdf": "file:./vendor/refinio-trust.pdf-0.1.0-689c3f9ad2d82758.tgz",
       "@refinio/contact.core": "file:./vendor/refinio-contact.core-0.1.0-bb2711c1aff19a5f.tgz",
       "@refinio/media.core": "file:./vendor/refinio-media.core-0.1.0-63071d5123c7ede1.tgz",
-      "@refinio/media.expo": "file:./vendor/refinio-media.expo-0.1.0-6613ca4d2970f064.tgz",
-      "@refinio/source.media": "file:./vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz"
+      "@refinio/media.expo": "file:./vendor/refinio-media.expo-0.1.0-68993681ed41aee6.tgz",
+      "@refinio/source.media": "file:./vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz",
+      "@refinio/provenance.core": "file:./vendor/refinio-provenance.core-0.1.0-d7102e0b17edd221.tgz",
+      "@refinio/fotos.core": "file:./vendor/refinio-fotos.core-0.1.0-8e0ecd28b12f03ed.tgz"
     }
   },
   "packageManager": "pnpm@9.15.0"

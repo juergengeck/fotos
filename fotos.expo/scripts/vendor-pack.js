@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const { createHash } = require('crypto');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
@@ -15,6 +15,16 @@ console.log('📦 Vendoring monorepo packages...\n');
 // Read configuration
 const config = JSON.parse(fs.readFileSync(VENDOR_RC, 'utf8'));
 const packageJson = JSON.parse(fs.readFileSync(PACKAGE_JSON, 'utf8'));
+const allPackages = [...config.packages, ...(config.transitivePackages ?? [])];
+const [selection, ...extraArgs] = process.argv.slice(2);
+if (extraArgs.length || (selection && !selection.startsWith('--packages='))) {
+  throw new Error('Usage: vendor-pack.js [--packages=name,name]');
+}
+const selectedNames = selection ? new Set(selection.slice('--packages='.length).split(',')) : undefined;
+const packages = selectedNames ? allPackages.filter(pkg => selectedNames.has(pkg.name)) : allPackages;
+if (selectedNames && packages.length !== selectedNames.size) {
+  throw new Error('Every selected package must be listed in .vendorrc.json');
+}
 
 // Never write through another application's vendor cache.
 if (fs.existsSync(VENDOR_DIR) && fs.lstatSync(VENDOR_DIR).isSymbolicLink()) {
@@ -32,7 +42,7 @@ const packedTarballs = new Map();
 
 // PHASE 1: Pack all packages
 console.log('Phase 1: Packing all packages...\n');
-for (const pkg of [...config.packages, ...(config.transitivePackages ?? [])]) {
+for (const pkg of packages) {
   const pkgPath = path.resolve(PROJECT_ROOT, pkg.path);
 
   console.log(`Packing ${pkg.name} from ${pkg.path}...`);
@@ -44,9 +54,11 @@ for (const pkg of [...config.packages, ...(config.transitivePackages ?? [])]) {
 
   try {
     // Run pnpm pack (resolves catalog: references)
-    const output = execSync(
-      `corepack pnpm@9.15.0 pack --pack-destination="${VENDOR_DIR}"`,
-      { cwd: pkgPath, encoding: 'utf8' }
+    const env = pkg.workspace
+      ? {...process.env, NPM_CONFIG_WORKSPACE_DIR: path.resolve(PROJECT_ROOT, pkg.workspace)}
+      : process.env;
+    const output = execFileSync('corepack', ['pnpm@9.15.0', 'pack', '--pack-destination', VENDOR_DIR],
+      { cwd: pkgPath, encoding: 'utf8', env }
     );
 
     // Extract tarball filename from output (last line)
@@ -85,7 +97,7 @@ console.log(`\nPhase 3: Updating package.json dependencies...\n`);
 
 let updated = 0;
 // Internal runtime roots and required transitive dependencies are all local.
-const overrides = {};
+const overrides = selectedNames ? {...packageJson.overrides} : {};
 const runtimeRoots = new Set(config.packages.map(pkg => pkg.name));
 for (const [pkgName, tarballName] of packedTarballs) {
   overrides[pkgName] = `file:./vendor/${tarballName}`;
@@ -93,7 +105,7 @@ for (const [pkgName, tarballName] of packedTarballs) {
   // Pin peers at the application root too: peer resolution needs an explicit
   // local provider and must never fetch internal ONE packages from a registry.
   packageJson.dependencies ??= {};
-  if (runtimeRoots.has(pkgName) && !packageJson.dependencies[pkgName]?.startsWith('link:')) {
+  if (runtimeRoots.has(pkgName)) {
     const oldValue = packageJson.dependencies[pkgName];
     const newValue = `file:./vendor/${tarballName}`;
 

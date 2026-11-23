@@ -61,6 +61,15 @@
       "path": "../../one/packages/media.expo"
     },
     {
+      "name": "@refinio/provenance.core",
+      "path": "../../one/packages/provenance.core"
+    },
+    {
+      "name": "@refinio/fotos.core",
+      "path": "../fotos.core",
+      "workspace": "../../one"
+    },
+    {
       "name": "@refinio/source.media",
       "path": "../../one/packages/source.media"
     },

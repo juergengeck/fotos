@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {URL} from 'node:url';
 import {createHash} from 'node:crypto';
-import {normalizeImageBytesForContentHash} from '../../../fotos.core/src/content-hash.js';
+import {normalizeImageBytesForContentHash} from '@refinio/fotos.core/content-hash';
 import type {FotosPhotoKitAsset, FotosPhotoKitChange} from './FotosPhotoKit';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 const OWNER = 'a'.repeat(64);
@@ -46,12 +46,8 @@ vi.mock('@refinio/one.core/lib/storage-blob.js', () => ({storeArrayBufferAsBlob:
 vi.mock('@refinio/one.core/lib/storage-unversioned-objects.js', () => ({getObject: async (hash: string) => mocks.objects.get(hash)}));
 vi.mock('@refinio/one.core/lib/access.js', () => ({createAccess: mocks.access}));
 vi.mock('@refinio/one.core/lib/storage-base-common.js', () => ({SET_ACCESS_MODE: {ADD: 'add'}}));
-vi.mock('@refinio/fotos.core', async () => ({
-    ...await import('../../../fotos.core/src/content-hash.js'),
-    ...await import('../../../fotos.core/src/fotos-collection.js'),
-    ...await import('../../../fotos.core/src/fotos-entry-projection.js'),
-    ...await import('../../../fotos.core/src/fotos-gallery-delta.js'),
-    ...await import('../../../fotos.core/src/fotos-gallery-albums.js'),
+vi.mock('@refinio/fotos.core', async importOriginal => ({
+    ...await importOriginal<typeof import('@refinio/fotos.core')>(),
     MAX_FOTOS_ENTRY_TAGS: 64, MAX_FOTOS_TAG_LENGTH: 80,
     getOwnedFotosManifestId: (owner: string) => `fotos:${owner}`,
     makeFotosDeviceBookId: (deviceId: string) => `fotos-device-book:${deviceId}`,

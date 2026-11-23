@@ -2,19 +2,12 @@ import {createHash} from 'node:crypto';
 import {describe, expect, it, vi} from 'vitest';
 import type {SHA256Hash, SHA256IdHash} from '@refinio/one.core/lib/util/type-checks.js';
 import type {FotosCollection, FotosGalleryAlbumBinding} from '@refinio/fotos.core';
-import {createFotosAlbumCollection, isFotosAlbumCollectionFromLibrary} from '@refinio/fotos.core';
-import {createFotosGalleryAlbumBinding} from '../../../fotos.core/src/fotos-gallery-album-binding';
+import {createFotosAlbumCollection, createFotosGalleryAlbumBinding, isFotosAlbumCollectionFromLibrary} from '@refinio/fotos.core';
 import {
     reconcileFotosPhotoKitAlbums,
     type FotosPhotoKitAlbumNative,
     type ReconcileFotosPhotoKitAlbumsParams,
 } from './FotosPhotoKitAlbums';
-
-// Exercise the canonical collection implementation without loading unrelated core services.
-vi.mock('@refinio/fotos.core', async () => ({
-    ...await import('../../../fotos.core/src/fotos-collection.js'),
-    ...await import('../../../fotos.core/src/fotos-gallery-albums.js'),
-}));
 
 const OWNER = 'a'.repeat(64);
 const LIBRARY = 'b'.repeat(64);
