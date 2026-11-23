@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, Switch, Text, View, useColorScheme } from 'react-native';
+import { Image, Pressable, ScrollView, Switch, Text, View, useColorScheme } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useModel } from '../../ios-ui';
 import type {
@@ -138,6 +138,7 @@ export default function LibraryScreen() {
           syncedCount: 0,
           skippedCount: missingIdIssues.length,
           syncedEntries: [],
+          deferredAssets: [],
           issues: missingIdIssues,
         });
         return;
@@ -157,6 +158,18 @@ export default function LibraryScreen() {
       setSyncing(false);
     }
   }, [model, refreshShareInboxStatus]);
+
+  const syncDeferredPhotos = useCallback(async (assetIds: string[]) => {
+    setSyncError(null);
+    setSyncing(true);
+    try {
+      setLastSync(await model.syncPhotoLibraryAssetsById(assetIds, true));
+    } catch (error) {
+      setSyncError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSyncing(false);
+    }
+  }, [model]);
 
   const importPendingSharedInbox = useCallback(async () => {
     setShareError(null);
@@ -242,9 +255,8 @@ export default function LibraryScreen() {
             Photo Library
           </Text>
           <Text style={{ color: mutedTextColor(isDark), fontSize: 14, lineHeight: 20 }}>
-            Sync the most recent camera-roll items into the shared fotos model. This stores a
-            canonical `FotosEntry`, an `original` variant, and a device-local asset locator without
-            cloning the gallery UI.
+            Sync previews and album memberships from Apple Photos. Reference mode keeps your
+            originals in Apple Photos.
           </Text>
         </View>
 
@@ -323,6 +335,28 @@ export default function LibraryScreen() {
               isDark={isDark}
             />
             <Row label="Skipped" value={String(lastSync.skippedCount)} isDark={isDark} />
+            {lastSync.deferredAssets.length ? (
+              <View style={{ gap: 8, paddingVertical: 8 }}>
+                <Row label="Waiting for iCloud" value={String(lastSync.deferredAssets.length)} isDark={isDark} />
+                {lastSync.deferredAssets.slice(0, 3).map(({ asset, thumbnailUri }) => (
+                  <View key={asset.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    {thumbnailUri ? <Image source={{ uri: thumbnailUri }} style={{ width: 40, height: 40, borderRadius: 6 }} /> : null}
+                    <Text numberOfLines={1} style={{ color: textColor(isDark), flex: 1 }}>{asset.filename}</Text>
+                  </View>
+                ))}
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={syncing}
+                  onPress={() => void syncDeferredPhotos(lastSync.deferredAssets.map(({ asset }) => asset.id))}
+                  style={{ backgroundColor: palette.accent, borderRadius: 10, padding: 10, opacity: syncing ? 0.6 : 1 }}
+                >
+                  <Text style={{ color: '#ffffff', textAlign: 'center', fontWeight: '600' }}>Download from iCloud</Text>
+                </Pressable>
+              </View>
+            ) : null}
+            {lastSync.albumSyncError ? (
+              <Text style={{ color: palette.danger, fontSize: 13 }}>Photos albums could not sync. {lastSync.albumSyncError}</Text>
+            ) : null}
             {lastSync.issues.slice(0, 3).map((issue) => (
               <Text
                 key={`${issue.assetId}:${issue.reason}`}

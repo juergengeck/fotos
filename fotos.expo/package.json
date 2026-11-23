@@ -92,7 +92,6 @@
     "@glueone/auth.core": "file:./vendor/glueone-auth.core-1.0.0-bf585e917f2bcb20.tgz",
     "expo-web-browser": "~15.0.11",
     "@refinio/provenance.core": "link:../../one/packages/provenance.core",
-    "expo-image-manipulator": "~14.0.8",
     "@refinio/fotos.core": "link:../fotos.core",
     "@refinio/trust.me": "file:./vendor/refinio-trust.me-1.0.0-5a567b9c183ac45c.tgz",
     "@refinio/trust.api": "file:./vendor/refinio-trust.api-1.0.0-ca6e8d65f5560a62.tgz",

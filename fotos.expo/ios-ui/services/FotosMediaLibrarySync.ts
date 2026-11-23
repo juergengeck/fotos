@@ -1,6 +1,5 @@
 import * as Crypto from 'expo-crypto';
-import { EncodingType, readAsStringAsync, deleteAsync } from 'expo-file-system/legacy';
-import {manipulateAsync, SaveFormat} from 'expo-image-manipulator';
+import {File} from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 import { Platform } from 'react-native';
 import {
@@ -12,7 +11,7 @@ import {
     getOwnedFotosManifestId,
     makeFotosDeviceBookId,
     type FotosDeviceBook,
-    type FotosMediaSubtype,
+    type FotosCollection,
     recordFotosAcquisition,
     type FotosEntry,
     type FotosManifest,
@@ -38,6 +37,8 @@ import {
     type FotosShareInboxQueuedItem,
     type FotosShareInboxStatus,
 } from './FotosShareInbox';
+import {getFotosPhotoKit, type FotosPhotoKitAsset, type FotosPhotoKitChange, type FotosPhotoKitNative} from './FotosPhotoKit';
+import {reconcileFotosPhotoKitAlbums} from './FotosPhotoKitAlbums';
 
 const DEFAULT_RECENT_LIMIT = 12;
 // Serialize the read/merge/write publication sequence across service instances.
@@ -49,14 +50,6 @@ function publishSerially<T>(work: () => Promise<T>): Promise<T> {
 }
 export type FotosIntakeMode = 'reference' | 'metadata' | 'ingest';
 const CURRENT_PLATFORM = Platform.OS;
-const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-const BASE64_LOOKUP = (() => {
-    const table = new Int16Array(123).fill(-1);
-    for (let index = 0; index < BASE64_ALPHABET.length; index += 1) {
-        table[BASE64_ALPHABET.charCodeAt(index)] = index;
-    }
-    return table;
-})();
 
 interface VersionedObjectLookup {
     obj: unknown;
@@ -92,7 +85,15 @@ export interface FotosPhotoLibrarySyncSummary {
         assetId: string;
         contentHash: string;
     }>;
+    deferredAssets: FotosDeferredPhotoKitAsset[];
     issues: FotosPhotoLibrarySyncIssue[];
+    albumSyncError?: string;
+}
+
+export interface FotosDeferredPhotoKitAsset {
+    asset: FotosPhotoKitAsset;
+    status: 'icloud-deferred';
+    thumbnailUri?: string;
 }
 
 export interface FotosSharedFileImportIssue {
@@ -120,6 +121,7 @@ interface SyncedAssetResult {
 
 type AssetSyncOutcome =
     | { status: 'synced'; result: SyncedAssetResult }
+    | { status: 'icloud-deferred'; result: FotosDeferredPhotoKitAsset }
     | { status: 'skipped'; issue: FotosPhotoLibrarySyncIssue };
 
 function toHex(buffer: ArrayBuffer): string {
@@ -131,39 +133,21 @@ function toHex(buffer: ArrayBuffer): string {
     return hex;
 }
 
-function decodeBase64(base64: string): Uint8Array {
-    const sanitized = base64.replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
-    const padding = sanitized.endsWith('==') ? 2 : sanitized.endsWith('=') ? 1 : 0;
-    const outputLength = Math.max(0, Math.floor((sanitized.length * 3) / 4) - padding);
-    const output = new Uint8Array(outputLength);
-
-    let outIndex = 0;
-    for (let index = 0; index < sanitized.length; index += 4) {
-        const char1 = sanitized.charCodeAt(index);
-        const char2 = sanitized.charCodeAt(index + 1);
-        const char3 = sanitized.charAt(index + 2);
-        const char4 = sanitized.charAt(index + 3);
-
-        const value1 = BASE64_LOOKUP[char1] ?? -1;
-        const value2 = BASE64_LOOKUP[char2] ?? -1;
-        const value3 = char3 === '=' ? 0 : BASE64_LOOKUP[sanitized.charCodeAt(index + 2)] ?? -1;
-        const value4 = char4 === '=' ? 0 : BASE64_LOOKUP[sanitized.charCodeAt(index + 3)] ?? -1;
-
-        if (value1 < 0 || value2 < 0 || (char3 !== '=' && value3 < 0) || (char4 !== '=' && value4 < 0)) {
-            throw new Error('Invalid base64 payload');
-        }
-
-        const chunk = (value1 << 18) | (value2 << 12) | (value3 << 6) | value4;
-        output[outIndex++] = (chunk >> 16) & 0xff;
-        if (char3 !== '=') {
-            output[outIndex++] = (chunk >> 8) & 0xff;
-        }
-        if (char4 !== '=') {
-            output[outIndex++] = chunk & 0xff;
-        }
+function deleteTemporaryFile(uri: string): void {
+    try {
+        const file = new File(uri);
+        if (file.exists) file.delete();
+    } catch (error) {
+        console.warn('[FotosPhotoKit] Temporary file cleanup failed', error);
     }
+}
 
-    return output;
+async function readTemporaryBytes(uri: string): Promise<Uint8Array> {
+    try {
+        return await new File(uri).bytes();
+    } finally {
+        deleteTemporaryFile(uri);
+    }
 }
 
 function toIsoTimestamp(value: number | undefined): string | undefined {
@@ -232,6 +216,10 @@ function mimeFromFilename(filename: string): string {
     if (lower.endsWith('.webp')) return 'image/webp';
     if (lower.endsWith('.gif')) return 'image/gif';
     if (lower.endsWith('.tif') || lower.endsWith('.tiff')) return 'image/tiff';
+    if (lower.endsWith('.dng')) return 'image/x-adobe-dng';
+    if (lower.endsWith('.mov')) return 'video/quicktime';
+    if (lower.endsWith('.mp4')) return 'video/mp4';
+    if (lower.endsWith('.m4v')) return 'video/x-m4v';
     return 'image/jpeg';
 }
 
@@ -243,7 +231,7 @@ function timestampOrNow(value: string | undefined): string {
     return value ?? new Date().toISOString();
 }
 
-function createIssue(asset: MediaLibrary.Asset, reason: string): FotosPhotoLibrarySyncIssue {
+function createIssue(asset: Pick<FotosPhotoKitAsset, 'id' | 'filename'>, reason: string): FotosPhotoLibrarySyncIssue {
     return {
         assetId: asset.id,
         filename: asset.filename,
@@ -252,14 +240,12 @@ function createIssue(asset: MediaLibrary.Asset, reason: string): FotosPhotoLibra
 }
 
 function buildEntryFromAsset(params: {
-    asset: MediaLibrary.Asset;
-    assetInfo: MediaLibrary.AssetInfo;
+    asset: FotosPhotoKitAsset;
     contentHash: string;
     byteSize: number;
 }): FotosEntry {
-    const { asset, assetInfo, contentHash, byteSize } = params;
-    // iOS exposes ImageIO namespaces; Android/older Expo versions expose flat EXIF.
-    const rawExif = getExifRecord(assetInfo.exif);
+    const {asset, contentHash, byteSize} = params;
+    const rawExif = getExifRecord(asset.exif);
     const exif = {...getExifRecord(rawExif['{TIFF}'] ?? rawExif.TIFF),
         ...getExifRecord(rawExif['{ExifAux}'] ?? rawExif.ExifAux),
         ...getExifRecord(rawExif['{Exif}'] ?? rawExif.Exif), ...rawExif};
@@ -269,31 +255,27 @@ function buildEntryFromAsset(params: {
     const camera = [cameraMake, cameraModel].filter(Boolean).join(' ').trim();
     const reportedLat = getExifNumber(exif, ['GPSLatitude', 'latitude']) ?? getExifNumber(gps, ['Latitude']);
     const reportedLon = getExifNumber(exif, ['GPSLongitude', 'longitude']) ?? getExifNumber(gps, ['Longitude']);
-    const gpsLat = assetInfo.location?.latitude ?? (reportedLat === undefined ? undefined
+    const gpsLat = asset.location?.latitude ?? (reportedLat === undefined ? undefined
         : getExifString(gps, ['LatitudeRef']) === 'S' ? -Math.abs(reportedLat) : reportedLat);
-    const gpsLon = assetInfo.location?.longitude ?? (reportedLon === undefined ? undefined
+    const gpsLon = asset.location?.longitude ?? (reportedLon === undefined ? undefined
         : getExifString(gps, ['LongitudeRef']) === 'W' ? -Math.abs(reportedLon) : reportedLon);
-    const subtypeNames: Partial<Record<MediaLibrary.MediaSubtype, FotosMediaSubtype>> = {
-        livePhoto: 'live-photo', hdr: 'hdr', panorama: 'panorama', screenshot: 'screenshot',
-        depthEffect: 'depth', highFrameRate: 'high-frame-rate', videoCinematic: 'cinematic',
-    };
-    const mediaSubtypes = new Set((asset.mediaSubtypes ?? []).flatMap(value => subtypeNames[value] ? [subtypeNames[value]!] : []));
+    const mediaSubtypes = new Set(asset.mediaSubtypes);
     const reportedAltitude = getExifNumber(exif, ['GPSAltitude', 'altitude']) ?? getExifNumber(gps, ['Altitude']);
-    const altitude = reportedAltitude === undefined ? undefined
-        : getExifNumber(gps, ['AltitudeRef']) === 1 ? -Math.abs(reportedAltitude) : reportedAltitude;
-    const orientation = assetInfo.orientation ?? getExifNumber(exif, ['Orientation']);
+    const altitude = asset.location?.altitude ?? (reportedAltitude === undefined ? undefined
+        : getExifNumber(gps, ['AltitudeRef']) === 1 ? -Math.abs(reportedAltitude) : reportedAltitude);
+    const orientation = getExifNumber(exif, ['Orientation']);
 
     const entry: FotosEntry = {
         $type$: 'FotosEntry',
         contentHash,
         streamId: contentHash,
-        mime: mimeFromFilename(asset.filename),
+        mime: asset.mimeType ?? mimeFromFilename(asset.filename),
         size: byteSize,
         sourcePath: `Photo Library/${contentHash}.${fileExtension(asset.filename)}`,
         folderPath: 'Photo Library',
         originalFilename: asset.filename,
         ...(Number.isFinite(asset.duration) && asset.duration >= 0 ? {duration: asset.duration} : {}),
-        ...(typeof assetInfo.isFavorite === 'boolean' ? {favorite: assetInfo.isFavorite} : {}),
+        favorite: asset.favorite,
         ...(mediaSubtypes.size ? {mediaSubtypes} : {}),
         ...(altitude !== undefined ? {exifGpsAlt: altitude} : {}),
         ...(orientation !== undefined ? {orientation} : {}),
@@ -321,80 +303,75 @@ function buildEntryFromAsset(params: {
 
 export class FotosMediaLibrarySync {
     private readonly localAssets = new Map<string, Set<string>>();
+    private readonly albumAssetHashes = new Map<string, string>();
+    private readonly assetVerificationTimes = new Map<string, string>();
+    private readonly deferredAssets = new Map<string, FotosDeferredPhotoKitAsset>();
+    private localAssetLoad?: Promise<void>;
+    private subscription?: {remove(): void};
+    private pendingWork: Promise<void> = Promise.resolve();
+    private closed = false;
 
     constructor(private readonly deps: FotosMediaLibrarySyncDeps) {}
 
     async syncRecentAssets(limit: number = DEFAULT_RECENT_LIMIT): Promise<FotosPhotoLibrarySyncSummary> {
-        if (CURRENT_PLATFORM !== 'ios') {
-            return {
-                permissionGranted: false,
-                accessPrivileges: null,
-                requestedCount: 0,
-                syncedCount: 0,
-                skippedCount: 1,
-                syncedEntries: [],
-                issues: [{
-                    assetId: 'platform',
-                    filename: 'photo-library',
-                    reason: `Photo-library sync is currently wired for iOS; current platform is ${CURRENT_PLATFORM}.`,
-                }],
-            };
-        }
-
-        const permission = await this.ensurePermission();
-        if (!permission.granted) {
-            return {
-                permissionGranted: false,
-                accessPrivileges: permission.accessPrivileges ?? null,
-                requestedCount: 0,
-                syncedCount: 0,
-                skippedCount: 0,
-                syncedEntries: [],
-                issues: [],
-            };
-        }
-
-        const page = await MediaLibrary.getAssetsAsync({
-            first: limit,
-            mediaType: MediaLibrary.MediaType.photo,
-            sortBy: [['creationTime', false]],
+        return this.syncAfterPermission(0, async native => {
+            const count = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : DEFAULT_RECENT_LIMIT;
+            const ids = new Set<string>();
+            let offset = 0;
+            while (ids.size < count) {
+                const page = await native.listAssets(offset, Math.min(200, count - ids.size));
+                for (const asset of page.assets) ids.add(asset.id);
+                if (page.nextOffset == null) break;
+                if (!Number.isSafeInteger(page.nextOffset) || page.nextOffset <= offset) {
+                    throw new Error('PhotoKit pagination did not advance');
+                }
+                offset = page.nextOffset;
+            }
+            return [...ids];
         });
-
-        return this.syncAssetRefs(page.assets, permission);
     }
 
-    async syncAssetIds(assetIds: string[]): Promise<FotosPhotoLibrarySyncSummary> {
+    async syncAssetIds(assetIds: string[], allowNetworkAccess = false): Promise<FotosPhotoLibrarySyncSummary> {
+        const ids = [...new Set(assetIds.filter(assetId => assetId.length > 0))];
+        return this.syncAfterPermission(ids.length, async () => ids, allowNetworkAccess);
+    }
+
+    private async syncAfterPermission(
+        requestedCount: number,
+        getIds: (native: FotosPhotoKitNative) => Promise<string[]>,
+        allowNetworkAccess = false,
+    ): Promise<FotosPhotoLibrarySyncSummary> {
+        const empty = {permissionGranted: false, accessPrivileges: null, requestedCount, syncedCount: 0,
+            skippedCount: 0, syncedEntries: [], deferredAssets: [], issues: []};
         if (CURRENT_PLATFORM !== 'ios') {
-            return {
-                permissionGranted: false,
-                accessPrivileges: null,
-                requestedCount: 0,
-                syncedCount: 0,
-                skippedCount: 1,
-                syncedEntries: [],
-                issues: [{
-                    assetId: 'platform',
-                    filename: 'photo-library',
-                    reason: `Photo-library sync is currently wired for iOS; current platform is ${CURRENT_PLATFORM}.`,
-                }],
-            };
+            return {...empty, skippedCount: 1, issues: [{
+                assetId: 'platform', filename: 'photo-library', reason: 'Photo-library sync requires iOS.',
+            }]};
         }
-
         const permission = await this.ensurePermission();
-        if (!permission.granted) {
-            return {
-                permissionGranted: false,
-                accessPrivileges: permission.accessPrivileges ?? null,
-                requestedCount: assetIds.length,
-                syncedCount: 0,
-                skippedCount: 0,
-                syncedEntries: [],
-                issues: [],
-            };
-        }
+        if (!permission.granted) return {...empty, accessPrivileges: permission.accessPrivileges ?? null};
+        const native = getFotosPhotoKit();
+        if (this.closed) throw new Error('Photo-library sync has stopped');
+        this.subscription ??= native.addListener('onLibraryChange', change => this.onLibraryChange(native, change));
+        return this.enqueue(async () => this.syncAssetRefsSerially(native, await getIds(native), permission, allowNetworkAccess));
+    }
 
-        const uniqueAssetIds = [...new Set(assetIds.filter((assetId) => assetId.length > 0))];
-        return this.syncAssetRefs(uniqueAssetIds, permission);
+    private enqueue<T>(work: () => Promise<T>): Promise<T> {
+        const result = publishSerially(async () => {
+            if (this.closed) throw new Error('Photo-library sync has stopped');
+            return work();
+        });
+        this.pendingWork = result.then(() => undefined, () => undefined);
+        return result;
+    }
+
+    async dispose(): Promise<void> {
+        this.closed = true;
+        this.subscription?.remove();
+        this.subscription = undefined;
+        await this.pendingWork;
+        await this.localAssetLoad?.catch(() => undefined);
+        for (const assetId of this.deferredAssets.keys()) this.clearDeferredAsset(assetId);
     }
 
     async getShareInboxStatus(): Promise<FotosShareInboxStatus> {
@@ -402,7 +379,7 @@ export class FotosMediaLibrarySync {
     }
 
     async importPendingSharedInbox(): Promise<FotosSharedFileImportSummary> {
-        return publishSerially(() => this.importSharedInbox());
+        return this.enqueue(() => this.importSharedInbox());
     }
 
     private async importSharedInbox(): Promise<FotosSharedFileImportSummary> {
@@ -443,119 +420,96 @@ export class FotosMediaLibrarySync {
         return summary;
     }
 
-    private async syncAssetRefs(
-        assetRefs: MediaLibrary.AssetRef[],
-        permission: MediaLibrary.PermissionResponse,
-    ): Promise<FotosPhotoLibrarySyncSummary> {
-        return publishSerially(() => this.syncAssetRefsSerially(assetRefs, permission));
-    }
-
     private async syncAssetRefsSerially(
-        assetRefs: MediaLibrary.AssetRef[], permission: MediaLibrary.PermissionResponse,
+        native: FotosPhotoKitNative,
+        assetIds: string[],
+        permission: MediaLibrary.PermissionResponse,
+        allowNetworkAccess = false,
+        refreshAlbums = true,
     ): Promise<FotosPhotoLibrarySyncSummary> {
-        const syncedEntries: FotosPhotoLibrarySyncSummary['syncedEntries'] = [];
+        const syncedEntries: SyncedAssetResult[] = [];
+        const deferredAssets: FotosDeferredPhotoKitAsset[] = [];
         const issues: FotosPhotoLibrarySyncIssue[] = [];
+        try {
+            await this.ensureLocalAssetIndex();
+        } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error);
+            return {
+                permissionGranted: true,
+                accessPrivileges: permission.accessPrivileges ?? null,
+                requestedCount: assetIds.length,
+                syncedCount: 0,
+                skippedCount: assetIds.length,
+                syncedEntries,
+                deferredAssets,
+                issues: assetIds.map(assetId => ({assetId, filename: assetId, reason})),
+                albumSyncError: reason,
+            };
+        }
+        let albumBindingsChanged = false;
 
-        for (const assetRef of assetRefs) {
-            const outcome = await this.syncAsset(assetRef);
+        for (const assetId of assetIds) {
+            const previousHash = this.albumAssetHashes.get(assetId);
+            const outcome = await this.syncAsset(native, assetId, allowNetworkAccess);
             if (outcome.status === 'synced') {
+                albumBindingsChanged ||= previousHash !== outcome.result.contentHash;
                 syncedEntries.push(outcome.result);
-            } else {
-                issues.push(outcome.issue);
             }
+            else if (outcome.status === 'icloud-deferred') deferredAssets.push(outcome.result);
+            else issues.push(outcome.issue);
         }
 
+        let albumSyncError: string | undefined;
+        try {
+            if (refreshAlbums || albumBindingsChanged) await this.syncAlbums(native, permission.accessPrivileges === 'all');
+        } catch (error) {
+            albumSyncError = error instanceof Error ? error.message : String(error);
+        }
         return {
             permissionGranted: true,
             accessPrivileges: permission.accessPrivileges ?? null,
-            requestedCount: assetRefs.length,
+            requestedCount: assetIds.length,
             syncedCount: syncedEntries.length,
             skippedCount: issues.length,
             syncedEntries,
+            deferredAssets,
             issues,
+            ...(albumSyncError ? {albumSyncError} : {}),
         };
     }
 
     private async ensurePermission(): Promise<MediaLibrary.PermissionResponse> {
-        const existing = await MediaLibrary.getPermissionsAsync(false, ['photo']);
-        if (existing.granted) {
-            return existing;
-        }
-        return MediaLibrary.requestPermissionsAsync(false, ['photo']);
+        const existing = await MediaLibrary.getPermissionsAsync(false, ['photo', 'video']);
+        return existing.granted ? existing : MediaLibrary.requestPermissionsAsync(false, ['photo', 'video']);
     }
 
-    private async syncAsset(assetRef: MediaLibrary.AssetRef): Promise<AssetSyncOutcome> {
-        let assetInfo: MediaLibrary.AssetInfo;
+    private async syncAsset(native: FotosPhotoKitNative, assetId: string, allowNetworkAccess: boolean): Promise<AssetSyncOutcome> {
+        let original;
         try {
-            assetInfo = await MediaLibrary.getAssetInfoAsync(assetRef, {
-                shouldDownloadFromNetwork: false,
-            });
+            original = await native.inspectOriginal(assetId, allowNetworkAccess);
         } catch (error) {
-            const assetId = typeof assetRef === 'string' ? assetRef : assetRef.id;
-            return {
-                status: 'skipped',
-                issue: {
-                    assetId,
-                    filename: typeof assetRef === 'string' ? assetRef : assetRef.filename,
-                    reason: `Failed to resolve asset info: ${error instanceof Error ? error.message : String(error)}`,
-                },
-            };
+            return {status: 'skipped', issue: createIssue({id: assetId, filename: assetId},
+                'Failed to inspect Photos original: ' + (error instanceof Error ? error.message : String(error)))};
         }
-        const asset = assetInfo;
-
-        if (assetInfo.isNetworkAsset && !assetInfo.localUri) {
-            return {
-                status: 'skipped',
-                issue: createIssue(asset, 'Asset is only available in iCloud and has no local bytes yet.'),
-            };
+        const {asset} = original;
+        if (original.status === 'icloud-deferred') {
+            return {status: 'icloud-deferred', result: await this.deferAsset(native, asset)};
         }
 
-        if (!assetInfo.localUri || !assetInfo.localUri.startsWith('file://')) {
-            return {
-                status: 'skipped',
-                issue: createIssue(asset, 'Asset did not expose a readable local file URI.'),
-            };
-        }
-
-        let bytes: Uint8Array;
+        const {contentHash, byteSize} = original;
         try {
-            bytes = await this.readLocalBytes(assetInfo.localUri);
-        } catch (error) {
-            return {
-                status: 'skipped',
-                issue: createIssue(
-                    asset,
-                    `Failed to read asset bytes: ${error instanceof Error ? error.message : String(error)}`,
-                ),
-            };
-        }
-
-        let contentHash: string;
-        try {
-            contentHash = await this.computeContentHash(bytes);
-        } catch (error) {
-            return {
-                status: 'skipped',
-                issue: createIssue(
-                    asset,
-                    `Failed to compute content hash: ${error instanceof Error ? error.message : String(error)}`,
-                ),
-            };
-        }
-
-        try {
-            const entry = buildEntryFromAsset({
-                asset,
-                assetInfo,
-                contentHash,
-                byteSize: bytes.byteLength,
-            });
+            if (!/^[a-f0-9]{64}$/.test(contentHash) || !Number.isSafeInteger(byteSize) || byteSize <= 0) {
+                throw new Error('PhotoKit returned invalid media identity');
+            }
+            const entry = buildEntryFromAsset({asset, contentHash, byteSize});
             const entryIdHash = await this.deps.calculateIdHashOfObj(entry as object) as SHA256IdHash<FotosEntry>;
             const existingEntry = await this.readVersionedObject<FotosEntry>(entryIdHash);
 
             const observer = this.requireOwner();
             const mode = await this.deps.getIntakeMode?.() ?? 'reference';
-            const originalBlob = mode === 'ingest' ? await storeArrayBufferAsBlob(bytes) : undefined;
+            const originalBlob = mode === 'ingest'
+                ? await storeArrayBufferAsBlob(await this.readVerifiedOriginal(native, asset.id, entry, allowNetworkAccess))
+                : undefined;
             const originalVariant = createFotosMediaVariant({
                 contentHash,
                 family: entryIdHash,
@@ -569,10 +523,12 @@ export class FotosMediaLibrarySync {
                 ...(originalBlob ? {blob: originalBlob.hash} : {}),
             });
             const variantResult = await this.deps.storeVersionedObject(originalVariant as object);
+            const verifiedAt = this.albumAssetHashes.get(asset.id) === contentHash
+                ? this.assetVerificationTimes.get(asset.id) : new Date().toISOString();
             const locatorResult = await this.storeLocalLocator(
                 variantResult.idHash as SHA256IdHash<FotosMediaVariant>,
                 asset.id,
-                entry.updatedAt ?? entry.capturedAt,
+                verifiedAt,
             );
             const sourceState = await this.storeMobileLibrarySourceState({
                 assetId: asset.id,
@@ -581,17 +537,17 @@ export class FotosMediaLibrarySync {
                 updatedAt: entry.updatedAt ?? entry.capturedAt,
             });
 
-            const thumbnail = await this.storeThumbnail(assetInfo.localUri, asset, entryIdHash,
-                variantResult.idHash as SHA256IdHash<FotosMediaVariant>);
+            const thumbnail = await this.storeThumbnail(native, asset.id, entryIdHash,
+                variantResult.idHash as SHA256IdHash<FotosMediaVariant>, allowNetworkAccess);
             const mergedVariants = new Set(existingEntry?.variants ?? new Set<SHA256Hash<FotosMediaVariant>>());
             mergedVariants.add(variantResult.hash as SHA256Hash<FotosMediaVariant>);
-            mergedVariants.add(thumbnail.hash as SHA256Hash<FotosMediaVariant>);
+            if (thumbnail) mergedVariants.add(thumbnail.hash as SHA256Hash<FotosMediaVariant>);
 
             const mergedEntry: FotosEntry = {
                 ...(existingEntry ?? {}),
                 ...entry,
                 streamId: existingEntry?.streamId ?? entry.streamId,
-                thumb: thumbnail.blob,
+                ...(thumbnail ? {thumb: thumbnail.blob} : {}),
                 variants: mergedVariants,
             };
 
@@ -634,6 +590,9 @@ export class FotosMediaLibrarySync {
 
             await this.addEntryToManifest(entryResult.hash as SHA256Hash<FotosEntry>);
             this.rememberLocalAsset(contentHash, asset.id);
+            this.albumAssetHashes.set(asset.id, contentHash);
+            if (verifiedAt) this.assetVerificationTimes.set(asset.id, verifiedAt);
+            this.clearDeferredAsset(asset.id);
             return {
                 status: 'synced',
                 result: {
@@ -776,11 +735,8 @@ export class FotosMediaLibrarySync {
         };
     }
 
-    private async readLocalBytes(localUri: string): Promise<Uint8Array> {
-        const encoded = await readAsStringAsync(localUri, {
-            encoding: EncodingType.Base64,
-        });
-        return decodeBase64(encoded);
+    private readLocalBytes(localUri: string): Promise<Uint8Array> {
+        return new File(localUri).bytes();
     }
 
     private async computeContentHash(bytes: Uint8Array): Promise<string> {
@@ -903,82 +859,179 @@ export class FotosMediaLibrarySync {
         this.localAssets.set(contentHash, ids);
     }
 
-    /** Resolve Photos references after restart using the durable, device-local locator DAG.
-     * Expo currently bridges whole files through base64; streaming requires the PhotoKit module.
-     * Never download iCloud originals implicitly or trust a localIdentifier as content identity.
-     */
-    async resolveOriginal(entry: FotosEntry): Promise<ArrayBuffer> {
+    private async ensureLocalAssetIndex(): Promise<void> {
+        this.localAssetLoad ??= this.loadLocalAssetIndex().catch(error => {
+            this.localAssetLoad = undefined;
+            throw error;
+        });
+        await this.localAssetLoad;
+    }
+
+    private async loadLocalAssetIndex(): Promise<void> {
         const deviceId = this.deps.getInstanceId();
-        if (!deviceId) throw new Error('Fotos original resolution requires the local device identity');
-        if (!this.localAssets.has(entry.contentHash)) {
-            const bookId = await this.deps.calculateIdHashOfObj({$type$: 'FotosDeviceBook', id: makeFotosDeviceBookId(deviceId)});
-            const book = await this.readVersionedObject<FotosDeviceBook>(bookId);
-            for (const hash of book?.locators ?? []) {
-                const locator = await getObject(hash) as FotosMediaLocator;
-                if (locator.kind !== 'phasset' || locator.scope !== 'device-local' || locator.platform !== 'ios'
-                    || locator.deviceId !== deviceId) continue;
-                const variant = await this.readVersionedObject<FotosMediaVariant>(locator.variant);
-                if (variant?.role === 'original') this.rememberLocalAsset(variant.contentHash, locator.locator);
+        if (!deviceId) throw new Error('PhotoKit requires the local device identity');
+        const bookId = await this.deps.calculateIdHashOfObj({$type$: 'FotosDeviceBook', id: makeFotosDeviceBookId(deviceId)});
+        const book = await this.readVersionedObject<FotosDeviceBook>(bookId);
+        for (const hash of book?.locators ?? []) {
+            const locator = await getObject(hash);
+            if (locator.kind !== 'phasset' || locator.scope !== 'device-local' || locator.platform !== 'ios'
+                || locator.deviceId !== deviceId) continue;
+            const variant = await this.readVersionedObject<FotosMediaVariant>(locator.variant);
+            if (variant?.role !== 'original') continue;
+            this.rememberLocalAsset(variant.contentHash, locator.locator);
+
+            const currentHash = this.albumAssetHashes.get(locator.locator);
+            const currentTime = this.assetVerificationTimes.get(locator.locator) ?? '';
+            const lastVerifiedAt = locator.lastVerifiedAt ?? '';
+            if (!currentHash || lastVerifiedAt > currentTime || (lastVerifiedAt === currentTime && variant.contentHash < currentHash)) {
+                this.albumAssetHashes.set(locator.locator, variant.contentHash);
+                this.assetVerificationTimes.set(locator.locator, lastVerifiedAt);
             }
         }
+    }
+
+    /** Resolve a verified original from any device-local locator, including legacy raw IDs. */
+    async resolveOriginal(entry: FotosEntry, allowNetworkAccess = false): Promise<ArrayBuffer> {
+        const native = getFotosPhotoKit();
+        await this.ensureLocalAssetIndex();
         for (const id of this.localAssets.get(entry.contentHash) ?? []) {
             try {
-                const info = await MediaLibrary.getAssetInfoAsync(id, {shouldDownloadFromNetwork: false});
-                if (!info.localUri?.startsWith('file://')) continue;
-                const bytes = await this.readLocalBytes(info.localUri);
-                if (!await matchesImageContentHash(bytes, entry.contentHash, value => this.digestBytes(value))) continue;
+                const bytes = await this.readVerifiedOriginal(native, id, entry, allowNetworkAccess);
                 return Uint8Array.from(bytes).buffer;
             } catch {
-                // A removed/unavailable local copy must not hide another verified copy.
+                // Try the next locator for this exact content.
                 continue;
             }
         }
-        throw new Error('No verified local Photos original is available for this contentHash');
+        throw new Error('No verified Photos original is available for this contentHash');
     }
 
-    private async storeThumbnail(uri: string, asset: MediaLibrary.Asset,
-        family: SHA256IdHash<FotosEntry>, original: SHA256IdHash<FotosMediaVariant>,
-    ): Promise<StoredVersionedObject & {blob: SHA256Hash<BLOB>}> {
-        if (asset.width <= 0 || asset.height <= 0) throw new Error('Cannot size Photos thumbnail without image dimensions');
-        const maxEdge = Math.max(asset.width, asset.height);
-        const resize = maxEdge > FOTOS_THUMBNAIL_MAX_EDGE
-            ? [{resize: {width: Math.max(1, Math.round(asset.width * FOTOS_THUMBNAIL_MAX_EDGE / maxEdge)),
-                height: Math.max(1, Math.round(asset.height * FOTOS_THUMBNAIL_MAX_EDGE / maxEdge))}}] : [];
-        const result = await manipulateAsync(uri, resize, {format: SaveFormat.JPEG, compress: 0.75, base64: true});
-        try {
-            if (!result.base64 || result.width < 1 || result.height < 1 || result.width > FOTOS_THUMBNAIL_MAX_EDGE || result.height > FOTOS_THUMBNAIL_MAX_EDGE) {
-                throw new Error('Image manipulator did not return a bounded thumbnail');
-            }
-            const bytes = decodeBase64(result.base64);
-            const dimensions = readFotosThumbnailDimensions(bytes);
-            if (dimensions.width !== result.width || dimensions.height !== result.height) {
-                throw new Error('Thumbnail frame does not match native image dimensions');
-            }
-            const blob = await storeArrayBufferAsBlob(bytes);
-            const variant = await this.deps.storeVersionedObject(createFotosMediaVariant({
-                contentHash: await this.digestBytes(bytes), family, role: 'thumbnail', mime: 'image/jpeg',
-                byteSize: bytes.byteLength, width: result.width, height: result.height, blob: blob.hash, derivedFrom: original,
-            }));
-            return {...variant, blob: blob.hash};
-        } finally {
-            if (result.uri !== uri) await deleteAsync(result.uri, {idempotent: true});
+    private async readVerifiedOriginal(
+        native: FotosPhotoKitNative, assetId: string, entry: FotosEntry, allowNetworkAccess: boolean,
+    ): Promise<Uint8Array> {
+        const bytes = await readTemporaryBytes(await native.originalFile(assetId, allowNetworkAccess));
+        if (!await matchesImageContentHash(bytes, entry.contentHash, value => this.digestBytes(value))) {
+            throw new Error('PhotoKit original no longer matches the expected content hash');
         }
+        return bytes;
+    }
+
+    private async storeThumbnail(
+        native: FotosPhotoKitNative,
+        assetId: string,
+        family: SHA256IdHash<FotosEntry>,
+        original: SHA256IdHash<FotosMediaVariant>,
+        allowNetworkAccess: boolean,
+    ): Promise<(StoredVersionedObject & {blob: SHA256Hash<BLOB>}) | undefined> {
+        const uri = await native.thumbnailFile(assetId, FOTOS_THUMBNAIL_MAX_EDGE, allowNetworkAccess);
+        if (!uri) return undefined;
+        const bytes = await readTemporaryBytes(uri);
+        const {width, height} = readFotosThumbnailDimensions(bytes);
+        const blob = await storeArrayBufferAsBlob(bytes);
+        const variant = await this.deps.storeVersionedObject(createFotosMediaVariant({
+            contentHash: await this.digestBytes(bytes), family, role: 'thumbnail', mime: 'image/jpeg',
+            byteSize: bytes.byteLength, width, height, blob: blob.hash, derivedFrom: original,
+        }));
+        return {...variant, blob: blob.hash};
+    }
+
+    private async deferAsset(native: FotosPhotoKitNative, asset: FotosPhotoKitAsset): Promise<FotosDeferredPhotoKitAsset> {
+        const previous = this.deferredAssets.get(asset.id);
+        const thumbnailUri = previous?.asset.modificationTime === asset.modificationTime && previous?.thumbnailUri
+            || await native.thumbnailFile(asset.id, FOTOS_THUMBNAIL_MAX_EDGE, false).catch(() => null);
+        if (previous?.thumbnailUri && previous.thumbnailUri !== thumbnailUri) deleteTemporaryFile(previous.thumbnailUri);
+        const deferred: FotosDeferredPhotoKitAsset = {asset, status: 'icloud-deferred', ...(thumbnailUri ? {thumbnailUri} : {})};
+        this.deferredAssets.set(asset.id, deferred);
+        return deferred;
+    }
+
+    private clearDeferredAsset(assetId: string): void {
+        const deferred = this.deferredAssets.get(assetId);
+        if (deferred?.thumbnailUri) deleteTemporaryFile(deferred.thumbnailUri);
+        this.deferredAssets.delete(assetId);
+    }
+
+    private onLibraryChange(native: FotosPhotoKitNative, change: FotosPhotoKitChange): void {
+        if (this.closed) return;
+        void this.enqueue(async () => {
+            const permission = await MediaLibrary.getPermissionsAsync(false, ['photo', 'video']);
+            if (!permission.granted) {
+                for (const assetId of this.deferredAssets.keys()) this.clearDeferredAsset(assetId);
+                return;
+            }
+            await this.ensureLocalAssetIndex();
+            const removed = new Set(change.removed);
+            for (const assetId of removed) {
+                this.albumAssetHashes.delete(assetId);
+                this.assetVerificationTimes.delete(assetId);
+                this.clearDeferredAsset(assetId);
+            }
+            if (removed.size) {
+                for (const [hash, assets] of this.localAssets) {
+                    for (const id of assets) if (removed.has(id)) assets.delete(id);
+                    if (!assets.size) this.localAssets.delete(hash);
+                }
+            }
+            const changed = new Set([...change.inserted, ...change.changed]);
+            if (change.requiresReload) {
+                for (const assetId of this.albumAssetHashes.keys()) changed.add(assetId);
+                for (const assetId of this.deferredAssets.keys()) changed.add(assetId);
+            }
+            for (const assetId of removed) changed.delete(assetId);
+            const refreshAlbums = change.albumsChanged || removed.size > 0 || change.requiresReload;
+            const result = changed.size
+                ? await this.syncAssetRefsSerially(native, [...changed], permission, false, refreshAlbums)
+                : undefined;
+            if (result?.skippedCount || result?.albumSyncError) console.warn('[FotosPhotoKit] Some changes could not be applied');
+            if (!result && refreshAlbums) {
+                await this.syncAlbums(native, permission.accessPrivileges === 'all');
+            }
+        }).catch(error => {
+            if (!this.closed) console.warn('[FotosPhotoKit] Library change could not be applied', error);
+        });
+    }
+
+    private async syncAlbums(native: FotosPhotoKitNative, fullAccess: boolean): Promise<void> {
+        const owner = this.requireOwner();
+        const deviceId = this.deps.getInstanceId();
+        if (!deviceId) throw new Error('PhotoKit albums require the local device identity');
+        const id = getOwnedFotosManifestId(owner);
+        const manifestIdHash = await this.deps.calculateIdHashOfObj({$type$: 'FotosManifest', id}) as SHA256IdHash<FotosManifest>;
+        const manifest = await this.readVersionedObject<FotosManifest>(manifestIdHash);
+        const {collections, changed} = await reconcileFotosPhotoKitAlbums({
+            native, ownerId: owner, libraryId: await this.digestBytes(new TextEncoder().encode(deviceId)),
+            fullAccess, assetHashes: this.albumAssetHashes, existingRefs: manifest?.collections ?? new Set(),
+            readCollection: hash => getObject(hash),
+            storeCollection: async collection => (await this.deps.storeVersionedObject(collection)).hash as SHA256Hash<FotosCollection>,
+        });
+        if (!changed) return;
+        const currentAccess = await MediaLibrary.getPermissionsAsync(false, ['photo', 'video']);
+        if (!currentAccess.granted || (fullAccess && currentAccess.accessPrivileges !== 'all')) {
+            throw new Error('Photos access changed during album reconciliation');
+        }
+        await this.storeOwnedManifest(owner, manifestIdHash, {
+            ...(manifest ?? {}), $type$: 'FotosManifest', id, entries: manifest?.entries ?? new Set(), collections,
+        });
     }
 
     private async addEntryToManifest(entryHash: SHA256Hash<FotosEntry>): Promise<void> {
         const owner = this.requireOwner();
         const id = getOwnedFotosManifestId(owner);
-        const manifestIdHash = await this.deps.calculateIdHashOfObj({$type$: 'FotosManifest', id});
+        const manifestIdHash = await this.deps.calculateIdHashOfObj({$type$: 'FotosManifest', id}) as SHA256IdHash<FotosManifest>;
         const manifest = await this.readVersionedObject<FotosManifest>(manifestIdHash);
         // The legacy global root may contain peer-owned entries. Preserve it untouched;
         // never republish its contents under the current owner's authority without evidence.
         const entries = new Set(manifest?.entries ?? []);
         entries.add(entryHash);
-        await createAccess([{id: manifestIdHash as SHA256IdHash<FotosManifest>,
-            person: [owner as SHA256IdHash<Person>], hashGroup: [], mode: SET_ACCESS_MODE.ADD}]);
-        await this.deps.storeVersionedObject({
+        await this.storeOwnedManifest(owner, manifestIdHash, {
             ...(manifest ?? {}), $type$: 'FotosManifest', id, entries,
             authenticityAttestations: new Set(manifest?.authenticityAttestations ?? []),
         });
+    }
+
+    private async storeOwnedManifest(owner: string, idHash: SHA256IdHash<FotosManifest>, manifest: FotosManifest): Promise<void> {
+        await createAccess([{id: idHash,
+            person: [owner as SHA256IdHash<Person>], hashGroup: [], mode: SET_ACCESS_MODE.ADD}]);
+        await this.deps.storeVersionedObject(manifest);
     }
 }

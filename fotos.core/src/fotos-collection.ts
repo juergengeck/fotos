@@ -10,6 +10,13 @@ export function getFotosCollectionOwner(id: string): string | undefined {
     return COLLECTION_ID.exec(id)?.[1];
 }
 
+/** Whether a valid album identity belongs to this exact owner and source library. */
+export function isFotosAlbumCollectionFromLibrary(id: string, ownerId: string, libraryId: string): boolean {
+    if (id.length > 4096) return false;
+    const source = COLLECTION_ID.exec(id);
+    return source?.[1] === ownerId && source?.[2] === libraryId;
+}
+
 /** Identity is scoped to the owner and source library, so an album rename keeps its ID. */
 export function buildFotosAlbumCollectionId(owner: string, libraryId: string, albumId: string): string {
     const id = `fotos-album:v1:${owner}:${libraryId}:${encodeURIComponent(albumId)}`;

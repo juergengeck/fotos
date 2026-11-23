@@ -569,6 +569,8 @@ export default class Model {
         console.log('[Model] Shutting down...');
 
         try {
+            await this._fotosMediaLibrarySync?.dispose();
+
             // Shutdown discovery collection adapter
             if (this.discoveryCollectionAdapter) {
                 await this.discoveryCollectionAdapter.shutdown();
@@ -682,13 +684,13 @@ export default class Model {
         return service.syncRecentAssets(limit);
     }
 
-    async syncPhotoLibraryAssetsById(assetIds: string[]): Promise<FotosPhotoLibrarySyncSummary> {
+    async syncPhotoLibraryAssetsById(assetIds: string[], allowNetworkAccess = false): Promise<FotosPhotoLibrarySyncSummary> {
         const service = this.fotosMediaLibrarySync;
         if (!service) {
             throw new Error('[Model] Photo-library sync is unavailable before runtime initialization');
         }
 
-        return service.syncAssetIds(assetIds);
+        return service.syncAssetIds(assetIds, allowNetworkAccess);
     }
 
     async getPendingSharedInboxStatus(): Promise<FotosShareInboxStatus> {

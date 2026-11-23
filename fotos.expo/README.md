@@ -37,3 +37,13 @@ inference packages.
 React Native 0.81 codegen requires the pinned `@dr.pogodin/react-native-fs`
 version. The newer native spec uses `ArrayBuffer` fields that this codegen
 cannot parse.
+
+The local `FotosPhotoKit` module provides Photo Library intake on iOS. Native
+code streams originals to temporary files, hashes the encoded content, and
+supplies bounded JPEG previews. Reference intake transfers the preview to ONE
+and keeps a device-local Photos identifier for original access. The library
+screen offers a separate download action for iCloud-only assets.
+
+Imported user albums store content hashes of synced members. Full Photos access
+allows membership reconciliation. Limited access preserves members and albums
+outside the visible selection.
