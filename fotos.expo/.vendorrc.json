@@ -57,6 +57,10 @@
       "path": "../../one/packages/media.core"
     },
     {
+      "name": "@refinio/media.expo",
+      "path": "../../one/packages/media.expo"
+    },
+    {
       "name": "@refinio/source.media",
       "path": "../../one/packages/source.media"
     },

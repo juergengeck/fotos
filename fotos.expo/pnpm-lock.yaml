@@ -37,6 +37,7 @@ overrides:
   '@refinio/trust.pdf': file:./vendor/refinio-trust.pdf-0.1.0-689c3f9ad2d82758.tgz
   '@refinio/contact.core': file:./vendor/refinio-contact.core-0.1.0-bb2711c1aff19a5f.tgz
   '@refinio/media.core': file:./vendor/refinio-media.core-0.1.0-63071d5123c7ede1.tgz
+  '@refinio/media.expo': file:./vendor/refinio-media.expo-0.1.0-19b115be14e84ba7.tgz
   '@refinio/source.media': file:./vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz
 
 importers:
@@ -91,6 +92,9 @@ importers:
       '@refinio/media.core':
         specifier: file:vendor/refinio-media.core-0.1.0-63071d5123c7ede1.tgz
         version: file:vendor/refinio-media.core-0.1.0-63071d5123c7ede1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)
+      '@refinio/media.expo':
+        specifier: file:vendor/refinio-media.expo-0.1.0-19b115be14e84ba7.tgz
+        version: file:vendor/refinio-media.expo-0.1.0-19b115be14e84ba7.tgz(expo@54.0.34)
       '@refinio/one.core':
         specifier: file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz
         version: file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz
@@ -1756,6 +1760,12 @@ packages:
     version: 0.1.0
     peerDependencies:
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz
+
+  '@refinio/media.expo@file:vendor/refinio-media.expo-0.1.0-19b115be14e84ba7.tgz':
+    resolution: {integrity: sha512-D/nlPS6IPzQcoOX2IYK0j4gcXRLwwIVa14vMaKirQnMLS8uDSdNkKhqzmc82WnliGYwclWnwBClAbdCVU/TppA==, tarball: file:vendor/refinio-media.expo-0.1.0-19b115be14e84ba7.tgz}
+    version: 0.1.0
+    peerDependencies:
+      expo: '*'
 
   '@refinio/one.core-expo@file:vendor/refinio-one.core-expo-0.1.0-d92b7d1fa104c2c7.tgz':
     resolution: {integrity: sha512-qfstb6D4lEIiEGthQUlUmSAQQ9o0h6DyXkVIIXVCcmTWJm7oLd4ws9Q5QI9fxzPGmgRrwCFYjSjbgfSPq2qSTQ==, tarball: file:vendor/refinio-one.core-expo-0.1.0-d92b7d1fa104c2c7.tgz}
@@ -7239,6 +7249,10 @@ snapshots:
   '@refinio/media.core@file:vendor/refinio-media.core-0.1.0-63071d5123c7ede1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)':
     dependencies:
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz
+
+  '@refinio/media.expo@file:vendor/refinio-media.expo-0.1.0-19b115be14e84ba7.tgz(expo@54.0.34)':
+    dependencies:
+      expo: 54.0.34(@babel/core@7.29.0)(@expo/metro-runtime@6.1.2)(expo-router@6.0.23)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0))(react@19.1.0)(typescript@5.9.3)
 
   '@refinio/one.core-expo@file:vendor/refinio-one.core-expo-0.1.0-d92b7d1fa104c2c7.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(expo-crypto@15.0.9(expo@54.0.34))(expo-file-system@19.0.22(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.10)(react@19.1.0)))(expo-secure-store@15.0.8(expo@54.0.34))(expo@54.0.34)':
     dependencies:

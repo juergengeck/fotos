@@ -1,14 +1,10 @@
 import {useEffect, useState, type ComponentType} from 'react';
 import {Image, StyleSheet, type ViewProps} from 'react-native';
-import {requireNativeView} from 'expo';
+import {requireMediaExpoImage, type MediaExpoImageProps} from '@refinio/media.expo';
 import {readBlobAsBase64} from '@refinio/one.core/lib/storage-blob.js';
 import type {FotosGalleryItem} from '../services/FotosMobileGallery';
 
-type PhotoKitImageProps = ViewProps & {
-    assetId: string;
-    resizeMode: 'cover' | 'contain';
-    allowNetworkAccess?: boolean;
-};
+type PhotoKitImageProps = ViewProps & MediaExpoImageProps;
 let PhotoKitImage: ComponentType<PhotoKitImageProps> | undefined;
 
 export function FotosGalleryImage({
@@ -32,7 +28,7 @@ export function FotosGalleryImage({
     }, [thumb, assetId]);
 
     if (assetId) {
-        PhotoKitImage ??= requireNativeView<PhotoKitImageProps>('FotosPhotoKit');
+        PhotoKitImage ??= requireMediaExpoImage<PhotoKitImageProps>();
         return <PhotoKitImage style={StyleSheet.absoluteFill} assetId={assetId} resizeMode={resizeMode} allowNetworkAccess={allowNetworkAccess} />;
     }
     if (thumbnail && thumbnail.hash === thumb) {
