@@ -56,6 +56,7 @@ export function FotosSyncControls() {
   const { snapshot, updateFotosSettings } = useFotosRuntime();
   const { platformCapabilities } = snapshot;
   const supportsPhotoLibrarySync = platformCapabilities.supportsPhotoLibrarySync;
+  const usesApplePhotos = platformCapabilities.currentPlatform === 'ios';
   const supportsShareInbox = platformCapabilities.supportsShareInbox;
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<FotosPhotoLibrarySyncSummary | null>(null);
@@ -198,8 +199,8 @@ export function FotosSyncControls() {
             Photo Library
           </Text>
           <Text style={{ color: mutedTextColor(isDark), fontSize: 14, lineHeight: 20 }}>
-            Sync previews and album memberships from Apple Photos. Reference mode keeps your
-            originals in Apple Photos.
+            Sync previews and albums from {usesApplePhotos ? 'Apple Photos' : 'your device gallery'}.
+            Reference mode keeps originals in the gallery.
           </Text>
         </View>
 
@@ -212,14 +213,13 @@ export function FotosSyncControls() {
             }}
           >
             <Text style={{ color: mutedTextColor(isDark), fontSize: 13, lineHeight: 18 }}>
-              {platformCapabilities.platformLabel} still boots the shared runtime, but photo-library
-              ingest is gated in this slice until the Android media path is verified end to end.
+              Photo library access requires iOS or Android.
             </Text>
           </View>
         ) : null}
 
         <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Pressable
+          {usesApplePhotos && <Pressable
             disabled={syncing || !supportsPhotoLibrarySync}
             onPress={() => void pickAndSyncPhotos()}
             style={{
@@ -235,7 +235,7 @@ export function FotosSyncControls() {
             <Text style={{ color: syncing ? palette.accentStrong : '#ffffff', fontSize: 14, fontWeight: '700' }}>
               {syncing ? 'Working...' : supportsPhotoLibrarySync ? 'Pick Photos' : 'Photo sync pending'}
             </Text>
-          </Pressable>
+          </Pressable>}
 
           <Pressable
             disabled={syncing || !supportsPhotoLibrarySync}
@@ -298,7 +298,7 @@ export function FotosSyncControls() {
               </View>
             ) : null}
             {lastSync.albumSyncError ? (
-              <Text style={{ color: palette.danger, fontSize: 13 }}>Photos albums could not sync. {lastSync.albumSyncError}</Text>
+              <Text style={{ color: palette.danger, fontSize: 13 }}>Gallery albums could not sync. {lastSync.albumSyncError}</Text>
             ) : null}
             {lastSync.issues.slice(0, 3).map((issue) => (
               <Text

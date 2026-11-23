@@ -39,12 +39,11 @@ Native dependency changes require a fresh Expo prebuild and CocoaPods install
 before an Xcode build. An existing Pods directory can still contain removed
 inference packages.
 
-The shared `@refinio/media.expo` package provides Photo Library intake on iOS.
-Native code streams originals to temporary files, hashes the encoded content,
-and supplies bounded JPEG previews. Reference intake transfers the preview to
-ONE and keeps a device-local Photos identifier for original access. The library
-screen offers a separate download action for iCloud-only assets. The package
-also autolinks its MediaStore module on Android.
+The shared `@refinio/media.expo` package provides intake from Apple Photos and
+Android MediaStore. Native code reads and hashes originals and supplies bounded
+JPEG previews. Reference intake transfers the preview to ONE and keeps a
+device-local locator for original access. The library screen offers a separate
+download action for iCloud-only assets on iOS.
 
 Imported user albums store content hashes of synced members. Full Photos access
 allows membership reconciliation. Limited access preserves members and albums

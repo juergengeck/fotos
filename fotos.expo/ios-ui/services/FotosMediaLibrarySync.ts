@@ -59,7 +59,15 @@ function publishSerially<T>(work: () => Promise<T>): Promise<T> {
     return next;
 }
 export type FotosIntakeMode = 'reference' | 'metadata' | 'ingest';
-const CURRENT_PLATFORM = Platform.OS;
+const GALLERY_LOCATORS = {
+    ios: {platform: 'ios', kind: 'phasset'},
+    android: {platform: 'android', kind: 'media-store'},
+} as const;
+
+function getGalleryLocator() {
+    const platform = Platform.OS;
+    return platform === 'ios' || platform === 'android' ? GALLERY_LOCATORS[platform] : undefined;
+}
 
 export function isEditableFotosCollection(owner: string | undefined, id: string): boolean {
     return owner !== undefined && isFotosManualCollectionForOwner(id, owner);
@@ -289,7 +297,7 @@ export function buildEntryFromAsset(params: {
         folderPath: 'Photo Library',
         originalFilename: asset.filename,
         ...(Number.isFinite(asset.duration) && asset.duration >= 0 ? {duration: asset.duration} : {}),
-        favorite: asset.favorite,
+        ...(asset.favorite !== undefined ? {favorite: asset.favorite} : {}),
         ...(mediaSubtypes.size ? {mediaSubtypes} : {}),
         ...(altitude !== undefined ? {exifGpsAlt: altitude} : {}),
         ...(orientation !== undefined ? {orientation} : {}),
@@ -316,6 +324,7 @@ export function buildEntryFromAsset(params: {
 }
 
 export class FotosMediaLibrarySync {
+    private readonly galleryLocator = getGalleryLocator();
     private readonly localAssets = new Map<string, Set<string>>();
     private readonly albumAssetHashes = new Map<string, string>();
     private readonly assetVerificationTimes = new Map<string, string>();
@@ -337,7 +346,7 @@ export class FotosMediaLibrarySync {
                 cursor => native.releaseCursor(cursor),
                 page => {
                     if (!page.assets.length && page.nextOffset !== undefined) {
-                        throw new Error('PhotoKit returned an empty continuing asset page');
+                        throw new Error('The gallery returned an empty continuing asset page');
                     }
                     for (const asset of page.assets) ids.add(asset.id);
                     return ids.size < count;
@@ -359,17 +368,22 @@ export class FotosMediaLibrarySync {
     ): Promise<FotosPhotoLibrarySyncSummary> {
         const empty = {permissionGranted: false, accessPrivileges: null, requestedCount, syncedCount: 0,
             skippedCount: 0, syncedEntries: [], deferredAssets: [], issues: []};
-        if (CURRENT_PLATFORM !== 'ios') {
+        if (!this.galleryLocator) {
             return {...empty, skippedCount: 1, issues: [{
-                assetId: 'platform', filename: 'photo-library', reason: 'Photo-library sync requires iOS.',
+                assetId: 'platform', filename: 'photo-library', reason: 'Photo-library sync requires iOS or Android.',
             }]};
         }
         const permission = await this.ensurePermission();
         if (!permission.granted) return {...empty, accessPrivileges: permission.accessPrivileges ?? null};
-        const native = getFotosPhotoKit();
-        if (this.closed) throw new Error('Photo-library sync has stopped');
-        this.subscription ??= native.addListener('onLibraryChange', change => this.onLibraryChange(native, change));
+        const native = this.observeLibrary();
         return this.enqueue(async () => this.syncAssetRefsSerially(native, await getIds(native), permission, allowNetworkAccess));
+    }
+
+    private observeLibrary(): FotosPhotoKitNative {
+        if (this.closed) throw new Error('Photo-library sync has stopped');
+        const native = getFotosPhotoKit();
+        this.subscription ??= native.addListener('onLibraryChange', change => this.onLibraryChange(native, change));
+        return native;
     }
 
     private enqueue<T>(work: () => Promise<T>): Promise<T> {
@@ -505,7 +519,7 @@ export class FotosMediaLibrarySync {
             original = await native.inspectOriginal(assetId, allowNetworkAccess, FOTOS_THUMBNAIL_MAX_EDGE);
         } catch (error) {
             return {status: 'skipped', issue: createIssue({id: assetId, filename: assetId},
-                'Failed to inspect Photos original: ' + (error instanceof Error ? error.message : String(error)))};
+                'Failed to inspect gallery original: ' + (error instanceof Error ? error.message : String(error)))};
         }
         const {asset} = original;
         if (original.status === 'icloud-deferred') {
@@ -516,7 +530,7 @@ export class FotosMediaLibrarySync {
         let unconsumedThumbnail = original.thumbnailUri;
         try {
             if (!/^[a-f0-9]{64}$/.test(contentHash) || !Number.isSafeInteger(byteSize) || byteSize <= 0) {
-                throw new Error('PhotoKit returned invalid media identity');
+                throw new Error('The gallery returned an invalid media identity');
             }
             const entry = buildEntryFromAsset({asset, contentHash, byteSize});
             const entryIdHash = await this.deps.calculateIdHashOfObj(entry as object) as SHA256IdHash<FotosEntry>;
@@ -586,8 +600,9 @@ export class FotosMediaLibrarySync {
                 }),
             ]);
             const entryResult = await this.deps.storeVersionedObject(mergedEntry as object);
+            const deviceId = this.deps.getInstanceId() ?? Platform.OS;
             await appendFotosDeviceBookContent(this.deps, {
-                deviceId: this.deps.getInstanceId() ?? 'ios',
+                deviceId,
                 role: 'mobile',
                 entries: [entryResult.hash as SHA256Hash<FotosEntry>],
                 sourceIdHashes: [sourceState.sourceIdHash as any],
@@ -597,7 +612,7 @@ export class FotosMediaLibrarySync {
             });
             await appendMediaBookContent(this.deps, {
                 author: observer as SHA256IdHash<Person>,
-                deviceId: this.deps.getInstanceId() ?? 'ios',
+                deviceId,
                 sourceIdHashes: [sourceState.sourceIdHash],
                 entryIdHashes: [sourceState.entryIdHash],
                 sourceRefs: sourceState.sourceRef ? [sourceState.sourceRef] : undefined,
@@ -772,16 +787,16 @@ export class FotosMediaLibrarySync {
 
     private async storeLocalLocator(
         variant: SHA256IdHash<FotosMediaVariant>,
-        phAssetId: string,
+        assetId: string,
         lastVerifiedAt?: string,
     ): Promise<{ hash: SHA256Hash<FotosMediaLocator>; idHash: SHA256IdHash<FotosMediaLocator> }> {
         const deviceId = this.deps.getInstanceId();
+        if (!this.galleryLocator) throw new Error('Photo-library locators require iOS or Android.');
         const locator = createFotosMediaLocator({
             variant,
-            platform: 'ios',
-            kind: 'phasset',
+            ...this.galleryLocator,
             scope: 'device-local',
-            locator: phAssetId,
+            locator: assetId,
             ...(deviceId ? { deviceId } : {}),
             ...(lastVerifiedAt ? { lastVerifiedAt } : {}),
         });
@@ -799,13 +814,14 @@ export class FotosMediaLibrarySync {
         contentHash: string;
         updatedAt?: string;
     }): Promise<{ sourceIdHash: string; entryIdHash: string; sourceRef: string }> {
-        const deviceId = this.deps.getInstanceId() ?? CURRENT_PLATFORM;
+        const platform = Platform.OS;
+        const deviceId = this.deps.getInstanceId() ?? platform;
         const source = createMediaSource({
             family: 'mobile-library',
             locator: 'expo-media-library',
-            platform: CURRENT_PLATFORM,
+            platform,
             deviceId,
-            title: `${CURRENT_PLATFORM} Photo Library`,
+            title: `${platform} Photo Library`,
         });
         const storedSource = await this.deps.storeVersionedObject(source as object);
         const sourceEntry = createMediaSourceEntry({
@@ -814,7 +830,7 @@ export class FotosMediaLibrarySync {
             entryKind: 'mobile-asset',
             locator: params.assetId,
             title: params.filename,
-            summary: `${CURRENT_PLATFORM} media library asset`,
+            summary: `${platform} media library asset`,
             contentHash: params.contentHash,
         });
         const storedEntry = await this.deps.storeVersionedObject(sourceEntry as object);
@@ -832,13 +848,14 @@ export class FotosMediaLibrarySync {
         batchId: string;
         updatedAt?: string;
     }): Promise<{ sourceIdHash: string; entryIdHash: string; sourceRef: string }> {
-        const deviceId = this.deps.getInstanceId() ?? CURRENT_PLATFORM;
+        const platform = Platform.OS;
+        const deviceId = this.deps.getInstanceId() ?? platform;
         const source = createMediaSource({
             family: 'share-intent',
             locator: params.batchId,
-            platform: CURRENT_PLATFORM,
+            platform,
             deviceId,
-            title: `${CURRENT_PLATFORM} Share Intent`,
+            title: `${platform} Share Intent`,
         });
         const storedSource = await this.deps.storeVersionedObject(source as object);
         const sourceEntry = createMediaSourceEntry({
@@ -847,7 +864,7 @@ export class FotosMediaLibrarySync {
             entryKind: 'shared-file',
             locator: params.locator,
             title: params.filename,
-            summary: `${CURRENT_PLATFORM} shared import`,
+            summary: `${platform} shared import`,
             contentHash: params.contentHash,
         });
         const storedEntry = await this.deps.storeVersionedObject(sourceEntry as object);
@@ -890,14 +907,14 @@ export class FotosMediaLibrarySync {
     }
 
     private async loadLocalAssetIndex(): Promise<void> {
+        if (!this.galleryLocator) return;
         const deviceId = this.deps.getInstanceId();
-        if (!deviceId) throw new Error('PhotoKit requires the local device identity');
+        if (!deviceId) throw new Error('The gallery requires the local device identity');
         const bookId = await this.deps.calculateIdHashOfObj({$type$: 'FotosDeviceBook', id: makeFotosDeviceBookId(deviceId)});
         const book = await this.readVersionedObject<FotosDeviceBook>(bookId);
         for (const hash of book?.locators ?? []) {
             const locator = await getObject(hash);
-            if (locator.kind !== 'phasset' || locator.scope !== 'device-local' || locator.platform !== 'ios'
-                || locator.deviceId !== deviceId) continue;
+            if (!this.isDeviceGalleryLocator(locator, deviceId)) continue;
             const variant = await this.readVersionedObject<FotosMediaVariant>(locator.variant);
             if (variant?.role !== 'original') continue;
             this.rememberLocalAsset(variant.contentHash, locator.locator);
@@ -912,8 +929,17 @@ export class FotosMediaLibrarySync {
         }
     }
 
+    private isDeviceGalleryLocator(locator: FotosMediaLocator, deviceId: string): boolean {
+        return locator.scope === 'device-local' && locator.deviceId === deviceId
+            && locator.kind === this.galleryLocator?.kind && locator.platform === this.galleryLocator?.platform;
+    }
+
     async getLocalPhotoHashes(): Promise<ReadonlyMap<string, string>> {
         await this.ensureLocalAssetIndex();
+        if (this.galleryLocator && !this.closed && !this.subscription) {
+            const access = await MediaLibrary.getPermissionsAsync(false, ['photo', 'video']);
+            if (access.granted && !this.closed) this.observeLibrary();
+        }
         return new Map(this.albumAssetHashes);
     }
 
@@ -1019,7 +1045,7 @@ export class FotosMediaLibrarySync {
                 continue;
             }
         }
-        throw new Error('No verified Photos original is available for this contentHash');
+        throw new Error('No verified local gallery original is available for this content hash');
     }
 
     private async readVerifiedOriginal(
@@ -1027,7 +1053,7 @@ export class FotosMediaLibrarySync {
     ): Promise<Uint8Array> {
         const bytes = await readTemporaryBytes(await native.originalFile(assetId, allowNetworkAccess));
         if (!await matchesImageContentHash(bytes, entry.contentHash, value => this.digestBytes(value))) {
-            throw new Error('PhotoKit original no longer matches the expected content hash');
+            throw new Error('The gallery original no longer matches the expected content hash');
         }
         return bytes;
     }
@@ -1108,15 +1134,14 @@ export class FotosMediaLibrarySync {
 
     private async retireLocalPhotoLocators(removed: ReadonlySet<string>): Promise<void> {
         const deviceId = this.deps.getInstanceId();
-        if (!deviceId) throw new Error('PhotoKit requires the local device identity');
+        if (!deviceId) throw new Error('The gallery requires the local device identity');
         const idHash = await this.deps.calculateIdHashOfObj({$type$: 'FotosDeviceBook', id: makeFotosDeviceBookId(deviceId)});
         const book = await this.readVersionedObject<FotosDeviceBook>(idHash);
         if (!book?.locators?.size) return;
         const locators = new Set<SHA256Hash<FotosMediaLocator>>();
         for (const ref of book.locators) {
             const locator = await getObject(ref);
-            if (locator.deviceId === deviceId && locator.kind === 'phasset' && locator.platform === 'ios'
-                && locator.scope === 'device-local' && removed.has(locator.locator)) continue;
+            if (this.isDeviceGalleryLocator(locator, deviceId) && removed.has(locator.locator)) continue;
             locators.add(ref);
         }
         if (locators.size !== book.locators.size) {
@@ -1128,14 +1153,16 @@ export class FotosMediaLibrarySync {
     }
 
     private async syncAlbums(native: FotosPhotoKitNative, fullAccess: boolean): Promise<void> {
+        if (!this.galleryLocator) return;
         const owner = this.requireOwner();
         const deviceId = this.deps.getInstanceId();
-        if (!deviceId) throw new Error('PhotoKit albums require the local device identity');
+        if (!deviceId) throw new Error('Gallery albums require the local device identity');
         const id = getOwnedFotosManifestId(owner);
         const manifestIdHash = await this.deps.calculateIdHashOfObj({$type$: 'FotosManifest', id}) as SHA256IdHash<FotosManifest>;
         const manifest = await this.readVersionedObject<FotosManifest>(manifestIdHash);
         const {collections, albumBindings, changed} = await reconcileFotosPhotoKitAlbums({
-            native, ownerId: owner, libraryId: await this.digestBytes(new TextEncoder().encode(deviceId)),
+            native, ownerId: owner, platform: this.galleryLocator.platform,
+            libraryId: await this.digestBytes(new TextEncoder().encode(deviceId)),
             fullAccess, assetHashes: this.albumAssetHashes, existingRefs: manifest?.collections ?? new Set(),
             bindingRefs: manifest?.albumBindings ?? new Set(),
             allocateCollectionUuid: Crypto.randomUUID,
@@ -1150,7 +1177,7 @@ export class FotosMediaLibrarySync {
         if (!changed) return;
         const currentAccess = await MediaLibrary.getPermissionsAsync(false, ['photo', 'video']);
         if (!currentAccess.granted || (fullAccess && currentAccess.accessPrivileges !== 'all')) {
-            throw new Error('Photos access changed during album reconciliation');
+            throw new Error('Gallery access changed during album reconciliation');
         }
         await this.storeOwnedManifest(owner, manifestIdHash, {
             ...(manifest ?? {}), $type$: 'FotosManifest', id, entries: manifest?.entries ?? new Set(), collections, albumBindings,

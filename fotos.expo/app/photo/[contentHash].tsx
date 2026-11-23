@@ -199,7 +199,7 @@ export default function PhotoLightbox() {
         ['Latitude', photoDetails?.exifGpsLat ?? local?.asset.location?.latitude], ['Longitude', photoDetails?.exifGpsLon ?? local?.asset.location?.longitude],
         ['Albums', collections.map(collection => collection.name).join(', ') || undefined],
         ['Tags', photoDetails?.tags?.size ? [...photoDetails.tags].sort().join(', ') : undefined],
-        ['Local Photos locator', assetId], ['Faces detected', entry?.faceCount],
+        ['Local gallery locator', assetId], ['Faces detected', entry?.faceCount],
         ['People', names.join(', ') || undefined],
     ];
     const preview = original && original.entry === entry && entry.mime.startsWith('image/') ? original.uri : undefined;
@@ -224,7 +224,7 @@ export default function PhotoLightbox() {
                 </ScrollView>
             </View>
             <View style={styles.footer}>
-                {assetId && !networkAccess && local?.status !== 'available' ? (
+                {model.platformCapabilities.currentPlatform === 'ios' && assetId && !networkAccess && local?.status !== 'available' ? (
                     <Pressable accessibilityRole="button" onPress={() => setNetworkAccess(true)}><Text style={styles.footerText}>Load from iCloud</Text></Pressable>
                 ) : null}
                 {!assetId && entry && !preview ? (

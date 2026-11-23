@@ -13,6 +13,7 @@ export interface ReconcileFotosPhotoKitAlbumsParams extends Omit<
 > {
     native: FotosPhotoKitAlbumNative;
     ownerId: string;
+    platform?: ReconcileFotosGalleryAlbumsParams['platform'];
     fullAccess: boolean;
     assetHashes: ReadonlyMap<string, string>;
     existingRefs: ReconcileFotosGalleryAlbumsParams['collectionRefs'];
@@ -31,7 +32,7 @@ function checkPage(items: unknown, nextOffset?: number): asserts items is unknow
 
 /** Finish the native scan before applying an owner-scoped gallery observation. */
 export async function reconcileFotosPhotoKitAlbums(params: ReconcileFotosPhotoKitAlbumsParams) {
-    const {native, ownerId, fullAccess, assetHashes, existingRefs, ...storage} = params;
+    const {native, ownerId, platform = 'ios', fullAccess, assetHashes, existingRefs, ...storage} = params;
     const visible: Array<{id: string; name: string}> = [];
     const seen = new Set<string>();
     const releaseCursor = (cursor: string) => native.releaseCursor(cursor);
@@ -68,6 +69,6 @@ export async function reconcileFotosPhotoKitAlbums(params: ReconcileFotosPhotoKi
     }
 
     return reconcileFotosGalleryAlbums({
-        ...storage, owner: ownerId, platform: 'ios', complete: fullAccess, observed, collectionRefs: existingRefs,
+        ...storage, owner: ownerId, platform, complete: fullAccess, observed, collectionRefs: existingRefs,
     });
 }

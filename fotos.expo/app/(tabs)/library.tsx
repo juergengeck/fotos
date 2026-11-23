@@ -86,7 +86,7 @@ export default function LibraryScreen() {
                     <Pressable accessibilityRole="button" onPress={() => void (
                         gallery.permission?.canAskAgain ? gallery.requestPermission() : Linking.openSettings()
                     )}>
-                        <Text style={styles.action}>{gallery.permission.canAskAgain ? 'Show photos from Apple Photos' : 'Open Photos permission settings'}</Text>
+                        <Text style={styles.action}>{gallery.permission.canAskAgain ? 'Show photos from this device' : 'Open photo permission settings'}</Text>
                     </Pressable>
                 ) : null}
                 {error ? (

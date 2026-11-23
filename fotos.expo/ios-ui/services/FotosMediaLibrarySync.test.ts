@@ -2,6 +2,7 @@ import {readFileSync} from 'node:fs';
 import {URL} from 'node:url';
 import {createHash} from 'node:crypto';
 import {normalizeImageBytesForContentHash} from '@refinio/fotos.core/content-hash';
+import {buildFotosGalleryAlbumBindingId} from '@refinio/fotos.core';
 import type {FotosPhotoKitAsset, FotosPhotoKitChange} from './FotosPhotoKit';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 const OWNER = 'a'.repeat(64);
@@ -9,6 +10,7 @@ const CONTENT = '9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806
 const fixtureDirectory = new URL('../../../../one/packages/media.core/test/fixtures/bitfield-hash/', import.meta.url);
 const JPEG = Uint8Array.from(readFileSync(new URL('with-exif.jpg', fixtureDirectory)));
 const mocks = vi.hoisted(() => ({
+    platform: 'ios',
     record: vi.fn<(params: any) => Promise<string>>(async () => 'observation-hash'),
     blob: vi.fn(async () => ({hash: 'stored-blob'})), batches: vi.fn(async (): Promise<any[]> => []),
     deleteBatch: vi.fn(), access: vi.fn(async () => []), objects: new Map<string, any>(),
@@ -20,7 +22,7 @@ const mocks = vi.hoisted(() => ({
     nativeOriginal: vi.fn<() => Uint8Array>(), unsubscribe: vi.fn(),
     listener: undefined as undefined | ((change: FotosPhotoKitChange) => void),
 }));
-vi.mock('react-native', () => ({Platform: {OS: 'ios'}}));
+vi.mock('react-native', () => ({Platform: {get OS() { return mocks.platform; }}}));
 vi.mock('expo-crypto', () => ({randomUUID: () => '22b699dd-136c-407b-83f4-48f2e47b2b18',
     CryptoDigestAlgorithm: {SHA256: 'SHA256'}, digest: async (_algorithm: string, bytes: Uint8Array) =>
     Uint8Array.from((await import('node:crypto')).createHash('sha256').update(bytes).digest()).buffer}));
@@ -106,6 +108,7 @@ function asset(id: string, details: Partial<FotosPhotoKitAsset> = {}): FotosPhot
 
 beforeEach(() => {
     vi.resetAllMocks();
+    mocks.platform = 'ios';
     mocks.objects.clear();
     mocks.listener = undefined;
     mocks.record.mockResolvedValue('observation-hash');
@@ -130,6 +133,38 @@ beforeEach(() => {
     mocks.listAlbumMembers.mockResolvedValue({assetIds: []});
 });
 describe('Expo reference-first media acquisition', () => {
+    it('syncs Android gallery metadata through device-local locators and portable albums', async () => {
+        mocks.platform = 'android';
+        const id = 'content://media/external_primary/images/media/123';
+        const bucket = 'media-bucket:v1:external_primary:345';
+        const {service, stored, writes, deps} = fixture();
+        mocks.listAlbums.mockResolvedValue({albums: [{id: bucket, name: 'Camera', kind: 'user'}]});
+        mocks.listAlbumMembers.mockResolvedValue({assetIds: [id]});
+        mocks.asset.mockImplementation(async () => asset(id, {favorite: true}));
+
+        expect(await service.syncAssetIds([id])).toMatchObject({syncedCount: 1, skippedCount: 0});
+        expect(writes.find(obj => obj.$type$ === 'FotosMediaLocator')).toMatchObject({
+            platform: 'android', kind: 'media-store', scope: 'device-local', locator: id,
+        });
+        const libraryId = createHash('sha256').update('device-1').digest('hex');
+        expect(writes.find(obj => obj.$type$ === 'FotosGalleryAlbumBinding')).toMatchObject({
+            id: buildFotosGalleryAlbumBindingId({owner: OWNER, platform: 'android', libraryId, albumId: bucket}),
+        });
+        expect(writes.find(obj => obj.$type$ === 'FotosCollection')).toMatchObject({name: 'Camera', photoHashes: new Set([CONTENT])});
+        await service.dispose();
+
+        const restarted = new FotosMediaLibrarySync(deps);
+        expect(await restarted.getLocalPhotoHashes()).toEqual(new Map([[id, CONTENT]]));
+        expect(mocks.listener).toBeTypeOf('function');
+        mocks.asset.mockImplementation(async () => asset(id, {filename: 'renamed.jpg', favorite: undefined}));
+        mocks.listener?.({inserted: [], changed: [id], removed: [], albumsChanged: false, requiresReload: false});
+        await vi.waitFor(() => expect(stored.get(`entry:${CONTENT}`)).toMatchObject({
+            contentHash: CONTENT, originalFilename: 'renamed.jpg', favorite: true,
+        }));
+        expect(new Uint8Array(await restarted.resolveOriginal(stored.get(`entry:${CONTENT}`)))).toEqual(Uint8Array.of(1, 2, 3, 4));
+        await restarted.dispose();
+    });
+
     it('appends one exact tag version to the owner root and skips a normalized duplicate', async () => {
         const {service, stored, writes} = fixture();
         await service.syncAssetIds(['asset-1']);
@@ -239,7 +274,7 @@ describe('Expo reference-first media acquisition', () => {
     it('refuses a stored locator whose bytes no longer match the content identity', async () => {
         const {service, deps, stored} = fixture(); await service.syncAssetIds(['asset-1']);
         mocks.read.mockResolvedValue(Uint8Array.of(5, 6, 7, 8));
-        await expect(new FotosMediaLibrarySync(deps).resolveOriginal(stored.get(`entry:${CONTENT}`))).rejects.toThrow('No verified Photos original');
+        await expect(new FotosMediaLibrarySync(deps).resolveOriginal(stored.get(`entry:${CONTENT}`))).rejects.toThrow('No verified local gallery original');
     });
     it('reports iCloud-only assets without inventing a canonical identity', async () => {
         mocks.inspect.mockResolvedValueOnce({asset: asset('cloud', {filename: 'cloud.heic'}), status: 'icloud-deferred'});
@@ -297,7 +332,7 @@ describe('Expo reference-first media acquisition', () => {
             .mockResolvedValueOnce({granted: true, accessPrivileges: 'all'})
             .mockResolvedValueOnce({granted: true, accessPrivileges: 'limited'});
         expect(await service.syncAssetIds([])).toMatchObject({
-            albumSyncError: 'Photos access changed during album reconciliation',
+            albumSyncError: 'Gallery access changed during album reconciliation',
         });
         expect(stored.get(`FotosManifest:fotos:${OWNER}`)).toBe(manifest);
         expect(writes).toEqual([]);

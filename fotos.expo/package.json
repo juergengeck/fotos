@@ -100,7 +100,7 @@
     "@refinio/instrumentation.core": "file:./vendor/refinio-instrumentation.core-0.1.0-30a210dfb6ad98e6.tgz",
     "@refinio/ui.core": "file:./vendor/refinio-ui.core-1.0.0-6b0e27e286eeb1c1.tgz",
     "@refinio/media.core": "file:./vendor/refinio-media.core-0.1.0-63071d5123c7ede1.tgz",
-    "@refinio/media.expo": "file:./vendor/refinio-media.expo-0.1.0-68993681ed41aee6.tgz",
+    "@refinio/media.expo": "file:./vendor/refinio-media.expo-0.1.0-92a4226276bd2344.tgz",
     "@refinio/source.media": "file:./vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz"
   },
   "devDependencies": {
@@ -142,7 +142,7 @@
     "@refinio/trust.pdf": "file:./vendor/refinio-trust.pdf-0.1.0-689c3f9ad2d82758.tgz",
     "@refinio/contact.core": "file:./vendor/refinio-contact.core-0.1.0-bb2711c1aff19a5f.tgz",
     "@refinio/media.core": "file:./vendor/refinio-media.core-0.1.0-63071d5123c7ede1.tgz",
-    "@refinio/media.expo": "file:./vendor/refinio-media.expo-0.1.0-68993681ed41aee6.tgz",
+    "@refinio/media.expo": "file:./vendor/refinio-media.expo-0.1.0-92a4226276bd2344.tgz",
     "@refinio/source.media": "file:./vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz",
     "@refinio/provenance.core": "file:./vendor/refinio-provenance.core-0.1.0-d7102e0b17edd221.tgz",
     "@refinio/fotos.core": "file:./vendor/refinio-fotos.core-0.1.0-8e0ecd28b12f03ed.tgz"
@@ -181,7 +181,7 @@
       "@refinio/trust.pdf": "file:./vendor/refinio-trust.pdf-0.1.0-689c3f9ad2d82758.tgz",
       "@refinio/contact.core": "file:./vendor/refinio-contact.core-0.1.0-bb2711c1aff19a5f.tgz",
       "@refinio/media.core": "file:./vendor/refinio-media.core-0.1.0-63071d5123c7ede1.tgz",
-      "@refinio/media.expo": "file:./vendor/refinio-media.expo-0.1.0-68993681ed41aee6.tgz",
+      "@refinio/media.expo": "file:./vendor/refinio-media.expo-0.1.0-92a4226276bd2344.tgz",
       "@refinio/source.media": "file:./vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz",
       "@refinio/provenance.core": "file:./vendor/refinio-provenance.core-0.1.0-d7102e0b17edd221.tgz",
       "@refinio/fotos.core": "file:./vendor/refinio-fotos.core-0.1.0-8e0ecd28b12f03ed.tgz"
