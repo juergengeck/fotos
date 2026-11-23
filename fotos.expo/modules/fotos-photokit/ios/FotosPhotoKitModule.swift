@@ -18,8 +18,8 @@ public final class FotosPhotoKitModule: Module {
         AsyncFunction("listAssets") { (offset: Int, limit: Int, cursor: String?) throws -> [String: Any] in
             try self.library.listAssets(offset: offset, limit: limit, cursor: cursor)
         }
-        AsyncFunction("inspectOriginal") { (id: String, allowNetworkAccess: Bool) async throws -> [String: Any] in
-            try await self.library.inspectOriginal(id: id, allowNetworkAccess: allowNetworkAccess)
+        AsyncFunction("inspectOriginal") { (id: String, allowNetworkAccess: Bool, previewMaxEdge: Int?) async throws -> [String: Any] in
+            try await self.library.inspectOriginal(id: id, allowNetworkAccess: allowNetworkAccess, previewMaxEdge: previewMaxEdge)
         }
         AsyncFunction("thumbnailFile") { (id: String, maxEdge: Int, allowNetworkAccess: Bool) async throws -> String? in
             try await self.library.thumbnailFile(id: id, maxEdge: maxEdge, allowNetworkAccess: allowNetworkAccess)

@@ -64,7 +64,10 @@ func requestPhotoKitThumbnail(_ asset: PHAsset, edge: Int, allowNetworkAccess: B
                 if (info?[PHImageCancelledKey] as? Bool) == true {
                     state.finish(.failure(CancellationError()))
                 } else if let error = info?[PHImageErrorKey] as? Error {
-                    state.finish(isNetworkRequired(error) ? .success(nil) : .failure(error))
+                    let photoError = error as NSError
+                    let isMissingPreview = photoError.domain == PHPhotosErrorDomain
+                        && photoError.code == PHPhotosError.Code.missingResource.rawValue
+                    state.finish(isNetworkRequired(error) || isMissingPreview ? .success(nil) : .failure(error))
                 } else if allowNetworkAccess && (info?[PHImageResultIsDegradedKey] as? Bool) == true {
                     return
                 } else if let image {

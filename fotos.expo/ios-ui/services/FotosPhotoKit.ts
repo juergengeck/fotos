@@ -20,7 +20,7 @@ export interface FotosPhotoKitAsset {
 }
 
 export type FotosPhotoKitOriginal =
-    | {asset: FotosPhotoKitAsset; status: 'available'; contentHash: string; byteSize: number}
+    | {asset: FotosPhotoKitAsset; status: 'available'; contentHash: string; byteSize: number; thumbnailUri?: string}
     | {asset: FotosPhotoKitAsset; status: 'icloud-deferred'};
 
 export interface FotosPhotoKitChange {
@@ -33,7 +33,7 @@ export interface FotosPhotoKitChange {
 
 export interface FotosPhotoKitNative {
     listAssets(offset: number, limit: number, cursor?: string): Promise<FotosPhotoKitContinuation & {assets: FotosPhotoKitAsset[]}>;
-    inspectOriginal(id: string, allowNetworkAccess: boolean): Promise<FotosPhotoKitOriginal>;
+    inspectOriginal(id: string, allowNetworkAccess: boolean, previewMaxEdge?: number): Promise<FotosPhotoKitOriginal>;
     thumbnailFile(id: string, maxEdge: number, allowNetworkAccess: boolean): Promise<string | null>;
     originalFile(id: string, allowNetworkAccess: boolean): Promise<string>;
     listAlbums(offset: number, limit: number, cursor?: string): Promise<FotosPhotoKitContinuation & {

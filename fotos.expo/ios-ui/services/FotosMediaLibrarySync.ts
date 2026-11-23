@@ -497,7 +497,7 @@ export class FotosMediaLibrarySync {
     private async syncAsset(native: FotosPhotoKitNative, assetId: string, allowNetworkAccess: boolean): Promise<AssetSyncOutcome> {
         let original;
         try {
-            original = await native.inspectOriginal(assetId, allowNetworkAccess);
+            original = await native.inspectOriginal(assetId, allowNetworkAccess, FOTOS_THUMBNAIL_MAX_EDGE);
         } catch (error) {
             return {status: 'skipped', issue: createIssue({id: assetId, filename: assetId},
                 'Failed to inspect Photos original: ' + (error instanceof Error ? error.message : String(error)))};
@@ -508,6 +508,7 @@ export class FotosMediaLibrarySync {
         }
 
         const {contentHash, byteSize} = original;
+        let unconsumedThumbnail = original.thumbnailUri;
         try {
             if (!/^[a-f0-9]{64}$/.test(contentHash) || !Number.isSafeInteger(byteSize) || byteSize <= 0) {
                 throw new Error('PhotoKit returned invalid media identity');
@@ -548,8 +549,13 @@ export class FotosMediaLibrarySync {
                 updatedAt: entry.updatedAt ?? entry.capturedAt,
             });
 
-            const thumbnail = await this.storeThumbnail(native, asset.id, entryIdHash,
-                variantResult.idHash as SHA256IdHash<FotosMediaVariant>, allowNetworkAccess);
+            const thumbnailUri = asset.mediaType === 'video'
+                ? await native.thumbnailFile(asset.id, FOTOS_THUMBNAIL_MAX_EDGE, allowNetworkAccess)
+                : unconsumedThumbnail;
+            unconsumedThumbnail = undefined;
+            const thumbnail = thumbnailUri
+                ? await this.storeThumbnail(thumbnailUri, entryIdHash, variantResult.idHash as SHA256IdHash<FotosMediaVariant>)
+                : undefined;
             const mergedVariants = new Set(existingEntry?.variants ?? new Set<SHA256Hash<FotosMediaVariant>>());
             mergedVariants.add(variantResult.hash as SHA256Hash<FotosMediaVariant>);
             if (thumbnail) mergedVariants.add(thumbnail.hash as SHA256Hash<FotosMediaVariant>);
@@ -619,6 +625,8 @@ export class FotosMediaLibrarySync {
                     `Failed to persist fotos objects: ${error instanceof Error ? error.message : String(error)}`,
                 ),
             };
+        } finally {
+            if (unconsumedThumbnail) deleteTemporaryFile(unconsumedThumbnail);
         }
     }
 
@@ -979,14 +987,10 @@ export class FotosMediaLibrarySync {
     }
 
     private async storeThumbnail(
-        native: FotosPhotoKitNative,
-        assetId: string,
+        uri: string,
         family: SHA256IdHash<FotosEntry>,
         original: SHA256IdHash<FotosMediaVariant>,
-        allowNetworkAccess: boolean,
-    ): Promise<(StoredVersionedObject & {blob: SHA256Hash<BLOB>}) | undefined> {
-        const uri = await native.thumbnailFile(assetId, FOTOS_THUMBNAIL_MAX_EDGE, allowNetworkAccess);
-        if (!uri) return undefined;
+    ): Promise<StoredVersionedObject & {blob: SHA256Hash<BLOB>}> {
         const bytes = await readTemporaryBytes(uri);
         const {width, height} = readFotosThumbnailDimensions(bytes);
         const blob = await storeArrayBufferAsBlob(bytes);

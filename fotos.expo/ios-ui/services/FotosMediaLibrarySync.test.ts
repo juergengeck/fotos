@@ -111,9 +111,11 @@ beforeEach(() => {
     mocks.asset.mockImplementation(async id => asset(id));
     mocks.nativeOriginal.mockImplementation(() => Uint8Array.of(1, 2, 3, 4));
     mocks.permissions.mockResolvedValue({granted: true, accessPrivileges: 'all'});
-    mocks.inspect.mockImplementation(async id => {
+    mocks.inspect.mockImplementation(async (id, _allowNetworkAccess, previewMaxEdge) => {
         const bytes = mocks.nativeOriginal();
-        return {asset: await mocks.asset(id), status: 'available', byteSize: bytes.length,
+        const current = await mocks.asset(id);
+        return {asset: current, status: 'available', byteSize: bytes.length,
+            ...(previewMaxEdge && current.mediaType === 'photo' ? {thumbnailUri: 'file:///thumbnail.jpg'} : {}),
             contentHash: createHash('sha256').update(normalizeImageBytesForContentHash(bytes)).digest('hex')};
     });
     mocks.read.mockImplementation(async uri => uri === 'file:///thumbnail.jpg' ? JPEG : Uint8Array.of(1, 2, 3, 4));
@@ -139,6 +141,8 @@ describe('Expo reference-first media acquisition', () => {
             context: expect.objectContaining({surface: 'mobile-library', source: 'asset-1', reportedCaptureTime: '1970-01-01T00:00:01.000Z'})}));
         expect(mocks.remove).toHaveBeenCalledWith('file:///thumbnail.jpg');
         expect(mocks.originalFile).not.toHaveBeenCalled();
+        expect(mocks.thumbnail).not.toHaveBeenCalled();
+        expect(mocks.inspect).toHaveBeenCalledExactlyOnceWith('asset-1', false, 512);
         expect(mocks.read).toHaveBeenCalledExactlyOnceWith('file:///thumbnail.jpg');
     });
     it('keeps ingest available explicitly for gallery assets', async () => {
@@ -146,6 +150,15 @@ describe('Expo reference-first media acquisition', () => {
         expect(await service.syncAssetIds(['asset-1'])).toMatchObject({syncedCount: 1});
         expect(mocks.blob).toHaveBeenCalledWith(new Uint8Array([1, 2, 3, 4]));
         expect(writes.find(obj => obj.role === 'original')).toHaveProperty('blob', 'stored-blob');
+    });
+    it('publishes a video reference when Photos has no frame preview', async () => {
+        const {service, writes} = fixture();
+        mocks.asset.mockResolvedValue(asset('video-1', {filename: 'clip.mov', mediaType: 'video', mimeType: 'video/quicktime'}));
+        mocks.thumbnail.mockResolvedValue(null);
+        expect(await service.syncAssetIds(['video-1'])).toMatchObject({syncedCount: 1, skippedCount: 0});
+        expect(mocks.thumbnail).toHaveBeenCalledExactlyOnceWith('video-1', 512, false);
+        expect(mocks.blob).not.toHaveBeenCalled();
+        expect(writes.find(obj => obj.$type$ === 'FotosEntry')).toMatchObject({mime: 'video/quicktime'});
     });
     it('resyncs Expo metadata using the same content-derived entry identity', async () => {
         const {service, writes} = fixture(); await service.syncAssetIds(['asset-1']);
@@ -159,7 +172,7 @@ describe('Expo reference-first media acquisition', () => {
         expect(entries[1]).toMatchObject({contentHash: CONTENT, originalFilename: 'renamed.jpg', duration: 2, favorite: true,
             orientation: 6, exifGpsLat: 53, exifGpsLon: 13, exifGpsAlt: 42, exifLens: 'Lens', mediaSubtypes: new Set(['live-photo', 'hdr', 'depth', 'cinematic'])});
         expect(entries[1].variants.size).toBeGreaterThanOrEqual(entries[0].variants.size);
-        expect(mocks.thumbnail).toHaveBeenLastCalledWith('asset-1', 512, false);
+        expect(mocks.inspect).toHaveBeenLastCalledWith('asset-1', false, 512);
     });
     it('retains one media identity and both exact versions when embedded PNG metadata changes', async () => {
         const {service, stored, writes} = fixture();
@@ -214,12 +227,12 @@ describe('Expo reference-first media acquisition', () => {
         const {service, writes} = fixture();
         expect(await service.syncAssetIds(['cloud'])).toMatchObject({syncedCount: 0, skippedCount: 0,
             deferredAssets: [{asset: {id: 'cloud'}, status: 'icloud-deferred', thumbnailUri: 'file:///thumbnail.jpg'}]});
-        expect(mocks.inspect).toHaveBeenLastCalledWith('cloud', false);
+        expect(mocks.inspect).toHaveBeenLastCalledWith('cloud', false, 512);
         expect(writes).toEqual([]);
         expect(mocks.blob).not.toHaveBeenCalled();
         expect(await service.syncAssetIds(['cloud'], true)).toMatchObject({syncedCount: 1, deferredAssets: []});
-        expect(mocks.inspect).toHaveBeenLastCalledWith('cloud', true);
-        expect(mocks.thumbnail).toHaveBeenLastCalledWith('cloud', 512, true);
+        expect(mocks.inspect).toHaveBeenLastCalledWith('cloud', true, 512);
+        expect(mocks.thumbnail).toHaveBeenCalledExactlyOnceWith('cloud', 512, false);
     });
     it('publishes user album membership using the synced content hash', async () => {
         const {service, stored, writes} = fixture();
@@ -271,7 +284,7 @@ describe('Expo reference-first media acquisition', () => {
         mocks.listener?.({inserted: ['inserted'], changed: [], removed: ['removed'],
             albumsChanged: true, requiresReload: false});
         await service.syncAssetIds([]);
-        expect(mocks.inspect).toHaveBeenLastCalledWith('inserted', false);
+        expect(mocks.inspect).toHaveBeenLastCalledWith('inserted', false, 512);
         await service.resolveOriginal(stored.get(`entry:${CONTENT}`));
         expect(mocks.originalFile).toHaveBeenCalledExactlyOnceWith('inserted', false);
         await service.dispose();

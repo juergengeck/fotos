@@ -181,7 +181,7 @@ final class FotosPhotoKitLibrary {
         }
     }
 
-    func inspectOriginal(id: String, allowNetworkAccess: Bool) async throws -> [String: Any] {
+    func inspectOriginal(id: String, allowNetworkAccess: Bool, previewMaxEdge: Int? = nil) async throws -> [String: Any] {
         let asset = try self.asset(id)
         let resource = try self.resource(asset)
         let url: URL
@@ -202,8 +202,18 @@ final class FotosPhotoKitLibrary {
                 "contentHash": result.contentHash, "byteSize": result.byteSize]
         }
         let data = try Data(contentsOf: url, options: .alwaysMapped)
-        return ["asset": describe(currentAsset, resource: resource, exif: imageMetadata(url)), "status": "available",
+        var result: [String: Any] = ["asset": describe(currentAsset, resource: resource, exif: imageMetadata(url)), "status": "available",
             "contentHash": BitfieldHasher.contentHash(data), "byteSize": data.count]
+        if let previewMaxEdge, previewMaxEdge > 0,
+           let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+           let preview = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: min(previewMaxEdge, 512),
+           ] as CFDictionary) {
+            result["thumbnailUri"] = try writeThumbnail(UIImage(cgImage: preview), edge: min(previewMaxEdge, 512))
+        }
+        return result
     }
 
     func originalFile(id: String, allowNetworkAccess: Bool) async throws -> String {
@@ -222,6 +232,10 @@ final class FotosPhotoKitLibrary {
         let image = try await requestPhotoKitThumbnail(asset, edge: edge, allowNetworkAccess: allowNetworkAccess)
         guard let image else { return nil }
         _ = try self.asset(id)
+        return try writeThumbnail(image, edge: edge)
+    }
+
+    private func writeThumbnail(_ image: UIImage, edge: Int) throws -> String {
         let width = image.size.width * image.scale, height = image.size.height * image.scale
         guard width.isFinite, height.isFinite, width > 0, height > 0 else { throw FotosPhotoKitError.invalidThumbnail }
         let factor = min(1, CGFloat(edge) / max(width, height))
