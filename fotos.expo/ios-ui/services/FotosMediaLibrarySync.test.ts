@@ -165,6 +165,28 @@ describe('Expo reference-first media acquisition', () => {
         await restarted.dispose();
     });
 
+    it('learns Android additions and retires primary-volume locators after an ambiguous notification', async () => {
+        mocks.platform = 'android';
+        const removed = 'content://media/external_primary/images/media/1';
+        const detached = 'content://media/1234-5678/images/media/2';
+        const inserted = 'content://media/external_primary/images/media/3';
+        mocks.listAssets.mockResolvedValue({assets: [asset(removed), asset(detached)]});
+        const {service, stored} = fixture();
+        expect(await service.syncAssetIds([removed, detached])).toMatchObject({syncedCount: 2});
+
+        mocks.listAssets.mockResolvedValue({assets: [asset(inserted)]});
+        mocks.nativeOriginal.mockReturnValue(Uint8Array.of(1, 2, 3, 5));
+        mocks.listener?.({inserted: [], changed: [], removed: [], albumsChanged: true, requiresReload: true});
+        await vi.waitFor(async () => {
+            const index = await service.getLocalPhotoHashes();
+            expect(index.has(inserted)).toBe(true);
+            expect(index.has(removed)).toBe(false);
+            expect(index.get(detached)).toBe(CONTENT);
+        });
+        expect(stored.get(`entry:${CONTENT}`)).toBeDefined();
+        await service.dispose();
+    });
+
     it('appends one exact tag version to the owner root and skips a normalized duplicate', async () => {
         const {service, stored, writes} = fixture();
         await service.syncAssetIds(['asset-1']);

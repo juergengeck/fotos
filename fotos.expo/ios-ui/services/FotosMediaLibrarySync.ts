@@ -325,6 +325,7 @@ export function buildEntryFromAsset(params: {
 
 export class FotosMediaLibrarySync {
     private readonly galleryLocator = getGalleryLocator();
+    private androidVisibility?: {ids: Set<string>; complete: boolean};
     private readonly localAssets = new Map<string, Set<string>>();
     private readonly albumAssetHashes = new Map<string, string>();
     private readonly assetVerificationTimes = new Map<string, string>();
@@ -375,15 +376,40 @@ export class FotosMediaLibrarySync {
         }
         const permission = await this.ensurePermission();
         if (!permission.granted) return {...empty, accessPrivileges: permission.accessPrivileges ?? null};
-        const native = this.observeLibrary();
+        const native = this.observeLibrary(permission);
         return this.enqueue(async () => this.syncAssetRefsSerially(native, await getIds(native), permission, allowNetworkAccess));
     }
 
-    private observeLibrary(): FotosPhotoKitNative {
+    private observeLibrary(permission: MediaLibrary.PermissionResponse): FotosPhotoKitNative {
         if (this.closed) throw new Error('Photo-library sync has stopped');
         const native = getFotosPhotoKit();
-        this.subscription ??= native.addListener('onLibraryChange', change => this.onLibraryChange(native, change));
+        if (!this.subscription) {
+            if (this.galleryLocator?.platform === 'android') {
+                void this.enqueue(async () => {
+                    this.androidVisibility = await this.readAndroidVisibility(native, permission);
+                }).catch(error => {
+                    if (!this.closed) console.warn('[FotosGallery] Android gallery scan failed', error);
+                });
+            }
+            this.subscription = native.addListener('onLibraryChange', change => this.onLibraryChange(native, change));
+        }
         return native;
+    }
+
+    private async readAndroidVisibility(native: FotosPhotoKitNative, permission: MediaLibrary.PermissionResponse) {
+        const ids = new Set<string>();
+        await visitFotosPhotoKitPages(
+            (offset, cursor) => native.listAssets(offset, 200, cursor),
+            cursor => native.releaseCursor(cursor),
+            page => {
+                if (!page.assets.length && page.nextOffset !== undefined) {
+                    throw new Error('The gallery returned an empty continuing asset page');
+                }
+                for (const asset of page.assets) ids.add(asset.id);
+            },
+        );
+        const current = await MediaLibrary.getPermissionsAsync(false, ['photo', 'video']);
+        return {ids, complete: permission.accessPrivileges === 'all' && current.granted && current.accessPrivileges === 'all'};
     }
 
     private enqueue<T>(work: () => Promise<T>): Promise<T> {
@@ -938,7 +964,7 @@ export class FotosMediaLibrarySync {
         await this.ensureLocalAssetIndex();
         if (this.galleryLocator && !this.closed && !this.subscription) {
             const access = await MediaLibrary.getPermissionsAsync(false, ['photo', 'video']);
-            if (access.granted && !this.closed) this.observeLibrary();
+            if (access.granted && !this.closed) this.observeLibrary(access);
         }
         return new Map(this.albumAssetHashes);
     }
@@ -1094,11 +1120,19 @@ export class FotosMediaLibrarySync {
         void this.enqueue(async () => {
             const permission = await MediaLibrary.getPermissionsAsync(false, ['photo', 'video']);
             if (!permission.granted) {
+                this.androidVisibility = undefined;
                 for (const assetId of this.deferredAssets.keys()) this.clearDeferredAsset(assetId);
                 return;
             }
             await this.ensureLocalAssetIndex();
             const removed = new Set(change.removed);
+            const changed = new Set([...change.inserted, ...change.changed]);
+            if (this.galleryLocator?.platform === 'android') {
+                await this.applyAndroidVisibility(native, permission, change, changed, removed);
+            } else if (change.requiresReload) {
+                for (const assetId of this.albumAssetHashes.keys()) changed.add(assetId);
+                for (const assetId of this.deferredAssets.keys()) changed.add(assetId);
+            }
             if (removed.size && permission.accessPrivileges === 'all') {
                 await this.retireLocalPhotoLocators(removed);
             }
@@ -1113,11 +1147,6 @@ export class FotosMediaLibrarySync {
                     if (!assets.size) this.localAssets.delete(hash);
                 }
             }
-            const changed = new Set([...change.inserted, ...change.changed]);
-            if (change.requiresReload) {
-                for (const assetId of this.albumAssetHashes.keys()) changed.add(assetId);
-                for (const assetId of this.deferredAssets.keys()) changed.add(assetId);
-            }
             for (const assetId of removed) changed.delete(assetId);
             const refreshAlbums = change.albumsChanged || removed.size > 0 || change.requiresReload;
             const result = changed.size
@@ -1130,6 +1159,31 @@ export class FotosMediaLibrarySync {
         }).catch(error => {
             if (!this.closed) console.warn('[FotosPhotoKit] Library change could not be applied', error);
         });
+    }
+
+    private async applyAndroidVisibility(
+        native: FotosPhotoKitNative, permission: MediaLibrary.PermissionResponse, change: FotosPhotoKitChange,
+        changed: Set<string>, removed: Set<string>,
+    ): Promise<void> {
+        const previous = this.androidVisibility;
+        if (!change.requiresReload) {
+            for (const id of change.inserted) previous?.ids.add(id);
+            for (const id of removed) previous?.ids.delete(id);
+            return;
+        }
+
+        const observed = await this.readAndroidVisibility(native, permission);
+        this.androidVisibility = observed;
+        for (const id of observed.ids) {
+            if (this.albumAssetHashes.has(id) || (observed.complete && previous?.complete && !previous.ids.has(id))) {
+                changed.add(id);
+            }
+        }
+        if (!observed.complete || !previous?.complete) return;
+        for (const id of previous.ids) {
+            // A detachable volume can disappear from the visible gallery without deleting its originals.
+            if (!observed.ids.has(id) && /^content:\/\/media\/external(?:_primary)?\//.test(id)) removed.add(id);
+        }
     }
 
     private async retireLocalPhotoLocators(removed: ReadonlySet<string>): Promise<void> {
