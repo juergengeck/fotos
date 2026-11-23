@@ -9,8 +9,9 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "fotos.ios",
+      "bundleIdentifier": "one.fotos",
       "appleTeamId": "26W8AC52QS",
+      "buildNumber": "2026112301",
       "infoPlist": {
         "NSBonjourServices": [
           "_one-refinio._udp"
