@@ -67,7 +67,12 @@ async function readOwnedGallery(owner: string) {
             readRefs(obj.entries, async hash => ({hash, entry: await getObjectWithType(hash, 'FotosEntry')})),
             readRefs(obj.collections, collection => getObjectWithType(collection, 'FotosCollection')),
         ]);
-        return {owned: projectFotosEntryReferences(owned).map(reference => reference.entry), collections};
+        const byHash = new Map(owned.map(({hash, entry}) => [String(hash), entry]));
+        const entries = projectFotosEntryReferences(owned).map(({entry, hashes}) => {
+            const tags = new Set(hashes.flatMap(hash => [...byHash.get(hash)?.tags ?? []]));
+            return tags.size ? {...entry, tags} : entry;
+        });
+        return {owned: entries, collections};
     } catch (error) {
         if (isMissing(error)) return {owned: [], collections: []};
         throw error;
@@ -106,7 +111,7 @@ const shareAuthorizationTypes = new Set([
     'FotosShareManifest', 'FotosShareCertificateChain', 'FotosShareCertificate',
     'Signature', 'Profile', 'Person', 'Keys', 'TrustKeysCertificate',
 ]);
-const galleryObjectTypes = new Set(['FotosManifest', 'FotosEntry', 'FotosCollection', 'FotosDeviceBook']);
+const galleryObjectTypes = new Set(['FotosManifest', 'FotosEntry', 'FotosCollection', 'FotosDeviceBook', 'FotosMediaVariant']);
 
 export function observeFotosMobileGallery(refresh: () => void, invalidateShared: () => void): () => void {
     const stopLocal = onVersionedObj.addListener(({obj}) => {

@@ -5,7 +5,7 @@ import type {EffectivePersonalTrust} from '@refinio/trust.core/types/personal-tr
 import type {TrustLevel} from '@refinio/trust.core/types/trust-types.js';
 import {canImportFotosEntry, canImportFotosManifest, fotosContentRules} from './sync-rules.js';
 import {getOwnedFotosManifestId} from './owned-fotos-manifest.js';
-import {createFotosAlbumCollection} from './fotos-collection.js';
+import {createFotosAlbumCollection, createFotosManualCollection} from './fotos-collection.js';
 
 const chain = {
     $type$: 'FotosShareCertificateChain',
@@ -88,6 +88,11 @@ describe('Fotos root admission through SyncFilterFactory', () => {
         expect(await filter('legacy-album-root', 'FotosManifest', {...root, id: 'fotos'}, 'object')).toBe(false);
         const otherFilter = factory.createImportFilter(otherOwner);
         expect(await otherFilter('foreign-album', 'FotosCollection', album, 'object')).toBe(false);
+        const manual = createFotosManualCollection({
+            owner, uuid: '60796074-0163-4a40-8677-26830240e6ea', name: 'Trip', photoHashes: source.photoHashes,
+        });
+        expect(await filter('manual-collection', 'FotosCollection', manual, 'object')).toBe(true);
+        expect(await otherFilter('foreign-manual-collection', 'FotosCollection', manual, 'object')).toBe(false);
     });
 
     it('accepts bounded gallery metadata while validating its values', () => {
@@ -101,6 +106,8 @@ describe('Fotos root admission through SyncFilterFactory', () => {
         expect(canImportFotosEntry(context, {...entry, favorite: 'true'})).toBe(false);
         expect(canImportFotosEntry(context, {...entry, orientation: 9})).toBe(false);
         expect(canImportFotosEntry(context, {...entry, mediaSubtypes: new Set(['unknown'])})).toBe(false);
+        expect(canImportFotosEntry(context, {...entry, tags: new Set(['Trip', 'Family'])})).toBe(true);
+        expect(canImportFotosEntry(context, {...entry, tags: new Set(['a'.repeat(81)])})).toBe(false);
     });
 
     it.each([false, true])('denies external personal-trust admission even when IoM promotion is %s', async iom => {

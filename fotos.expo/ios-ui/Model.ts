@@ -711,4 +711,30 @@ export default class Model {
         return service.importPendingSharedInbox();
     }
 
+    async listTrustedFotosPeers(): Promise<Array<{id: string; name: string}>> {
+        const owner = this.ownerId;
+        if (!this.initialized || !owner || !this.contactsPlan) throw new Error('Trusted contacts are unavailable.');
+        const result = await this.contactsPlan.getContactsWithTrust();
+        if (!result.success || !result.data) throw new Error(result.error ?? 'Trusted contacts are unavailable.');
+        if (this.ownerId !== owner) throw new Error('Your Fotos account changed.');
+        const peers = new Map<string, {id: string; name: string}>();
+        for (const contact of result.data) {
+            const id = contact.personId;
+            if (typeof id !== 'string' || !/^[a-f0-9]{64}$/.test(id) || id === owner
+                || contact.trustLevel !== 'trusted' || contact.canSync !== true || contact.isAI) continue;
+            peers.set(id, {id, name: contact.name || contact.email || id});
+        }
+        return [...peers.values()].sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    async shareFotosCollection(collectionId: string, peerId: string): Promise<void> {
+        const service = this.fotosMediaLibrarySync;
+        if (!service) throw new Error('Your Fotos library is unavailable.');
+        await service.shareCollectionWithPeer(collectionId, peerId, async () => {
+            if (!(await this.listTrustedFotosPeers()).some(peer => peer.id === peerId)) {
+                throw new Error('This peer is no longer trusted to sync.');
+            }
+        });
+    }
+
 }

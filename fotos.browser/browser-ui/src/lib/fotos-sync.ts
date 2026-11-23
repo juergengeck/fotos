@@ -750,6 +750,8 @@ export async function syncPhotoToOneCore(
     }
 
     const previous = await getVersionedObjectIfPresent(entryIdHash);
+    const previousEntry = previous?.obj as FotosEntry | undefined;
+    if (previousEntry?.tags?.size) entry.tags = previousEntry.tags;
     const observation = await recordFotosAcquisition({
         observer: author,
         originalVariant: mediaState.originalVariant,
@@ -761,7 +763,7 @@ export async function syncPhotoToOneCore(
         },
     });
     entry.acquisitionObservations = new Set([
-        ...((previous?.obj as FotosEntry | undefined)?.acquisitionObservations ?? []), observation,
+        ...(previousEntry?.acquisitionObservations ?? []), observation,
     ]);
 
     // Store the versioned object (idempotent — same contentHash isId = same object)

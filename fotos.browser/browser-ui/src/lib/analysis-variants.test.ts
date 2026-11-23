@@ -148,6 +148,20 @@ describe('extractRemoteAnalysis', () => {
         expect(Array.from(analysis.semantic!.embedding)).toEqual([0, 0, 1, 0]);
     });
 
+    it('publishes desktop-assigned names in the existing face detections format', async () => {
+        const photo = analysedPhoto();
+        const original = await buildAnalysisPayloads(photo);
+        photo.faces!.names = ['  Ada  Lovelace ', 'Unknown'];
+        const named = await buildAnalysisPayloads(photo);
+        expect(named[0].digest).toBe(original[0].digest);
+        expect(named[1].digest).not.toBe(original[1].digest);
+        expect(named[1].mime).toBe(original[1].mime);
+        const exported = await publishedEntry(photo);
+        expect((await extractRemoteAnalysis(exported, FAMILY)).faces?.names).toEqual(['Ada Lovelace', 'Unknown']);
+        photo.faces!.names = [];
+        expect(await hasCurrentAnalysisVariants(exported, FAMILY, photo)).toBe(false);
+    });
+
     it('leaves faces pending while one of the two face variants has not arrived', async () => {
         const entry = await publishedEntry();
         const detectionsHash = [...entry.variants].find((hash: string) => objects.get(hash)?.label === FACE_DETECTION_MODEL_ID);

@@ -27,6 +27,17 @@ const ORIGINAL = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0
 function buffer(bytes: Uint8Array): ArrayBuffer { return Uint8Array.from(bytes).buffer; }
 
 describe('Fotos filesystem thumbnail publication on native ONE', () => {
+    it('stores tags in the object version while retaining the same image identity', async () => {
+        const untagged = await storeVersionedObject({
+            $type$: 'FotosEntry', contentHash: 'c'.repeat(64), streamId: 'tag-test', mime: 'image/jpeg', size: 1,
+        });
+        const tagged = await storeVersionedObject({...untagged.obj, tags: new Set(['Weekend'])});
+        expect(tagged.idHash).toBe(untagged.idHash);
+        expect(tagged.hash).not.toBe(untagged.hash);
+        expect((await getObject(tagged.hash)).tags).toEqual(new Set(['Weekend']));
+        expect((await getObject(untagged.hash)).tags).toBeUndefined();
+    });
+
     let directory: string;
     beforeAll(async () => {
         directory = await mkdtemp(join(tmpdir(), 'fotos-thumbnail-publication-'));

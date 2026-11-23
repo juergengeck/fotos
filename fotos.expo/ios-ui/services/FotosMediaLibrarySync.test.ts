@@ -48,6 +48,8 @@ vi.mock('@refinio/one.core/lib/storage-base-common.js', () => ({SET_ACCESS_MODE:
 vi.mock('@refinio/fotos.core', async () => ({
     ...await import('../../../fotos.core/src/content-hash.js'),
     ...await import('../../../fotos.core/src/fotos-collection.js'),
+    ...await import('../../../fotos.core/src/fotos-entry-projection.js'),
+    MAX_FOTOS_ENTRY_TAGS: 64, MAX_FOTOS_TAG_LENGTH: 80,
     getOwnedFotosManifestId: (owner: string) => `fotos:${owner}`,
     makeFotosDeviceBookId: (deviceId: string) => `fotos-device-book:${deviceId}`,
     recordFotosAcquisition: mocks.record,
@@ -71,6 +73,7 @@ vi.mock('@refinio/source.media', () => ({
     appendMediaBookContent: async () => undefined,
 }));
 vi.mock('./FotosShareInbox', () => ({readFotosShareInboxBatches: mocks.batches, deleteFotosShareInboxBatch: mocks.deleteBatch, getFotosShareInboxStatus: async () => ({})}));
+vi.mock('./FotosMobileCollectionShare', () => ({shareFotosMobileCollection: vi.fn()}));
 import {FotosMediaLibrarySync, type FotosIntakeMode} from './FotosMediaLibrarySync';
 function idOf(obj: any): string {
     if (obj.$type$ === 'FotosEntry') return `entry:${obj.contentHash}`;
@@ -127,6 +130,22 @@ beforeEach(() => {
     mocks.listAlbumMembers.mockResolvedValue({assetIds: []});
 });
 describe('Expo reference-first media acquisition', () => {
+    it('appends one exact tag version to the owner root and skips a normalized duplicate', async () => {
+        const {service, stored, writes} = fixture();
+        await service.syncAssetIds(['asset-1']);
+        const originalRefs = new Set(stored.get(`FotosManifest:fotos:${OWNER}`).entries);
+        await service.addPhotoTag(CONTENT, '  Family   trip ');
+        const photo = stored.get(`entry:${CONTENT}`);
+        expect(photo).toMatchObject({contentHash: CONTENT, tags: new Set(['Family trip'])});
+        expect(stored.get(`FotosManifest:fotos:${OWNER}`).entries).toEqual(new Set([...originalRefs,
+            `hash:${writes.length - 2}:entry:${CONTENT}`]));
+        const count = writes.length;
+        await service.addPhotoTag(CONTENT, 'family trip');
+        expect(writes).toHaveLength(count);
+        await expect(service.addPhotoTag('b'.repeat(64), 'Unowned')).rejects.toThrow('Only photos in your library');
+        expect(writes).toHaveLength(count);
+    });
+
     it('stores only a bounded thumbnail BLOB and grants the owner-scoped root', async () => {
         const {service, writes} = fixture();
         expect(await service.syncAssetIds(['asset-1'])).toMatchObject({syncedCount: 1, skippedCount: 0});

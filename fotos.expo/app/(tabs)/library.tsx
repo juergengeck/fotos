@@ -2,7 +2,7 @@ import {useMemo, useState} from 'react';
 import {ActivityIndicator, Linking, Pressable, StyleSheet, Text, TextInput, View, useColorScheme} from 'react-native';
 import {FlashList} from '@shopify/flash-list';
 import {useRouter} from 'expo-router';
-import {Check, Cloud, FolderOpen, Images, Search, Users} from 'lucide-react-native';
+import {Check, Cloud, FolderOpen, Images, Search, Tag, Users} from 'lucide-react-native';
 import {useModel} from '../../ios-ui';
 import {FotosGalleryImage} from '../../ios-ui/components/FotosGalleryImage';
 import {useFotosMobileGallery} from '../../ios-ui/hooks/useFotosMobileGallery';
@@ -16,7 +16,7 @@ type Row = {kind: 'day'; id: string; label: string} | {kind: 'photos'; id: strin
 const dateLabel = new Intl.DateTimeFormat(undefined, {dateStyle: 'long'});
 const numberOfColumns = 3;
 
-function makeRows(items: FotosGalleryItem[], filter: Filter, search: string): Row[] {
+function makeRows(items: FotosGalleryItem[], filter: Filter, search: string, people?: ReadonlyMap<string, string[]>): Row[] {
     const groups = new Map<string | undefined, FotosGalleryItem[]>();
     const query = search.trim().toLocaleLowerCase();
     for (const item of items) {
@@ -24,7 +24,8 @@ function makeRows(items: FotosGalleryItem[], filter: Filter, search: string): Ro
             || (filter === 'Albums' && !item.albums.length) || (filter === 'People' && !item.entry?.faceCount)) continue;
         if (query && ![
             item.name, item.entry?.folderPath, item.entry?.exifCamera, item.entry?.exifLens,
-            item.date, ...(item.entry?.mediaSubtypes ?? []), ...item.albums,
+            item.date, ...(item.entry?.mediaSubtypes ?? []), ...(item.entry?.tags ?? []), ...item.albums,
+            ...(people?.get(item.id) ?? []),
         ].some(value => value?.toLocaleLowerCase().includes(query))) continue;
         const timestamp = item.date ? Date.parse(item.date) : NaN;
         const day = Number.isFinite(timestamp) ? dateLabel.format(timestamp) : undefined;
@@ -44,15 +45,16 @@ function makeRows(items: FotosGalleryItem[], filter: Filter, search: string): Ro
 
 export default function LibraryScreen() {
     const model = useModel();
-    const gallery = useFotosMobileGallery(model);
     const inbox = useFotosShareInboxAutoDrainStatus(model);
     const router = useRouter();
     const dark = useColorScheme() === 'dark';
     const [filter, setFilter] = useState<Filter>('All');
     const [search, setSearch] = useState('');
-    const rows = useMemo(() => makeRows(gallery.items, filter, search), [gallery.items, filter, search]);
+    const searchPeople = filter === 'People' || Boolean(search.trim());
+    const gallery = useFotosMobileGallery(model, searchPeople);
+    const rows = useMemo(() => makeRows(gallery.items, filter, search, gallery.people), [gallery.items, filter, search, gallery.people]);
     const error = gallery.localError ?? gallery.entryError;
-    const loading = gallery.loadingEntries || gallery.loadingPhotos;
+    const loading = gallery.loadingEntries || gallery.loadingPhotos || (searchPeople && !gallery.people);
 
     return (
         <View style={[styles.screen, {backgroundColor: screenBackground(dark)}]}>
@@ -128,7 +130,9 @@ export default function LibraryScreen() {
                                     {photo.owned && <Check size={14} color="white" accessibilityLabel="Synced" />}
                                     {photo.shared && <Cloud size={14} color="white" accessibilityLabel="Shared" />}
                                     {photo.albums.length > 0 && <FolderOpen size={14} color="white" accessibilityLabel="In an album" />}
-                                    {Boolean(photo.entry?.faceCount) && <Users size={14} color="white" accessibilityLabel="People detected" />}
+                                    {Boolean(photo.entry?.tags?.size) && <Tag size={14} color="white" accessibilityLabel="Tagged" />}
+                                    {Boolean(photo.entry?.faceCount) && <Users size={14} color="white"
+                                        accessibilityLabel={gallery.people?.get(photo.id)?.join(', ') || 'People detected'} />}
                                 </View>
                             </Pressable>
                         ))}

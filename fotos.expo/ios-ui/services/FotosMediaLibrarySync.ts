@@ -4,12 +4,18 @@ import * as MediaLibrary from 'expo-media-library';
 import { Platform } from 'react-native';
 import {
     appendFotosDeviceBookContent,
+    createFotosManualCollection,
     createFotosMediaLocator,
     createFotosMediaVariant,
     normalizeImageBytesForContentHash,
     matchesImageContentHash,
     getOwnedFotosManifestId,
+    isFotosManualCollectionForOwner,
+    MAX_FOTOS_COLLECTION_MEMBERS,
+    MAX_FOTOS_ENTRY_TAGS,
+    MAX_FOTOS_TAG_LENGTH,
     makeFotosDeviceBookId,
+    projectFotosEntryReferences,
     type FotosDeviceBook,
     type FotosCollection,
     recordFotosAcquisition,
@@ -40,6 +46,7 @@ import {
 import {getFotosPhotoKit, type FotosPhotoKitAsset, type FotosPhotoKitChange, type FotosPhotoKitNative} from './FotosPhotoKit';
 import {reconcileFotosPhotoKitAlbums} from './FotosPhotoKitAlbums';
 import {visitFotosPhotoKitPages} from './FotosPhotoKitPaging';
+import {shareFotosMobileCollection} from './FotosMobileCollectionShare';
 
 const DEFAULT_RECENT_LIMIT = 12;
 // Serialize the read/merge/write publication sequence across service instances.
@@ -52,12 +59,8 @@ function publishSerially<T>(work: () => Promise<T>): Promise<T> {
 export type FotosIntakeMode = 'reference' | 'metadata' | 'ingest';
 const CURRENT_PLATFORM = Platform.OS;
 
-function editableCollectionPrefix(owner: string): string {
-    return `fotos-collection:v1:${owner}:`;
-}
-
 export function isEditableFotosCollection(owner: string | undefined, id: string): boolean {
-    return Boolean(owner && id.startsWith(editableCollectionPrefix(owner)));
+    return owner !== undefined && isFotosManualCollectionForOwner(id, owner);
 }
 
 interface VersionedObjectLookup {
@@ -914,13 +917,47 @@ export class FotosMediaLibrarySync {
         return new Map(this.albumAssetHashes);
     }
 
+    async addPhotoTag(contentHash: string, value: string): Promise<void> {
+        const tag = value.normalize('NFC').trim().replace(/\s+/g, ' ');
+        if (!tag || tag.length > MAX_FOTOS_TAG_LENGTH) throw new Error(`Enter a tag of up to ${MAX_FOTOS_TAG_LENGTH} characters.`);
+        return this.enqueue(async () => {
+            const owner = this.requireOwner();
+            const {manifest, manifestId} = await this.requireOwnedManifest(owner);
+            const references = [];
+            const tags = new Set<string>();
+            for (const hash of manifest.entries) {
+                const entry = await getObject(hash);
+                if (entry.contentHash !== contentHash) continue;
+                references.push({hash, entry});
+                for (const label of entry.tags ?? []) tags.add(label);
+            }
+            const selected = projectFotosEntryReferences(references)[0];
+            if (!selected) throw new Error('Only photos in your library can be tagged.');
+            if ([...tags].some(label => label.toLowerCase() === tag.toLowerCase())) return;
+            if (tags.size >= MAX_FOTOS_ENTRY_TAGS) throw new Error(`A photo can have up to ${MAX_FOTOS_ENTRY_TAGS} tags.`);
+            const tagged: FotosEntry = {...selected.entry, tags: new Set([...tags, tag])};
+            const stored = await this.deps.storeVersionedObject(tagged);
+            await this.storeOwnedManifest(owner, manifestId, {
+                ...manifest, entries: new Set([...manifest.entries, stored.hash as SHA256Hash<FotosEntry>]),
+            });
+        });
+    }
+
+    async shareCollectionWithPeer(collectionId: string, peerId: string, verifyPeer: () => Promise<void>): Promise<void> {
+        return this.enqueue(async () => {
+            const owner = this.requireOwner();
+            if (!/^[a-f0-9]{64}$/.test(peerId) || peerId === owner) throw new Error('Choose a trusted peer.');
+            await verifyPeer();
+            if (this.requireOwner() !== owner) throw new Error('Your Fotos account changed.');
+            const {manifest} = await this.requireOwnedManifest(owner);
+            await shareFotosMobileCollection(owner as SHA256IdHash<Person>, manifest, collectionId, peerId as SHA256IdHash<Person>);
+        });
+    }
+
     async addPhotoToCollection(contentHash: string, target: {id: string} | {name: string}): Promise<void> {
         return this.enqueue(async () => {
             const owner = this.requireOwner();
-            const id = getOwnedFotosManifestId(owner);
-            const manifestId = await this.deps.calculateIdHashOfObj({$type$: 'FotosManifest', id}) as SHA256IdHash<FotosManifest>;
-            const manifest = await this.readVersionedObject<FotosManifest>(manifestId);
-            if (!manifest) throw new Error('Your Fotos library is unavailable.');
+            const {manifest, manifestId} = await this.requireOwnedManifest(owner);
             let ownsPhoto = false;
             for (const ref of manifest.entries) {
                 if ((await getObject(ref)).contentHash === contentHash) {
@@ -943,12 +980,11 @@ export class FotosMediaLibrarySync {
                 }
                 if (!collection) throw new Error('This Fotos collection is unavailable.');
                 if (collection.photoHashes.has(contentHash)) return;
+                if (collection.photoHashes.size >= MAX_FOTOS_COLLECTION_MEMBERS) throw new Error('This collection is full.');
             } else {
                 const name = target.name.trim();
                 if (!name) throw new Error('Enter a collection name.');
-                collection = {
-                    $type$: 'FotosCollection', id: editableCollectionPrefix(owner) + Crypto.randomUUID(), name, photoHashes: new Set(),
-                };
+                collection = createFotosManualCollection({owner, uuid: Crypto.randomUUID(), name, photoHashes: []});
             }
             const next: FotosCollection = {
                 $type$: 'FotosCollection', id: collection.id, name: collection.name,
@@ -958,6 +994,16 @@ export class FotosMediaLibrarySync {
             refs.add(stored.hash as SHA256Hash<FotosCollection>);
             await this.storeOwnedManifest(owner, manifestId, {...manifest, collections: refs});
         });
+    }
+
+    private async requireOwnedManifest(owner: string) {
+        const id = getOwnedFotosManifestId(owner);
+        const manifestId = await this.deps.calculateIdHashOfObj({$type$: 'FotosManifest', id}) as SHA256IdHash<FotosManifest>;
+        const manifest = await this.readVersionedObject<FotosManifest>(manifestId);
+        if (!manifest || manifest.$type$ !== 'FotosManifest' || manifest.id !== id) {
+            throw new Error('Your Fotos library is unavailable.');
+        }
+        return {manifest, manifestId};
     }
 
     /** Resolve a verified original from any device-local locator, including legacy raw IDs. */

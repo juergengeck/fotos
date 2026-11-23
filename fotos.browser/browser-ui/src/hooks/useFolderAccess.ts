@@ -588,6 +588,7 @@ function faceInfoFromRemoteAnalysis(entry: FotosEntry, faces: RemoteFaceAnalysis
         count: faces.count,
         bboxes: faces.bboxes,
         scores: faces.scores,
+        ...(faces.names ? {names: faces.names} : {}),
         embeddings: faces.embeddings,
         crops: [],
     };
@@ -632,7 +633,7 @@ async function materializeRemoteFotosEntry(
             ...(folderPath ? { folderPath } : {}),
             ...(entry.mime ? { mimeType: entry.mime } : {}),
             ...(thumbUrl ? { thumb: remoteSourceKey } : {}),
-            tags: folderPath ? [folderPath.split('/')[0]!] : [],
+            tags: [...new Set([...(entry.tags ?? []), ...(folderPath ? [folderPath.split('/')[0]!] : [])])],
             capturedAt,
             updatedAt,
             exif: buildExifFromFotosEntry(entry),
@@ -1822,7 +1823,9 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             }
 
             const photo = prev[idx];
-            const nextFaces = shouldAdoptIncomingFaces(photo.faces, materialized.photo.faces)
+            const receivedFacesChanged = isRemoteGalleryEntry(photo)
+                && (Boolean(materialized.photo.faces?.embeddings) || entry.faceCount === 0);
+            const nextFaces = (receivedFacesChanged || shouldAdoptIncomingFaces(photo.faces, materialized.photo.faces))
                 ? materialized.photo.faces
                 : photo.faces;
             const nextPhoto: PhotoEntry = {
@@ -3234,6 +3237,14 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         }
     }, [claimAuthorshipOnIngest, entries, isOpen]);
 
+    const commitFaceMetadataEdits = useCallback(async (handle: FileSystemDirectoryHandle, affected: PhotoEntry[]) => {
+        for (const photo of affected) {
+            await updateIndexHtmlFaceData(handle, photo, buildFaceDataAttrsFromEntry(photo));
+            publishAnalysis(photo, {faces: photo.faces});
+        }
+        if (affected.length) await ensureSyncedToOneCore(affected.map(photo => photo.contentHash ?? photo.hash));
+    }, [ensureSyncedToOneCore, publishAnalysis]);
+
     const renameFace = useCallback(async (clusterId: string, name: string) => queueFaceMetadataMutation(async () => {
         const currentEntries = entriesRef.current;
         const handle = rootHandleRef.current;
@@ -3283,11 +3294,8 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             return updated;
         });
 
-        for (const entry of affectedEntries) {
-            await updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry));
-            publishAnalysis(entry, {faces: entry.faces});
-        }
-    }), [ensureClusterDimensionForEditing, publishAnalysis]);
+        await commitFaceMetadataEdits(handle, affectedEntries);
+    }), [ensureClusterDimensionForEditing, commitFaceMetadataEdits]);
 
     const deleteFace = useCallback(async (clusterId: string) => queueFaceMetadataMutation(async () => {
         const currentEntries = entriesRef.current;
@@ -3338,11 +3346,8 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             return updated;
         });
 
-        for (const entry of affectedEntries) {
-            await updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry));
-            publishAnalysis(entry, {faces: entry.faces});
-        }
-    }), [ensureClusterDimensionForEditing, publishAnalysis]);
+        await commitFaceMetadataEdits(handle, affectedEntries);
+    }), [ensureClusterDimensionForEditing, commitFaceMetadataEdits]);
 
     const associateFaceWithCluster = useCallback(async (
         photoHash: string,
@@ -3451,7 +3456,8 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
 
         clusterDimRef.current = await rebuildPersistedClusterStateFromEntries(handle, nextEntries, clusterThreshold);
         clusterThresholdRef.current = clusterThreshold;
-    }), [clusterThreshold, publishAnalysis]);
+        await ensureSyncedToOneCore(affectedEntries.map(photo => photo.contentHash ?? photo.hash));
+    }), [clusterThreshold, ensureSyncedToOneCore, publishAnalysis]);
 
     const mergeFaceClusters = useCallback(async (
         targetClusterId: string,
@@ -3562,7 +3568,8 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
 
         clusterDimRef.current = await rebuildPersistedClusterStateFromEntries(handle, nextEntries, clusterThreshold);
         clusterThresholdRef.current = clusterThreshold;
-    }), [clusterThreshold, publishAnalysis]);
+        await ensureSyncedToOneCore(affectedEntries.map(photo => photo.contentHash ?? photo.hash));
+    }), [clusterThreshold, ensureSyncedToOneCore, publishAnalysis]);
 
     const groupFaceClustersAsPerson = useCallback(async (clusterIds: string[], preferredPersonId?: string) => queueFaceMetadataMutation(async () => {
         const currentEntries = entriesRef.current;
@@ -3663,12 +3670,9 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             return personId;
         }
 
-        for (const entry of affectedEntries) {
-            await updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry));
-            publishAnalysis(entry, {faces: entry.faces});
-        }
+        await commitFaceMetadataEdits(handle, affectedEntries);
         return personId;
-    }), [ensureClusterDimensionForEditing, publishAnalysis]);
+    }), [ensureClusterDimensionForEditing, commitFaceMetadataEdits]);
 
     const separatePersonGroup = useCallback(async (personId: string) => queueFaceMetadataMutation(async () => {
         const currentEntries = entriesRef.current;

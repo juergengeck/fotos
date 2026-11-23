@@ -1,5 +1,6 @@
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {SET_ACCESS_MODE} from '@refinio/one.core/lib/storage-base-common.js';
+import {grantFotosShareScopeToPerson} from '@refinio/fotos.core/share-publication';
 import {commitFotosShareScope, type FotosShareCertificateDeps} from './fotosShareCertificates.js';
 import {getFotosShareTraceSpans, resetFotosShareTraceForTests} from './fotosShareTrace.js';
 
@@ -43,6 +44,22 @@ function makeDeps() {
 
 describe('commitFotosShareScope', () => {
     beforeEach(() => resetFotosShareTraceForTests());
+
+    it('adds one recipient on the mobile path after publishing a signed chain', async () => {
+        const {calls, deps, setAccess} = makeDeps();
+        await grantFotosShareScopeToPerson({
+            issuer: 'issuer' as any,
+            scope: {kind: 'collection', id: 'summer'},
+            recipient: 'new-peer' as any,
+            entryHashes: ['entry-a' as any],
+        }, deps);
+        expect(setAccess).toHaveBeenLastCalledWith([
+            {id: 'manifest-id', person: ['new-peer'], hashGroup: [], mode: SET_ACCESS_MODE.ADD},
+            {object: 'current-manifest-hash', person: [], hashGroup: [], mode: SET_ACCESS_MODE.REPLACE},
+        ]);
+        expect(calls.indexOf('sign-certificate')).toBeLessThan(calls.indexOf('store:FotosShareCertificateChain:manifest'));
+        expect(calls.indexOf('store:FotosShareCertificateChain:manifest')).toBeLessThan(calls.lastIndexOf('publish-certificate'));
+    });
 
     it('grants the scope identity and retires legacy exact snapshot access', async () => {
         const {deps, setAccess} = makeDeps();

@@ -28,6 +28,8 @@ export const FOTOS_MEDIA_SUBTYPES = [
     'live-photo', 'hdr', 'panorama', 'screenshot', 'depth', 'burst', 'cinematic', 'high-frame-rate',
 ] as const;
 export type FotosMediaSubtype = typeof FOTOS_MEDIA_SUBTYPES[number];
+export const MAX_FOTOS_ENTRY_TAGS = 64;
+export const MAX_FOTOS_TAG_LENGTH = 80;
 
 export interface FotosEntry {
     $type$: 'FotosEntry';
@@ -61,6 +63,7 @@ export interface FotosEntry {
     variants?: Set<SHA256Hash<FotosMediaVariant>>;
     acquisitionObservations?: Set<SHA256Hash<ProvenanceObservation>>;
     faceCount?: number;
+    tags?: Set<string>;
 }
 
 export const FOTOS_AUTHENTICITY_SCHEME = 'fotos-authenticity-v1';
@@ -237,7 +240,8 @@ export const FotosEntryRecipe: Recipe = {
             }
         },
         {itemprop: 'acquisitionObservations', optional: true, itemtype: {type: 'set', item: {type: 'referenceToObj', allowedTypes: new Set(['ProvenanceObservation'])}}},
-        {itemprop: 'faceCount', optional: true, itemtype: {type: 'integer'}}
+        {itemprop: 'faceCount', optional: true, itemtype: {type: 'integer'}},
+        {itemprop: 'tags', optional: true, itemtype: {type: 'set', item: {type: 'string'}}}
     ]
 };
 

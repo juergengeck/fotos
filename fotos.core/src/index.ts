@@ -139,8 +139,14 @@ export {
 } from './fotos-catalog.js';
 export {FotosCatalogTrie} from './fotos-catalog-trie.js';
 export {getOwnedFotosManifestId} from './owned-fotos-manifest.js';
-export {buildFotosAlbumCollectionId, createFotosAlbumCollection, isFotosAlbumCollectionFromLibrary} from './fotos-collection.js';
-export {FOTOS_MEDIA_SUBTYPES, type FotosCollection, type FotosMediaSubtype} from './recipes/FotosRecipes.js';
+export {
+    buildFotosAlbumCollectionId, createFotosAlbumCollection, isFotosAlbumCollectionFromLibrary,
+    createFotosManualCollection, isFotosManualCollectionForOwner,
+    MAX_FOTOS_COLLECTION_MEMBERS,
+} from './fotos-collection.js';
+export {
+    FOTOS_MEDIA_SUBTYPES, MAX_FOTOS_ENTRY_TAGS, MAX_FOTOS_TAG_LENGTH, type FotosCollection, type FotosMediaSubtype,
+} from './recipes/FotosRecipes.js';
 export {FOTOS_BUNDLE_MANIFEST, createFotosBundleManifest} from './fotos-bundle.js';
 export {
     makeFotosDeviceBookId,
@@ -265,6 +271,8 @@ export type {GalleryTrieNode, GalleryTrieRoot} from './recipes/GalleryTrieRecipe
 
 export {recordFotosAcquisition, traceFotosAcquisitions} from './media-acquisition.js';
 export {projectFotosEntryReferences} from './fotos-entry-projection.js';
+export {decodeFotosFaceDetections, FACE_DETECTIONS_MIME, FOTOS_MAX_FACE_DETECTIONS_BYTES, normalizeFotosFaceName} from './face-detections.js';
+export type {FotosFaceDetection, FotosFaceDetections} from './face-detections.js';
 export type {RecordFotosAcquisitionParams} from './media-acquisition.js';
 export {FotosAcquisitionRecipes} from './recipes/FotosAcquisitionRecipes.js';
 export type {FotosAcquisitionClaim, FotosAcquisitionMethod, FotosAcquisitionContext, FotosAcquisitionPremise} from './recipes/FotosAcquisitionRecipes.js';

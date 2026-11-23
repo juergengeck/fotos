@@ -47,6 +47,10 @@
       "import": "./dist/shared-fotos-file-system.js",
       "types": "./dist/shared-fotos-file-system.d.ts"
     },
+    "./share-publication": {
+      "types": "./dist/share-publication.d.ts",
+      "import": "./dist/share-publication.js"
+    },
     "./sync-rules": {
       "import": "./dist/sync-rules.js",
       "types": "./dist/sync-rules.d.ts"

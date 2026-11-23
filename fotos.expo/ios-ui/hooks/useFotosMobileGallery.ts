@@ -3,8 +3,9 @@ import {AppState} from 'react-native';
 import * as MediaLibrary from 'expo-media-library';
 import type {ModelType} from '..';
 import {getFotosPhotoKit, type FotosPhotoKitAsset} from '../services/FotosPhotoKit';
+import {getFotosFaceNames, readFotosMobileFaceDetections} from '../services/FotosMobileFaces';
 import {
-    emptyFotosGallery, mergeFotosMobileGallery, observeFotosMobileGallery, readFotosMobileGallery,
+    emptyFotosGallery, mergeFotosMobileGallery, observeFotosMobileGallery, readFotosMobileGallery, type FotosGalleryLibrary,
 } from '../services/FotosMobileGallery';
 
 const PAGE_SIZE = 90;
@@ -67,8 +68,34 @@ export function useFotosGalleryEntries(model: ModelType) {
     return {library, loading, error, refresh: useCallback(() => refresh.current(), [])};
 }
 
-export function useFotosMobileGallery(model: ModelType) {
+function useGalleryPeople(library: FotosGalleryLibrary, enabled: boolean) {
+    const [snapshot, setSnapshot] = useState<{library: FotosGalleryLibrary; names: ReadonlyMap<string, string[]>}>();
+    useEffect(() => {
+        if (!enabled) return;
+        let disposed = false;
+        const entries = new Map([...library.shared, ...library.owned]
+            .filter(entry => Boolean(entry.faceCount && entry.variants?.size)).map(entry => [entry.contentHash, entry]));
+        const scan = async () => {
+            const candidates = [...entries.values()];
+            const names = new Map<string, string[]>();
+            for (let index = 0; index < candidates.length && !disposed; index += 8) {
+                await Promise.all(candidates.slice(index, index + 8).map(async entry => {
+                    const detections = await readFotosMobileFaceDetections(entry).catch(() => undefined);
+                    const labels = getFotosFaceNames(detections);
+                    if (labels.length) names.set(entry.contentHash, labels);
+                }));
+            }
+            if (!disposed) setSnapshot({library, names});
+        };
+        void scan();
+        return () => { disposed = true; };
+    }, [library, enabled]);
+    return enabled && snapshot?.library === library ? snapshot.names : undefined;
+}
+
+export function useFotosMobileGallery(model: ModelType, searchPeople: boolean) {
     const {library, loading: loadingEntries, error: entryError, refresh} = useFotosGalleryEntries(model);
+    const people = useGalleryPeople(library, searchPeople);
     const supportsPhotos = model.platformCapabilities.supportsPhotoLibrarySync;
     const [assets, setAssets] = useState<FotosPhotoKitAsset[]>([]);
     const [permission, setPermission] = useState<MediaLibrary.PermissionResponse>();
@@ -155,7 +182,7 @@ export function useFotosMobileGallery(model: ModelType) {
         setRevision(value => value + 1);
     }, [refresh]);
     return {
-        items, loadingEntries, loadingPhotos, entryError, localError, supportsPhotos, permission, canLoadMore,
+        items, people, loadingEntries, loadingPhotos, entryError, localError, supportsPhotos, permission, canLoadMore,
         reload, requestPermission, loadMore: useCallback(() => nextPage.current(), []),
     };
 }

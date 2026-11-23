@@ -8,7 +8,7 @@ import {
 } from './share-model.js';
 import { buildFotosSharePinProofId } from './share-pin-proof.js';
 import {getOwnedFotosManifestId} from './owned-fotos-manifest.js';
-import {FOTOS_MEDIA_SUBTYPES} from './recipes/FotosRecipes.js';
+import {FOTOS_MEDIA_SUBTYPES, MAX_FOTOS_ENTRY_TAGS, MAX_FOTOS_TAG_LENGTH} from './recipes/FotosRecipes.js';
 import {getFotosCollectionOwner, isFotosCollectionMembership, isFotosCollectionName} from './fotos-collection.js';
 
 type SyncRule = typeof contentRules extends Map<string, infer Value> ? Value : never;
@@ -263,6 +263,7 @@ export function canImportFotosEntry(context: SyncContextLike, obj?: object): boo
         && isOptionalStringWithinBounds(entry.originalFilename, MAX_MEDIA_LABEL_LENGTH)
         && isOptionalNonNegativeNumber(entry.duration)
         && (entry.favorite === undefined || typeof entry.favorite === 'boolean')
+        && (entry.tags === undefined || isStringSetWithinBounds(entry.tags, MAX_FOTOS_ENTRY_TAGS, MAX_FOTOS_TAG_LENGTH))
         && (entry.mediaSubtypes === undefined || (entry.mediaSubtypes instanceof Set
             && entry.mediaSubtypes.size <= mediaSubtypes.size
             && Array.from(entry.mediaSubtypes).every(value => mediaSubtypes.has(value))))

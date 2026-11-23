@@ -4,12 +4,14 @@ import {useLocalSearchParams, useRouter} from 'expo-router';
 import {File, Paths} from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 import {ArrowLeft, Download, Info} from 'lucide-react-native';
-import {traceFotosAcquisitions, type FotosEntry} from '@refinio/fotos.core';
+import {MAX_FOTOS_TAG_LENGTH, traceFotosAcquisitions, type FotosEntry, type FotosFaceDetections} from '@refinio/fotos.core';
 import {readFotosOriginal} from '@refinio/fotos.core/filesystem';
 import {useModel} from '../../ios-ui';
 import {FotosGalleryImage} from '../../ios-ui/components/FotosGalleryImage';
+import {FotosCollectionShare} from '../../ios-ui/components/FotosCollectionShare';
 import {useFotosGalleryEntries} from '../../ios-ui/hooks/useFotosMobileGallery';
 import {getFotosPhotoKit, type FotosPhotoKitOriginal} from '../../ios-ui/services/FotosPhotoKit';
+import {getFotosFaceNames, readFotosMobileFaceDetections} from '../../ios-ui/services/FotosMobileFaces';
 import {buildEntryFromAsset, isEditableFotosCollection} from '../../ios-ui/services/FotosMediaLibrarySync';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {mutedTextColor, palette, screenBackground, textColor} from '../../src/theme';
@@ -37,6 +39,8 @@ export default function PhotoLightbox() {
     const [message, setMessage] = useState<string>();
     const [showCollections, setShowCollections] = useState(false);
     const [collectionName, setCollectionName] = useState('');
+    const [tag, setTag] = useState('');
+    const [faceAnalysis, setFaceAnalysis] = useState<{entry: FotosEntry; detections: FotosFaceDetections}>();
     const files = useRef(new Set<File>());
     const alive = useRef(true);
     const ownedEntry = library.owned.find(item => item.contentHash === contentHash);
@@ -79,6 +83,17 @@ export default function PhotoLightbox() {
         let disposed = false;
         void traceFotosAcquisitions(entry, {maxDepth: 4, maxNodes: 24, maxResources: 48}).then(result => {
             if (!disposed) setTraces(result);
+        }).catch(error => {
+            if (!disposed) setMessage(error instanceof Error ? error.message : String(error));
+        });
+        return () => { disposed = true; };
+    }, [details, entry]);
+
+    useEffect(() => {
+        if (!details || !entry?.faceCount) return;
+        let disposed = false;
+        void readFotosMobileFaceDetections(entry).then(detections => {
+            if (!disposed && detections) setFaceAnalysis({entry, detections});
         }).catch(error => {
             if (!disposed) setMessage(error instanceof Error ? error.message : String(error));
         });
@@ -135,14 +150,54 @@ export default function PhotoLightbox() {
         }
     }
 
+    async function addTag() {
+        if (!ownedEntry || busy || !tag.trim()) return;
+        setBusy(true);
+        setMessage(undefined);
+        try {
+            const service = model.fotosMediaLibrarySync;
+            if (!service) throw new Error('Your Fotos library is unavailable.');
+            await service.addPhotoTag(ownedEntry.contentHash, tag);
+            if (alive.current) setTag('');
+        } catch (error) {
+            if (alive.current) setMessage(error instanceof Error ? error.message : String(error));
+        } finally {
+            if (alive.current) setBusy(false);
+        }
+    }
+
+    async function addToLibrary() {
+        if (!assetId || busy) return;
+        setBusy(true);
+        setMessage(undefined);
+        try {
+            const summary = await model.syncPhotoLibraryAssetsById([assetId], networkAccess);
+            if (!alive.current) return;
+            const saved = summary.syncedEntries.find(item => item.assetId === assetId);
+            if (!saved) {
+                const reason = summary.deferredAssets.length ? 'Load the original from iCloud to add it to Fotos.' : 'This photo could not be added to Fotos.';
+                setMessage(summary.issues[0]?.reason ?? reason);
+                return;
+            }
+            router.replace({pathname: '/photo/[contentHash]', params: {contentHash: saved.contentHash, assetId, title: name}});
+        } catch (error) {
+            if (alive.current) setMessage(error instanceof Error ? error.message : String(error));
+        } finally {
+            if (alive.current) setBusy(false);
+        }
+    }
+
     const photoDetails = entry ?? (local?.status === 'available' ? buildEntryFromAsset(local) : undefined);
+    const names = getFotosFaceNames(faceAnalysis?.entry === entry ? faceAnalysis?.detections : undefined);
     const metadata: Array<[string, string | number | undefined]> = [
         ['Content hash', hash], ['Captured', photoDetails?.capturedAt ?? photoDetails?.exifDate],
         ['Camera', photoDetails?.exifCamera], ['Lens', photoDetails?.exifLens], ['Focal length', photoDetails?.exifFocalLength],
         ['Aperture', photoDetails?.exifAperture], ['Shutter', photoDetails?.exifShutter], ['ISO', photoDetails?.exifIso],
         ['Latitude', photoDetails?.exifGpsLat ?? local?.asset.location?.latitude], ['Longitude', photoDetails?.exifGpsLon ?? local?.asset.location?.longitude],
         ['Albums', collections.map(collection => collection.name).join(', ') || undefined],
+        ['Tags', photoDetails?.tags?.size ? [...photoDetails.tags].sort().join(', ') : undefined],
         ['Local Photos locator', assetId], ['Faces detected', entry?.faceCount],
+        ['People', names.join(', ') || undefined],
     ];
     const preview = original && original.entry === entry && entry.mime.startsWith('image/') ? original.uri : undefined;
 
@@ -201,6 +256,12 @@ export default function PhotoLightbox() {
                     ) : null}
                     {ownedEntry ? (
                         <View style={styles.metadata}>
+                            <TextInput accessibilityLabel="New photo tag" value={tag} onChangeText={setTag} onSubmitEditing={() => void addTag()}
+                                maxLength={MAX_FOTOS_TAG_LENGTH} placeholder="New photo tag" placeholderTextColor={mutedTextColor(dark)}
+                                style={[styles.collectionInput, {color: textColor(dark), borderColor: mutedTextColor(dark)}]} />
+                            <Pressable accessibilityRole="button" disabled={busy || !tag.trim()} onPress={() => void addTag()} style={{marginBottom: 8}}>
+                                <Text style={styles.action}>Add tag</Text>
+                            </Pressable>
                             <Pressable accessibilityRole="button" onPress={() => setShowCollections(!showCollections)}>
                                 <Text style={styles.action}>{showCollections ? 'Hide collections' : 'Add to collection'}</Text>
                             </Pressable>
@@ -223,6 +284,12 @@ export default function PhotoLightbox() {
                                 </>
                             ) : null}
                         </View>
+                    ) : null}
+                    {ownedEntry ? <FotosCollectionShare collections={collections} dark={dark} /> : null}
+                    {assetId && !ownedEntry && !loading ? (
+                        <Pressable accessibilityRole="button" disabled={busy} onPress={() => void addToLibrary()}>
+                            <Text style={styles.action}>{busy ? 'Adding to Fotos…' : 'Add to Fotos'}</Text>
+                        </Pressable>
                     ) : null}
                     {!assetId && entry && model.platformCapabilities.currentPlatform === 'ios' ? (
                         <Pressable accessibilityRole="button" disabled={busy} onPress={() => void loadOriginal(true)} style={styles.save}>
