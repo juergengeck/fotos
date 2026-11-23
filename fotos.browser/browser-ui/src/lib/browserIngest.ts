@@ -7,7 +7,7 @@
  */
 
 import ExifReader from 'exifreader';
-import {isPng, matchesImageContentHash, normalizeImageBytesForContentHash} from '@refinio/fotos.core/content-hash';
+import {hasLegacyRawImageHash, matchesImageContentHash, normalizeImageBytesForContentHash} from '@refinio/fotos.core/content-hash';
 import { getMediaMimeType, getMediaPlaybackKind, isSupportedMediaFile } from '@refinio/media.core/media-types';
 import { generateMediaThumbnail } from './mediaThumbnail.js';
 import { getRuntimeBrowserCryptoSupport } from './browserCryptoSupport.js';
@@ -573,7 +573,7 @@ export async function ingestDirectory(
             data['stream-id'] = streamId;
 
             let preserved = preservedIndexAttrs.get(contentHash);
-            if (!preserved && preservedIndexAttrs.size && normalized !== bytes && isPng(bytes)) {
+            if (!preserved && preservedIndexAttrs.size && hasLegacyRawImageHash(bytes, normalized)) {
                 preserved = preservedIndexAttrs.get(await sha256(bytes));
             }
             if (preserved) {

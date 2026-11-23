@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { FsEntry, FolderMetadata, IngestProgress } from './types.js';
 import { ONE_DIR, THUMBS_DIR } from './types.js';
 import { computeStreamId, sha256Hex } from './hash.js';
-import {isPng, normalizeImageBytesForContentHash} from '../content-hash.js';
+import {hasLegacyRawImageHash, normalizeImageBytesForContentHash} from '../content-hash.js';
 import { extractExif } from './exif.js';
 import { renderIndexHtml, parseIndexHtml, parseFolderMeta, parseFolderIndex, type ParsedPhotoEntry } from './index-html.js';
 import { listImages, readImageBytes, generateThumbnail, writeBytes } from './platform-node.js';
@@ -90,7 +90,7 @@ export async function ingestFolder(
 
         // Preserve face/semantic data from prior ingestion
         let preserved = preservedAttrs.get(contentHash);
-        if (!preserved && preservedAttrs.size && normalized !== bytes && isPng(bytes)) {
+        if (!preserved && preservedAttrs.size && hasLegacyRawImageHash(bytes, normalized)) {
             preserved = preservedAttrs.get(await sha256Hex(bytes));
         }
         if (preserved) Object.assign(data, preserved);

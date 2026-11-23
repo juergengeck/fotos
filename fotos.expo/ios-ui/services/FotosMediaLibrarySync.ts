@@ -225,7 +225,9 @@ function normalizeExifDate(value: string | undefined): string | undefined {
 
 function mimeFromFilename(filename: string): string {
     const lower = filename.toLowerCase();
-    if (lower.endsWith('.heic') || lower.endsWith('.heif')) return 'image/heic';
+    if (lower.endsWith('.heic')) return 'image/heic';
+    if (lower.endsWith('.heif')) return 'image/heif';
+    if (lower.endsWith('.avif')) return 'image/avif';
     if (lower.endsWith('.png')) return 'image/png';
     if (lower.endsWith('.webp')) return 'image/webp';
     if (lower.endsWith('.gif')) return 'image/gif';

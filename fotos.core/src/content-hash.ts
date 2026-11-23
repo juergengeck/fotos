@@ -1,3 +1,5 @@
+import {canonicalHeifBytes} from './heif-content-hash.js';
+
 /**
  * Content-hash normalization for media payloads.
  *
@@ -159,10 +161,16 @@ function stripPngMetadata(bytes: Uint8Array): Uint8Array {
 
 export function normalizeImageBytesForContentHash(bytes: Uint8Array): Uint8Array {
     if (isJpeg(bytes)) return stripJpegMetadata(bytes);
-    return isPng(bytes) ? stripPngMetadata(bytes) : bytes;
+    if (isPng(bytes)) return stripPngMetadata(bytes);
+    return canonicalHeifBytes(bytes) ?? bytes;
 }
 
-/** Verify a canonical hash, or the exact bytes of an existing pre-normalization PNG. */
+/** JPEG has always stripped metadata. The other normalized formats previously hashed raw bytes. */
+export function hasLegacyRawImageHash(bytes: Uint8Array, normalized: Uint8Array): boolean {
+    return normalized !== bytes && !isJpeg(bytes);
+}
+
+/** Verify a canonical hash or the exact bytes of a pre-normalization image reference. */
 export async function matchesImageContentHash(
     bytes: Uint8Array,
     expected: string,
@@ -170,5 +178,5 @@ export async function matchesImageContentHash(
 ): Promise<boolean> {
     const normalized = normalizeImageBytesForContentHash(bytes);
     if (await digest(normalized) === expected) return true;
-    return normalized !== bytes && isPng(bytes) && await digest(bytes) === expected;
+    return hasLegacyRawImageHash(bytes, normalized) && await digest(bytes) === expected;
 }

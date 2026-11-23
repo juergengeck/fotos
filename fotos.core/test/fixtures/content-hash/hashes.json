@@ -34,5 +34,37 @@
   {
     "file": "different-animation-frame.png",
     "contentHash": "4e511f527f77c20b06c34ef0e31dfbaf03f3dcc47e05c805705eb33d424a22d6"
+  },
+  {
+    "file": "single.heic",
+    "contentHash": "d85d57ebb52aeb620f1353178fda7910432d7517715845332516103dbbce912c"
+  },
+  {
+    "file": "single.avif",
+    "contentHash": "5194ca833108e8fdcb62c11f48d3845cc43a5cd602500541bfc638bf0eedfd8b"
+  },
+  {
+    "file": "grid.heic",
+    "contentHash": "e811b1376a302ca51d186d9efa6cc36b0edf3ae0945887aeb72414434860db33"
+  },
+  {
+    "file": "grid-metadata-repacked.heic",
+    "contentHash": "e811b1376a302ca51d186d9efa6cc36b0edf3ae0945887aeb72414434860db33"
+  },
+  {
+    "file": "grid-presentation-metadata.heic",
+    "contentHash": "e811b1376a302ca51d186d9efa6cc36b0edf3ae0945887aeb72414434860db33"
+  },
+  {
+    "file": "grid-changed-tile.heic",
+    "contentHash": "a0158d41e5e2d1416980837bb7481c53816ccb3d6b17b426fe04037ffecd0b90"
+  },
+  {
+    "file": "grid-missing-tile.heic",
+    "contentHash": "95d27d07a127b234b4b17634272b1a01446ef6bffe28d0e7f0f6897dd2b4298a"
+  },
+  {
+    "file": "truncated.heic",
+    "contentHash": "358b300a8223d639b8f68ec3df5c1fc053cf6c76704c8b737bec954e578794b7"
   }
 ]

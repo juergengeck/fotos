@@ -12,6 +12,15 @@ public enum BitfieldHasher {
             } else if pngSignature.elementsEqual(bytes.prefix(pngSignature.count)),
                       let png = pngRanges(bytes) {
                 ranges = png
+            } else if let heif = HEIFCanonical.chunks(bytes) {
+                for chunk in heif {
+                    switch chunk {
+                    case .bytes(let data): hash.update(data: data)
+                    case .range(let range):
+                        hash.update(bufferPointer: UnsafeRawBufferPointer(rebasing: bytes[range]))
+                    }
+                }
+                return hash.finalize()
             } else {
                 ranges = [0..<bytes.count]
             }
