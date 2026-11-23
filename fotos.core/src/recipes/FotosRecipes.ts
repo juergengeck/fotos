@@ -24,6 +24,11 @@ import type {FotosMediaVariant} from './FotosMediaRecipes.js';
 // TypeScript interfaces
 // ---------------------------------------------------------------------------
 
+export const FOTOS_MEDIA_SUBTYPES = [
+    'live-photo', 'hdr', 'panorama', 'screenshot', 'depth', 'burst', 'cinematic', 'high-frame-rate',
+] as const;
+export type FotosMediaSubtype = typeof FOTOS_MEDIA_SUBTYPES[number];
+
 export interface FotosEntry {
     $type$: 'FotosEntry';
     $versionHash$?: SHA256Hash<VersionNode>;
@@ -44,8 +49,14 @@ export interface FotosEntry {
     exifIso?: number;
     exifGpsLat?: number;
     exifGpsLon?: number;
+    exifGpsAlt?: number;
     exifWidth?: number;
     exifHeight?: number;
+    orientation?: number;
+    originalFilename?: string;
+    duration?: number;
+    favorite?: boolean;
+    mediaSubtypes?: Set<FotosMediaSubtype>;
     thumb?: SHA256Hash<BLOB>;
     variants?: Set<SHA256Hash<FotosMediaVariant>>;
     acquisitionObservations?: Set<SHA256Hash<ProvenanceObservation>>;
@@ -72,6 +83,16 @@ export interface FotosManifest {
     id: string;
     entries: Set<SHA256Hash<FotosEntry>>;
     authenticityAttestations?: Set<SHA256Hash<FotosAuthenticityAttestation>>;
+    collections?: Set<SHA256Hash<FotosCollection>>;
+}
+
+/** An imported user album in one owner's library. Members refer to media identities. */
+export interface FotosCollection {
+    $type$: 'FotosCollection';
+    $versionHash$?: SHA256Hash<VersionNode>;
+    id: string;
+    name: string;
+    photoHashes: Set<string>;
 }
 
 export type FotosShareScopeKind = 'gallery' | 'collection' | 'person';
@@ -153,6 +174,7 @@ declare module '@OneObjectInterfaces' {
     export interface OneIdObjectInterfaces {
         FotosEntry: Pick<FotosEntry, '$type$' | 'contentHash'>;
         FotosManifest: Pick<FotosManifest, '$type$' | 'id'>;
+        FotosCollection: Pick<FotosCollection, '$type$' | 'id'>;
         FotosAuthenticityAttestation: Pick<FotosAuthenticityAttestation, '$type$' | 'id'>;
         FotosShareManifest: Pick<FotosShareManifest, '$type$' | 'id'>;
         FotosShareCertificate: Pick<FotosShareCertificate, '$type$' | 'id'>;
@@ -163,6 +185,7 @@ declare module '@OneObjectInterfaces' {
     export interface OneVersionedObjectInterfaces {
         FotosEntry: FotosEntry;
         FotosManifest: FotosManifest;
+        FotosCollection: FotosCollection;
         FotosAuthenticityAttestation: FotosAuthenticityAttestation;
         FotosShareManifest: FotosShareManifest;
         FotosShareCertificate: FotosShareCertificate;
@@ -196,8 +219,14 @@ export const FotosEntryRecipe: Recipe = {
         {itemprop: 'exifIso', optional: true, itemtype: {type: 'integer'}},
         {itemprop: 'exifGpsLat', optional: true, itemtype: {type: 'number'}},
         {itemprop: 'exifGpsLon', optional: true, itemtype: {type: 'number'}},
+        {itemprop: 'exifGpsAlt', optional: true, itemtype: {type: 'number'}},
         {itemprop: 'exifWidth', optional: true, itemtype: {type: 'integer'}},
         {itemprop: 'exifHeight', optional: true, itemtype: {type: 'integer'}},
+        {itemprop: 'orientation', optional: true, itemtype: {type: 'integer'}},
+        {itemprop: 'originalFilename', optional: true, itemtype: {type: 'string'}},
+        {itemprop: 'duration', optional: true, itemtype: {type: 'number'}},
+        {itemprop: 'favorite', optional: true, itemtype: {type: 'boolean'}},
+        {itemprop: 'mediaSubtypes', optional: true, itemtype: {type: 'set', item: {type: 'string'}}},
         {itemprop: 'thumb', optional: true, itemtype: {type: 'referenceToBlob'}},
         {
             itemprop: 'variants',
@@ -235,7 +264,25 @@ export const FotosManifestRecipe: Recipe = {
                 type: 'set',
                 item: {type: 'referenceToObj', allowedTypes: new Set(['FotosAuthenticityAttestation'])}
             }
+        },
+        {
+            itemprop: 'collections',
+            optional: true,
+            itemtype: {
+                type: 'set',
+                item: {type: 'referenceToObj', allowedTypes: new Set(['FotosCollection'])}
+            }
         }
+    ]
+};
+
+export const FotosCollectionRecipe: Recipe = {
+    $type$: 'Recipe',
+    name: 'FotosCollection',
+    rule: [
+        {itemprop: 'id', isId: true, itemtype: {type: 'string'}},
+        {itemprop: 'name', itemtype: {type: 'string'}},
+        {itemprop: 'photoHashes', itemtype: {type: 'set', item: {type: 'string'}}}
     ]
 };
 
@@ -361,6 +408,7 @@ export const FotosSharePinProofRecipe: Recipe = {
 export const FotosRecipes: Recipe[] = [
     FotosEntryRecipe,
     FotosManifestRecipe,
+    FotosCollectionRecipe,
     FotosAuthenticityAttestationRecipe,
     FotosShareManifestRecipe,
     FotosShareCertificateRecipe,

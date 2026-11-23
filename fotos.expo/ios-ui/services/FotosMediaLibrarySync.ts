@@ -1,5 +1,6 @@
 import * as Crypto from 'expo-crypto';
-import { EncodingType, readAsStringAsync } from 'expo-file-system/legacy';
+import { EncodingType, readAsStringAsync, deleteAsync } from 'expo-file-system/legacy';
+import {manipulateAsync, SaveFormat} from 'expo-image-manipulator';
 import * as MediaLibrary from 'expo-media-library';
 import { Platform } from 'react-native';
 import {
@@ -7,19 +8,28 @@ import {
     createFotosMediaLocator,
     createFotosMediaVariant,
     normalizeImageBytesForContentHash,
+    matchesImageContentHash,
+    getOwnedFotosManifestId,
+    makeFotosDeviceBookId,
+    type FotosDeviceBook,
+    type FotosMediaSubtype,
     recordFotosAcquisition,
     type FotosEntry,
     type FotosManifest,
     type FotosMediaLocator,
     type FotosMediaVariant,
 } from '@refinio/fotos.core';
+import {FOTOS_THUMBNAIL_MAX_EDGE, readFotosThumbnailDimensions} from '@refinio/fotos.core/filesystem';
 import {
     appendMediaBookContent,
     createMediaSource,
     createMediaSourceEntry,
 } from '../../../../one/packages/source.media/src/services/MediaSourceService.js';
+import {createAccess} from '@refinio/one.core/lib/access.js';
+import {SET_ACCESS_MODE} from '@refinio/one.core/lib/storage-base-common.js';
+import {getObject} from '@refinio/one.core/lib/storage-unversioned-objects.js';
 import {storeArrayBufferAsBlob} from '@refinio/one.core/lib/storage-blob.js';
-import type {Person} from '@refinio/one.core/lib/recipes.js';
+import type {BLOB, Person} from '@refinio/one.core/lib/recipes.js';
 import type { SHA256Hash, SHA256IdHash } from '@refinio/one.core/lib/util/type-checks.js';
 import {
     deleteFotosShareInboxBatch,
@@ -30,6 +40,14 @@ import {
 } from './FotosShareInbox';
 
 const DEFAULT_RECENT_LIMIT = 12;
+// Serialize the read/merge/write publication sequence across service instances.
+let publications: Promise<void> = Promise.resolve();
+function publishSerially<T>(work: () => Promise<T>): Promise<T> {
+    const next = publications.then(work);
+    publications = next.then(() => undefined, () => undefined);
+    return next;
+}
+export type FotosIntakeMode = 'reference' | 'metadata' | 'ingest';
 const CURRENT_PLATFORM = Platform.OS;
 const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 const BASE64_LOOKUP = (() => {
@@ -55,6 +73,7 @@ interface FotosMediaLibrarySyncDeps {
     storeVersionedObject: (obj: object) => Promise<StoredVersionedObject>;
     getInstanceId: () => string | undefined;
     getOwnerId: () => string | undefined;
+    getIntakeMode?: () => FotosIntakeMode | Promise<FotosIntakeMode>;
 }
 
 export interface FotosPhotoLibrarySyncIssue {
@@ -148,7 +167,7 @@ function decodeBase64(base64: string): Uint8Array {
 }
 
 function toIsoTimestamp(value: number | undefined): string | undefined {
-    if (!value) {
+    if (value === undefined || !Number.isFinite(value)) {
         return undefined;
     }
     return new Date(value).toISOString();
@@ -176,7 +195,8 @@ function getExifString(exif: Record<string, unknown>, keys: string[]): string | 
 
 function getExifNumber(exif: Record<string, unknown>, keys: string[]): number | undefined {
     for (const key of keys) {
-        const value = exif[key];
+        const raw = exif[key];
+        const value = Array.isArray(raw) ? raw[0] : raw;
         if (typeof value === 'number' && Number.isFinite(value)) {
             return value;
         }
@@ -213,6 +233,10 @@ function mimeFromFilename(filename: string): string {
     return 'image/jpeg';
 }
 
+function fileExtension(filename: string): string {
+    return filename.match(/\.([a-z0-9]{1,10})$/i)?.[1].toLowerCase() ?? 'jpg';
+}
+
 function timestampOrNow(value: string | undefined): string {
     return value ?? new Date().toISOString();
 }
@@ -232,12 +256,30 @@ function buildEntryFromAsset(params: {
     byteSize: number;
 }): FotosEntry {
     const { asset, assetInfo, contentHash, byteSize } = params;
-    const exif = getExifRecord(assetInfo.exif);
+    // iOS exposes ImageIO namespaces; Android/older Expo versions expose flat EXIF.
+    const rawExif = getExifRecord(assetInfo.exif);
+    const exif = {...getExifRecord(rawExif['{TIFF}'] ?? rawExif.TIFF),
+        ...getExifRecord(rawExif['{ExifAux}'] ?? rawExif.ExifAux),
+        ...getExifRecord(rawExif['{Exif}'] ?? rawExif.Exif), ...rawExif};
+    const gps = getExifRecord(rawExif['{GPS}'] ?? rawExif.GPS);
     const cameraMake = getExifString(exif, ['Make']);
     const cameraModel = getExifString(exif, ['Model']);
     const camera = [cameraMake, cameraModel].filter(Boolean).join(' ').trim();
-    const gpsLat = getExifNumber(exif, ['GPSLatitude', 'latitude']);
-    const gpsLon = getExifNumber(exif, ['GPSLongitude', 'longitude']);
+    const reportedLat = getExifNumber(exif, ['GPSLatitude', 'latitude']) ?? getExifNumber(gps, ['Latitude']);
+    const reportedLon = getExifNumber(exif, ['GPSLongitude', 'longitude']) ?? getExifNumber(gps, ['Longitude']);
+    const gpsLat = assetInfo.location?.latitude ?? (reportedLat === undefined ? undefined
+        : getExifString(gps, ['LatitudeRef']) === 'S' ? -Math.abs(reportedLat) : reportedLat);
+    const gpsLon = assetInfo.location?.longitude ?? (reportedLon === undefined ? undefined
+        : getExifString(gps, ['LongitudeRef']) === 'W' ? -Math.abs(reportedLon) : reportedLon);
+    const subtypeNames: Partial<Record<MediaLibrary.MediaSubtype, FotosMediaSubtype>> = {
+        livePhoto: 'live-photo', hdr: 'hdr', panorama: 'panorama', screenshot: 'screenshot',
+        depthEffect: 'depth', highFrameRate: 'high-frame-rate', videoCinematic: 'cinematic',
+    };
+    const mediaSubtypes = new Set((asset.mediaSubtypes ?? []).flatMap(value => subtypeNames[value] ? [subtypeNames[value]!] : []));
+    const reportedAltitude = getExifNumber(exif, ['GPSAltitude', 'altitude']) ?? getExifNumber(gps, ['Altitude']);
+    const altitude = reportedAltitude === undefined ? undefined
+        : getExifNumber(gps, ['AltitudeRef']) === 1 ? -Math.abs(reportedAltitude) : reportedAltitude;
+    const orientation = assetInfo.orientation ?? getExifNumber(exif, ['Orientation']);
 
     const entry: FotosEntry = {
         $type$: 'FotosEntry',
@@ -245,6 +287,14 @@ function buildEntryFromAsset(params: {
         streamId: contentHash,
         mime: mimeFromFilename(asset.filename),
         size: byteSize,
+        sourcePath: `Photo Library/${contentHash}.${fileExtension(asset.filename)}`,
+        folderPath: 'Photo Library',
+        originalFilename: asset.filename,
+        ...(Number.isFinite(asset.duration) && asset.duration >= 0 ? {duration: asset.duration} : {}),
+        ...(typeof assetInfo.isFavorite === 'boolean' ? {favorite: assetInfo.isFavorite} : {}),
+        ...(mediaSubtypes.size ? {mediaSubtypes} : {}),
+        ...(altitude !== undefined ? {exifGpsAlt: altitude} : {}),
+        ...(orientation !== undefined ? {orientation} : {}),
         ...(toIsoTimestamp(asset.creationTime) ? { capturedAt: toIsoTimestamp(asset.creationTime) } : {}),
         ...(toIsoTimestamp(asset.modificationTime) ? { updatedAt: toIsoTimestamp(asset.modificationTime) } : {}),
         ...(normalizeExifDate(getExifString(exif, ['DateTimeOriginal', 'DateTimeDigitized', 'DateTime']))
@@ -268,7 +318,7 @@ function buildEntryFromAsset(params: {
 }
 
 export class FotosMediaLibrarySync {
-    private manifestIdHash: SHA256IdHash<FotosManifest> | null = null;
+    private readonly localAssets = new Map<string, Set<string>>();
 
     constructor(private readonly deps: FotosMediaLibrarySyncDeps) {}
 
@@ -350,6 +400,10 @@ export class FotosMediaLibrarySync {
     }
 
     async importPendingSharedInbox(): Promise<FotosSharedFileImportSummary> {
+        return publishSerially(() => this.importSharedInbox());
+    }
+
+    private async importSharedInbox(): Promise<FotosSharedFileImportSummary> {
         const batches = await readFotosShareInboxBatches();
         if (batches.length === 0) {
             return {
@@ -380,7 +434,7 @@ export class FotosMediaLibrarySync {
             summary.issues.push(...result.issues);
 
             if (result.skippedCount === 0) {
-                deleteFotosShareInboxBatch(batch);
+                await deleteFotosShareInboxBatch(batch);
             }
         }
 
@@ -390,6 +444,12 @@ export class FotosMediaLibrarySync {
     private async syncAssetRefs(
         assetRefs: MediaLibrary.AssetRef[],
         permission: MediaLibrary.PermissionResponse,
+    ): Promise<FotosPhotoLibrarySyncSummary> {
+        return publishSerially(() => this.syncAssetRefsSerially(assetRefs, permission));
+    }
+
+    private async syncAssetRefsSerially(
+        assetRefs: MediaLibrary.AssetRef[], permission: MediaLibrary.PermissionResponse,
     ): Promise<FotosPhotoLibrarySyncSummary> {
         const syncedEntries: FotosPhotoLibrarySyncSummary['syncedEntries'] = [];
         const issues: FotosPhotoLibrarySyncIssue[] = [];
@@ -491,7 +551,9 @@ export class FotosMediaLibrarySync {
             const entryIdHash = await this.deps.calculateIdHashOfObj(entry as object) as SHA256IdHash<FotosEntry>;
             const existingEntry = await this.readVersionedObject<FotosEntry>(entryIdHash);
 
-            const originalBlob = await storeArrayBufferAsBlob(bytes);
+            const observer = this.requireOwner();
+            const mode = await this.deps.getIntakeMode?.() ?? 'reference';
+            const originalBlob = mode === 'ingest' ? await storeArrayBufferAsBlob(bytes) : undefined;
             const originalVariant = createFotosMediaVariant({
                 contentHash,
                 family: entryIdHash,
@@ -502,7 +564,7 @@ export class FotosMediaLibrarySync {
                 height: entry.exifHeight,
                 createdAt: entry.capturedAt ?? entry.updatedAt,
                 label: asset.filename,
-                blob: originalBlob.hash,
+                ...(originalBlob ? {blob: originalBlob.hash} : {}),
             });
             const variantResult = await this.deps.storeVersionedObject(originalVariant as object);
             const locatorResult = await this.storeLocalLocator(
@@ -517,18 +579,20 @@ export class FotosMediaLibrarySync {
                 updatedAt: entry.updatedAt ?? entry.capturedAt,
             });
 
+            const thumbnail = await this.storeThumbnail(assetInfo.localUri, asset, entryIdHash,
+                variantResult.idHash as SHA256IdHash<FotosMediaVariant>);
             const mergedVariants = new Set(existingEntry?.variants ?? new Set<SHA256Hash<FotosMediaVariant>>());
             mergedVariants.add(variantResult.hash as SHA256Hash<FotosMediaVariant>);
+            mergedVariants.add(thumbnail.hash as SHA256Hash<FotosMediaVariant>);
 
             const mergedEntry: FotosEntry = {
                 ...(existingEntry ?? {}),
                 ...entry,
                 streamId: existingEntry?.streamId ?? entry.streamId,
+                thumb: thumbnail.blob,
                 variants: mergedVariants,
             };
 
-            const observer = this.deps.getOwnerId();
-            if (!observer) throw new Error('Fotos acquisition requires the local owner identity');
             mergedEntry.acquisitionObservations = new Set([
                 ...(existingEntry?.acquisitionObservations ?? []),
                 await recordFotosAcquisition({
@@ -550,7 +614,7 @@ export class FotosMediaLibrarySync {
                 entries: [entryResult.hash as SHA256Hash<FotosEntry>],
                 sourceIdHashes: [sourceState.sourceIdHash as any],
                 entryIdHashes: [sourceState.entryIdHash as any],
-                variants: [variantResult.hash as SHA256Hash<FotosMediaVariant>],
+                variants: mergedVariants,
                 locators: [locatorResult.hash],
             });
             await appendMediaBookContent(this.deps, {
@@ -567,6 +631,7 @@ export class FotosMediaLibrarySync {
             });
 
             await this.addEntryToManifest(entryResult.hash as SHA256Hash<FotosEntry>);
+            this.rememberLocalAsset(contentHash, asset.id);
             return {
                 status: 'synced',
                 result: {
@@ -591,6 +656,7 @@ export class FotosMediaLibrarySync {
 
         for (const item of items) {
             try {
+                this.requireOwner();
                 const bytes = await this.readLocalBytes(item.fileUri);
                 const contentHash = await this.computeContentHash(bytes);
                 const mime = item.mimeType ?? mimeFromFilename(item.originalName);
@@ -601,6 +667,9 @@ export class FotosMediaLibrarySync {
                     mime,
                     size: bytes.byteLength,
                     updatedAt: timestampOrNow(item.createdAt),
+                    sourcePath: `Shared Files/${contentHash}.${fileExtension(item.originalName)}`,
+                    folderPath: 'Shared Files',
+                    originalFilename: item.originalName,
                 };
 
                 const entryIdHash = await this.deps.calculateIdHashOfObj(entry as object) as SHA256IdHash<FotosEntry>;
@@ -713,12 +782,12 @@ export class FotosMediaLibrarySync {
     }
 
     private async computeContentHash(bytes: Uint8Array): Promise<string> {
-        const normalized = normalizeImageBytesForContentHash(bytes);
-        const digestInputBuffer = new ArrayBuffer(normalized.byteLength);
-        const digestInput = new Uint8Array(digestInputBuffer);
-        digestInput.set(normalized);
-        const digest = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, digestInput);
-        return toHex(digest);
+        return this.digestBytes(normalizeImageBytesForContentHash(bytes));
+    }
+
+    private async digestBytes(bytes: Uint8Array): Promise<string> {
+        const digestInput = Uint8Array.from(bytes);
+        return toHex(await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, digestInput));
     }
 
     private async storeLocalLocator(
@@ -819,60 +888,95 @@ export class FotosMediaLibrarySync {
         }
     }
 
-    private async getManifestIdHash(): Promise<SHA256IdHash<FotosManifest>> {
-        if (this.manifestIdHash) {
-            return this.manifestIdHash;
-        }
-
-        this.manifestIdHash = await this.deps.calculateIdHashOfObj({
-            $type$: 'FotosManifest',
-            id: 'fotos',
-            entries: new Set(),
-            authenticityAttestations: new Set(),
-        }) as SHA256IdHash<FotosManifest>;
-
-        return this.manifestIdHash;
+    private requireOwner(): string {
+        const owner = this.deps.getOwnerId();
+        if (!owner) throw new Error('Fotos acquisition requires the local owner identity');
+        getOwnedFotosManifestId(owner);
+        return owner;
     }
 
-    private async ensureFotosManifest(): Promise<SHA256IdHash<FotosManifest>> {
-        const manifestIdHash = await this.getManifestIdHash();
-        const existing = await this.readVersionedObject<FotosManifest>(manifestIdHash);
-        if (existing) {
-            return manifestIdHash;
+    private rememberLocalAsset(contentHash: string, assetId: string): void {
+        const ids = this.localAssets.get(contentHash) ?? new Set<string>();
+        ids.add(assetId);
+        this.localAssets.set(contentHash, ids);
+    }
+
+    /** Resolve Photos references after restart using the durable, device-local locator DAG.
+     * Expo currently bridges whole files through base64; streaming requires the PhotoKit module.
+     * Never download iCloud originals implicitly or trust a localIdentifier as content identity.
+     */
+    async resolveOriginal(entry: FotosEntry): Promise<ArrayBuffer> {
+        const deviceId = this.deps.getInstanceId();
+        if (!deviceId) throw new Error('Fotos original resolution requires the local device identity');
+        if (!this.localAssets.has(entry.contentHash)) {
+            const bookId = await this.deps.calculateIdHashOfObj({$type$: 'FotosDeviceBook', id: makeFotosDeviceBookId(deviceId)});
+            const book = await this.readVersionedObject<FotosDeviceBook>(bookId);
+            for (const hash of book?.locators ?? []) {
+                const locator = await getObject(hash) as FotosMediaLocator;
+                if (locator.kind !== 'phasset' || locator.scope !== 'device-local' || locator.platform !== 'ios'
+                    || locator.deviceId !== deviceId) continue;
+                const variant = await this.readVersionedObject<FotosMediaVariant>(locator.variant);
+                if (variant?.role === 'original') this.rememberLocalAsset(variant.contentHash, locator.locator);
+            }
         }
+        for (const id of this.localAssets.get(entry.contentHash) ?? []) {
+            try {
+                const info = await MediaLibrary.getAssetInfoAsync(id, {shouldDownloadFromNetwork: false});
+                if (!info.localUri?.startsWith('file://')) continue;
+                const bytes = await this.readLocalBytes(info.localUri);
+                if (!await matchesImageContentHash(bytes, entry.contentHash, value => this.digestBytes(value))) continue;
+                return Uint8Array.from(bytes).buffer;
+            } catch {
+                // A removed/unavailable local copy must not hide another verified copy.
+                continue;
+            }
+        }
+        throw new Error('No verified local Photos original is available for this contentHash');
+    }
 
-        await this.deps.storeVersionedObject({
-            $type$: 'FotosManifest',
-            id: 'fotos',
-            entries: new Set(),
-            authenticityAttestations: new Set(),
-        });
-
-        return manifestIdHash;
+    private async storeThumbnail(uri: string, asset: MediaLibrary.Asset,
+        family: SHA256IdHash<FotosEntry>, original: SHA256IdHash<FotosMediaVariant>,
+    ): Promise<StoredVersionedObject & {blob: SHA256Hash<BLOB>}> {
+        if (asset.width <= 0 || asset.height <= 0) throw new Error('Cannot size Photos thumbnail without image dimensions');
+        const maxEdge = Math.max(asset.width, asset.height);
+        const resize = maxEdge > FOTOS_THUMBNAIL_MAX_EDGE
+            ? [{resize: {width: Math.max(1, Math.round(asset.width * FOTOS_THUMBNAIL_MAX_EDGE / maxEdge)),
+                height: Math.max(1, Math.round(asset.height * FOTOS_THUMBNAIL_MAX_EDGE / maxEdge))}}] : [];
+        const result = await manipulateAsync(uri, resize, {format: SaveFormat.JPEG, compress: 0.75, base64: true});
+        try {
+            if (!result.base64 || result.width < 1 || result.height < 1 || result.width > FOTOS_THUMBNAIL_MAX_EDGE || result.height > FOTOS_THUMBNAIL_MAX_EDGE) {
+                throw new Error('Image manipulator did not return a bounded thumbnail');
+            }
+            const bytes = decodeBase64(result.base64);
+            const dimensions = readFotosThumbnailDimensions(bytes);
+            if (dimensions.width !== result.width || dimensions.height !== result.height) {
+                throw new Error('Thumbnail frame does not match native image dimensions');
+            }
+            const blob = await storeArrayBufferAsBlob(bytes);
+            const variant = await this.deps.storeVersionedObject(createFotosMediaVariant({
+                contentHash: await this.digestBytes(bytes), family, role: 'thumbnail', mime: 'image/jpeg',
+                byteSize: bytes.byteLength, width: result.width, height: result.height, blob: blob.hash, derivedFrom: original,
+            }));
+            return {...variant, blob: blob.hash};
+        } finally {
+            if (result.uri !== uri) await deleteAsync(result.uri, {idempotent: true});
+        }
     }
 
     private async addEntryToManifest(entryHash: SHA256Hash<FotosEntry>): Promise<void> {
-        const manifestIdHash = await this.ensureFotosManifest();
-        const existingManifest = await this.readVersionedObject<FotosManifest>(manifestIdHash);
-        const manifest = existingManifest ?? {
-            $type$: 'FotosManifest' as const,
-            id: 'fotos',
-            entries: new Set<SHA256Hash<FotosEntry>>(),
-            authenticityAttestations: new Set(),
-        };
-
-        const entries = new Set(manifest.entries);
-        if (entries.has(entryHash)) {
-            return;
-        }
-
+        const owner = this.requireOwner();
+        const id = getOwnedFotosManifestId(owner);
+        const manifestIdHash = await this.deps.calculateIdHashOfObj({$type$: 'FotosManifest', id});
+        const manifest = await this.readVersionedObject<FotosManifest>(manifestIdHash);
+        // The legacy global root may contain peer-owned entries. Preserve it untouched;
+        // never republish its contents under the current owner's authority without evidence.
+        const entries = new Set(manifest?.entries ?? []);
         entries.add(entryHash);
-
+        await createAccess([{id: manifestIdHash as SHA256IdHash<FotosManifest>,
+            person: [owner as SHA256IdHash<Person>], hashGroup: [], mode: SET_ACCESS_MODE.ADD}]);
         await this.deps.storeVersionedObject({
-            $type$: 'FotosManifest',
-            id: 'fotos',
-            entries,
-            authenticityAttestations: new Set(manifest.authenticityAttestations ?? []),
+            ...(manifest ?? {}), $type$: 'FotosManifest', id, entries,
+            authenticityAttestations: new Set(manifest?.authenticityAttestations ?? []),
         });
     }
 }

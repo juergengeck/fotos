@@ -3,8 +3,9 @@ import {SyncFilterFactory} from '@refinio/sync.core/services/SyncFilterFactory.j
 import {contentRules} from '@refinio/sync.core/rules/default-rules.js';
 import type {EffectivePersonalTrust} from '@refinio/trust.core/types/personal-trust.js';
 import type {TrustLevel} from '@refinio/trust.core/types/trust-types.js';
-import {canImportFotosManifest, fotosContentRules} from './sync-rules.js';
+import {canImportFotosEntry, canImportFotosManifest, fotosContentRules} from './sync-rules.js';
 import {getOwnedFotosManifestId} from './owned-fotos-manifest.js';
+import {createFotosAlbumCollection} from './fotos-collection.js';
 
 const chain = {
     $type$: 'FotosShareCertificateChain',
@@ -68,6 +69,38 @@ describe('Fotos root admission through SyncFilterFactory', () => {
         const filter = factory.createImportFilter(otherOwner);
         expect(await filter('foreign-version', 'FotosManifest', ownedRoot, 'object')).toBe(false);
         expect(await filter('foreign-id', 'FotosManifest', {$type$: 'FotosManifest', id: ownedRoot.id}, 'id')).toBe(false);
+    });
+
+    it('admits album membership for the owner without making it part of the media ID', async () => {
+        const source = {owner, libraryId: 'c'.repeat(64), albumId: 'Photos/L0/001', photoHashes: ['d'.repeat(64)]};
+        const album = createFotosAlbumCollection({...source, name: 'Trip'});
+        expect(createFotosAlbumCollection({...source, name: 'Summer Trip'}).id).toBe(album.id);
+        expect(createFotosAlbumCollection({...source, name: 'Trip', libraryId: 'e'.repeat(64)}).id).not.toBe(album.id);
+        const factory = new SyncFilterFactory({rules: fotosContentRules});
+        factory.preparePeerTrust(owner, {kind: 'self', ownerId: owner});
+        factory.preparePeerTrust(otherOwner, {kind: 'self', ownerId: otherOwner});
+        const filter = factory.createImportFilter(owner);
+        const root = {...ownedRoot, collections: new Set(['f'.repeat(64)])};
+        expect(await filter('album', 'FotosCollection', album, 'object')).toBe(true);
+        expect(await filter('album-id', 'FotosCollection', {$type$: 'FotosCollection', id: album.id}, 'id')).toBe(true);
+        expect(await filter('bad-album', 'FotosCollection', {...album, photoHashes: new Set(['filename.png'])}, 'object')).toBe(false);
+        expect(await filter('album-root', 'FotosManifest', root, 'object')).toBe(true);
+        expect(await filter('legacy-album-root', 'FotosManifest', {...root, id: 'fotos'}, 'object')).toBe(false);
+        const otherFilter = factory.createImportFilter(otherOwner);
+        expect(await otherFilter('foreign-album', 'FotosCollection', album, 'object')).toBe(false);
+    });
+
+    it('accepts bounded gallery metadata while validating its values', () => {
+        const context = {peerTrustLevel: 'trusted' as const};
+        const entry = {$type$: 'FotosEntry', contentHash: 'content', streamId: 'stream', mime: 'image/png', size: 42};
+        const metadata = {duration: 3.2, favorite: true, mediaSubtypes: new Set(['live-photo']),
+            orientation: 8, exifGpsAlt: -10, originalFilename: 'image.png'};
+        expect(canImportFotosEntry(context, entry)).toBe(true);
+        expect(canImportFotosEntry(context, {...entry, ...metadata})).toBe(true);
+        expect(canImportFotosEntry(context, {...entry, duration: -1})).toBe(false);
+        expect(canImportFotosEntry(context, {...entry, favorite: 'true'})).toBe(false);
+        expect(canImportFotosEntry(context, {...entry, orientation: 9})).toBe(false);
+        expect(canImportFotosEntry(context, {...entry, mediaSubtypes: new Set(['unknown'])})).toBe(false);
     });
 
     it.each([false, true])('denies external personal-trust admission even when IoM promotion is %s', async iom => {

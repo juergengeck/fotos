@@ -25,7 +25,6 @@ export interface UseContactsPlanReturn {
   isLoading: boolean;
   refreshContacts: () => Promise<void>;
   getContactById: (contactId: string) => Contact | undefined;
-  createAIContact: (name: string, modelId: string) => Promise<string>;
   // Topic creation for contacts
   getOrCreateTopicForContact: (contactId: string) => Promise<{ success: boolean; topicId?: string; error?: string }>;
   // Trust management
@@ -130,17 +129,6 @@ export function useContactsPlan(): UseContactsPlanReturn {
     return contacts.find(c => c.id === contactId);
   }, [contacts]);
 
-  const createAIContact = useCallback(async (name: string, modelId: string): Promise<string> => {
-    if (!model.aiAssistantPlan) {
-      throw new Error('AIAssistantPlan not available');
-    }
-
-    // Create AI topic and contact
-    const topicId = await model.aiAssistantPlan.createAITopic(name, modelId);
-    await loadContacts();
-    return topicId;
-  }, [model, loadContacts]);
-
   const acceptContact = useCallback(async (personId: string, options: any = {}): Promise<{ success: boolean; error?: string }> => {
     if (!model.contactsPlan) {
       return { success: false, error: 'ContactsPlan not available' };
@@ -215,24 +203,6 @@ export function useContactsPlan(): UseContactsPlanReturn {
 
       console.log(`[useContactsPlan] Contact ${contactId.substring(0, 8)} isAI: ${isAI}`);
 
-      // For AI contacts, use ChatPlan.createConversation to properly set up the group
-      if (isAI && model.chatPlan) {
-        console.log('[useContactsPlan] AI contact detected - creating conversation via ChatPlan');
-
-        const result = await model.chatPlan.createConversation({
-          type: 'group', // AI conversations are always groups
-          participants: [contactId],
-          name: contactName
-        });
-
-        if (!result.success || !result.data?.id) {
-          throw new Error(result.error || 'Failed to create AI conversation');
-        }
-
-        console.log('[useContactsPlan] AI conversation created:', result.data.id);
-        return { success: true, topicId: result.data.id };
-      }
-
       // For non-AI P2P contacts, create a proper P2P topic
       const localPersonId = model.ownerId;
       if (!localPersonId) {
@@ -278,7 +248,6 @@ export function useContactsPlan(): UseContactsPlanReturn {
     isLoading,
     refreshContacts: loadContacts,
     getContactById,
-    createAIContact,
     getOrCreateTopicForContact,
     acceptContact,
     blockContact,

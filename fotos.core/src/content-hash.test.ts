@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest';
+import {readFileSync} from 'node:fs';
 import {
     isJpeg,
     normalizeImageBytesForContentHash,
     stripJpegMetadata,
 } from './content-hash.js';
+import {hashImageBytes} from './ingest/hash.js';
+
+const fixtureDirectory = new URL('../test/fixtures/content-hash/', import.meta.url);
+const fixtures: Array<{file: string; contentHash: string}> = JSON.parse(
+    readFileSync(new URL('hashes.json', fixtureDirectory), 'utf8'),
+);
 
 describe('content-hash normalization', () => {
     it('detects jpeg headers', () => {
@@ -27,8 +34,13 @@ describe('content-hash normalization', () => {
         ]);
     });
 
-    it('only normalizes jpeg payloads', () => {
+    it('preserves bytes of unsupported and incomplete images', () => {
         const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
         expect(normalizeImageBytesForContentHash(png)).toBe(png);
+    });
+
+    it.each(fixtures)('matches the shared digest for $file', async ({file, contentHash}) => {
+        const bytes = readFileSync(new URL(file, fixtureDirectory));
+        expect(await hashImageBytes(bytes)).toBe(contentHash);
     });
 });

@@ -158,7 +158,7 @@ export function toFotosShareItem(
     manifestHashes: ReadonlySet<string>,
 ): FotosShareItem {
     const remote = isRemoteEntry(entry);
-    const inManifest = manifestHashes.has(entry.hash);
+    const inManifest = manifestHashes.has(entry.contentHash ?? entry.hash);
 
     return {
         hash: entry.hash,
@@ -187,14 +187,14 @@ export function buildFotosShareSnapshot(
     const manifestHashes = new Set(manifest?.contentHashes ?? []);
     const visibleHashes = new Set(state.visibleHashes);
     const items = state.entries.map(entry => toFotosShareItem(entry, visibleHashes, manifestHashes));
-    const itemByHash = new Map(items.map(item => [item.hash, item]));
+    const itemByContentHash = new Map(state.entries.map((entry, index) => [entry.contentHash ?? entry.hash, items[index]]));
     const localItems = items.filter(item => item.sourceKind === 'local');
     const remoteItems = items.filter(item => item.sourceKind === 'remote');
     const pendingItems = items.filter(item => item.syncState === 'pending');
     const sharedItems = items.filter(item => item.syncState === 'shared' || item.syncState === 'remote');
     const trackedImports = [...importedEntries]
         .map(entry => {
-            const projected = itemByHash.get(entry.contentHash);
+            const projected = itemByContentHash.get(entry.contentHash);
             return {
                 ...entry,
                 manifested: manifestHashes.has(entry.contentHash),

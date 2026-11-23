@@ -22,6 +22,8 @@ export interface SemanticInfo {
 
 export interface PhotoEntry {
     hash: string;
+    /** Encoded media identity when the gallery row uses a separate stream ID. */
+    contentHash?: string;
     name: string;
     managed: StorageMode;
     sourcePath?: string;

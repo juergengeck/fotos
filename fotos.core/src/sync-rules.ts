@@ -8,6 +8,8 @@ import {
 } from './share-model.js';
 import { buildFotosSharePinProofId } from './share-pin-proof.js';
 import {getOwnedFotosManifestId} from './owned-fotos-manifest.js';
+import {FOTOS_MEDIA_SUBTYPES} from './recipes/FotosRecipes.js';
+import {getFotosCollectionOwner, isFotosCollectionMembership, isFotosCollectionName} from './fotos-collection.js';
 
 type SyncRule = typeof contentRules extends Map<string, infer Value> ? Value : never;
 
@@ -15,6 +17,7 @@ const MAX_REFERENCE_LENGTH = 256;
 const MAX_FOTOS_MANIFEST_ENTRIES = 250_000;
 const MAX_FOTOS_SNAPSHOT_REFS = 1_000_000;
 const MAX_FOTOS_ATTESTATIONS = 250_000;
+const MAX_FOTOS_COLLECTIONS = 10_000;
 const MAX_MIME_TYPE_LENGTH = 255;
 const MAX_PATH_LENGTH = 4_096;
 const MAX_EXIF_STRING_LENGTH = 1_024;
@@ -33,6 +36,7 @@ const MAX_MEDIA_LOCATOR_KIND_LENGTH = 64;
 const MAX_MEDIA_LOCATOR_SCOPE_LENGTH = 64;
 const MAX_MEDIA_LOCATOR_PLATFORM_LENGTH = 64;
 const FOTOS_SHARE_SCOPE_KINDS = new Set(['gallery', 'collection', 'person']);
+const mediaSubtypes: ReadonlySet<unknown> = new Set(FOTOS_MEDIA_SUBTYPES);
 
 interface SyncContextLike {
     peerTrustLevel: TrustLevel;
@@ -171,6 +175,15 @@ function hasValidFotosShareSnapshotClosure(manifest: ImportedObject): boolean {
     return true;
 }
 
+function selfPeerId(context: SyncContextLike): string | undefined {
+    const remote = context.remotePersonId;
+    if (context.peerTrustLevel === 'me' && context.peerTrust?.kind === 'self'
+        && context.peerTrust.ownerId === remote && typeof remote === 'string' && /^[a-f0-9]{64}$/.test(remote)) {
+        return remote;
+    }
+    return undefined;
+}
+
 export function canImportFotosManifest(context: SyncContextLike, obj?: object): boolean {
     if (!allowsExplicitFotosShare(context) || !obj) {
         return false;
@@ -179,10 +192,8 @@ export function canImportFotosManifest(context: SyncContextLike, obj?: object): 
     const manifest = obj as ImportedObject;
     // Scoped libraries belong only to an authenticated same-Person lane. An IoM
     // trust-level promotion alone is not the owner's accepted reflexive fact.
-    const remote = context.remotePersonId;
-    const isOwnScopedRoot = context.peerTrustLevel === 'me' && context.peerTrust?.kind === 'self'
-        && context.peerTrust.ownerId === remote && typeof remote === 'string' && /^[a-f0-9]{64}$/.test(remote)
-        && manifest.id === getOwnedFotosManifestId(remote);
+    const remote = selfPeerId(context);
+    const isOwnScopedRoot = remote !== undefined && manifest.id === getOwnedFotosManifestId(remote);
     if (manifest.id !== 'fotos' && !isOwnScopedRoot) return false;
     if (isIdOnlyObject(manifest, new Set(['$type$', 'id']), 'id', MAX_PATH_LENGTH)) {
         return manifest.id === 'fotos' || context.objectKind === 'id';
@@ -200,7 +211,20 @@ export function canImportFotosManifest(context: SyncContextLike, obj?: object): 
                 MAX_FOTOS_ATTESTATIONS,
                 MAX_REFERENCE_LENGTH,
             )
-        );
+        )
+        && (manifest.collections === undefined || (isOwnScopedRoot
+            && isStringSetWithinBounds(manifest.collections, MAX_FOTOS_COLLECTIONS, MAX_REFERENCE_LENGTH)));
+}
+
+export function canImportFotosCollection(context: SyncContextLike, obj?: object): boolean {
+    const remote = selfPeerId(context);
+    if (!remote || !obj) return false;
+    const collection = obj as ImportedObject;
+    if (typeof collection.id !== 'string' || getFotosCollectionOwner(collection.id) !== remote) return false;
+    if (isIdOnlyObject(collection, new Set(['$type$', 'id']), 'id', MAX_PATH_LENGTH)) {
+        return context.objectKind === 'id';
+    }
+    return isFotosCollectionName(collection.name) && isFotosCollectionMembership(collection.photoHashes);
 }
 
 export function canImportFotosEntry(context: SyncContextLike, obj?: object): boolean {
@@ -231,8 +255,17 @@ export function canImportFotosEntry(context: SyncContextLike, obj?: object): boo
         && isOptionalFiniteNumber(entry.exifIso)
         && isOptionalFiniteNumber(entry.exifGpsLat)
         && isOptionalFiniteNumber(entry.exifGpsLon)
+        && isOptionalFiniteNumber(entry.exifGpsAlt)
         && isOptionalFiniteNumber(entry.exifWidth)
         && isOptionalFiniteNumber(entry.exifHeight)
+        && (entry.orientation === undefined || (typeof entry.orientation === 'number'
+            && Number.isInteger(entry.orientation) && entry.orientation >= 1 && entry.orientation <= 8))
+        && isOptionalStringWithinBounds(entry.originalFilename, MAX_MEDIA_LABEL_LENGTH)
+        && isOptionalNonNegativeNumber(entry.duration)
+        && (entry.favorite === undefined || typeof entry.favorite === 'boolean')
+        && (entry.mediaSubtypes === undefined || (entry.mediaSubtypes instanceof Set
+            && entry.mediaSubtypes.size <= mediaSubtypes.size
+            && Array.from(entry.mediaSubtypes).every(value => mediaSubtypes.has(value))))
         && isOptionalReference(entry.thumb)
         && (
             entry.variants === undefined
@@ -438,6 +471,7 @@ export function canImportFotosMediaLocator(context: SyncContextLike, obj?: objec
 }
 
 const fotosManifestRule = fotosImportRule('FotosManifest', canImportFotosManifest);
+const fotosCollectionRule = fotosImportRule('FotosCollection', canImportFotosCollection);
 const fotosEntryRule = fotosImportRule('FotosEntry', canImportFotosEntry);
 const fotosShareManifestRule = fotosImportRule('FotosShareManifest', canImportFotosShareManifest);
 const fotosShareCertificateRule = fotosImportRule('FotosShareCertificate', canImportFotosShareCertificate);
@@ -456,6 +490,7 @@ const fotosMediaLocatorRule = fotosImportRule('FotosMediaLocator', canImportFoto
 
 export const fotosContentRules = new Map(contentRules);
 fotosContentRules.set('FotosManifest', fotosManifestRule);
+fotosContentRules.set('FotosCollection', fotosCollectionRule);
 fotosContentRules.set('FotosEntry', fotosEntryRule);
 fotosContentRules.set('FotosShareManifest', fotosShareManifestRule);
 fotosContentRules.set('FotosShareCertificate', fotosShareCertificateRule);

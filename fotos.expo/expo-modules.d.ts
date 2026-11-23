@@ -49,6 +49,8 @@ declare module 'expo-file-system/next' {
 }
 
 declare module 'expo-file-system/legacy' {
+  export function deleteAsync(uri: string, options?: {idempotent?: boolean}): Promise<void>;
+
   export enum EncodingType {
     UTF8 = 'utf8',
     Base64 = 'base64',

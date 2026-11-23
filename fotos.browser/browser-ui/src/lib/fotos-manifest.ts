@@ -418,8 +418,7 @@ export async function addEntryToManifest(entryHash: SHA256Hash<FotosEntry>): Pro
     if (selectedManifestId() !== manifest.id) throw new Error('Fotos library context changed before entry publication');
 
     await storeVersionedObject({
-        $type$: 'FotosManifest',
-        id: manifest.id,
+        ...manifest,
         entries,
         authenticityAttestations,
     } as any);
@@ -445,8 +444,7 @@ export async function addAuthenticityAttestationToManifest(
     if (selectedManifestId() !== manifest.id) throw new Error('Fotos library context changed before attestation publication');
 
     await storeVersionedObject({
-        $type$: 'FotosManifest',
-        id: manifest.id,
+        ...manifest,
         entries,
         authenticityAttestations,
     } as any);

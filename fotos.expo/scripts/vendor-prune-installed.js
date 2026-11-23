@@ -21,7 +21,7 @@ if (!fs.existsSync(NODE_MODULES_DIR)) {
 
 const config = JSON.parse(fs.readFileSync(VENDOR_RC, 'utf8'));
 
-for (const pkg of config.packages ?? []) {
+for (const pkg of [...(config.packages ?? []), ...(config.transitivePackages ?? [])]) {
   if (!pkg.name || !pkg.name.includes('/')) {
     continue;
   }

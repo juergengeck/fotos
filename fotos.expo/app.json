@@ -27,12 +27,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "fotos.android",
-      "permissions": [
-        "android.permission.BLUETOOTH",
-        "android.permission.BLUETOOTH_ADMIN",
-        "android.permission.BLUETOOTH_CONNECT"
-      ]
+      "package": "fotos.android"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -48,39 +43,12 @@
           "backgroundColor": "#111111"
         }
       ],
-      "./plugins/withMLXSupport",
       "./plugins/withFotosShareExtension",
-      [
-        "llama.rn",
-        {
-          "enableEntitlements": true,
-          "entitlementsProfile": "production",
-          "forceCxx20": true,
-          "enableOpenCL": true
-        }
-      ],
-      [
-        "expo-audio",
-        {
-          "microphonePermission": "Allow $(PRODUCT_NAME) to access audio when local capture and sync flows require it."
-        }
-      ],
       [
         "expo-media-library",
         {
           "photosPermission": "Allow $(PRODUCT_NAME) to access your photo library so fotos can reference originals by content hash and reuse trusted analysis across devices.",
           "savePhotosPermission": false
-        }
-      ],
-      [
-        "react-native-ble-plx",
-        {
-          "isBackgroundEnabled": true,
-          "modes": [
-            "peripheral",
-            "central"
-          ],
-          "bluetoothAlwaysPermission": "Allow $(PRODUCT_NAME) to connect to Bluetooth devices"
         }
       ],
       "expo-secure-store",

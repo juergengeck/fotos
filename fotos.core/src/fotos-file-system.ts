@@ -7,13 +7,14 @@ import {calculateIdHashOfObj} from '@refinio/one.core/lib/util/object.js';
 import {getObject} from '@refinio/one.core/lib/storage-unversioned-objects.js';
 import {getObjectByIdHash, storeVersionedObject} from '@refinio/one.core/lib/storage-versioned-objects.js';
 import {readBlobAsArrayBuffer, storeArrayBufferAsBlob} from '@refinio/one.core/lib/storage-blob.js';
-import {hashImageBytes} from './ingest/hash.js';
+import {matchesImageContentHash, normalizeImageBytesForContentHash} from './content-hash.js';
 export {FotosRecipes} from './recipes/FotosRecipes.js';
 export {getOwnedFotosManifestId} from './owned-fotos-manifest.js';
 import type {FotosEntry, FotosManifest} from './recipes/FotosRecipes.js';
 import type {FotosMediaVariant} from './recipes/FotosMediaRecipes.js';
 import {createFotosMediaVariant} from './media-model.js';
-import {createCryptoHash} from '@refinio/one.core/lib/system/crypto-helpers.js';
+import {createCryptoHash, sha256} from '@refinio/one.core/lib/system/crypto-helpers.js';
+import {uint8arrayToHexString} from '@refinio/one.core/lib/util/arraybuffer-to-and-from-hex-string.js';
 import {getFotosEntryProjectionVersion, projectFotosEntryReferences, type FotosEntryReference} from './fotos-entry-projection.js';
 
 export const FOTOS_THUMBNAIL_MAX_EDGE = 512;
@@ -21,9 +22,12 @@ export const FOTOS_THUMBNAIL_MAX_BYTES = 2 * 1024 * 1024;
 /** Platform-owned decoding and resizing; return an actual bounded JPEG image. */
 export type FotosThumbnailAdapter = (content: ArrayBuffer, mime: string) => Promise<ArrayBuffer>;
 
+async function hashBytes(bytes: Uint8Array): Promise<string> {
+    return uint8arrayToHexString(await sha256(bytes));
+}
+
 /** Read JPEG frame dimensions without accepting an unbounded or mislabeled derivative. */
-function thumbnailDimensions(content: ArrayBuffer): {width: number; height: number} {
-    const bytes = new Uint8Array(content);
+export function readFotosThumbnailDimensions(bytes: Uint8Array): {width: number; height: number} {
     if (bytes.length < 4 || bytes.length > FOTOS_THUMBNAIL_MAX_BYTES || bytes[0] !== 0xff || bytes[1] !== 0xd8
         || bytes[bytes.length - 2] !== 0xff || bytes[bytes.length - 1] !== 0xd9) {
         throw new Error('Fotos thumbnail must be a bounded JPEG');
@@ -190,7 +194,7 @@ export class FotosFileSystem {
             const entries = await this.entries();
             const mime = this.mime(name);
             const content = await readBlobAsArrayBuffer(blob);
-            const contentHash = await hashImageBytes(new Uint8Array(content));
+            const contentHash = await hashBytes(normalizeImageBytesForContentHash(new Uint8Array(content)));
             const existing = entries.find(item => item.path === path);
             if (existing) {
                 if (existing.entry.contentHash === contentHash) return;
@@ -201,7 +205,7 @@ export class FotosFileSystem {
             }
             const thumbnail = this.createThumbnail ? await this.createThumbnail(content, mime) : undefined;
             if (this.createThumbnail && !(thumbnail instanceof ArrayBuffer)) throw new Error('Fotos thumbnail adapter returned no JPEG');
-            const dimensions = thumbnail ? thumbnailDimensions(thumbnail) : undefined;
+            const dimensions = thumbnail ? readFotosThumbnailDimensions(new Uint8Array(thumbnail)) : undefined;
             const entry: FotosEntry = {$type$: 'FotosEntry', contentHash, streamId: contentHash,
                 mime, size: content.byteLength, sourcePath: name};
             const family = await calculateIdHashOfObj(entry);
@@ -271,13 +275,12 @@ export async function readFotosOriginal(entry: FotosEntry, resolveOriginal?: (en
     const variants: FotosMediaVariant[] = [];
     for (const hash of entry.variants ?? []) variants.push(await getObject(hash));
     const original = variants.find(variant => variant.role === 'original'
-        && variant.contentHash === entry.contentHash);
+        && variant.contentHash === entry.contentHash && variant.blob);
     let content: ArrayBuffer;
     if (original?.blob) content = await readBlobAsArrayBuffer(original.blob);
     else if (resolveOriginal) content = await resolveOriginal(entry);
     else throw new Error(`Fotos original is unavailable locally: ${entry.contentHash}`);
-    if (content.byteLength !== entry.size) throw new Error(`Fotos original size mismatch: ${entry.sourcePath}`);
-    if (await hashImageBytes(new Uint8Array(content)) !== entry.contentHash) {
+    if (!await matchesImageContentHash(new Uint8Array(content), entry.contentHash, hashBytes)) {
         throw new Error(`Fotos original content hash mismatch: ${entry.sourcePath}`);
     }
     return {content};

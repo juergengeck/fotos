@@ -1,6 +1,6 @@
 import '@refinio/one.core/lib/system/load-nodejs.js';
 import {afterAll, beforeAll, describe, expect, it, vi} from 'vitest';
-import {mkdtemp, rm} from 'node:fs/promises';
+import {mkdtemp, readFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {closeInstance, getInstanceOwnerIdHash, initInstance} from '@refinio/one.core/lib/instance.js';
@@ -11,12 +11,14 @@ import {beginAccessManagerChumSession, endAccessManagerChumSession, getAccessibl
     isAccessibleBy} from '@refinio/one.core/lib/accessManager.js';
 import {getObjectByIdHash, storeVersionedObject} from '@refinio/one.core/lib/storage-versioned-objects.js';
 import {getObject} from '@refinio/one.core/lib/storage-unversioned-objects.js';
-import {readBlobAsArrayBuffer} from '@refinio/one.core/lib/storage-blob.js';
+import {readBlobAsArrayBuffer, storeArrayBufferAsBlob} from '@refinio/one.core/lib/storage-blob.js';
 import {calculateIdHashOfObj} from '@refinio/one.core/lib/util/object.js';
 import type {Person} from '@refinio/one.core/lib/recipes.js';
 import type {SHA256Hash, SHA256IdHash} from '@refinio/one.core/lib/util/type-checks.js';
 import {FotosRecipes} from './recipes/FotosRecipes.js';
-import {FotosFileSystem, getOwnedFotosManifestId, type FotosThumbnailAdapter} from './fotos-file-system.js';
+import {FotosFileSystem, getOwnedFotosManifestId, readFotosOriginal, type FotosThumbnailAdapter} from './fotos-file-system.js';
+import {hashImageBytes, sha256Hex} from './ingest/hash.js';
+import {createFotosMediaVariant} from './media-model.js';
 
 // A real one-pixel JPEG, generated with an image decoder; not original bytes relabeled as a thumbnail.
 const JPEG = Buffer.from('/9j/4AAQSkZJRgABAQAASABIAAD/4QCARXhpZgAATU0AKgAAAAgABAEaAAUAAAABAAAAPgEbAAUAAAABAAAARgEoAAMAAAABAAIAAIdpAAQAAAABAAAATgAAAAAAAABIAAAAAQAAAEgAAAABAAOgAQADAAAAAQABAACgAgAEAAAAAQAAAAGgAwAEAAAAAQAAAAEAAAAA/+0AOFBob3Rvc2hvcCAzLjAAOEJJTQQEAAAAAAAAOEJJTQQlAAAAAAAQ1B2M2Y8AsgTpgAmY7PhCfv/AABEIAAEAAQMBIgACEQEDEQH/xAAfAAABBQEBAQEBAQAAAAAAAAAAAQIDBAUGBwgJCgv/xAC1EAACAQMDAgQDBQUEBAAAAX0BAgMABBEFEiExQQYTUWEHInEUMoGRoQgjQrHBFVLR8CQzYnKCCQoWFxgZGiUmJygpKjQ1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4eLj5OXm5+jp6vHy8/T19vf4+fr/xAAfAQADAQEBAQEBAQEBAAAAAAAAAQIDBAUGBwgJCgv/xAC1EQACAQIEBAMEBwUEBAABAncAAQIDEQQFITEGEkFRB2FxEyIygQgUQpGhscEJIzNS8BVictEKFiQ04SXxFxgZGiYnKCkqNTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqCg4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2dri4+Tl5ufo6ery8/T19vf4+fr/2wBDAAICAgICAgMCAgMFAwMDBQYFBQUFBggGBgYGBggKCAgICAgICgoKCgoKCgoMDAwMDAwODg4ODg8PDw8PDw8PDw//2wBDAQICAgQEBAcEBAcQCwkLEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBD/3QAEAAH/2gAMAwEAAhEDEQA/APuyiiiviz+mD//Z', 'base64');
@@ -34,6 +36,34 @@ describe('Fotos filesystem thumbnail publication on native ONE', () => {
     afterAll(async () => {
         closeInstance(); resetBaseDirOrName();
         await rm(directory, {recursive: true, force: true});
+    });
+
+    it('keeps one ONE identity across image metadata versions and verifies both originals', async () => {
+        const fixture = (name: string) => readFile(new URL(`../test/fixtures/content-hash/${name}`, import.meta.url));
+        const plain = await fixture('plain.png');
+        const withMetadata = await fixture('with-exif-and-text.png');
+        const otherImage = await fixture('different-pixels.png');
+        const contentHash = await hashImageBytes(plain);
+        const first = {$type$: 'FotosEntry' as const, contentHash, streamId: contentHash,
+            mime: 'image/png', size: plain.length, originalFilename: 'first.png', capturedAt: '2026-01-01'};
+        const second = {...first, contentHash: await hashImageBytes(withMetadata), size: withMetadata.length,
+            originalFilename: 'second.png', capturedAt: '2026-01-02', favorite: true};
+        const storedFirst = await storeVersionedObject(first);
+        const storedSecond = await storeVersionedObject(second);
+        expect(storedFirst.idHash).toBe(storedSecond.idHash);
+        expect(storedFirst.hash).not.toBe(storedSecond.hash);
+        await expect(readFotosOriginal(first, async () => buffer(withMetadata))).resolves.toEqual({content: buffer(withMetadata)});
+        await expect(readFotosOriginal(second, async () => buffer(plain))).resolves.toEqual({content: buffer(plain)});
+        await expect(readFotosOriginal(second, async () => buffer(otherImage))).rejects.toThrow('content hash mismatch');
+        const legacy = {...second, contentHash: await sha256Hex(withMetadata)};
+        expect(legacy.contentHash).not.toBe(contentHash);
+        await expect(readFotosOriginal(legacy, async () => buffer(withMetadata))).resolves.toEqual({content: buffer(withMetadata)});
+        const variant = createFotosMediaVariant({contentHash, family: storedFirst.idHash, role: 'original', mime: first.mime});
+        const reference = await storeVersionedObject(variant);
+        const blob = await storeArrayBufferAsBlob(plain);
+        const ingest = await storeVersionedObject({...variant, blob: blob.hash});
+        await expect(readFotosOriginal({...second, variants: new Set([reference.hash, ingest.hash])}))
+            .resolves.toEqual({content: buffer(plain)});
     });
 
     it('publishes exact original and thumbnail bytes with acquisition and owner-only access through the scoped root', async () => {

@@ -710,6 +710,10 @@ export function App({ fotosModel: initialModel }: AppProps) {
         () => new Set(locallyOwnedGalleryEntries.map(photo => photo.hash)),
         [locallyOwnedGalleryEntries],
     );
+    const contentHashByGalleryHash = useMemo(
+        () => new Map(locallyOwnedGalleryEntries.map(photo => [photo.hash, photo.contentHash ?? photo.hash])),
+        [locallyOwnedGalleryEntries],
+    );
     const selectedPhotosForCollections = useMemo(
         () => gallery.folder.entries.filter(photo => selectedPhotoHashSet.has(photo.hash)),
         [gallery.folder.entries, selectedPhotoHashSet],
@@ -1440,6 +1444,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
         if (params.contentHashes.length === 0) {
             throw new Error('This scope has no photos to share.');
         }
+        const contentHashes = [...new Set(params.contentHashes.map(hash => contentHashByGalleryHash.get(hash) ?? hash))];
 
         const scopeKey = `${params.scope.kind}:${params.scope.id}`;
         const previousPersonIds = expandSharePersonIds(params.previousPersonIds);
@@ -1447,7 +1452,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
         const fingerprint = JSON.stringify({
             issuer: String(issuer),
             recipients: [...nextPersonIds].sort(),
-            content: [...params.contentHashes].sort(),
+            content: [...contentHashes].sort(),
         });
         const result = await shareCommitCoordinatorRef.current.commit({
             scopeKey,
@@ -1467,7 +1472,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 await traceFotosSharePhase(
                     params.scope,
                     'selected-photo-sync',
-                    () => gallery.folder.ensureSyncedToOneCore(params.contentHashes),
+                    () => gallery.folder.ensureSyncedToOneCore(contentHashes),
                 );
                 const snapshot = await traceFotosSharePhase(
                     params.scope,
@@ -1477,7 +1482,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 const entryHashByContentHash = new Map(
                     (snapshot?.resolvedEntries ?? []).map(entry => [entry.contentHash, entry.entryHash]),
                 );
-                const missingHashes = params.contentHashes.filter(hash => !entryHashByContentHash.has(hash));
+                const missingHashes = contentHashes.filter(hash => !entryHashByContentHash.has(hash));
                 if (missingHashes.length > 0) {
                     throw new Error(`${missingHashes.length} photo${missingHashes.length === 1 ? '' : 's'} could not be prepared for sharing.`);
                 }
@@ -1490,7 +1495,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         scope: params.scope,
                         previousPersonIds: committedPreviousPersonIds,
                         nextPersonIds,
-                        entryHashes: params.contentHashes.map(hash => entryHashByContentHash.get(hash) as any),
+                        entryHashes: contentHashes.map(hash => entryHashByContentHash.get(hash) as any),
                     }),
                 );
                 certificateBackfilledScopesRef.current.add(scopeKey);
@@ -1503,7 +1508,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
         });
         params.persist();
         return result;
-    }, [expandSharePersonIds, fotosModel?.publicationIdentity, gallery.folder.ensureSyncedToOneCore]);
+    }, [contentHashByGalleryHash, expandSharePersonIds, fotosModel?.publicationIdentity, gallery.folder.ensureSyncedToOneCore]);
 
     const requestShareAssignment = useCallback((params: {
         scope: FotosShareScope;

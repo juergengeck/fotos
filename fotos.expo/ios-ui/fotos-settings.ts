@@ -20,7 +20,7 @@ export const DEFAULT_FOTOS_SECTION_VALUES: FotosSettingsSectionValues = {
   acceptSharing: false,
   faceAnalyticsEnabled: false,
   semanticSearchEnabled: false,
-  defaultMode: 'metadata',
+  defaultMode: 'reference',
   preferredSource: 'photo-library',
   runMode: 'foreground',
 };

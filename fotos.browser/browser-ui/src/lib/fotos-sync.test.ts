@@ -13,7 +13,8 @@ const {
     appendMediaBookContentMock,
     readMediaBookMock,
     storeArrayBufferAsBlobMock,
-    hashImageFileMock,
+    readBlobAsArrayBufferMock,
+    matchesOriginalContentHashMock,
     getObjectWithTypeMock,
     readFotosManifestSnapshotMock,
     existsMock,
@@ -51,7 +52,8 @@ const {
     appendMediaBookContentMock: vi.fn(async () => undefined),
     readMediaBookMock: vi.fn(),
     storeArrayBufferAsBlobMock: vi.fn(async () => ({hash: 'original-blob-hash'})),
-    hashImageFileMock: vi.fn(async () => 'photo-hash'),
+    readBlobAsArrayBufferMock: vi.fn(),
+    matchesOriginalContentHashMock: vi.fn(async () => true),
     getObjectWithTypeMock: vi.fn(),
     readFotosManifestSnapshotMock: vi.fn<(...args: any[]) => Promise<any>>(async () => ({
         entryHashes: [],
@@ -79,7 +81,7 @@ vi.mock('@refinio/one.core/lib/chum-sync.js', () => ({
 
 vi.mock('@refinio/one.core/lib/storage-blob.js', () => ({
     storeArrayBufferAsBlob: storeArrayBufferAsBlobMock,
-    readBlobAsArrayBuffer: vi.fn(),
+    readBlobAsArrayBuffer: readBlobAsArrayBufferMock,
 }));
 
 vi.mock('@refinio/one.core/lib/system/storage-base.js', () => ({
@@ -93,7 +95,7 @@ vi.mock('@refinio/one.core/lib/storage-unversioned-objects.js', () => ({
 vi.mock('../../../../fotos.core/src/media-acquisition.js', () => ({recordFotosAcquisition: recordFotosAcquisitionMock}));
 
 vi.mock('./browserIngest.js', () => ({
-    hashImageFile: hashImageFileMock,
+    matchesOriginalContentHash: matchesOriginalContentHashMock,
 }));
 
 vi.mock('@refinio/one.core/lib/instance.js', () => ({
@@ -148,11 +150,25 @@ vi.mock('./analysis-variants.js', () => ({
 }));
 
 import {
+    extractThumbUrlFromEntry,
     getVersionedObjectIfPresent,
     shouldClaimFotosAuthorship,
     syncPhotosToOneCore,
     syncPhotoToOneCore,
 } from './fotos-sync.js';
+
+it('serves a JPEG thumbnail with its own MIME type when the original is HEIC', async () => {
+    readBlobAsArrayBufferMock.mockResolvedValueOnce(Uint8Array.of(0xff, 0xd8, 0xff, 0xd9).buffer);
+    const createUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:thumbnail');
+    try {
+        const entry = {$type$: 'FotosEntry', contentHash: 'photo', streamId: 'photo', mime: 'image/heic', size: 200,
+            thumb: 'thumbnail-blob' as NonNullable<Parameters<typeof extractThumbUrlFromEntry>[0]['thumb']>} as const;
+        await expect(extractThumbUrlFromEntry(entry)).resolves.toBe('blob:thumbnail');
+        expect(createUrl).toHaveBeenCalledWith(expect.objectContaining({type: 'image/jpeg'}));
+    } finally {
+        createUrl.mockRestore();
+    }
+});
 
 describe('fotos sync authorship toggle', () => {
     function mockPersistedPhoto(photo: Record<string, any>, overrides: Record<string, any> = {}): void {
@@ -301,7 +317,7 @@ describe('fotos sync authorship toggle', () => {
         appendMediaBookContentMock.mockClear();
         readMediaBookMock.mockReset().mockResolvedValue(undefined);
         storeArrayBufferAsBlobMock.mockClear().mockResolvedValue({hash: 'original-blob-hash'});
-        hashImageFileMock.mockClear().mockResolvedValue('photo-hash');
+        matchesOriginalContentHashMock.mockClear().mockResolvedValue(true);
         getObjectWithTypeMock.mockReset();
         readFotosManifestSnapshotMock.mockReset().mockResolvedValue({
             entryHashes: [],
@@ -405,7 +421,7 @@ describe('fotos sync authorship toggle', () => {
         expect(storeVersionedObjectMock).toHaveBeenCalledTimes(6);
     });
 
-    it('publishes verified local original bytes through the original media variant', async () => {
+    it('publishes verified local original bytes when recorded size differs', async () => {
         const bytes = new Uint8Array([1, 2, 3, 4]);
         const file = {
             size: bytes.byteLength,
@@ -418,10 +434,11 @@ describe('fotos sync authorship toggle', () => {
         } as unknown as FileSystemDirectoryHandle;
 
         await syncPhotosToOneCore([{
-            hash: 'photo-hash',
+            hash: 'date-derived-stream',
+            contentHash: 'photo-hash',
             name: 'photo.png',
             sourcePath: 'photo.png',
-            size: bytes.byteLength,
+            size: bytes.byteLength + 96,
             managed: 'metadata',
             tags: [],
             addedAt: '2026-09-11T00:00:00.000Z',
@@ -430,11 +447,13 @@ describe('fotos sync authorship toggle', () => {
             requireOriginalBlob: true,
         });
 
-        expect(hashImageFileMock).toHaveBeenCalledWith(file);
+        expect(matchesOriginalContentHashMock).toHaveBeenCalledWith(bytes.buffer, 'photo-hash');
         expect(storeArrayBufferAsBlobMock).toHaveBeenCalledOnce();
-        const originalVariant = storeVersionedObjectMock.mock.calls
-            .map(([object]) => object)
-            .find(object => object.$type$ === 'FotosMediaVariant' && object.role === 'original');
+        const writes = storeVersionedObjectMock.mock.calls.map(([object]) => object);
+        expect(writes.find(object => object.$type$ === 'FotosEntry')).toMatchObject({
+            contentHash: 'photo-hash', streamId: 'date-derived-stream',
+        });
+        const originalVariant = writes.find(object => object.$type$ === 'FotosMediaVariant' && object.role === 'original');
         expect(originalVariant).toMatchObject({
             contentHash: 'photo-hash',
             role: 'original',
@@ -452,7 +471,7 @@ describe('fotos sync authorship toggle', () => {
                 getFile: vi.fn(async () => file),
             })),
         } as unknown as FileSystemDirectoryHandle;
-        hashImageFileMock.mockResolvedValue('different-photo-hash');
+        matchesOriginalContentHashMock.mockResolvedValue(false);
 
         await expect(syncPhotosToOneCore([{
             hash: 'photo-hash',

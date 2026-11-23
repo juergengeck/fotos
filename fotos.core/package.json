@@ -23,6 +23,10 @@
       "import": "./dist/fotos-catalog.js",
       "types": "./dist/fotos-catalog.d.ts"
     },
+    "./content-hash": {
+      "types": "./dist/content-hash.d.ts",
+      "import": "./dist/content-hash.js"
+    },
     "./ingest": {
       "import": "./dist/ingest/index.js",
       "types": "./dist/ingest/index.d.ts"

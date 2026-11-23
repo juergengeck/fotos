@@ -18,7 +18,7 @@ export function getIncomingGalleryProgress(
         };
     }
     const expectedHashes = new Set(scope.entries.map(entry => entry.contentHash));
-    const availableHashes = new Set(photos.filter(photo => photo.thumb).map(photo => photo.hash));
+    const availableHashes = new Set(photos.filter(photo => photo.thumb).map(photo => photo.contentHash ?? photo.hash));
     const received = [...expectedHashes].filter(hash => availableHashes.has(hash)).length;
     const expected = expectedHashes.size;
     return {

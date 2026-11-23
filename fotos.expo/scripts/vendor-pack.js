@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const os = require('os');
+const { createHash } = require('crypto');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const VENDOR_DIR = path.join(PROJECT_ROOT, 'vendor');
@@ -16,6 +16,11 @@ console.log('📦 Vendoring monorepo packages...\n');
 const config = JSON.parse(fs.readFileSync(VENDOR_RC, 'utf8'));
 const packageJson = JSON.parse(fs.readFileSync(PACKAGE_JSON, 'utf8'));
 
+// Never write through another application's vendor cache.
+if (fs.existsSync(VENDOR_DIR) && fs.lstatSync(VENDOR_DIR).isSymbolicLink()) {
+  throw new Error('Fotos vendor must be a local directory; run vendor:clean before vendor:pack');
+}
+
 // Create vendor directory
 if (!fs.existsSync(VENDOR_DIR)) {
   fs.mkdirSync(VENDOR_DIR, { recursive: true });
@@ -27,7 +32,7 @@ const packedTarballs = new Map();
 
 // PHASE 1: Pack all packages
 console.log('Phase 1: Packing all packages...\n');
-for (const pkg of config.packages) {
+for (const pkg of [...config.packages, ...(config.transitivePackages ?? [])]) {
   const pkgPath = path.resolve(PROJECT_ROOT, pkg.path);
 
   console.log(`Packing ${pkg.name} from ${pkg.path}...`);
@@ -40,7 +45,7 @@ for (const pkg of config.packages) {
   try {
     // Run pnpm pack (resolves catalog: references)
     const output = execSync(
-      `pnpm pack --pack-destination="${VENDOR_DIR}"`,
+      `corepack pnpm@9.15.0 pack --pack-destination="${VENDOR_DIR}"`,
       { cwd: pkgPath, encoding: 'utf8' }
     );
 
@@ -56,8 +61,14 @@ for (const pkg of config.packages) {
 
     // Extract just the filename from the path
     const tarballName = path.basename(tarballPath);
-    packedTarballs.set(pkg.name, tarballName);
-    console.log(`  ✓ Created vendor/${tarballName}`);
+    // A version label does not identify a local rebuild. pnpm can reuse cached
+    // metadata for the old bytes at an unchanged file: path, even with --force.
+    const packedPath = path.join(VENDOR_DIR, tarballName);
+    const digest = createHash('sha256').update(fs.readFileSync(packedPath)).digest('hex').slice(0, 16);
+    const snapshotName = tarballName.replace(/\.tgz$/, `-${digest}.tgz`);
+    fs.renameSync(packedPath, path.join(VENDOR_DIR, snapshotName));
+    packedTarballs.set(pkg.name, snapshotName);
+    console.log(`  ✓ Created vendor/${snapshotName}`);
 
   } catch (error) {
     console.error(`✗ Failed to pack ${pkg.name}:`);
@@ -73,14 +84,16 @@ console.log(`\nPhase 2: Skipped (source packages use '*' for inter-package deps)
 console.log(`\nPhase 3: Updating package.json dependencies...\n`);
 
 let updated = 0;
+// Internal runtime roots and required transitive dependencies are all local.
 const overrides = {};
+const runtimeRoots = new Set(config.packages.map(pkg => pkg.name));
 for (const [pkgName, tarballName] of packedTarballs) {
   overrides[pkgName] = `file:./vendor/${tarballName}`;
 
   // Pin peers at the application root too: peer resolution needs an explicit
   // local provider and must never fetch internal ONE packages from a registry.
   packageJson.dependencies ??= {};
-  {
+  if (runtimeRoots.has(pkgName) && !packageJson.dependencies[pkgName]?.startsWith('link:')) {
     const oldValue = packageJson.dependencies[pkgName];
     const newValue = `file:./vendor/${tarballName}`;
 

@@ -128,6 +128,7 @@ export {
     isJpeg,
     stripJpegMetadata,
     normalizeImageBytesForContentHash,
+    matchesImageContentHash,
 } from './content-hash.js';
 export {
     DEFAULT_FOTOS_CONFIG,
@@ -138,6 +139,8 @@ export {
 } from './fotos-catalog.js';
 export {FotosCatalogTrie} from './fotos-catalog-trie.js';
 export {getOwnedFotosManifestId} from './owned-fotos-manifest.js';
+export {buildFotosAlbumCollectionId, createFotosAlbumCollection} from './fotos-collection.js';
+export {FOTOS_MEDIA_SUBTYPES, type FotosCollection, type FotosMediaSubtype} from './recipes/FotosRecipes.js';
 export {FOTOS_BUNDLE_MANIFEST, createFotosBundleManifest} from './fotos-bundle.js';
 export {
     makeFotosDeviceBookId,

@@ -1,0 +1,38 @@
+[
+  {
+    "file": "plain.jpg",
+    "contentHash": "71dff1d8adfb188692ac0d4af93564317cf1b73c7aaed313bd03d06782ef6a55"
+  },
+  {
+    "file": "with-exif.jpg",
+    "contentHash": "71dff1d8adfb188692ac0d4af93564317cf1b73c7aaed313bd03d06782ef6a55"
+  },
+  {
+    "file": "plain.png",
+    "contentHash": "d220355abb4483298addfcae6959dcadbb69552c422a0f005176197133fe6122"
+  },
+  {
+    "file": "with-exif-and-text.png",
+    "contentHash": "d220355abb4483298addfcae6959dcadbb69552c422a0f005176197133fe6122"
+  },
+  {
+    "file": "different-pixels.png",
+    "contentHash": "84dc7e2883a2a21f72ecc4ae9711b86d2e9708ad212a27ad08d56e486771b339"
+  },
+  {
+    "file": "invalid-crc.png",
+    "contentHash": "c60c1cdfeeb38ea205010f1a12ac5510daa9aedf08fe90c869373bed04cb21ad"
+  },
+  {
+    "file": "animated.png",
+    "contentHash": "9a68d0906f0fc064b9f9ef72d2b4d11801b178876b13ed8445cab3469081ee55"
+  },
+  {
+    "file": "animated-with-text.png",
+    "contentHash": "9a68d0906f0fc064b9f9ef72d2b4d11801b178876b13ed8445cab3469081ee55"
+  },
+  {
+    "file": "different-animation-frame.png",
+    "contentHash": "4e511f527f77c20b06c34ef0e31dfbaf03f3dcc47e05c805705eb33d424a22d6"
+  }
+]

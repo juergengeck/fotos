@@ -1,3 +1,4 @@
+import '@refinio/one.core/lib/system/load-nodejs.js';
 import {File as NodeFile} from 'node:buffer';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {FotosEntry} from '@refinio/fotos.core';

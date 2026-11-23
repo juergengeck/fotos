@@ -18,7 +18,7 @@ import type {
     GallerySurface,
     GallerySurfaceProfile,
 } from '@refinio/fotos.core';
-import { copyFilesToDirectory, hashImageFile, ingestDirectory, type IngestProgress, type FaceWorkerHandle } from '@/lib/browserIngest';
+import { copyFilesToDirectory, ingestDirectory, matchesOriginalContentHash, type IngestProgress, type FaceWorkerHandle } from '@/lib/browserIngest';
 import {parseFotosEntryByteSize} from '../../../../fotos.core/src/ingest/index-html.js';
 import {readFotosIndexWithExactByteSizes} from '@/lib/fotosIndexByteSizeMigration';
 import { createFaceWorker } from '@/lib/faceWorkerClient';
@@ -498,6 +498,7 @@ function parseOneIndex(html: string, relPath: string): PhotoEntry[] {
 
         entries.push({
             hash: streamId || contentHash,
+            ...(contentHash ? {contentHash} : {}),
             name,
             managed: 'metadata',
             sourcePath: relPath ? `${relPath}/${name}` : name,
@@ -754,7 +755,7 @@ async function readAnalysisSourceFile(handle: FileSystemDirectoryHandle, photo: 
         if (!hash) throw new Error(`Cannot analyze ${photo.name}: index content hash missing.`);
         return hash;
     });
-    if (await hashImageFile(file) !== expectedHash) {
+    if (!await matchesOriginalContentHash(await file.arrayBuffer(), expectedHash)) {
         throw new Error(`Cannot analyze ${photo.name}: source content changed since indexing; saved analysis retained. Rescan the folder first.`);
     }
     return file;
@@ -1810,7 +1811,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
 
         const nextEntries = (() => {
             const prev = entriesRef.current;
-            const idx = prev.findIndex(p => p.hash === entry.contentHash);
+            const idx = prev.findIndex(p => (p.contentHash ?? p.hash) === entry.contentHash);
             if (idx < 0) {
                 shouldKeepRemoteAssets = true;
                 shouldOpenRemoteGallery = !rootHandle;
@@ -3219,7 +3220,8 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         for (const folder of foldersRef.current) {
             const localEntries = folder.entries.filter(entry => (
                 !isRemoteGalleryEntry(entry)
-                && (!requestedHashes || requestedHashes.has(entry.hash))
+                && (!requestedHashes || requestedHashes.has(entry.hash)
+                    || requestedHashes.has(entry.contentHash ?? entry.hash))
             ));
             if (localEntries.length === 0) {
                 continue;
