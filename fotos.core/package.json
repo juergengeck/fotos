@@ -68,6 +68,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@refinio/media.core": "workspace:*",
     "@refinio/meaning.core": "workspace:*",
     "@refinio/one.core": "workspace:*",
     "@refinio/trust.core": "workspace:*",

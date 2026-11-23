@@ -26,7 +26,7 @@ public enum BitfieldHasher {
         return (hash.finalize().map { String(format: "%02x", $0) }.joined(), size)
     }
 
-    /// Match the canonical byte ranges in fotos.core's content-hash.ts.
+    /// Match the canonical byte ranges in @refinio/media.core/bitfield-hash.
     public static func contentHash(_ data: Data) -> String {
         let digest = data.withUnsafeBytes { bytes in
             var hash = SHA256()

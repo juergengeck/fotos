@@ -27,6 +27,23 @@ const ORIGINAL = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0
 function buffer(bytes: Uint8Array): ArrayBuffer { return Uint8Array.from(bytes).buffer; }
 
 describe('Fotos filesystem thumbnail publication on native ONE', () => {
+    it('reads metadata-rewritten JPEG, PNG and HEIC originals with the recorded bitfield identity', async () => {
+        const folder = new URL('../../../one/packages/media.core/test/fixtures/bitfield-hash/', import.meta.url);
+        const manifest = JSON.parse(await readFile(new URL('generated-pairs.json', folder), 'utf8')) as {
+            pairs: Array<{format: string; original: string; rewritten: string; contentHash: string}>;
+        };
+        for (const pair of manifest.pairs) {
+            const original = await readFile(new URL(pair.original, folder));
+            const rewritten = await readFile(new URL(pair.rewritten, folder));
+            const entry = {
+                $type$: 'FotosEntry' as const, contentHash: pair.contentHash, streamId: pair.contentHash,
+                mime: `image/${pair.format}`, size: original.byteLength, originalFilename: pair.original,
+            };
+            expect(rewritten.byteLength, pair.format).not.toBe(entry.size);
+            await expect(readFotosOriginal(entry, async () => buffer(rewritten))).resolves.toEqual({content: buffer(rewritten)});
+        }
+    });
+
     it('stores tags in the object version while retaining the same image identity', async () => {
         const untagged = await storeVersionedObject({
             $type$: 'FotosEntry', contentHash: 'c'.repeat(64), streamId: 'tag-test', mime: 'image/jpeg', size: 1,
@@ -50,7 +67,8 @@ describe('Fotos filesystem thumbnail publication on native ONE', () => {
     });
 
     it('keeps one ONE identity across image metadata versions and verifies both originals', async () => {
-        const fixture = (name: string) => readFile(new URL(`../test/fixtures/content-hash/${name}`, import.meta.url));
+        const sharedFixtures = new URL('../../../one/packages/media.core/test/fixtures/bitfield-hash/', import.meta.url);
+        const fixture = (name: string) => readFile(new URL(name, sharedFixtures));
         const plain = await fixture('plain.png');
         const withMetadata = await fixture('with-exif-and-text.png');
         const otherImage = await fixture('different-pixels.png');

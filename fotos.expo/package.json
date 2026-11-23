@@ -98,7 +98,7 @@
     "@refinio/trust.api": "file:./vendor/refinio-trust.api-1.0.0-ca6e8d65f5560a62.tgz",
     "@refinio/instrumentation.core": "file:./vendor/refinio-instrumentation.core-0.1.0-30a210dfb6ad98e6.tgz",
     "@refinio/ui.core": "file:./vendor/refinio-ui.core-1.0.0-6b0e27e286eeb1c1.tgz",
-    "@refinio/media.core": "file:./vendor/refinio-media.core-0.1.0-7ac6531ae4e16e42.tgz",
+    "@refinio/media.core": "file:./vendor/refinio-media.core-0.1.0-63071d5123c7ede1.tgz",
     "@refinio/source.media": "file:./vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz"
   },
   "devDependencies": {
@@ -139,7 +139,7 @@
     "@refinio/knowledge.core": "file:./vendor/refinio-knowledge.core-0.1.0-1dd9feeda7df4d0c.tgz",
     "@refinio/trust.pdf": "file:./vendor/refinio-trust.pdf-0.1.0-689c3f9ad2d82758.tgz",
     "@refinio/contact.core": "file:./vendor/refinio-contact.core-0.1.0-bb2711c1aff19a5f.tgz",
-    "@refinio/media.core": "file:./vendor/refinio-media.core-0.1.0-7ac6531ae4e16e42.tgz",
+    "@refinio/media.core": "file:./vendor/refinio-media.core-0.1.0-63071d5123c7ede1.tgz",
     "@refinio/source.media": "file:./vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz"
   },
   "pnpm": {
@@ -175,7 +175,7 @@
       "@refinio/knowledge.core": "file:./vendor/refinio-knowledge.core-0.1.0-1dd9feeda7df4d0c.tgz",
       "@refinio/trust.pdf": "file:./vendor/refinio-trust.pdf-0.1.0-689c3f9ad2d82758.tgz",
       "@refinio/contact.core": "file:./vendor/refinio-contact.core-0.1.0-bb2711c1aff19a5f.tgz",
-      "@refinio/media.core": "file:./vendor/refinio-media.core-0.1.0-7ac6531ae4e16e42.tgz",
+      "@refinio/media.core": "file:./vendor/refinio-media.core-0.1.0-63071d5123c7ede1.tgz",
       "@refinio/source.media": "file:./vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz"
     }
   },

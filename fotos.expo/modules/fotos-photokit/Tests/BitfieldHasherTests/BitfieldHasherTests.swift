@@ -9,16 +9,39 @@ final class BitfieldHasherTests: XCTestCase {
         let contentHash: String
     }
 
+    private struct GeneratedFixtures: Decodable {
+        struct Pair: Decodable {
+            let original: String
+            let rewritten: String
+            let contentHash: String
+        }
+        let pairs: [Pair]
+    }
+
+    private let sharedFixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        .appendingPathComponent("../../../../../../one/packages/media.core/test/fixtures/bitfield-hash")
+        .standardizedFileURL
+
     func testSharedGoldenHashes() throws {
-        let folder = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-            .appendingPathComponent("../../../../../fotos.core/test/fixtures/content-hash").standardizedFileURL
-        let fixtures = try JSONDecoder().decode([Fixture].self, from: Data(contentsOf: folder.appendingPathComponent("hashes.json")))
+        let fixtures = try JSONDecoder().decode([Fixture].self,
+            from: Data(contentsOf: sharedFixtures.appendingPathComponent("hashes.json")))
         for fixture in fixtures {
-            let data = try Data(contentsOf: folder.appendingPathComponent(fixture.file))
+            let data = try Data(contentsOf: sharedFixtures.appendingPathComponent(fixture.file))
             XCTAssertEqual(BitfieldHasher.contentHash(data), fixture.contentHash, fixture.file)
         }
     }
 
+    func testMetadataRewritesKeepTheSharedIdentity() throws {
+        let fixtures = try JSONDecoder().decode(GeneratedFixtures.self,
+            from: Data(contentsOf: sharedFixtures.appendingPathComponent("generated-pairs.json")))
+        for pair in fixtures.pairs {
+            let original = try Data(contentsOf: sharedFixtures.appendingPathComponent(pair.original))
+            let rewritten = try Data(contentsOf: sharedFixtures.appendingPathComponent(pair.rewritten))
+            XCTAssertNotEqual(original.count, rewritten.count, pair.rewritten)
+            XCTAssertEqual(BitfieldHasher.contentHash(original), pair.contentHash, pair.original)
+            XCTAssertEqual(BitfieldHasher.contentHash(rewritten), pair.contentHash, pair.rewritten)
+        }
+    }
     func testRawFileHashCrossesDefaultVideoChunkBoundaries() throws {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: file) }

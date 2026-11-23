@@ -19,6 +19,9 @@
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "src/**/*.test.ts"],
   "references": [
+    {
+      "path": "../../one/packages/media.core/tsconfig.json"
+    },
   {
     "path": "../../one/packages/meaning.core/tsconfig.json"
   },

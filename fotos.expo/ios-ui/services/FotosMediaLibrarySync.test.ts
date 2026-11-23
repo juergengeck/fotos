@@ -6,7 +6,7 @@ import type {FotosPhotoKitAsset, FotosPhotoKitChange} from './FotosPhotoKit';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 const OWNER = 'a'.repeat(64);
 const CONTENT = '9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a';
-const fixtureDirectory = new URL('../../../fotos.core/test/fixtures/content-hash/', import.meta.url);
+const fixtureDirectory = new URL('../../../../one/packages/media.core/test/fixtures/bitfield-hash/', import.meta.url);
 const JPEG = Uint8Array.from(readFileSync(new URL('with-exif.jpg', fixtureDirectory)));
 const mocks = vi.hoisted(() => ({
     record: vi.fn<(params: any) => Promise<string>>(async () => 'observation-hash'),

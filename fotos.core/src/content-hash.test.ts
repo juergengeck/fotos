@@ -8,7 +8,7 @@ import {
 } from './content-hash.js';
 import {hashImageBytes, sha256Hex} from './ingest/hash.js';
 
-const fixtureDirectory = new URL('../test/fixtures/content-hash/', import.meta.url);
+const fixtureDirectory = new URL('../../../one/packages/media.core/test/fixtures/bitfield-hash/', import.meta.url);
 const fixtures: Array<{file: string; contentHash: string}> = JSON.parse(
     readFileSync(new URL('hashes.json', fixtureDirectory), 'utf8'),
 );

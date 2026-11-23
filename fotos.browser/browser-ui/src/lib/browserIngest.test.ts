@@ -124,7 +124,7 @@ describe('copyFilesToDirectory', () => {
 
 describe('media import identity', () => {
     it('uses the shared PNG identity across file and embedded metadata changes', async () => {
-        const fixtures = new NodeURL('../../../../fotos.core/test/fixtures/content-hash/', import.meta.url);
+        const fixtures = new NodeURL('../../../../../one/packages/media.core/test/fixtures/bitfield-hash/', import.meta.url);
         const plain = readFileSync(new NodeURL('plain.png', fixtures));
         const withMetadata = readFileSync(new NodeURL('with-exif-and-text.png', fixtures));
         const first = new File([plain], 'old-name.png', {lastModified: 1});
