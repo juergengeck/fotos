@@ -264,6 +264,7 @@ export {
 export type {GalleryTrieNode, GalleryTrieRoot} from './recipes/GalleryTrieRecipes.js';
 
 export {recordFotosAcquisition, traceFotosAcquisitions} from './media-acquisition.js';
+export {projectFotosEntryReferences} from './fotos-entry-projection.js';
 export type {RecordFotosAcquisitionParams} from './media-acquisition.js';
 export {FotosAcquisitionRecipes} from './recipes/FotosAcquisitionRecipes.js';
 export type {FotosAcquisitionClaim, FotosAcquisitionMethod, FotosAcquisitionContext, FotosAcquisitionPremise} from './recipes/FotosAcquisitionRecipes.js';

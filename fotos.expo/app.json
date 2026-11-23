@@ -48,7 +48,7 @@
         "expo-media-library",
         {
           "photosPermission": "Allow $(PRODUCT_NAME) to access your photo library so fotos can reference originals by content hash and reuse trusted analysis across devices.",
-          "savePhotosPermission": false
+          "savePhotosPermission": "Allow $(PRODUCT_NAME) to save photos you export to Apple Photos."
         }
       ],
       "expo-secure-store",

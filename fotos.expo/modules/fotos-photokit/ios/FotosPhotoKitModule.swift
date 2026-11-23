@@ -7,6 +7,14 @@ public final class FotosPhotoKitModule: Module {
         Name("FotosPhotoKit")
         Events("onLibraryChange")
 
+        View(FotosPhotoKitImageView.self) {
+            Prop("assetId") { (view: FotosPhotoKitImageView, id: String?) in view.assetId = id ?? "" }
+            Prop("resizeMode") { (view: FotosPhotoKitImageView, mode: String?) in view.resizeMode = mode ?? "cover" }
+            Prop("allowNetworkAccess") { (view: FotosPhotoKitImageView, allowed: Bool?) in
+                view.allowNetworkAccess = allowed ?? false
+            }
+        }
+
         AsyncFunction("listAssets") { (offset: Int, limit: Int, cursor: String?) throws -> [String: Any] in
             try self.library.listAssets(offset: offset, limit: limit, cursor: cursor)
         }

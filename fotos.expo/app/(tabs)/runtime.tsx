@@ -1,6 +1,7 @@
 import { ScrollView, Text, View, useColorScheme } from 'react-native';
 import { fotosFoundationPhases, fotosPlannedRuns } from '../../src/runtime-foundation';
 import { useFotosRuntime } from '../../src/hooks/use-fotos-runtime';
+import { FotosSyncControls } from '../../ios-ui/components/FotosSyncControls';
 import {
   borderColor,
   cardBackground,
@@ -59,6 +60,7 @@ export default function RuntimeScreen() {
       style={{ flex: 1, backgroundColor: screenBackground(isDark) }}
       contentContainerStyle={{ padding: 16, gap: 16 }}
     >
+      <FotosSyncControls />
       <View
         style={{
           backgroundColor: cardBackground(isDark),

@@ -52,6 +52,14 @@ function publishSerially<T>(work: () => Promise<T>): Promise<T> {
 export type FotosIntakeMode = 'reference' | 'metadata' | 'ingest';
 const CURRENT_PLATFORM = Platform.OS;
 
+function editableCollectionPrefix(owner: string): string {
+    return `fotos-collection:v1:${owner}:`;
+}
+
+export function isEditableFotosCollection(owner: string | undefined, id: string): boolean {
+    return Boolean(owner && id.startsWith(editableCollectionPrefix(owner)));
+}
+
 interface VersionedObjectLookup {
     obj: unknown;
 }
@@ -240,7 +248,7 @@ function createIssue(asset: Pick<FotosPhotoKitAsset, 'id' | 'filename'>, reason:
     };
 }
 
-function buildEntryFromAsset(params: {
+export function buildEntryFromAsset(params: {
     asset: FotosPhotoKitAsset;
     contentHash: string;
     byteSize: number;
@@ -891,6 +899,57 @@ export class FotosMediaLibrarySync {
                 this.assetVerificationTimes.set(locator.locator, lastVerifiedAt);
             }
         }
+    }
+
+    async getLocalPhotoHashes(): Promise<ReadonlyMap<string, string>> {
+        await this.ensureLocalAssetIndex();
+        return new Map(this.albumAssetHashes);
+    }
+
+    async addPhotoToCollection(contentHash: string, target: {id: string} | {name: string}): Promise<void> {
+        return this.enqueue(async () => {
+            const owner = this.requireOwner();
+            const id = getOwnedFotosManifestId(owner);
+            const manifestId = await this.deps.calculateIdHashOfObj({$type$: 'FotosManifest', id}) as SHA256IdHash<FotosManifest>;
+            const manifest = await this.readVersionedObject<FotosManifest>(manifestId);
+            if (!manifest) throw new Error('Your Fotos library is unavailable.');
+            let ownsPhoto = false;
+            for (const ref of manifest.entries) {
+                if ((await getObject(ref)).contentHash === contentHash) {
+                    ownsPhoto = true;
+                    break;
+                }
+            }
+            if (!ownsPhoto) throw new Error('Add a photo from your library to a Fotos collection.');
+
+            const refs = new Set(manifest.collections ?? []);
+            let collection: FotosCollection | undefined;
+            if ('id' in target) {
+                if (!isEditableFotosCollection(owner, target.id)) throw new Error('Choose an editable Fotos collection.');
+                for (const ref of refs) {
+                    const existing = await getObject(ref);
+                    if (existing.id !== target.id) continue;
+                    collection = existing;
+                    refs.delete(ref);
+                    break;
+                }
+                if (!collection) throw new Error('This Fotos collection is unavailable.');
+                if (collection.photoHashes.has(contentHash)) return;
+            } else {
+                const name = target.name.trim();
+                if (!name) throw new Error('Enter a collection name.');
+                collection = {
+                    $type$: 'FotosCollection', id: editableCollectionPrefix(owner) + Crypto.randomUUID(), name, photoHashes: new Set(),
+                };
+            }
+            const next: FotosCollection = {
+                $type$: 'FotosCollection', id: collection.id, name: collection.name,
+                photoHashes: new Set([...collection.photoHashes, contentHash]),
+            };
+            const stored = await this.deps.storeVersionedObject(next);
+            refs.add(stored.hash as SHA256Hash<FotosCollection>);
+            await this.storeOwnedManifest(owner, manifestId, {...manifest, collections: refs});
+        });
     }
 
     /** Resolve a verified original from any device-local locator, including legacy raw IDs. */

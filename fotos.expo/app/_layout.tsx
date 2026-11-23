@@ -13,6 +13,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Model, ModelProvider, getModel, setGlobalModel } from '../ios-ui';
 import { installCommServerGuard } from '../src/install-commserver-guard';
 import { palette } from '../src/theme';
+import {useFotosShareInboxAutoDrain} from '../ios-ui/hooks/useFotosShareInboxAutoDrain';
 import {useGlueLogin} from '../ios-ui/hooks/useGlueLogin';
 import {GlueLoginField} from '../ios-ui/components/GlueLoginField';
 import {restoreGlueSession, clearGlueSession} from '../ios-ui/services/glue-login';
@@ -270,6 +271,8 @@ function useAppInit() {
 
 export default function RootLayout() {
   const { model, initializing, authenticated, error, login, glueLogin, loginInFlight } = useAppInit();
+
+  useFotosShareInboxAutoDrain(model, authenticated && !initializing && !error);
 
   if (error) {
     return (
