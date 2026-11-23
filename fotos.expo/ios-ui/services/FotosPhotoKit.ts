@@ -1,5 +1,6 @@
 import {requireOptionalNativeModule} from 'expo';
 import type {FotosMediaSubtype} from '@refinio/fotos.core';
+import type {FotosPhotoKitContinuation} from './FotosPhotoKitPaging';
 
 export interface FotosPhotoKitAsset {
     id: string;
@@ -31,20 +32,21 @@ export interface FotosPhotoKitChange {
 }
 
 export interface FotosPhotoKitNative {
-    listAssets(offset: number, limit: number): Promise<{assets: FotosPhotoKitAsset[]; nextOffset?: number}>;
+    listAssets(offset: number, limit: number, cursor?: string): Promise<FotosPhotoKitContinuation & {assets: FotosPhotoKitAsset[]}>;
     inspectOriginal(id: string, allowNetworkAccess: boolean): Promise<FotosPhotoKitOriginal>;
     thumbnailFile(id: string, maxEdge: number, allowNetworkAccess: boolean): Promise<string | null>;
     originalFile(id: string, allowNetworkAccess: boolean): Promise<string>;
-    listAlbums(offset: number, limit: number): Promise<{
+    listAlbums(offset: number, limit: number, cursor?: string): Promise<FotosPhotoKitContinuation & {
         albums: Array<{id: string; name: string; kind: 'user' | 'smart'}>;
-        nextOffset?: number;
     }>;
-    listAlbumMembers(id: string, offset: number, limit: number): Promise<{assetIds: string[]; nextOffset?: number}>;
+    listAlbumMembers(id: string, offset: number, limit: number, cursor?: string):
+        Promise<FotosPhotoKitContinuation & {assetIds: string[]}>;
+    releaseCursor(cursor: string): void | Promise<void>;
     addListener(name: 'onLibraryChange', listener: (change: FotosPhotoKitChange) => void): {remove(): void};
 }
 
 export function getFotosPhotoKit(): FotosPhotoKitNative {
     const module = requireOptionalNativeModule<FotosPhotoKitNative>('FotosPhotoKit');
-    if (!module) throw new Error('Photo-library sync requires the Fotos native iOS build');
+    if (!module?.releaseCursor) throw new Error('Photo-library sync requires the current Fotos native iOS build');
     return module;
 }

@@ -12,6 +12,6 @@ Pod::Spec.new do |s|
   s.static_framework = true
   s.frameworks = 'Photos', 'ImageIO', 'UIKit', 'CryptoKit', 'UniformTypeIdentifiers'
   s.dependency 'ExpoModulesCore'
-  s.source_files = 'ios/*.swift', 'Sources/BitfieldHasher/*.swift'
+  s.source_files = 'ios/*.swift', 'Sources/BitfieldHasher/*.swift', 'Sources/PhotoKitSupport/*.swift'
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
 end

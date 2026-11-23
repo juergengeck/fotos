@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
     blob: vi.fn(async () => ({hash: 'stored-blob'})), batches: vi.fn(async (): Promise<any[]> => []),
     deleteBatch: vi.fn(), access: vi.fn(async () => []), objects: new Map<string, any>(),
     asset: vi.fn<(id: string) => Promise<FotosPhotoKitAsset>>(),
-    inspect: vi.fn(), thumbnail: vi.fn(), originalFile: vi.fn(), listAssets: vi.fn(),
+    inspect: vi.fn(), thumbnail: vi.fn(), originalFile: vi.fn(), listAssets: vi.fn(), releaseCursor: vi.fn(),
     permissions: vi.fn(),
     listAlbums: vi.fn(), listAlbumMembers: vi.fn(),
     read: vi.fn<(uri: string) => Promise<Uint8Array>>(), remove: vi.fn(), thumbnailDimensions: vi.fn(),
@@ -34,6 +34,7 @@ vi.mock('expo-file-system', () => ({
 vi.mock('./FotosPhotoKit', () => ({getFotosPhotoKit: () => ({
     inspectOriginal: mocks.inspect, thumbnailFile: mocks.thumbnail, originalFile: mocks.originalFile,
     listAssets: mocks.listAssets, listAlbums: mocks.listAlbums, listAlbumMembers: mocks.listAlbumMembers,
+    releaseCursor: mocks.releaseCursor,
     addListener: (_name: string, listener: (change: FotosPhotoKitChange) => void) => {
         mocks.listener = listener;
         return {remove: mocks.unsubscribe};
@@ -64,7 +65,7 @@ vi.mock('@refinio/fotos.core', async () => ({
 }));
 vi.mock('@refinio/fotos.core/filesystem', () => ({FOTOS_THUMBNAIL_MAX_EDGE: 512,
     readFotosThumbnailDimensions: mocks.thumbnailDimensions}));
-vi.mock('../../../../one/packages/source.media/src/services/MediaSourceService.js', () => ({
+vi.mock('@refinio/source.media', () => ({
     createMediaSource: (params: object) => ({$type$: 'Source', id: 'source', ...params}),
     createMediaSourceEntry: (params: object) => ({$type$: 'SourceEntry', sourceRef: 'source-ref', ...params}),
     appendMediaBookContent: async () => undefined,
@@ -231,7 +232,14 @@ describe('Expo reference-first media acquisition', () => {
         const collection = writes.find(obj => obj.$type$ === 'FotosCollection');
         expect(collection).toMatchObject({name: 'Trip', photoHashes: new Set([CONTENT])});
         expect(stored.get(`FotosManifest:fotos:${OWNER}`).collections.size).toBe(1);
-        expect(mocks.listAlbumMembers).toHaveBeenCalledExactlyOnceWith('user-album', 0, 100);
+        expect(mocks.listAlbumMembers).toHaveBeenCalledExactlyOnceWith('user-album', 0, 100, undefined);
+    });
+    it('releases the native asset snapshot after taking the requested recent items', async () => {
+        const {service} = fixture();
+        mocks.listAssets.mockResolvedValueOnce({assets: [asset('asset-1')], nextOffset: 1, cursor: 'recent-cursor'});
+        expect(await service.syncRecentAssets(1)).toMatchObject({syncedCount: 1});
+        expect(mocks.listAssets).toHaveBeenCalledExactlyOnceWith(0, 1, undefined);
+        expect(mocks.releaseCursor).toHaveBeenCalledExactlyOnceWith('recent-cursor');
     });
     it('reports album failures alongside successful media publication', async () => {
         const {service, writes} = fixture();

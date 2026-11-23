@@ -2,6 +2,30 @@ import CryptoKit
 import Foundation
 
 public enum BitfieldHasher {
+    public enum FileHashError: Error { case invalidChunkSize, sizeOverflow }
+
+    /// Videos use their unmodified encoded bytes, not image canonicalization.
+    /// Bound memory to one chunk even for multi-GB resources.
+    public static func rawFileContentHash(_ url: URL, chunkSize: Int = 1_048_576) throws -> (contentHash: String, byteSize: Int64) {
+        guard chunkSize > 0 else { throw FileHashError.invalidChunkSize }
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        var hash = SHA256()
+        var size: Int64 = 0
+        while true {
+            let count = try autoreleasepool {
+                let chunk = try handle.read(upToCount: chunkSize) ?? Data()
+                hash.update(data: chunk)
+                return chunk.count
+            }
+            if count == 0 { break }
+            let (nextSize, overflow) = size.addingReportingOverflow(Int64(count))
+            guard !overflow else { throw FileHashError.sizeOverflow }
+            size = nextSize
+        }
+        return (hash.finalize().map { String(format: "%02x", $0) }.joined(), size)
+    }
+
     /// Match the canonical byte ranges in fotos.core's content-hash.ts.
     public static func contentHash(_ data: Data) -> String {
         let digest = data.withUnsafeBytes { bytes in

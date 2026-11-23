@@ -23,10 +23,18 @@ enum FotosPhotoKitError: LocalizedError {
 
 final class FotosPhotoKitLibrary {
     let observer = FotosPhotoKitObserver()
-    private let pageLock = NSLock()
-    private var assetPage: PHFetchResult<PHAsset>?
-    private var albumPage: [(PHAssetCollection, String)]?
-    private var memberPage: (id: String, assets: PHFetchResult<PHAsset>)?
+    private enum PageSnapshot {
+        case assets(PHFetchResult<PHAsset>)
+        case albums([(PHAssetCollection, String)])
+        case members(PHFetchResult<PHAsset>)
+    }
+    private let pages = PhotoKitPaginationSessions<PageSnapshot>()
+
+    init() {
+        // This process-wide helper only sweeps once, before any current files
+        // can be returned. A preparation failure is surfaced by file APIs.
+        _ = try? PhotoKitTemporaryDirectory.currentProcess.prepare()
+    }
 
     static var hasReadAccess: Bool {
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
@@ -106,27 +114,37 @@ final class FotosPhotoKitLibrary {
         return result
     }
 
-    func listAssets(offset: Int, limit: Int) throws -> [String: Any] {
-        try Self.requireReadAccess()
-        pageLock.lock()
-        defer { pageLock.unlock() }
-        if offset == 0 { assetPage = Self.fetchAssets() }
-        guard let assets = assetPage else { throw FotosPhotoKitError.invalidPage }
-        let range = try page(offset: offset, limit: limit, count: assets.count)
-        var result: [String: Any] = ["assets": range.map { index in
-            let asset = assets.object(at: index)
-            return describe(asset, resource: try? resource(asset))
-        }]
-        if range.upperBound < assets.count { result["nextOffset"] = range.upperBound }
-        else { assetPage = nil }
+    private func cursorPage(dataset: PhotoKitPageDataset, offset: Int, cursor: String?,
+                            create: () throws -> PageSnapshot,
+                            read: (PageSnapshot) throws -> (value: [String: Any], nextOffset: Int?)) throws -> [String: Any] {
+        let page = try pages.read(dataset: dataset, offset: offset, cursor: cursor, create: create, page: read)
+        var result = page.value
+        if let nextOffset = page.nextOffset, let cursor = page.cursor {
+            result["nextOffset"] = nextOffset
+            result["cursor"] = cursor
+        }
         return result
     }
 
-    func listAlbums(offset: Int, limit: Int) throws -> [String: Any] {
+    func releaseCursor(id: String) { pages.release(id) }
+
+    func listAssets(offset: Int, limit: Int, cursor: String? = nil) throws -> [String: Any] {
         try Self.requireReadAccess()
-        pageLock.lock()
-        defer { pageLock.unlock() }
-        if offset == 0 {
+        return try cursorPage(dataset: .assets, offset: offset, cursor: cursor,
+            create: { .assets(Self.fetchAssets()) }) { snapshot in
+            guard case .assets(let assets) = snapshot else { throw PhotoKitPageError.invalidCursor }
+            let range = try page(offset: offset, limit: limit, count: assets.count)
+            let result: [String: Any] = ["assets": range.map { index in
+                let asset = assets.object(at: index)
+                return describe(asset, resource: try? resource(asset))
+            }]
+            return (result, range.upperBound < assets.count ? range.upperBound : nil)
+        }
+    }
+
+    func listAlbums(offset: Int, limit: Int, cursor: String? = nil) throws -> [String: Any] {
+        try Self.requireReadAccess()
+        return try cursorPage(dataset: .albums, offset: offset, cursor: cursor, create: {
             var albums: [(PHAssetCollection, String)] = []
             for (type, kind) in [(PHAssetCollectionType.album, "user"), (.smartAlbum, "smart")] {
                 Self.fetchAlbums(type).enumerateObjects { album, _, _ in albums.append((album, kind)) }
@@ -135,37 +153,32 @@ final class FotosPhotoKitLibrary {
                 let left = $0.0.localizedTitle ?? "", right = $1.0.localizedTitle ?? ""
                 return left == right ? $0.0.localIdentifier < $1.0.localIdentifier : left < right
             }
-            albumPage = albums
+            return .albums(albums)
+        }) { snapshot in
+            guard case .albums(let albums) = snapshot else { throw PhotoKitPageError.invalidCursor }
+            let range = try page(offset: offset, limit: limit, count: albums.count)
+            let result: [String: Any] = ["albums": range.map { index -> [String: Any] in
+                let (album, kind) = albums[index]
+                return ["id": album.localIdentifier, "name": album.localizedTitle ?? "Untitled Album", "kind": kind]
+            }]
+            return (result, range.upperBound < albums.count ? range.upperBound : nil)
         }
-        guard let albums = albumPage else { throw FotosPhotoKitError.invalidPage }
-        let range = try page(offset: offset, limit: limit, count: albums.count)
-        var result: [String: Any] = ["albums": range.map { index -> [String: Any] in
-            let (album, kind) = albums[index]
-            return ["id": album.localIdentifier, "name": album.localizedTitle ?? "Untitled Album", "kind": kind]
-        }]
-        if range.upperBound < albums.count { result["nextOffset"] = range.upperBound }
-        else { albumPage = nil }
-        return result
     }
 
-    func listAlbumMembers(id: String, offset: Int, limit: Int) throws -> [String: Any] {
+    func listAlbumMembers(id: String, offset: Int, limit: Int, cursor: String? = nil) throws -> [String: Any] {
         try Self.requireReadAccess()
-        pageLock.lock()
-        defer { pageLock.unlock() }
-        if offset == 0 {
+        return try cursorPage(dataset: .albumMembers(id), offset: offset, cursor: cursor, create: {
             guard let album = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [id], options: nil).firstObject,
                   album.assetCollectionType == .album || album.assetCollectionType == .smartAlbum else {
                 throw FotosPhotoKitError.missingAlbum
             }
-            memberPage = (id, Self.fetchAssets(in: album))
+            return .members(Self.fetchAssets(in: album))
+        }) { snapshot in
+            guard case .members(let assets) = snapshot else { throw PhotoKitPageError.invalidCursor }
+            let range = try page(offset: offset, limit: limit, count: assets.count)
+            let result: [String: Any] = ["assetIds": range.map { assets.object(at: $0).localIdentifier }]
+            return (result, range.upperBound < assets.count ? range.upperBound : nil)
         }
-        guard let snapshot = memberPage, snapshot.id == id else { throw FotosPhotoKitError.invalidPage }
-        let assets = snapshot.assets
-        let range = try page(offset: offset, limit: limit, count: assets.count)
-        var result: [String: Any] = ["assetIds": range.map { assets.object(at: $0).localIdentifier }]
-        if range.upperBound < assets.count { result["nextOffset"] = range.upperBound }
-        else { memberPage = nil }
-        return result
     }
 
     func inspectOriginal(id: String, allowNetworkAccess: Bool) async throws -> [String: Any] {
@@ -183,9 +196,13 @@ final class FotosPhotoKitLibrary {
         }
         defer { try? FileManager.default.removeItem(at: url) }
         let currentAsset = try self.asset(id)
+        if asset.mediaType == .video {
+            let result = try BitfieldHasher.rawFileContentHash(url)
+            return ["asset": describe(currentAsset, resource: resource), "status": "available",
+                "contentHash": result.contentHash, "byteSize": result.byteSize]
+        }
         let data = try Data(contentsOf: url, options: .alwaysMapped)
-        let metadata = asset.mediaType == .image ? imageMetadata(url) : nil
-        return ["asset": describe(currentAsset, resource: resource, exif: metadata), "status": "available",
+        return ["asset": describe(currentAsset, resource: resource, exif: imageMetadata(url)), "status": "available",
             "contentHash": BitfieldHasher.contentHash(data), "byteSize": data.count]
     }
 
@@ -232,13 +249,11 @@ final class FotosPhotoKitLibrary {
     }
 
     private func temporaryURL(extension filename: String) throws -> URL {
-        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("fotos-photokit", isDirectory: true)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let suffix = (filename as NSString).pathExtension.lowercased()
         let safeSuffix = !suffix.isEmpty && suffix.count <= 10 && suffix.unicodeScalars.allSatisfy {
             CharacterSet.alphanumerics.contains($0) && $0.isASCII
         } ? suffix : "bin"
-        return folder.appendingPathComponent(UUID().uuidString).appendingPathExtension(safeSuffix)
+        return try PhotoKitTemporaryDirectory.currentProcess.makeURL(pathExtension: safeSuffix)
     }
 
     private func imageMetadata(_ url: URL) -> [String: Any]? {

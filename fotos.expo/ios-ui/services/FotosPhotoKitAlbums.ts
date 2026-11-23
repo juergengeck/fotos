@@ -5,17 +5,10 @@ import {
     type FotosCollection,
 } from '@refinio/fotos.core';
 import type {SHA256Hash} from '@refinio/one.core/lib/util/type-checks.js';
+import type {FotosPhotoKitNative} from './FotosPhotoKit';
+import {visitFotosPhotoKitPages} from './FotosPhotoKitPaging';
 
-export interface FotosPhotoKitAlbumNative {
-    listAlbums(offset: number, limit: number): Promise<{
-        albums: Array<{id: string; name: string; kind: 'user' | 'smart'}>;
-        nextOffset?: number;
-    }>;
-    listAlbumMembers(id: string, offset: number, limit: number): Promise<{
-        assetIds: string[];
-        nextOffset?: number;
-    }>;
-}
+export type FotosPhotoKitAlbumNative = Pick<FotosPhotoKitNative, 'listAlbums' | 'listAlbumMembers' | 'releaseCursor'>;
 
 export interface ReconcileFotosPhotoKitAlbumsParams {
     native: FotosPhotoKitAlbumNative;
@@ -34,18 +27,12 @@ function sameSet<T>(left: ReadonlySet<T>, right: ReadonlySet<T>): boolean {
     return left.size === right.size && [...left].every(value => right.has(value));
 }
 
-function nextPage(offset: number, nextOffset: number | undefined, count: number): number | undefined {
-    if (nextOffset !== undefined && (
-        !Number.isSafeInteger(nextOffset) || nextOffset <= offset || count === 0
-    )) {
-        throw new Error('Invalid or nonadvancing PhotoKit album page offset');
-    }
-    return nextOffset;
-}
-
-function checkPage(items: unknown): asserts items is unknown[] {
+function checkPage(items: unknown, nextOffset?: number): asserts items is unknown[] {
     if (!Array.isArray(items) || items.length > PAGE_SIZE) {
         throw new Error('Invalid or oversized PhotoKit album page');
+    }
+    if (!items.length && nextOffset !== undefined) {
+        throw new Error('Invalid PhotoKit album page offset on an empty page');
     }
 }
 
@@ -72,24 +59,25 @@ export async function reconcileFotosPhotoKitAlbums(
 
     const visible = new Map<string, {id: string; name: string}>();
     const seenAlbumIds = new Set<string>();
-    let offset: number | undefined = 0;
-    while (offset !== undefined) {
-        const page = await params.native.listAlbums(offset, PAGE_SIZE);
-        checkPage(page.albums);
-        const next = nextPage(offset, page.nextOffset, page.albums.length);
-        for (const album of page.albums) {
-            if (!album || typeof album.id !== 'string' || album.id.length === 0
-                || typeof album.name !== 'string' || (album.kind !== 'user' && album.kind !== 'smart')
-                || seenAlbumIds.has(album.id)) {
-                throw new Error('Invalid or duplicate PhotoKit album');
+    const releaseCursor = (cursor: string) => params.native.releaseCursor(cursor);
+    await visitFotosPhotoKitPages(
+        (offset, cursor) => params.native.listAlbums(offset, PAGE_SIZE, cursor),
+        releaseCursor,
+        page => {
+            checkPage(page.albums, page.nextOffset);
+            for (const album of page.albums) {
+                if (!album || typeof album.id !== 'string' || album.id.length === 0
+                    || typeof album.name !== 'string' || (album.kind !== 'user' && album.kind !== 'smart')
+                    || seenAlbumIds.has(album.id)) {
+                    throw new Error('Invalid or duplicate PhotoKit album');
+                }
+                seenAlbumIds.add(album.id);
+                if (album.kind === 'user') {
+                    visible.set(buildFotosAlbumCollectionId(params.ownerId, params.libraryId, album.id), album);
+                }
             }
-            seenAlbumIds.add(album.id);
-            if (album.kind === 'user') {
-                visible.set(buildFotosAlbumCollectionId(params.ownerId, params.libraryId, album.id), album);
-            }
-        }
-        offset = next;
-    }
+        },
+    );
 
     // Finish every native read before writing collections, so an incomplete scan never
     // produces a reconciliation result or stores a partial replacement snapshot.
@@ -101,20 +89,20 @@ export async function reconcileFotosPhotoKitAlbums(
                 for (const hash of version.collection.photoHashes) photoHashes.add(hash);
             }
         }
-        offset = 0;
-        while (offset !== undefined) {
-            const page = await params.native.listAlbumMembers(album.id, offset, PAGE_SIZE);
-            checkPage(page.assetIds);
-            const next = nextPage(offset, page.nextOffset, page.assetIds.length);
-            for (const assetId of page.assetIds) {
-                if (typeof assetId !== 'string' || assetId.length === 0) {
-                    throw new Error('Invalid PhotoKit album member');
+        await visitFotosPhotoKitPages(
+            (offset, cursor) => params.native.listAlbumMembers(album.id, offset, PAGE_SIZE, cursor),
+            releaseCursor,
+            page => {
+                checkPage(page.assetIds, page.nextOffset);
+                for (const assetId of page.assetIds) {
+                    if (typeof assetId !== 'string' || assetId.length === 0) {
+                        throw new Error('Invalid PhotoKit album member');
+                    }
+                    const hash = params.assetHashes.get(assetId);
+                    if (hash !== undefined) photoHashes.add(hash);
                 }
-                const hash = params.assetHashes.get(assetId);
-                if (hash !== undefined) photoHashes.add(hash);
-            }
-            offset = next;
-        }
+            },
+        );
         pending.push(createFotosAlbumCollection({
             owner: params.ownerId,
             libraryId: params.libraryId,

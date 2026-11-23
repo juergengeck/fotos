@@ -1,4 +1,5 @@
 import BitfieldHasher
+import CryptoKit
 import Foundation
 import XCTest
 
@@ -16,5 +17,32 @@ final class BitfieldHasherTests: XCTestCase {
             let data = try Data(contentsOf: folder.appendingPathComponent(fixture.file))
             XCTAssertEqual(BitfieldHasher.contentHash(data), fixture.contentHash, fixture.file)
         }
+    }
+
+    func testRawFileHashCrossesDefaultVideoChunkBoundaries() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let bytes = Data((0..<(2 * 1_048_576 + 17)).map { UInt8($0 % 251) })
+        try bytes.write(to: file)
+        let expected = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+        let result = try BitfieldHasher.rawFileContentHash(file)
+        XCTAssertEqual(result.contentHash, expected)
+        XCTAssertEqual(result.byteSize, Int64(bytes.count))
+    }
+
+    func testRawFileHashHandlesPartialChunksAndEmptyFiles() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: file) }
+        for size in [0, 1, 63, 64, 65, 8193] {
+            let bytes = Data((0..<size).map { UInt8($0 % 251) })
+            try bytes.write(to: file)
+            let expected = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+            for chunkSize in [1, 64, 1024] {
+                let result = try BitfieldHasher.rawFileContentHash(file, chunkSize: chunkSize)
+                XCTAssertEqual(result.contentHash, expected, "size \(size), chunk \(chunkSize)")
+                XCTAssertEqual(result.byteSize, Int64(size))
+            }
+        }
+        XCTAssertThrowsError(try BitfieldHasher.rawFileContentHash(file, chunkSize: 0))
     }
 }

@@ -1,6 +1,7 @@
 # Native build artifacts - EAS rebuilds these
-ios/
-android/
+/ios/
+/android/
+/modules/fotos-photokit/.build/
 
 # Build caches
 .expo/

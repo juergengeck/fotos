@@ -128,9 +128,16 @@ function ensureTargetBuildPhases(project, targetUuid) {
 }
 
 function ensureBuildPhase(project, targetUuid, isa, comment) {
-  if (!project.buildPhaseObject(isa, comment, targetUuid)) {
+  if (!getTargetBuildPhase(project, targetUuid, isa)) {
     project.addBuildPhase([], isa, comment, targetUuid);
   }
+}
+
+function getTargetBuildPhase(project, targetUuid, isa) {
+  const target = project.pbxNativeTargetSection()[targetUuid];
+  const phases = project.hash.project.objects[isa] || {};
+  const phase = target.buildPhases.find(({ value }) => phases[value]);
+  return phase && phases[phase.value];
 }
 
 function ensureTargetDependencySections(project) {
@@ -267,7 +274,7 @@ function normalizeGroupFileReference(project, groupName, filepath) {
 
 function ensureBuildFileInSourcesPhase(project, targetUuid, fileRefUuid, basename) {
   const buildFileSection = project.pbxBuildFileSection() || {};
-  const sourcesPhase = project.pbxSourcesBuildPhaseObj(targetUuid);
+  const sourcesPhase = getTargetBuildPhase(project, targetUuid, 'PBXSourcesBuildPhase');
 
   if (!sourcesPhase) {
     throw new Error('[withFotosShareExtension] Sources build phase is missing from extension target.');
@@ -322,7 +329,7 @@ function removeBuildFileFromOtherSourcesPhases(project, targetUuid, fileRefUuid)
       continue;
     }
 
-    const sourcesPhase = project.pbxSourcesBuildPhaseObj(candidateTargetUuid);
+    const sourcesPhase = getTargetBuildPhase(project, candidateTargetUuid, 'PBXSourcesBuildPhase');
     if (!sourcesPhase?.files) {
       continue;
     }

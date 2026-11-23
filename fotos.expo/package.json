@@ -17,6 +17,7 @@
     "vendor:clean": "node scripts/vendor-clean.js",
     "vendor:prune-installed": "node scripts/vendor-prune-installed.js",
     "vendor:setup": "corepack pnpm@9.15.0 run vendor:pack && corepack pnpm@9.15.0 install --ignore-workspace && node scripts/vendor-normalize-lockfile.js",
+    "test": "vitest run",
     "test:auth": "vitest run ios-ui/hooks/useGlueLogin.test.ts ios-ui/components/GlueLoginField.test.ts ios-ui/services/glue-login.test.ts ios-ui/hooks/useAuth.glue-session.test.ts"
   },
   "dependencies": {
@@ -96,7 +97,9 @@
     "@refinio/trust.me": "file:./vendor/refinio-trust.me-1.0.0-5a567b9c183ac45c.tgz",
     "@refinio/trust.api": "file:./vendor/refinio-trust.api-1.0.0-ca6e8d65f5560a62.tgz",
     "@refinio/instrumentation.core": "file:./vendor/refinio-instrumentation.core-0.1.0-30a210dfb6ad98e6.tgz",
-    "@refinio/ui.core": "file:./vendor/refinio-ui.core-1.0.0-6b0e27e286eeb1c1.tgz"
+    "@refinio/ui.core": "file:./vendor/refinio-ui.core-1.0.0-6b0e27e286eeb1c1.tgz",
+    "@refinio/media.core": "file:./vendor/refinio-media.core-0.1.0-7ac6531ae4e16e42.tgz",
+    "@refinio/source.media": "file:./vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz"
   },
   "devDependencies": {
     "@refinio/one.core-expo": "file:./vendor/refinio-one.core-expo-0.1.0.tgz",
@@ -135,7 +138,9 @@
     "@refinio/ui.core": "file:./vendor/refinio-ui.core-1.0.0-6b0e27e286eeb1c1.tgz",
     "@refinio/knowledge.core": "file:./vendor/refinio-knowledge.core-0.1.0-1dd9feeda7df4d0c.tgz",
     "@refinio/trust.pdf": "file:./vendor/refinio-trust.pdf-0.1.0-689c3f9ad2d82758.tgz",
-    "@refinio/contact.core": "file:./vendor/refinio-contact.core-0.1.0-bb2711c1aff19a5f.tgz"
+    "@refinio/contact.core": "file:./vendor/refinio-contact.core-0.1.0-bb2711c1aff19a5f.tgz",
+    "@refinio/media.core": "file:./vendor/refinio-media.core-0.1.0-7ac6531ae4e16e42.tgz",
+    "@refinio/source.media": "file:./vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz"
   },
   "pnpm": {
     "overrides": {
@@ -169,7 +174,9 @@
       "@refinio/ui.core": "file:./vendor/refinio-ui.core-1.0.0-6b0e27e286eeb1c1.tgz",
       "@refinio/knowledge.core": "file:./vendor/refinio-knowledge.core-0.1.0-1dd9feeda7df4d0c.tgz",
       "@refinio/trust.pdf": "file:./vendor/refinio-trust.pdf-0.1.0-689c3f9ad2d82758.tgz",
-      "@refinio/contact.core": "file:./vendor/refinio-contact.core-0.1.0-bb2711c1aff19a5f.tgz"
+      "@refinio/contact.core": "file:./vendor/refinio-contact.core-0.1.0-bb2711c1aff19a5f.tgz",
+      "@refinio/media.core": "file:./vendor/refinio-media.core-0.1.0-7ac6531ae4e16e42.tgz",
+      "@refinio/source.media": "file:./vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz"
     }
   },
   "packageManager": "pnpm@9.15.0"

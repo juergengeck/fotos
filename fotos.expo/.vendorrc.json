@@ -53,6 +53,14 @@
       "path": "../../one/packages/source.core"
     },
     {
+      "name": "@refinio/media.core",
+      "path": "../../one/packages/media.core"
+    },
+    {
+      "name": "@refinio/source.media",
+      "path": "../../one/packages/source.media"
+    },
+    {
       "name": "@refinio/sync.core",
       "path": "../../one/packages/sync.core"
     },

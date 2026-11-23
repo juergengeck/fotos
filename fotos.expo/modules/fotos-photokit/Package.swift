@@ -7,6 +7,8 @@ let package = Package(
     products: [.library(name: "BitfieldHasher", targets: ["BitfieldHasher"])],
     targets: [
         .target(name: "BitfieldHasher"),
+        .target(name: "PhotoKitSupport"),
         .testTarget(name: "BitfieldHasherTests", dependencies: ["BitfieldHasher"]),
+        .testTarget(name: "PhotoKitSupportTests", dependencies: ["PhotoKitSupport"]),
     ]
 )

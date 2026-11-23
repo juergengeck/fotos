@@ -23,7 +23,7 @@ import {
     appendMediaBookContent,
     createMediaSource,
     createMediaSourceEntry,
-} from '../../../../one/packages/source.media/src/services/MediaSourceService.js';
+} from '@refinio/source.media';
 import {createAccess} from '@refinio/one.core/lib/access.js';
 import {SET_ACCESS_MODE} from '@refinio/one.core/lib/storage-base-common.js';
 import {getObject} from '@refinio/one.core/lib/storage-unversioned-objects.js';
@@ -39,6 +39,7 @@ import {
 } from './FotosShareInbox';
 import {getFotosPhotoKit, type FotosPhotoKitAsset, type FotosPhotoKitChange, type FotosPhotoKitNative} from './FotosPhotoKit';
 import {reconcileFotosPhotoKitAlbums} from './FotosPhotoKitAlbums';
+import {visitFotosPhotoKitPages} from './FotosPhotoKitPaging';
 
 const DEFAULT_RECENT_LIMIT = 12;
 // Serialize the read/merge/write publication sequence across service instances.
@@ -316,17 +317,19 @@ export class FotosMediaLibrarySync {
     async syncRecentAssets(limit: number = DEFAULT_RECENT_LIMIT): Promise<FotosPhotoLibrarySyncSummary> {
         return this.syncAfterPermission(0, async native => {
             const count = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : DEFAULT_RECENT_LIMIT;
+            if (!count) return [];
             const ids = new Set<string>();
-            let offset = 0;
-            while (ids.size < count) {
-                const page = await native.listAssets(offset, Math.min(200, count - ids.size));
-                for (const asset of page.assets) ids.add(asset.id);
-                if (page.nextOffset == null) break;
-                if (!Number.isSafeInteger(page.nextOffset) || page.nextOffset <= offset) {
-                    throw new Error('PhotoKit pagination did not advance');
-                }
-                offset = page.nextOffset;
-            }
+            await visitFotosPhotoKitPages(
+                (offset, cursor) => native.listAssets(offset, Math.min(200, count - ids.size), cursor),
+                cursor => native.releaseCursor(cursor),
+                page => {
+                    if (!page.assets.length && page.nextOffset !== undefined) {
+                        throw new Error('PhotoKit returned an empty continuing asset page');
+                    }
+                    for (const asset of page.assets) ids.add(asset.id);
+                    return ids.size < count;
+                },
+            );
             return [...ids];
         });
     }

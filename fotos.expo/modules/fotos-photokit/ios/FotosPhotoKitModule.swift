@@ -7,8 +7,8 @@ public final class FotosPhotoKitModule: Module {
         Name("FotosPhotoKit")
         Events("onLibraryChange")
 
-        AsyncFunction("listAssets") { (offset: Int, limit: Int) throws -> [String: Any] in
-            try self.library.listAssets(offset: offset, limit: limit)
+        AsyncFunction("listAssets") { (offset: Int, limit: Int, cursor: String?) throws -> [String: Any] in
+            try self.library.listAssets(offset: offset, limit: limit, cursor: cursor)
         }
         AsyncFunction("inspectOriginal") { (id: String, allowNetworkAccess: Bool) async throws -> [String: Any] in
             try await self.library.inspectOriginal(id: id, allowNetworkAccess: allowNetworkAccess)
@@ -19,12 +19,13 @@ public final class FotosPhotoKitModule: Module {
         AsyncFunction("originalFile") { (id: String, allowNetworkAccess: Bool) async throws -> String in
             try await self.library.originalFile(id: id, allowNetworkAccess: allowNetworkAccess)
         }
-        AsyncFunction("listAlbums") { (offset: Int, limit: Int) throws -> [String: Any] in
-            try self.library.listAlbums(offset: offset, limit: limit)
+        AsyncFunction("listAlbums") { (offset: Int, limit: Int, cursor: String?) throws -> [String: Any] in
+            try self.library.listAlbums(offset: offset, limit: limit, cursor: cursor)
         }
-        AsyncFunction("listAlbumMembers") { (id: String, offset: Int, limit: Int) throws -> [String: Any] in
-            try self.library.listAlbumMembers(id: id, offset: offset, limit: limit)
+        AsyncFunction("listAlbumMembers") { (id: String, offset: Int, limit: Int, cursor: String?) throws -> [String: Any] in
+            try self.library.listAlbumMembers(id: id, offset: offset, limit: limit, cursor: cursor)
         }
+        AsyncFunction("releaseCursor") { (id: String) in self.library.releaseCursor(id: id) }
         OnStartObserving {
             self.library.observer.start { [weak self] event in
                 self?.sendEvent("onLibraryChange", event)

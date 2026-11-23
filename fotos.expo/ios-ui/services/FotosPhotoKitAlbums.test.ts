@@ -31,6 +31,7 @@ function harness(albums: Album[] = []) {
     const native = {
         listAlbums: vi.fn<FotosPhotoKitAlbumNative['listAlbums']>(async () => ({albums})),
         listAlbumMembers: vi.fn<FotosPhotoKitAlbumNative['listAlbumMembers']>(async () => ({assetIds: []})),
+        releaseCursor: vi.fn<FotosPhotoKitAlbumNative['releaseCursor']>(),
     };
     const params: ReconcileFotosPhotoKitAlbumsParams = {
         native, ownerId: OWNER, libraryId: LIBRARY, fullAccess: true,
@@ -147,12 +148,14 @@ describe('PhotoKit album reconciliation', () => {
     it('reads album and membership pages with a bounded limit and deduplicates hashes across pages', async () => {
         const h = harness();
         h.native.listAlbums.mockImplementation(async offset => offset === 0
-            ? {albums: [userAlbum('first')], nextOffset: 1} : {albums: [userAlbum('second')]});
-        h.native.listAlbumMembers.mockImplementation(async (_id, offset) => offset === 0
-            ? {assetIds: ['local-a'], nextOffset: 1} : {assetIds: ['local-a', 'local-b']});
+            ? {albums: [userAlbum('first')], nextOffset: 1, cursor: 'albums-snapshot'} : {albums: [userAlbum('second')]});
+        h.native.listAlbumMembers.mockImplementation(async (id, offset) => offset === 0
+            ? {assetIds: ['local-a'], nextOffset: 1, cursor: 'members-' + id} : {assetIds: ['local-a', 'local-b']});
         const result = await reconcileFotosPhotoKitAlbums(h.params);
         expect(result.collections.size).toBe(2);
-        expect(h.native.listAlbums.mock.calls.map(([offset]) => offset)).toEqual([0, 1]);
+        expect(h.native.listAlbums.mock.calls).toEqual([[0, 100, undefined], [1, 100, 'albums-snapshot']]);
+        expect(h.native.listAlbumMembers).toHaveBeenCalledWith('first', 1, 100, 'members-first');
+        expect(h.native.releaseCursor).not.toHaveBeenCalled();
         for (const [, limit] of h.native.listAlbums.mock.calls) expect(limit).toBeGreaterThan(0);
         for (const [, , limit] of h.native.listAlbumMembers.mock.calls) expect(limit).toBeLessThanOrEqual(100);
         for (const [collection] of vi.mocked(h.params.storeCollection).mock.calls) {
@@ -164,14 +167,15 @@ describe('PhotoKit album reconciliation', () => {
         const h = harness([userAlbum('first'), userAlbum('second')]);
         const old = h.seed('old', 'Old', [PHOTO_C]);
         if (kind === 'albums') {
-            h.native.listAlbums.mockResolvedValueOnce({albums: [userAlbum('first')], nextOffset: 1})
+            h.native.listAlbums.mockResolvedValueOnce({albums: [userAlbum('first')], nextOffset: 1, cursor: 'album-page'})
                 .mockRejectedValueOnce(new Error('Native page failed'));
         } else {
             h.native.listAlbumMembers.mockResolvedValueOnce({assetIds: ['local-a']})
-                .mockResolvedValueOnce({assetIds: ['local-b'], nextOffset: 1})
+                .mockResolvedValueOnce({assetIds: ['local-b'], nextOffset: 1, cursor: 'member-page'})
                 .mockRejectedValueOnce(new Error('Native page failed'));
         }
         await expect(reconcileFotosPhotoKitAlbums(h.params)).rejects.toThrow('Native page failed');
+        expect(h.native.releaseCursor).toHaveBeenCalledExactlyOnceWith(kind === 'albums' ? 'album-page' : 'member-page');
         expect(h.params.storeCollection).not.toHaveBeenCalled();
         expect(h.params.existingRefs).toEqual(new Set([old]));
     });
@@ -185,10 +189,10 @@ describe('PhotoKit album reconciliation', () => {
 
     it('rejects a nonadvancing member page and an empty continuing page', async () => {
         const h = harness([userAlbum('first')]);
-        h.native.listAlbumMembers.mockResolvedValueOnce({assetIds: ['local-a'], nextOffset: 1})
-            .mockResolvedValueOnce({assetIds: ['local-b'], nextOffset: 1});
+        h.native.listAlbumMembers.mockResolvedValueOnce({assetIds: ['local-a'], nextOffset: 1, cursor: 'member-page'})
+            .mockResolvedValueOnce({assetIds: ['local-b'], nextOffset: 1, cursor: 'member-page'});
         await expect(reconcileFotosPhotoKitAlbums(h.params)).rejects.toThrow('page offset');
-        h.native.listAlbumMembers.mockResolvedValue({assetIds: [], nextOffset: 1});
+        h.native.listAlbumMembers.mockResolvedValue({assetIds: [], nextOffset: 1, cursor: 'member-page'});
         await expect(reconcileFotosPhotoKitAlbums(h.params)).rejects.toThrow('page offset');
         expect(h.params.storeCollection).not.toHaveBeenCalled();
     });
