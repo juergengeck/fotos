@@ -8,7 +8,8 @@ describe('Fotos runtime storage schema', () => {
         expect(new Set(names).size).toBe(names.length);
         for (const name of ['FotosEntry', 'FotosManifest', 'FotosMediaVariant', 'FotosMediaLocator',
             'FotosShareCertificateChain', 'WriterPolicy', 'Assembly', 'Task', 'InstanceRound',
-            'Plan', 'ChatTrieEntry', 'Device', 'TargetModuleSettings']) {
+            'Plan', 'ChatTrieEntry', 'Device', 'TargetModuleSettings',
+            'DimensionState', 'DimensionStateReference', 'PhoneBookProjectionRegistry']) {
             expect(names).toContain(name);
         }
         expect(reverseMaps.has('FotosShareCertificateChain')).toBe(true);

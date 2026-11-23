@@ -11,7 +11,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "one.fotos",
       "appleTeamId": "26W8AC52QS",
-      "buildNumber": "2026112301",
+      "buildNumber": "2026112303",
       "infoPlist": {
         "NSBonjourServices": [
           "_one-refinio._udp"
@@ -45,6 +45,7 @@
         }
       ],
       "./plugins/withFotosShareExtension",
+      "./plugins/withIosSceneLifecycle",
       [
         "expo-media-library",
         {

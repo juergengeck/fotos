@@ -49,7 +49,7 @@ import {
 import { normalizeFotosSettingsSection, registerFotosSettings } from './fotos-settings';
 
 // Module system
-import { operationRegistry } from '@refinio/api/registry';
+import { getGlobalOperationRegistry, operationRegistry } from '@refinio/api/registry';
 
 // Native mDNS discovery for direct peer routes.
 import { iOSMDNSDiscoveryAdapter, type iOSMDNSConfig } from './services/iOSMDNSDiscoveryAdapter';
@@ -265,7 +265,7 @@ export default class Model {
         // ConnectionModule requires chat/group plans for pairing and group sync.
         // AI, memory, inference, agent and IMAP modules are not part of this graph.
         return initializeModuleGraph({
-            registry: new ModuleRegistry(operationRegistry),
+            registry: new ModuleRegistry(getGlobalOperationRegistry()),
             modules,
             supplies: {
                 OneCore: this.runtimeCore,

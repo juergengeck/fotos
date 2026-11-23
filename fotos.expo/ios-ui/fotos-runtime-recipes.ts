@@ -1,6 +1,12 @@
 import RecipesStable from '@refinio/one.models/lib/recipes/recipes-stable.js';
 import RecipesExperimental from '@refinio/one.models/lib/recipes/recipes-experimental.js';
 import GlueContentRecipes from '@glueone/glue.core/recipes/GlueContentRecipes.js';
+import PresenceRecipes from '@glueone/glue.core/recipes/PresenceRecipes.js';
+import GlueAuthorityRecipes from '@glueone/glue.core/recipes/GlueAuthorityRecipes.js';
+import GlueInstanceAuthorizationRecipes from '@glueone/glue.core/recipes/GlueInstanceAuthorization.js';
+import { ConnectionPhoneBookRecipes } from '@refinio/connection.core/recipes';
+import { CubeCoreRecipes } from '@refinio/cube.core';
+import { TrustApiRecipes } from '@refinio/trust.api';
 import {
     ReverseMapsStable,
     ReverseMapsForIdObjectsStable
@@ -23,10 +29,16 @@ export function getFotosRuntimeRecipeConfig() {
         { name: 'one.models/stable', recipes: RecipesStable },
         { name: 'one.models/experimental', recipes: RecipesExperimental },
         { name: 'glue.core/content', recipes: GlueContentRecipes },
+        { name: 'glue.core/presence', recipes: PresenceRecipes },
+        { name: 'glue.core/authority', recipes: GlueAuthorityRecipes },
+        { name: 'glue.core/instance-authorization', recipes: GlueInstanceAuthorizationRecipes },
+        { name: 'connection.core/phonebook', recipes: ConnectionPhoneBookRecipes },
+        { name: 'cube.core', recipes: CubeCoreRecipes },
         { name: 'app settings', recipes: [AppSettingsRecipe] },
         { name: 'assembly.core', recipes: AssemblyCoreRecipes },
         { name: 'chat.core protocol', recipes: CHAT_CORE_RECIPES },
         { name: 'trust.core', recipes: TrustCoreRecipes as any[] },
+        { name: 'trust.api', recipes: TrustApiRecipes },
         { name: 'trust.me', recipes: PersonalTrustRecipes },
         { name: 'device.core', recipes: DeviceCoreRecipes },
         { name: 'settings.core', recipes: SettingsRecipes },

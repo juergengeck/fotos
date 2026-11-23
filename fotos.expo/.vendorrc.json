@@ -13,6 +13,10 @@
       "path": "../../one/packages/connection.core"
     },
     {
+      "name": "@refinio/cube.core",
+      "path": "../../one/packages/cube.core"
+    },
+    {
       "name": "@refinio/device.core",
       "path": "../../one/packages/device.core"
     },

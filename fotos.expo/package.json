@@ -26,7 +26,7 @@
     "@glueone/glue.core": "file:./vendor/glueone-glue.core-1.0.0-a06cc90a43a25a80.tgz",
     "@react-native-async-storage/async-storage": "~2.2.0",
     "@react-navigation/native": "^7.1.8",
-    "@refinio/api": "file:./vendor/refinio-api-0.1.0-1344542cc6bba01b.tgz",
+    "@refinio/api": "file:./vendor/refinio-api-0.1.0-e44890c72218a7d2.tgz",
     "@refinio/assembly.core": "file:./vendor/refinio-assembly.core-1.0.0-8e8233f68e7da49e.tgz",
     "@refinio/chat.core": "file:./vendor/refinio-chat.core-1.0.0-b3b60ce6bbdbff75.tgz",
     "@refinio/connection.core": "file:./vendor/refinio-connection.core-0.1.0-65a836278a0e2f06.tgz",
@@ -104,7 +104,8 @@
     "@refinio/source.media": "file:./vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz",
     "react-native-udp": "4.1.7",
     "react-native-webrtc": "155.0.1",
-    "@refinio/transport.browser": "file:./vendor/refinio-transport.browser-0.1.0-ec9047b37aa2fc05.tgz"
+    "@refinio/transport.browser": "file:./vendor/refinio-transport.browser-0.1.0-ec9047b37aa2fc05.tgz",
+    "@refinio/cube.core": "file:./vendor/refinio-cube.core-0.1.0-3b37ca9320dc57e5.tgz"
   },
   "devDependencies": {
     "@types/react": "~19.2.4",
@@ -122,7 +123,7 @@
     "@refinio/one.core": "file:./vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz",
     "@refinio/one.core-expo": "file:./vendor/refinio-one.core-expo-0.1.0-d92b7d1fa104c2c7.tgz",
     "@refinio/one.models": "file:./vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz",
-    "@refinio/api": "file:./vendor/refinio-api-0.1.0-1344542cc6bba01b.tgz",
+    "@refinio/api": "file:./vendor/refinio-api-0.1.0-e44890c72218a7d2.tgz",
     "@refinio/settings.core": "file:./vendor/refinio-settings.core-0.1.0-ca25bbfbd5ae92bd.tgz",
     "@refinio/settings.devices": "file:./vendor/refinio-settings.devices-0.1.0-0658cc17d5947f83.tgz",
     "@refinio/source.core": "file:./vendor/refinio-source.core-0.1.0-bc4b675e25b56d4f.tgz",
@@ -149,7 +150,8 @@
     "@refinio/source.media": "file:./vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz",
     "@refinio/provenance.core": "file:./vendor/refinio-provenance.core-0.1.0-d7102e0b17edd221.tgz",
     "@refinio/fotos.core": "file:./vendor/refinio-fotos.core-0.1.0-8e0ecd28b12f03ed.tgz",
-    "@refinio/transport.browser": "file:./vendor/refinio-transport.browser-0.1.0-ec9047b37aa2fc05.tgz"
+    "@refinio/transport.browser": "file:./vendor/refinio-transport.browser-0.1.0-ec9047b37aa2fc05.tgz",
+    "@refinio/cube.core": "file:./vendor/refinio-cube.core-0.1.0-3b37ca9320dc57e5.tgz"
   },
   "pnpm": {
     "overrides": {
@@ -162,7 +164,7 @@
       "@refinio/one.core": "file:./vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz",
       "@refinio/one.core-expo": "file:./vendor/refinio-one.core-expo-0.1.0-d92b7d1fa104c2c7.tgz",
       "@refinio/one.models": "file:./vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz",
-      "@refinio/api": "file:./vendor/refinio-api-0.1.0-1344542cc6bba01b.tgz",
+      "@refinio/api": "file:./vendor/refinio-api-0.1.0-e44890c72218a7d2.tgz",
       "@refinio/settings.core": "file:./vendor/refinio-settings.core-0.1.0-ca25bbfbd5ae92bd.tgz",
       "@refinio/settings.devices": "file:./vendor/refinio-settings.devices-0.1.0-0658cc17d5947f83.tgz",
       "@refinio/source.core": "file:./vendor/refinio-source.core-0.1.0-bc4b675e25b56d4f.tgz",
@@ -189,7 +191,8 @@
       "@refinio/source.media": "file:./vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz",
       "@refinio/provenance.core": "file:./vendor/refinio-provenance.core-0.1.0-d7102e0b17edd221.tgz",
       "@refinio/fotos.core": "file:./vendor/refinio-fotos.core-0.1.0-8e0ecd28b12f03ed.tgz",
-      "@refinio/transport.browser": "file:./vendor/refinio-transport.browser-0.1.0-ec9047b37aa2fc05.tgz"
+      "@refinio/transport.browser": "file:./vendor/refinio-transport.browser-0.1.0-ec9047b37aa2fc05.tgz",
+      "@refinio/cube.core": "file:./vendor/refinio-cube.core-0.1.0-3b37ca9320dc57e5.tgz"
     },
     "patchedDependencies": {
       "react-native-udp@4.1.7": "patches/react-native-udp@4.1.7.patch"
