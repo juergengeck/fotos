@@ -6,20 +6,27 @@ and slideshow. Its QR invitation pairs a trusted Fotos device; pairing alone doe
 not grant access to a photo library. The sending device must share a gallery with
 this TV.
 
-The app uses Expo 54, the matching React Native TV fork, and the same vendored ONE
+The app uses Expo 57, the matching React Native TV fork, and the same vendored ONE
 package generation as `../fotos.expo`. Shared platform sources belong to
 `../../one/packages`; `one-experimental` is not a dependency. Metro resolution is
 shared with the phone app while each target uses its own React Native installation.
 
+The TV launcher uses the shared red camera icon on white through Expo's standard
+icon generation, preserving the centered ONE logo's scale without adaptive-icon zoom. Its
+16:9 banner uses the same artwork, with the ONE logo at 66% of the banner height.
+
 ## Build and install
 
-Requires Node 20.19.4+, pnpm, Java 17, the Android SDK, and the prepared
+Requires the Node version supported by Expo 57, pnpm 9.15, Java 17, the Android SDK, and the prepared
 `fotos.expo/vendor` archives used by the current mobile runtime. Dependencies
 reference that sibling directory directly; no TV-specific vendor copy is needed.
 From this folder:
 
 ```bash
-pnpm install --ignore-workspace
+pnpm run vendor:sync
+corepack pnpm@9.15.0 install --ignore-workspace
+pnpm run vendor:normalize-lockfile
+pnpm run verify:vendor-install
 pnpm build:apk
 pnpm run deploy 192.168.178.23:5555
 ```
