@@ -9,10 +9,10 @@ overrides:
   '@refinio/chat.core': file:./vendor/refinio-chat.core-1.0.0-b3b60ce6bbdbff75.tgz
   '@refinio/connection.core': file:./vendor/refinio-connection.core-0.1.0-65a836278a0e2f06.tgz
   '@refinio/device.core': file:./vendor/refinio-device.core-0.1.0-e69632a277abf75e.tgz
-  '@glueone/glue.core': file:./vendor/glueone-glue.core-1.0.0-a06cc90a43a25a80.tgz
+  '@glueone/glue.core': file:./vendor/glueone-glue.core-1.0.0-23ba41c439a7d787.tgz
   '@refinio/meaning.core': file:./vendor/refinio-meaning.core-0.1.0-0c5da8b1bb9f448d.tgz
   '@refinio/one.core': file:./vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz
-  '@refinio/one.core-expo': file:./vendor/refinio-one.core-expo-0.1.0-d92b7d1fa104c2c7.tgz
+  '@refinio/one.core-expo': file:./vendor/refinio-one.core-expo-0.1.0-285d7c1e14d17eab.tgz
   '@refinio/one.models': file:./vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz
   '@refinio/api': file:./vendor/refinio-api-0.1.0-e44890c72218a7d2.tgz
   '@refinio/settings.core': file:./vendor/refinio-settings.core-0.1.0-ca25bbfbd5ae92bd.tgz
@@ -28,7 +28,7 @@ overrides:
   '@refinio/matching.core': file:./vendor/refinio-matching.core-0.1.0-eff2ba3b9f9cd919.tgz
   '@refinio/space.core': file:./vendor/refinio-space.core-0.1.0-6a6b8b8cb63061af.tgz
   '@refinio/group.core': file:./vendor/refinio-group.core-0.1.0-be4db4417d19d502.tgz
-  '@glueone/auth.core': file:./vendor/glueone-auth.core-1.0.0-bf585e917f2bcb20.tgz
+  '@glueone/auth.core': file:./vendor/glueone-auth.core-1.0.0-09e469900c8252a4.tgz
   '@refinio/trust.me': file:./vendor/refinio-trust.me-1.0.0-5a567b9c183ac45c.tgz
   '@refinio/trust.api': file:./vendor/refinio-trust.api-1.0.0-ca6e8d65f5560a62.tgz
   '@refinio/instrumentation.core': file:./vendor/refinio-instrumentation.core-0.1.0-30a210dfb6ad98e6.tgz
@@ -37,8 +37,8 @@ overrides:
   '@refinio/trust.pdf': file:./vendor/refinio-trust.pdf-0.1.0-689c3f9ad2d82758.tgz
   '@refinio/contact.core': file:./vendor/refinio-contact.core-0.1.0-bb2711c1aff19a5f.tgz
   '@refinio/media.core': file:./vendor/refinio-media.core-0.1.0-63071d5123c7ede1.tgz
-  '@refinio/media.expo': file:./vendor/refinio-media.expo-0.1.0-92a4226276bd2344.tgz
-  '@refinio/source.media': file:./vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz
+  '@refinio/media.expo': file:./vendor/refinio-media.expo-0.1.0-5e46dcd85325bf5e.tgz
+  '@refinio/source.media': file:./vendor/refinio-source.media-0.1.0-6bcb64bc9a7afdd9.tgz
   '@refinio/provenance.core': file:./vendor/refinio-provenance.core-0.1.0-d7102e0b17edd221.tgz
   '@refinio/fotos.core': file:./vendor/refinio-fotos.core-0.1.0-8e0ecd28b12f03ed.tgz
   '@refinio/transport.browser': file:./vendor/refinio-transport.browser-0.1.0-ec9047b37aa2fc05.tgz
@@ -57,11 +57,11 @@ importers:
         specifier: 2.36.2
         version: 2.36.2(react-native@0.86.0(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
       '@glueone/auth.core':
-        specifier: file:vendor/glueone-auth.core-1.0.0-bf585e917f2bcb20.tgz
-        version: file:vendor/glueone-auth.core-1.0.0-bf585e917f2bcb20.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0-a06cc90a43a25a80.tgz(kbqd3znelcbgm5n6pzmltkvsmi))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0-e098be74c47d5d4c.tgz(76fc64ha4hdipd6a6woltj4w44))(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0-2efa81f9fcd4c3fd.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)))
+        specifier: file:vendor/glueone-auth.core-1.0.0-09e469900c8252a4.tgz
+        version: file:vendor/glueone-auth.core-1.0.0-09e469900c8252a4.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0-23ba41c439a7d787.tgz(kbqd3znelcbgm5n6pzmltkvsmi))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0-e098be74c47d5d4c.tgz(76fc64ha4hdipd6a6woltj4w44))(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0-2efa81f9fcd4c3fd.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)))
       '@glueone/glue.core':
-        specifier: file:vendor/glueone-glue.core-1.0.0-a06cc90a43a25a80.tgz
-        version: file:vendor/glueone-glue.core-1.0.0-a06cc90a43a25a80.tgz(kbqd3znelcbgm5n6pzmltkvsmi)
+        specifier: file:vendor/glueone-glue.core-1.0.0-23ba41c439a7d787.tgz
+        version: file:vendor/glueone-glue.core-1.0.0-23ba41c439a7d787.tgz(kbqd3znelcbgm5n6pzmltkvsmi)
       '@react-native-async-storage/async-storage':
         specifier: ~2.2.0
         version: 2.2.0(react-native@0.86.0(@types/react@19.2.18)(react@19.2.3))
@@ -70,13 +70,13 @@ importers:
         version: 7.2.4(react-native@0.86.0(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
       '@refinio/api':
         specifier: file:vendor/refinio-api-0.1.0-e44890c72218a7d2.tgz
-        version: file:vendor/refinio-api-0.1.0-e44890c72218a7d2.tgz(eznki5bbkbunbrv4724nj6yzdy)
+        version: file:vendor/refinio-api-0.1.0-e44890c72218a7d2.tgz(yld6dgqb6esg5omzonvjyfd34i)
       '@refinio/assembly.core':
         specifier: file:vendor/refinio-assembly.core-1.0.0-8e8233f68e7da49e.tgz
         version: file:vendor/refinio-assembly.core-1.0.0-8e8233f68e7da49e.tgz(whaipxrgevlfc4maekppcemkya)
       '@refinio/chat.core':
         specifier: file:vendor/refinio-chat.core-1.0.0-b3b60ce6bbdbff75.tgz
-        version: file:vendor/refinio-chat.core-1.0.0-b3b60ce6bbdbff75.tgz(gmmevbeunt2vctrxhufa5dybym)
+        version: file:vendor/refinio-chat.core-1.0.0-b3b60ce6bbdbff75.tgz(7yo5irmsjqexfvaqlpl4f67n5i)
       '@refinio/connection.core':
         specifier: file:vendor/refinio-connection.core-0.1.0-65a836278a0e2f06.tgz
         version: file:vendor/refinio-connection.core-0.1.0-65a836278a0e2f06.tgz(vrwssveim4tocbyskhfxsqhtie)
@@ -105,14 +105,14 @@ importers:
         specifier: file:vendor/refinio-media.core-0.1.0-63071d5123c7ede1.tgz
         version: file:vendor/refinio-media.core-0.1.0-63071d5123c7ede1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)
       '@refinio/media.expo':
-        specifier: file:vendor/refinio-media.expo-0.1.0-92a4226276bd2344.tgz
-        version: file:vendor/refinio-media.expo-0.1.0-92a4226276bd2344.tgz(expo@57.0.33)
+        specifier: file:vendor/refinio-media.expo-0.1.0-5e46dcd85325bf5e.tgz
+        version: file:vendor/refinio-media.expo-0.1.0-5e46dcd85325bf5e.tgz(expo@57.0.33)
       '@refinio/one.core':
         specifier: file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz
         version: file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz
       '@refinio/one.core-expo':
-        specifier: file:vendor/refinio-one.core-expo-0.1.0-d92b7d1fa104c2c7.tgz
-        version: file:vendor/refinio-one.core-expo-0.1.0-d92b7d1fa104c2c7.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(expo-crypto@57.0.4(expo@57.0.33))(expo-file-system@57.0.7(expo@57.0.33)(react-native@0.86.0(@types/react@19.2.18)(react@19.2.3)))(expo-secure-store@57.0.4(expo@57.0.33))(expo@57.0.33)
+        specifier: file:vendor/refinio-one.core-expo-0.1.0-285d7c1e14d17eab.tgz
+        version: file:vendor/refinio-one.core-expo-0.1.0-285d7c1e14d17eab.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(expo-crypto@57.0.4(expo@57.0.33))(expo-file-system@57.0.7(expo@57.0.33)(react-native@0.86.0(@types/react@19.2.18)(react@19.2.3)))(expo-secure-store@57.0.4(expo@57.0.33))(expo@57.0.33)
       '@refinio/one.models':
         specifier: file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz
         version: file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)
@@ -121,16 +121,16 @@ importers:
         version: file:vendor/refinio-provenance.core-0.1.0-d7102e0b17edd221.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)
       '@refinio/settings.core':
         specifier: file:vendor/refinio-settings.core-0.1.0-ca25bbfbd5ae92bd.tgz
-        version: file:vendor/refinio-settings.core-0.1.0-ca25bbfbd5ae92bd.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0-a06cc90a43a25a80.tgz(kbqd3znelcbgm5n6pzmltkvsmi))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(react@19.2.3)
+        version: file:vendor/refinio-settings.core-0.1.0-ca25bbfbd5ae92bd.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0-23ba41c439a7d787.tgz(kbqd3znelcbgm5n6pzmltkvsmi))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(react@19.2.3)
       '@refinio/settings.devices':
         specifier: file:vendor/refinio-settings.devices-0.1.0-0658cc17d5947f83.tgz
-        version: file:vendor/refinio-settings.devices-0.1.0-0658cc17d5947f83.tgz(@refinio/settings.core@file:vendor/refinio-settings.core-0.1.0-ca25bbfbd5ae92bd.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0-a06cc90a43a25a80.tgz(kbqd3znelcbgm5n6pzmltkvsmi))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(react@19.2.3))
+        version: file:vendor/refinio-settings.devices-0.1.0-0658cc17d5947f83.tgz(@refinio/settings.core@file:vendor/refinio-settings.core-0.1.0-ca25bbfbd5ae92bd.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0-23ba41c439a7d787.tgz(kbqd3znelcbgm5n6pzmltkvsmi))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(react@19.2.3))
       '@refinio/source.core':
         specifier: file:vendor/refinio-source.core-0.1.0-bc4b675e25b56d4f.tgz
         version: file:vendor/refinio-source.core-0.1.0-bc4b675e25b56d4f.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0-8e8233f68e7da49e.tgz(whaipxrgevlfc4maekppcemkya))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)
       '@refinio/source.media':
-        specifier: file:vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz
-        version: file:vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz(@refinio/media.core@file:vendor/refinio-media.core-0.1.0-63071d5123c7ede1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(@refinio/source.core@file:vendor/refinio-source.core-0.1.0-bc4b675e25b56d4f.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0-8e8233f68e7da49e.tgz(whaipxrgevlfc4maekppcemkya))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))
+        specifier: file:vendor/refinio-source.media-0.1.0-6bcb64bc9a7afdd9.tgz
+        version: file:vendor/refinio-source.media-0.1.0-6bcb64bc9a7afdd9.tgz(@refinio/media.core@file:vendor/refinio-media.core-0.1.0-63071d5123c7ede1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(@refinio/source.core@file:vendor/refinio-source.core-0.1.0-bc4b675e25b56d4f.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0-8e8233f68e7da49e.tgz(whaipxrgevlfc4maekppcemkya))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))
       '@refinio/space.core':
         specifier: file:vendor/refinio-space.core-0.1.0-6a6b8b8cb63061af.tgz
         version: file:vendor/refinio-space.core-0.1.0-6a6b8b8cb63061af.tgz(@refinio/matching.core@file:vendor/refinio-matching.core-0.1.0-eff2ba3b9f9cd919.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/trie.core@file:vendor/refinio-trie.core-0.0.1-f477f5d8db3b93a3.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))
@@ -160,10 +160,10 @@ importers:
         version: file:vendor/refinio-trust.core-1.0.0-2efa81f9fcd4c3fd.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))
       '@refinio/trust.me':
         specifier: file:vendor/refinio-trust.me-1.0.0-5a567b9c183ac45c.tgz
-        version: file:vendor/refinio-trust.me-1.0.0-5a567b9c183ac45c.tgz(@refinio/api@file:vendor/refinio-api-0.1.0-e44890c72218a7d2.tgz(eznki5bbkbunbrv4724nj6yzdy))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(@refinio/sync.core@file:vendor/refinio-sync.core-0.1.0-6c7ddee95787d591.tgz(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)))(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0-2efa81f9fcd4c3fd.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)))
+        version: file:vendor/refinio-trust.me-1.0.0-5a567b9c183ac45c.tgz(@refinio/api@file:vendor/refinio-api-0.1.0-e44890c72218a7d2.tgz(yld6dgqb6esg5omzonvjyfd34i))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(@refinio/sync.core@file:vendor/refinio-sync.core-0.1.0-6c7ddee95787d591.tgz(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)))(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0-2efa81f9fcd4c3fd.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)))
       '@refinio/ui.core':
         specifier: file:vendor/refinio-ui.core-1.0.0-6b0e27e286eeb1c1.tgz
-        version: file:vendor/refinio-ui.core-1.0.0-6b0e27e286eeb1c1.tgz(krw56dmaugwawrvmy2cdvwfxkq)
+        version: file:vendor/refinio-ui.core-1.0.0-6b0e27e286eeb1c1.tgz(7rvwhxmwfrnjrljhic67hhj4te)
       '@shopify/flash-list':
         specifier: 2.0.2
         version: 2.0.2(@babel/runtime@7.29.2)(react-native@0.86.0(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
@@ -172,7 +172,7 @@ importers:
         version: 19.2.7(@types/react@19.2.18)
       '@vger/vger.core':
         specifier: file:vendor/vger-vger.core-1.0.0-a63b262678c95e91.tgz
-        version: file:vendor/vger-vger.core-1.0.0-a63b262678c95e91.tgz(vn5v4wbodr7tmpcs67yws3nbee)
+        version: file:vendor/vger-vger.core-1.0.0-a63b262678c95e91.tgz(rhcky4rieflim45mm4f36uulhe)
       '@vger/vger.ui':
         specifier: link:../../one/packages/vger.ui
         version: link:../../one/packages/vger.ui
@@ -1100,18 +1100,18 @@ packages:
     resolution: {integrity: sha512-4aQzz9vgxcNXFfo/iyNgDDYfsU5XGKKxWxZopw0cVotHiW+U8IJbIxMaxsINs6bHhtkG3StKNPcOrn3eBuxKPw==}
     hasBin: true
 
-  '@glueone/auth.core@file:vendor/glueone-auth.core-1.0.0-bf585e917f2bcb20.tgz':
-    resolution: {integrity: sha512-9pw0I84rJCuF1PsSCHgnWsrPHzUUn7hLo6/UkvUQzj2tFezkvfANDnZ3XeHHybqhUUVANk7l6pjTbZnYDco+9g==, tarball: file:vendor/glueone-auth.core-1.0.0-bf585e917f2bcb20.tgz}
+  '@glueone/auth.core@file:vendor/glueone-auth.core-1.0.0-09e469900c8252a4.tgz':
+    resolution: {integrity: sha512-O8IfR7A+i8HhVMdXoMFugJ3ZlgVkH9XdnUzx6KhFYhVWXq2CgKQ3sKAxWbpcBQi1QLzkpWOyTNSbLBo9ilRhvg==, tarball: file:vendor/glueone-auth.core-1.0.0-09e469900c8252a4.tgz}
     version: 1.0.0
     peerDependencies:
-      '@glueone/glue.core': file:vendor/glueone-glue.core-1.0.0-a06cc90a43a25a80.tgz
+      '@glueone/glue.core': file:vendor/glueone-glue.core-1.0.0-23ba41c439a7d787.tgz
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz
       '@refinio/one.models': file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz
       '@refinio/trust.abac': file:vendor/refinio-trust.abac-0.1.0-e098be74c47d5d4c.tgz
       '@refinio/trust.core': file:vendor/refinio-trust.core-1.0.0-2efa81f9fcd4c3fd.tgz
 
-  '@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0-a06cc90a43a25a80.tgz':
-    resolution: {integrity: sha512-DPNY17tTeoBuoRU/M/tF5MthPkdo6nHrC/iV3B5L72D9e8Xv5soVnIB05JNQiHqhqbJXrJg/2b8KqmFNnLJ3Cw==, tarball: file:vendor/glueone-glue.core-1.0.0-a06cc90a43a25a80.tgz}
+  '@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0-23ba41c439a7d787.tgz':
+    resolution: {integrity: sha512-sQv8jgZFsbl57MyKwaJkL3/eC8Z+5t5XXNNRhRDThZeVjrSXBaghkRpLsJ7aaAbbOr4Cg3tYERwsySUs5zLV1A==, tarball: file:vendor/glueone-glue.core-1.0.0-23ba41c439a7d787.tgz}
     version: 1.0.0
     peerDependencies:
       '@refinio/assembly.core': file:vendor/refinio-assembly.core-1.0.0-8e8233f68e7da49e.tgz
@@ -1535,7 +1535,7 @@ packages:
     engines: {node: '>=18.0.0'}
     hasBin: true
     peerDependencies:
-      '@glueone/glue.core': file:vendor/glueone-glue.core-1.0.0-a06cc90a43a25a80.tgz
+      '@glueone/glue.core': file:vendor/glueone-glue.core-1.0.0-23ba41c439a7d787.tgz
       '@refinio/assembly.core': file:vendor/refinio-assembly.core-1.0.0-8e8233f68e7da49e.tgz
       '@refinio/connection.core': file:vendor/refinio-connection.core-0.1.0-65a836278a0e2f06.tgz
       '@refinio/cube.core': file:vendor/refinio-cube.core-0.1.0-3b37ca9320dc57e5.tgz
@@ -1689,14 +1689,14 @@ packages:
     peerDependencies:
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz
 
-  '@refinio/media.expo@file:vendor/refinio-media.expo-0.1.0-92a4226276bd2344.tgz':
-    resolution: {integrity: sha512-M8GRC5Kb221TVXZBa2l9EDiRicP0RVXjUWk6mgRmoUNtKDzXkMCWn3sAbm3wbSvERlj/ZPQVCc6bKOvelzPUfw==, tarball: file:vendor/refinio-media.expo-0.1.0-92a4226276bd2344.tgz}
+  '@refinio/media.expo@file:vendor/refinio-media.expo-0.1.0-5e46dcd85325bf5e.tgz':
+    resolution: {integrity: sha512-dyCbfq7lw44p5qxHbgMC5ROpkTkLZ4JFcTKh2jwzcRYEYDr0yMaca6bgF8imu2typDd/XJAJjOFaskWt/8M/VA==, tarball: file:vendor/refinio-media.expo-0.1.0-5e46dcd85325bf5e.tgz}
     version: 0.1.0
     peerDependencies:
       expo: '*'
 
-  '@refinio/one.core-expo@file:vendor/refinio-one.core-expo-0.1.0-d92b7d1fa104c2c7.tgz':
-    resolution: {integrity: sha512-qfstb6D4lEIiEGthQUlUmSAQQ9o0h6DyXkVIIXVCcmTWJm7oLd4ws9Q5QI9fxzPGmgRrwCFYjSjbgfSPq2qSTQ==, tarball: file:vendor/refinio-one.core-expo-0.1.0-d92b7d1fa104c2c7.tgz}
+  '@refinio/one.core-expo@file:vendor/refinio-one.core-expo-0.1.0-285d7c1e14d17eab.tgz':
+    resolution: {integrity: sha512-tsaUfJV25hOIr4+jJU5f4hmXzNBCoWYZVktnXAziK56ILC+C1pcJQycbK3HHpcolR4/YmSw1sFxPqyNQoGN9SQ==, tarball: file:vendor/refinio-one.core-expo-0.1.0-285d7c1e14d17eab.tgz}
     version: 0.1.0
     peerDependencies:
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz
@@ -1725,7 +1725,7 @@ packages:
     resolution: {integrity: sha512-5ofe4l6RzrjSv/yiPVJVhA98K/MKQSPek9/z4J/1l6TvdA2ntwTP9snrLC/4EOsI3x10eTSn1XQLO5vfX1P4zQ==, tarball: file:vendor/refinio-settings.core-0.1.0-ca25bbfbd5ae92bd.tgz}
     version: 0.1.0
     peerDependencies:
-      '@glueone/glue.core': file:vendor/glueone-glue.core-1.0.0-a06cc90a43a25a80.tgz
+      '@glueone/glue.core': file:vendor/glueone-glue.core-1.0.0-23ba41c439a7d787.tgz
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz
       '@refinio/one.models': file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz
       react: '>=17.0.0'
@@ -1744,8 +1744,8 @@ packages:
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz
       '@refinio/trust.pdf': file:vendor/refinio-trust.pdf-0.1.0-689c3f9ad2d82758.tgz
 
-  '@refinio/source.media@file:vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz':
-    resolution: {integrity: sha512-ZoMc3gGerO6jmEJ6dkAptStoZTNeKMvUYXMFLMm7sm1/zPEvO1jzB9nNj1q1lHLGrjYvS/5N7leLCb2d5Ofxug==, tarball: file:vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz}
+  '@refinio/source.media@file:vendor/refinio-source.media-0.1.0-6bcb64bc9a7afdd9.tgz':
+    resolution: {integrity: sha512-dOs27tPaCYHIW9QJ6hXEajVg+29ODJyuWBLkPpIlGr2lJ5nr1MNZko15ZPqGCoobqS7c8g4vCLgVq4vuImKWbg==, tarball: file:vendor/refinio-source.media-0.1.0-6bcb64bc9a7afdd9.tgz}
     version: 0.1.0
     peerDependencies:
       '@refinio/media.core': file:vendor/refinio-media.core-0.1.0-63071d5123c7ede1.tgz
@@ -2043,7 +2043,7 @@ packages:
     resolution: {integrity: sha512-z59iszNSGRCdaAS/w2iCMo1qBnaG4pCyBojDNeqUme0n8GkAjQQdYqhEzwsfOqWSgnAme74Ueo8k8Gbz1ZMfhg==, tarball: file:vendor/vger-vger.core-1.0.0-a63b262678c95e91.tgz}
     version: 1.0.0
     peerDependencies:
-      '@glueone/glue.core': file:vendor/glueone-glue.core-1.0.0-a06cc90a43a25a80.tgz
+      '@glueone/glue.core': file:vendor/glueone-glue.core-1.0.0-23ba41c439a7d787.tgz
       '@refinio/agent.builder': 0.1.0
       '@refinio/agent.core': 0.1.0
       '@refinio/api': file:vendor/refinio-api-0.1.0-e44890c72218a7d2.tgz
@@ -6249,9 +6249,9 @@ snapshots:
       chalk: 4.1.2
       js-yaml: 4.1.1
 
-  '@glueone/auth.core@file:vendor/glueone-auth.core-1.0.0-bf585e917f2bcb20.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0-a06cc90a43a25a80.tgz(kbqd3znelcbgm5n6pzmltkvsmi))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0-e098be74c47d5d4c.tgz(76fc64ha4hdipd6a6woltj4w44))(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0-2efa81f9fcd4c3fd.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)))':
+  '@glueone/auth.core@file:vendor/glueone-auth.core-1.0.0-09e469900c8252a4.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0-23ba41c439a7d787.tgz(kbqd3znelcbgm5n6pzmltkvsmi))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(@refinio/trust.abac@file:vendor/refinio-trust.abac-0.1.0-e098be74c47d5d4c.tgz(76fc64ha4hdipd6a6woltj4w44))(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0-2efa81f9fcd4c3fd.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)))':
     dependencies:
-      '@glueone/glue.core': file:vendor/glueone-glue.core-1.0.0-a06cc90a43a25a80.tgz(kbqd3znelcbgm5n6pzmltkvsmi)
+      '@glueone/glue.core': file:vendor/glueone-glue.core-1.0.0-23ba41c439a7d787.tgz(kbqd3znelcbgm5n6pzmltkvsmi)
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz
       '@refinio/one.models': file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)
       '@refinio/trust.abac': file:vendor/refinio-trust.abac-0.1.0-e098be74c47d5d4c.tgz(76fc64ha4hdipd6a6woltj4w44)
@@ -6260,7 +6260,7 @@ snapshots:
       hash-wasm: 4.12.0
       tweetnacl: 1.0.3
 
-  '@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0-a06cc90a43a25a80.tgz(kbqd3znelcbgm5n6pzmltkvsmi)':
+  '@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0-23ba41c439a7d787.tgz(kbqd3znelcbgm5n6pzmltkvsmi)':
     dependencies:
       '@refinio/assembly.core': file:vendor/refinio-assembly.core-1.0.0-8e8233f68e7da49e.tgz(whaipxrgevlfc4maekppcemkya)
       '@refinio/group.core': file:vendor/refinio-group.core-0.1.0-be4db4417d19d502.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)
@@ -6724,7 +6724,7 @@ snapshots:
     dependencies:
       nanoid: 3.3.12
 
-  '@refinio/api@file:vendor/refinio-api-0.1.0-e44890c72218a7d2.tgz(eznki5bbkbunbrv4724nj6yzdy)':
+  '@refinio/api@file:vendor/refinio-api-0.1.0-e44890c72218a7d2.tgz(yld6dgqb6esg5omzonvjyfd34i)':
     dependencies:
       '@modelcontextprotocol/sdk': 1.29.0
       '@refinio/assembly.core': file:vendor/refinio-assembly.core-1.0.0-8e8233f68e7da49e.tgz(whaipxrgevlfc4maekppcemkya)
@@ -6742,10 +6742,10 @@ snapshots:
       express: 4.22.1
       node-fetch: 3.3.2
     optionalDependencies:
-      '@glueone/glue.core': file:vendor/glueone-glue.core-1.0.0-a06cc90a43a25a80.tgz(kbqd3znelcbgm5n6pzmltkvsmi)
+      '@glueone/glue.core': file:vendor/glueone-glue.core-1.0.0-23ba41c439a7d787.tgz(kbqd3znelcbgm5n6pzmltkvsmi)
       '@refinio/device.core': file:vendor/refinio-device.core-0.1.0-e69632a277abf75e.tgz(6dq4pjh6b4guugbhqweu3xnnve)
-      '@refinio/settings.core': file:vendor/refinio-settings.core-0.1.0-ca25bbfbd5ae92bd.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0-a06cc90a43a25a80.tgz(kbqd3znelcbgm5n6pzmltkvsmi))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(react@19.2.3)
-      '@refinio/settings.devices': file:vendor/refinio-settings.devices-0.1.0-0658cc17d5947f83.tgz(@refinio/settings.core@file:vendor/refinio-settings.core-0.1.0-ca25bbfbd5ae92bd.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0-a06cc90a43a25a80.tgz(kbqd3znelcbgm5n6pzmltkvsmi))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(react@19.2.3))
+      '@refinio/settings.core': file:vendor/refinio-settings.core-0.1.0-ca25bbfbd5ae92bd.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0-23ba41c439a7d787.tgz(kbqd3znelcbgm5n6pzmltkvsmi))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(react@19.2.3)
+      '@refinio/settings.devices': file:vendor/refinio-settings.devices-0.1.0-0658cc17d5947f83.tgz(@refinio/settings.core@file:vendor/refinio-settings.core-0.1.0-ca25bbfbd5ae92bd.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0-23ba41c439a7d787.tgz(kbqd3znelcbgm5n6pzmltkvsmi))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(react@19.2.3))
     transitivePeerDependencies:
       - '@cfworker/json-schema'
       - supports-color
@@ -6759,9 +6759,9 @@ snapshots:
       '@refinio/trust.core': file:vendor/refinio-trust.core-1.0.0-2efa81f9fcd4c3fd.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))
       base64-js: 1.5.1
 
-  '@refinio/chat.core@file:vendor/refinio-chat.core-1.0.0-b3b60ce6bbdbff75.tgz(gmmevbeunt2vctrxhufa5dybym)':
+  '@refinio/chat.core@file:vendor/refinio-chat.core-1.0.0-b3b60ce6bbdbff75.tgz(7yo5irmsjqexfvaqlpl4f67n5i)':
     dependencies:
-      '@refinio/api': file:vendor/refinio-api-0.1.0-e44890c72218a7d2.tgz(eznki5bbkbunbrv4724nj6yzdy)
+      '@refinio/api': file:vendor/refinio-api-0.1.0-e44890c72218a7d2.tgz(yld6dgqb6esg5omzonvjyfd34i)
       '@refinio/assembly.core': file:vendor/refinio-assembly.core-1.0.0-8e8233f68e7da49e.tgz(whaipxrgevlfc4maekppcemkya)
       '@refinio/contact.core': file:vendor/refinio-contact.core-0.1.0-bb2711c1aff19a5f.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0-2efa81f9fcd4c3fd.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)))
       '@refinio/device.core': file:vendor/refinio-device.core-0.1.0-e69632a277abf75e.tgz(6dq4pjh6b4guugbhqweu3xnnve)
@@ -6852,11 +6852,11 @@ snapshots:
     dependencies:
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz
 
-  '@refinio/media.expo@file:vendor/refinio-media.expo-0.1.0-92a4226276bd2344.tgz(expo@57.0.33)':
+  '@refinio/media.expo@file:vendor/refinio-media.expo-0.1.0-5e46dcd85325bf5e.tgz(expo@57.0.33)':
     dependencies:
       expo: 57.0.33(@babel/core@7.29.0)(@expo/metro-runtime@57.0.18)(expo-router@57.0.31)(react-dom@19.2.3(react@19.2.3))(react-native-web@0.21.4(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-native-worklets@0.10.0(@babel/core@7.29.0)(react-native@0.86.0(@types/react@19.2.18)(react@19.2.3))(react@19.2.3))(react-native@0.86.0(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
 
-  '@refinio/one.core-expo@file:vendor/refinio-one.core-expo-0.1.0-d92b7d1fa104c2c7.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(expo-crypto@57.0.4(expo@57.0.33))(expo-file-system@57.0.7(expo@57.0.33)(react-native@0.86.0(@types/react@19.2.18)(react@19.2.3)))(expo-secure-store@57.0.4(expo@57.0.33))(expo@57.0.33)':
+  '@refinio/one.core-expo@file:vendor/refinio-one.core-expo-0.1.0-285d7c1e14d17eab.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(expo-crypto@57.0.4(expo@57.0.33))(expo-file-system@57.0.7(expo@57.0.33)(react-native@0.86.0(@types/react@19.2.18)(react@19.2.3)))(expo-secure-store@57.0.4(expo@57.0.33))(expo@57.0.33)':
     dependencies:
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz
       expo: 57.0.33(@babel/core@7.29.0)(@expo/metro-runtime@57.0.18)(expo-router@57.0.31)(react-dom@19.2.3(react@19.2.3))(react-native-web@0.21.4(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-native-worklets@0.10.0(@babel/core@7.29.0)(react-native@0.86.0(@types/react@19.2.18)(react@19.2.3))(react@19.2.3))(react-native@0.86.0(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
@@ -6895,23 +6895,23 @@ snapshots:
     dependencies:
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz
 
-  '@refinio/settings.core@file:vendor/refinio-settings.core-0.1.0-ca25bbfbd5ae92bd.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0-a06cc90a43a25a80.tgz(kbqd3znelcbgm5n6pzmltkvsmi))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(react@19.2.3)':
+  '@refinio/settings.core@file:vendor/refinio-settings.core-0.1.0-ca25bbfbd5ae92bd.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0-23ba41c439a7d787.tgz(kbqd3znelcbgm5n6pzmltkvsmi))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(react@19.2.3)':
     dependencies:
-      '@glueone/glue.core': file:vendor/glueone-glue.core-1.0.0-a06cc90a43a25a80.tgz(kbqd3znelcbgm5n6pzmltkvsmi)
+      '@glueone/glue.core': file:vendor/glueone-glue.core-1.0.0-23ba41c439a7d787.tgz(kbqd3znelcbgm5n6pzmltkvsmi)
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz
       '@refinio/one.models': file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)
       react: 19.2.3
 
-  '@refinio/settings.devices@file:vendor/refinio-settings.devices-0.1.0-0658cc17d5947f83.tgz(@refinio/settings.core@file:vendor/refinio-settings.core-0.1.0-ca25bbfbd5ae92bd.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0-a06cc90a43a25a80.tgz(kbqd3znelcbgm5n6pzmltkvsmi))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(react@19.2.3))':
+  '@refinio/settings.devices@file:vendor/refinio-settings.devices-0.1.0-0658cc17d5947f83.tgz(@refinio/settings.core@file:vendor/refinio-settings.core-0.1.0-ca25bbfbd5ae92bd.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0-23ba41c439a7d787.tgz(kbqd3znelcbgm5n6pzmltkvsmi))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(react@19.2.3))':
     dependencies:
-      '@refinio/settings.core': file:vendor/refinio-settings.core-0.1.0-ca25bbfbd5ae92bd.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0-a06cc90a43a25a80.tgz(kbqd3znelcbgm5n6pzmltkvsmi))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(react@19.2.3)
+      '@refinio/settings.core': file:vendor/refinio-settings.core-0.1.0-ca25bbfbd5ae92bd.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0-23ba41c439a7d787.tgz(kbqd3znelcbgm5n6pzmltkvsmi))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(react@19.2.3)
 
   '@refinio/source.core@file:vendor/refinio-source.core-0.1.0-bc4b675e25b56d4f.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0-8e8233f68e7da49e.tgz(whaipxrgevlfc4maekppcemkya))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)':
     dependencies:
       '@refinio/assembly.core': file:vendor/refinio-assembly.core-1.0.0-8e8233f68e7da49e.tgz(whaipxrgevlfc4maekppcemkya)
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz
 
-  '@refinio/source.media@file:vendor/refinio-source.media-0.1.0-46ea0f81215565b7.tgz(@refinio/media.core@file:vendor/refinio-media.core-0.1.0-63071d5123c7ede1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(@refinio/source.core@file:vendor/refinio-source.core-0.1.0-bc4b675e25b56d4f.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0-8e8233f68e7da49e.tgz(whaipxrgevlfc4maekppcemkya))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))':
+  '@refinio/source.media@file:vendor/refinio-source.media-0.1.0-6bcb64bc9a7afdd9.tgz(@refinio/media.core@file:vendor/refinio-media.core-0.1.0-63071d5123c7ede1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(@refinio/source.core@file:vendor/refinio-source.core-0.1.0-bc4b675e25b56d4f.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0-8e8233f68e7da49e.tgz(whaipxrgevlfc4maekppcemkya))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))':
     dependencies:
       '@refinio/media.core': file:vendor/refinio-media.core-0.1.0-63071d5123c7ede1.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz
@@ -6988,9 +6988,9 @@ snapshots:
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz
       '@refinio/one.models': file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)
 
-  '@refinio/trust.me@file:vendor/refinio-trust.me-1.0.0-5a567b9c183ac45c.tgz(@refinio/api@file:vendor/refinio-api-0.1.0-e44890c72218a7d2.tgz(eznki5bbkbunbrv4724nj6yzdy))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(@refinio/sync.core@file:vendor/refinio-sync.core-0.1.0-6c7ddee95787d591.tgz(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)))(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0-2efa81f9fcd4c3fd.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)))':
+  '@refinio/trust.me@file:vendor/refinio-trust.me-1.0.0-5a567b9c183ac45c.tgz(@refinio/api@file:vendor/refinio-api-0.1.0-e44890c72218a7d2.tgz(yld6dgqb6esg5omzonvjyfd34i))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(@refinio/sync.core@file:vendor/refinio-sync.core-0.1.0-6c7ddee95787d591.tgz(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)))(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0-2efa81f9fcd4c3fd.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)))':
     dependencies:
-      '@refinio/api': file:vendor/refinio-api-0.1.0-e44890c72218a7d2.tgz(eznki5bbkbunbrv4724nj6yzdy)
+      '@refinio/api': file:vendor/refinio-api-0.1.0-e44890c72218a7d2.tgz(yld6dgqb6esg5omzonvjyfd34i)
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz
       '@refinio/one.models': file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)
       '@refinio/sync.core': file:vendor/refinio-sync.core-0.1.0-6c7ddee95787d591.tgz(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))
@@ -7000,10 +7000,10 @@ snapshots:
     dependencies:
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz
 
-  '@refinio/ui.core@file:vendor/refinio-ui.core-1.0.0-6b0e27e286eeb1c1.tgz(krw56dmaugwawrvmy2cdvwfxkq)':
+  '@refinio/ui.core@file:vendor/refinio-ui.core-1.0.0-6b0e27e286eeb1c1.tgz(7rvwhxmwfrnjrljhic67hhj4te)':
     dependencies:
-      '@refinio/api': file:vendor/refinio-api-0.1.0-e44890c72218a7d2.tgz(eznki5bbkbunbrv4724nj6yzdy)
-      '@refinio/chat.core': file:vendor/refinio-chat.core-1.0.0-b3b60ce6bbdbff75.tgz(gmmevbeunt2vctrxhufa5dybym)
+      '@refinio/api': file:vendor/refinio-api-0.1.0-e44890c72218a7d2.tgz(yld6dgqb6esg5omzonvjyfd34i)
+      '@refinio/chat.core': file:vendor/refinio-chat.core-1.0.0-b3b60ce6bbdbff75.tgz(7yo5irmsjqexfvaqlpl4f67n5i)
       '@refinio/connection.core': file:vendor/refinio-connection.core-0.1.0-65a836278a0e2f06.tgz(vrwssveim4tocbyskhfxsqhtie)
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz
       '@refinio/one.models': file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)
@@ -7011,8 +7011,8 @@ snapshots:
       '@refinio/trust.abac': file:vendor/refinio-trust.abac-0.1.0-e098be74c47d5d4c.tgz(76fc64ha4hdipd6a6woltj4w44)
       '@refinio/trust.api': file:vendor/refinio-trust.api-1.0.0-ca6e8d65f5560a62.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))
       '@refinio/trust.core': file:vendor/refinio-trust.core-1.0.0-2efa81f9fcd4c3fd.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))
-      '@refinio/trust.me': file:vendor/refinio-trust.me-1.0.0-5a567b9c183ac45c.tgz(@refinio/api@file:vendor/refinio-api-0.1.0-e44890c72218a7d2.tgz(eznki5bbkbunbrv4724nj6yzdy))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(@refinio/sync.core@file:vendor/refinio-sync.core-0.1.0-6c7ddee95787d591.tgz(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)))(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0-2efa81f9fcd4c3fd.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)))
-      '@vger/vger.core': file:vendor/vger-vger.core-1.0.0-a63b262678c95e91.tgz(vn5v4wbodr7tmpcs67yws3nbee)
+      '@refinio/trust.me': file:vendor/refinio-trust.me-1.0.0-5a567b9c183ac45c.tgz(@refinio/api@file:vendor/refinio-api-0.1.0-e44890c72218a7d2.tgz(yld6dgqb6esg5omzonvjyfd34i))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(@refinio/sync.core@file:vendor/refinio-sync.core-0.1.0-6c7ddee95787d591.tgz(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)))(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0-2efa81f9fcd4c3fd.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)))
+      '@vger/vger.core': file:vendor/vger-vger.core-1.0.0-a63b262678c95e91.tgz(rhcky4rieflim45mm4f36uulhe)
       react: 19.2.3
 
   '@rollup/rollup-android-arm-eabi@4.64.10':
@@ -7150,13 +7150,13 @@ snapshots:
 
   '@ungap/structured-clone@1.3.1': {}
 
-  '@vger/vger.core@file:vendor/vger-vger.core-1.0.0-a63b262678c95e91.tgz(vn5v4wbodr7tmpcs67yws3nbee)':
+  '@vger/vger.core@file:vendor/vger-vger.core-1.0.0-a63b262678c95e91.tgz(rhcky4rieflim45mm4f36uulhe)':
     dependencies:
       '@anthropic-ai/sdk': 0.65.0(zod@4.4.3)
-      '@glueone/glue.core': file:vendor/glueone-glue.core-1.0.0-a06cc90a43a25a80.tgz(kbqd3znelcbgm5n6pzmltkvsmi)
-      '@refinio/api': file:vendor/refinio-api-0.1.0-e44890c72218a7d2.tgz(eznki5bbkbunbrv4724nj6yzdy)
+      '@glueone/glue.core': file:vendor/glueone-glue.core-1.0.0-23ba41c439a7d787.tgz(kbqd3znelcbgm5n6pzmltkvsmi)
+      '@refinio/api': file:vendor/refinio-api-0.1.0-e44890c72218a7d2.tgz(yld6dgqb6esg5omzonvjyfd34i)
       '@refinio/assembly.core': file:vendor/refinio-assembly.core-1.0.0-8e8233f68e7da49e.tgz(whaipxrgevlfc4maekppcemkya)
-      '@refinio/chat.core': file:vendor/refinio-chat.core-1.0.0-b3b60ce6bbdbff75.tgz(gmmevbeunt2vctrxhufa5dybym)
+      '@refinio/chat.core': file:vendor/refinio-chat.core-1.0.0-b3b60ce6bbdbff75.tgz(7yo5irmsjqexfvaqlpl4f67n5i)
       '@refinio/group.core': file:vendor/refinio-group.core-0.1.0-be4db4417d19d502.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)
       '@refinio/instrumentation.core': file:vendor/refinio-instrumentation.core-0.1.0-30a210dfb6ad98e6.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/source.core@file:vendor/refinio-source.core-0.1.0-bc4b675e25b56d4f.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0-8e8233f68e7da49e.tgz(whaipxrgevlfc4maekppcemkya))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))
       '@refinio/knowledge.core': file:vendor/refinio-knowledge.core-0.1.0-1dd9feeda7df4d0c.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0-8e8233f68e7da49e.tgz(whaipxrgevlfc4maekppcemkya))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/source.core@file:vendor/refinio-source.core-0.1.0-bc4b675e25b56d4f.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0-8e8233f68e7da49e.tgz(whaipxrgevlfc4maekppcemkya))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))
@@ -7164,14 +7164,14 @@ snapshots:
       '@refinio/one.core': file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz
       '@refinio/one.models': file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)
       '@refinio/provenance.core': file:vendor/refinio-provenance.core-0.1.0-d7102e0b17edd221.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)
-      '@refinio/settings.core': file:vendor/refinio-settings.core-0.1.0-ca25bbfbd5ae92bd.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0-a06cc90a43a25a80.tgz(kbqd3znelcbgm5n6pzmltkvsmi))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(react@19.2.3)
-      '@refinio/settings.devices': file:vendor/refinio-settings.devices-0.1.0-0658cc17d5947f83.tgz(@refinio/settings.core@file:vendor/refinio-settings.core-0.1.0-ca25bbfbd5ae92bd.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0-a06cc90a43a25a80.tgz(kbqd3znelcbgm5n6pzmltkvsmi))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(react@19.2.3))
+      '@refinio/settings.core': file:vendor/refinio-settings.core-0.1.0-ca25bbfbd5ae92bd.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0-23ba41c439a7d787.tgz(kbqd3znelcbgm5n6pzmltkvsmi))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(react@19.2.3)
+      '@refinio/settings.devices': file:vendor/refinio-settings.devices-0.1.0-0658cc17d5947f83.tgz(@refinio/settings.core@file:vendor/refinio-settings.core-0.1.0-ca25bbfbd5ae92bd.tgz(@glueone/glue.core@file:vendor/glueone-glue.core-1.0.0-23ba41c439a7d787.tgz(kbqd3znelcbgm5n6pzmltkvsmi))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(react@19.2.3))
       '@refinio/source.core': file:vendor/refinio-source.core-0.1.0-bc4b675e25b56d4f.tgz(@refinio/assembly.core@file:vendor/refinio-assembly.core-1.0.0-8e8233f68e7da49e.tgz(whaipxrgevlfc4maekppcemkya))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)
       '@refinio/tag.core': file:vendor/refinio-tag.core-0.1.0-d7e4d0f8cf45d69f.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(@refinio/trie.core@file:vendor/refinio-trie.core-0.0.1-f477f5d8db3b93a3.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))
       '@refinio/trust.abac': file:vendor/refinio-trust.abac-0.1.0-e098be74c47d5d4c.tgz(76fc64ha4hdipd6a6woltj4w44)
       '@refinio/trust.api': file:vendor/refinio-trust.api-1.0.0-ca6e8d65f5560a62.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))
       '@refinio/trust.core': file:vendor/refinio-trust.core-1.0.0-2efa81f9fcd4c3fd.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))
-      '@refinio/trust.me': file:vendor/refinio-trust.me-1.0.0-5a567b9c183ac45c.tgz(@refinio/api@file:vendor/refinio-api-0.1.0-e44890c72218a7d2.tgz(eznki5bbkbunbrv4724nj6yzdy))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(@refinio/sync.core@file:vendor/refinio-sync.core-0.1.0-6c7ddee95787d591.tgz(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)))(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0-2efa81f9fcd4c3fd.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)))
+      '@refinio/trust.me': file:vendor/refinio-trust.me-1.0.0-5a567b9c183ac45c.tgz(@refinio/api@file:vendor/refinio-api-0.1.0-e44890c72218a7d2.tgz(yld6dgqb6esg5omzonvjyfd34i))(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz))(@refinio/sync.core@file:vendor/refinio-sync.core-0.1.0-6c7ddee95787d591.tgz(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)))(@refinio/trust.core@file:vendor/refinio-trust.core-1.0.0-2efa81f9fcd4c3fd.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)(@refinio/one.models@file:vendor/refinio-one.models-14.1.0-beta-8-7b8142d12800aed5.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)))
       '@refinio/trust.pdf': file:vendor/refinio-trust.pdf-0.1.0-689c3f9ad2d82758.tgz(@refinio/one.core@file:vendor/refinio-one.core-0.6.1-beta-4-30cbce6514902913.tgz)
       ajv: 8.20.0
       docx: 9.7.1

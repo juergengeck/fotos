@@ -9,12 +9,14 @@ const workspaceRoot = path.resolve(projectRoot, '../..');
 const vgerRoot = path.resolve(workspaceRoot, 'vger');
 const oneRoot = path.resolve(workspaceRoot, 'one');
 const fotosRoot = path.resolve(projectRoot, '..');
+const expoRoot = path.resolve(fotosRoot, 'fotos.expo');
 
 config.watchFolders = [
   vgerRoot,
   oneRoot,
   path.resolve(fotosRoot, 'fotos.ui'),
   path.resolve(fotosRoot, 'fotos.gallery'),
+  ...(projectRoot === expoRoot ? [] : [expoRoot]),
 ];
 
 // Use the Fotos Babel config for all transformed files (including workspace packages).

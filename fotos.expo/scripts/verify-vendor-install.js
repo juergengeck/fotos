@@ -5,9 +5,12 @@ const {execFileSync} = require('node:child_process');
 const {createHash} = require('node:crypto');
 const {parse} = require('yaml');
 
-const root = path.resolve(__dirname, '..');
-const manifest = require('../package.json');
-const {packages, transitivePackages = []} = require('../.vendorrc.json');
+if (process.argv.length > 4) throw new Error('Usage: verify-vendor-install.js [app-root] [vendor-config]');
+const root = process.argv[2] ? path.resolve(process.argv[2]) : path.resolve(__dirname, '..');
+const vendorConfig = process.argv[3] ? path.resolve(process.argv[3]) : path.join(root, '.vendorrc.json');
+const vendorRoot = path.join(path.dirname(vendorConfig), 'vendor');
+const manifest = require(path.join(root, 'package.json'));
+const {packages, transitivePackages = []} = require(vendorConfig);
 const lock = parse(fs.readFileSync(path.join(root, 'pnpm-lock.yaml'), 'utf8'));
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'fotos-vendor-check-'));
 const failures = [];
@@ -24,13 +27,13 @@ function archiveFiles(directory, relative = '') {
 }
 
 function verifyPackage(name, spec) {
-    if (!spec?.startsWith('file:./vendor/') || manifest.pnpm.overrides[name] !== spec) {
+    if (!spec?.startsWith('file:') || manifest.pnpm.overrides[name] !== spec) {
         throw new Error('expected a local archive and a matching pnpm override');
     }
     const archive = path.resolve(root, spec.slice('file:'.length));
     const relative = path.relative(root, archive);
     const checksum = digest(archive, 'sha256', 'hex').slice(0, 16);
-    if (!relative.startsWith(`vendor${path.sep}`) || !relative.endsWith(`-${checksum}.tgz`)) {
+    if (path.dirname(archive) !== vendorRoot || !relative.endsWith(`-${checksum}.tgz`)) {
         throw new Error('archive path or content digest differs from its pin');
     }
     const integrity = `sha512-${digest(archive, 'sha512', 'base64')}`;
