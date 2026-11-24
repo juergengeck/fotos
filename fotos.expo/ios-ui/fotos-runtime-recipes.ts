@@ -23,6 +23,7 @@ import { PersonalTrustRecipes, PersonalTrustReverseMaps } from '@refinio/trust.m
 import {createFotosOneCoreConfig} from '@refinio/fotos.core/one-core-config';
 import { DeviceCoreRecipes, DeviceCoreReverseMaps } from '@refinio/device.core/recipes/index.js';
 import { SettingsRecipes } from '@refinio/settings.core/recipes/index.js';
+import { SourceCoreRecipes, SourceCoreReverseMaps } from '@refinio/source.core/recipes';
 
 export function getFotosRuntimeRecipeConfig() {
     const recipeGroups: Array<{ name: string; recipes: any[] }> = [
@@ -42,6 +43,7 @@ export function getFotosRuntimeRecipeConfig() {
         { name: 'trust.me', recipes: PersonalTrustRecipes },
         { name: 'device.core', recipes: DeviceCoreRecipes },
         { name: 'settings.core', recipes: SettingsRecipes },
+        { name: 'source.core', recipes: SourceCoreRecipes },
     ];
 
     const recipes: any[] = [];
@@ -83,7 +85,8 @@ export function getFotosRuntimeRecipeConfig() {
     return createFotosOneCoreConfig({
         recipes,
         reverseMaps: [ReverseMapsStable, ReverseMapsExperimental, TrustCoreReverseMaps,
-            PersonalTrustReverseMaps, AssemblyCoreReverseMaps, DeviceCoreReverseMaps],
+            PersonalTrustReverseMaps, AssemblyCoreReverseMaps, DeviceCoreReverseMaps,
+            SourceCoreReverseMaps],
         reverseMapsForIdObjects: [ReverseMapsForIdObjectsStable, ReverseMapsForIdObjectsExperimental],
     });
 }

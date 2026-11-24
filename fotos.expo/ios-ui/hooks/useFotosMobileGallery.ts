@@ -3,6 +3,7 @@ import {AppState} from 'react-native';
 import * as MediaLibrary from 'expo-media-library';
 import type {ModelType} from '..';
 import {getFotosPhotoKit, type FotosPhotoKitAsset} from '../services/FotosPhotoKit';
+import {getFotosLibraryAutoSync} from '../services/FotosLibraryAutoSync';
 import {getFotosFaceNames, readFotosMobileFaceDetections} from '../services/FotosMobileFaces';
 import {
     emptyFotosGallery, mergeFotosMobileGallery, observeFotosMobileGallery, readFotosMobileGallery, type FotosGalleryLibrary,
@@ -47,19 +48,34 @@ export function useFotosGalleryEntries(model: ModelType) {
                 }
             }
         };
-        refresh.current = () => void load();
+        let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+        const scheduleRefresh = () => {
+            if (debounceTimer !== null) return;
+            debounceTimer = setTimeout(() => {
+                debounceTimer = null;
+                if (!disposed) void load();
+            }, 500);
+        };
+        refresh.current = () => {
+            if (debounceTimer !== null) {
+                clearTimeout(debounceTimer);
+                debounceTimer = null;
+            }
+            void load();
+        };
         const invalidateShared = () => {
             shareRevision++;
             setLibrary(current => current.shared.length ? {...current, shared: []} : current);
-            void load();
+            refresh.current();
         };
-        const stop = observeFotosMobileGallery(refresh.current, invalidateShared);
+        const stop = observeFotosMobileGallery(scheduleRefresh, invalidateShared);
         const trust = model.leuteModel.trust;
         const stopKeys = trust.onTrustedKeysChanged.listen(invalidateShared);
         const stopRights = trust.onPersonRightsChanged.listen(invalidateShared);
         void load();
         return () => {
             disposed = true;
+            if (debounceTimer !== null) clearTimeout(debounceTimer);
             stop();
             stopKeys();
             stopRights();
@@ -106,17 +122,24 @@ export function useFotosMobileGallery(model: ModelType, searchPeople: boolean) {
     const nextPage = useRef<() => void>(() => {});
     const requestPermission = useCallback(async () => {
         try {
-            await MediaLibrary.requestPermissionsAsync(false, ['photo', 'video']);
+            const access = await MediaLibrary.requestPermissionsAsync(false, ['photo', 'video']);
+            setPermission(access);
             setRevision(value => value + 1);
+            if (access.granted) {
+                void getFotosLibraryAutoSync(model).trigger();
+            }
         } catch (reason) {
             setLocalError(reason instanceof Error ? reason.message : String(reason));
         }
-    }, []);
+    }, [model]);
 
     useEffect(() => {
         if (!supportsPhotos) return;
+        let previousState = AppState.currentState;
         const session = AppState.addEventListener('change', state => {
-            if (state === 'active') {
+            const returnedFromBackground = previousState === 'background' && state === 'active';
+            previousState = state;
+            if (returnedFromBackground) {
                 setRevision(value => value + 1);
                 refresh();
             }

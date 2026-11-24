@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Image, Pressable, Switch, Text, View, useColorScheme } from 'react-native';
+import { Image, Pressable, Text, View, useColorScheme } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useModel } from '..';
 import type {
   FotosPhotoLibrarySyncIssue,
+  FotosPhotoLibrarySyncProgress,
   FotosPhotoLibrarySyncSummary,
 } from '../services/FotosMediaLibrarySync';
 import type { FotosSharedFileImportSummary } from '../services/FotosMediaLibrarySync';
 import type { FotosShareInboxStatus } from '../services/FotosShareInbox';
+import type { FotosLibraryAutoSyncSnapshot } from '../services/FotosLibraryAutoSync';
+import { useFotosLibraryAutoSyncStatus } from '../hooks/useFotosLibraryAutoSync';
 import { useFotosShareInboxAutoDrainStatus } from '../hooks/useFotosShareInboxAutoDrain';
 import { useFotosRuntime } from '../../src/hooks/use-fotos-runtime';
 import {
@@ -48,23 +51,125 @@ function Row({ label, value, isDark }: { label: string; value: string; isDark: b
   );
 }
 
+export interface PhotoLibraryDisplayStatus {
+  access: string;
+  synced: string;
+  skipped: string;
+  deferredCount: number;
+}
+
+export function derivePhotoLibraryDisplayStatus({
+  isLibraryBusy,
+  manualProgress,
+  lastSync,
+  librarySync,
+}: {
+  isLibraryBusy: boolean;
+  manualProgress: FotosPhotoLibrarySyncProgress | null;
+  lastSync: FotosPhotoLibrarySyncSummary | null;
+  librarySync: FotosLibraryAutoSyncSnapshot;
+}): PhotoLibraryDisplayStatus | null {
+  const effectiveSync = lastSync ?? librarySync.lastSummary;
+  const activeProgress = manualProgress ?? (librarySync.running ? librarySync : null);
+
+  if (
+    !isLibraryBusy
+    && !effectiveSync
+    && librarySync.discoveredCount === 0
+    && librarySync.permissionGranted === null
+  ) {
+    return null;
+  }
+
+  const access = effectiveSync?.accessPrivileges
+    ?? (effectiveSync
+      ? (effectiveSync.permissionGranted ? 'granted' : 'denied')
+      : librarySync.permissionGranted === false
+        ? 'denied'
+        : 'granted');
+
+  if (activeProgress) {
+    const syncedCount = Math.max(
+      0,
+      activeProgress.processedCount - activeProgress.deferredCount - activeProgress.skippedCount,
+    );
+    return {
+      access,
+      synced: activeProgress.discoveredCount > 0
+        ? `${syncedCount} of ${activeProgress.discoveredCount}`
+        : `${syncedCount}`,
+      skipped: String(activeProgress.skippedCount),
+      deferredCount: activeProgress.deferredCount,
+    };
+  }
+
+  if (lastSync) {
+    return {
+      access,
+      synced: `${lastSync.syncedCount} of ${lastSync.requestedCount}`,
+      skipped: String(lastSync.skippedCount),
+      deferredCount: lastSync.deferredAssets.length,
+    };
+  }
+
+  if (isLibraryBusy && !effectiveSync) {
+    return {
+      access,
+      synced: 'Starting...',
+      skipped: '0',
+      deferredCount: 0,
+    };
+  }
+
+  const total = Math.max(librarySync.discoveredCount, librarySync.lastSummary?.requestedCount ?? 0);
+  const syncedCount = librarySync.processedCount > 0
+    ? Math.max(0, librarySync.processedCount - librarySync.deferredCount - librarySync.skippedCount)
+    : (librarySync.lastSummary?.syncedCount ?? librarySync.syncedCount);
+  const skippedCount = librarySync.lastSummary?.skippedCount ?? librarySync.skippedCount;
+  const deferredCount = librarySync.lastSummary?.deferredAssets.length ?? librarySync.deferredCount;
+
+  return {
+    access,
+    synced: `${syncedCount} of ${total}`,
+    skipped: String(skippedCount),
+    deferredCount,
+  };
+}
+
 export function FotosSyncControls() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const model = useModel();
   const inboxDrain = useFotosShareInboxAutoDrainStatus(model);
-  const { snapshot, updateFotosSettings } = useFotosRuntime();
+  const librarySync = useFotosLibraryAutoSyncStatus(model);
+  const { snapshot } = useFotosRuntime();
   const { platformCapabilities } = snapshot;
   const supportsPhotoLibrarySync = platformCapabilities.supportsPhotoLibrarySync;
   const usesApplePhotos = platformCapabilities.currentPlatform === 'ios';
   const supportsShareInbox = platformCapabilities.supportsShareInbox;
   const [syncing, setSyncing] = useState(false);
+  const [manualProgress, setManualProgress] = useState<FotosPhotoLibrarySyncProgress | null>(null);
   const [lastSync, setLastSync] = useState<FotosPhotoLibrarySyncSummary | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [shareImporting, setShareImporting] = useState(false);
   const [shareInboxStatus, setShareInboxStatus] = useState<FotosShareInboxStatus | null>(null);
   const [lastShareImport, setLastShareImport] = useState<FotosSharedFileImportSummary | null>(null);
   const [shareError, setShareError] = useState<string | null>(null);
+  const isLibraryBusy = syncing || librarySync.running;
+  const effectiveSync = lastSync ?? librarySync.lastSummary;
+  const effectiveSyncError = syncError ?? librarySync.lastError;
+  const libraryDisplayStatus = derivePhotoLibraryDisplayStatus({
+    isLibraryBusy,
+    manualProgress,
+    lastSync,
+    librarySync,
+  });
+
+  useEffect(() => {
+    if (librarySync.running) {
+      setLastSync(null);
+    }
+  }, [librarySync.running]);
 
   const refreshShareInboxStatus = useCallback(async () => {
     try {
@@ -84,15 +189,20 @@ export function FotosSyncControls() {
     setShareError(inboxDrain.lastError);
   }, [inboxDrain.lastSummary, inboxDrain.lastError]);
 
-  const syncRecentPhotos = useCallback(async () => {
+  const syncFullLibrary = useCallback(async () => {
     setSyncError(null);
+    setManualProgress(null);
     setSyncing(true);
     try {
-      const result = await model.syncRecentPhotoLibraryAssets(12);
+      const result = await model.syncPhotoLibrary({
+        requestPermission: true,
+        onProgress: setManualProgress,
+      });
       setLastSync(result);
     } catch (error) {
       setSyncError(error instanceof Error ? error.message : String(error));
     } finally {
+      setManualProgress(null);
       setSyncing(false);
     }
   }, [model]);
@@ -218,47 +328,47 @@ export function FotosSyncControls() {
           </View>
         ) : null}
 
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          {usesApplePhotos && <Pressable
-            disabled={syncing || !supportsPhotoLibrarySync}
-            onPress={() => void pickAndSyncPhotos()}
-            style={{
-              flex: 1,
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 14,
-              backgroundColor: syncing || !supportsPhotoLibrarySync ? palette.accentSoft : palette.accent,
-              paddingVertical: 12,
-              opacity: syncing || !supportsPhotoLibrarySync ? 0.75 : 1,
-            }}
-          >
-            <Text style={{ color: syncing ? palette.accentStrong : '#ffffff', fontSize: 14, fontWeight: '700' }}>
-              {syncing ? 'Working...' : supportsPhotoLibrarySync ? 'Pick Photos' : 'Photo sync pending'}
-            </Text>
-          </Pressable>}
+        {supportsPhotoLibrarySync && !isLibraryBusy ? (
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            {usesApplePhotos ? (
+              <Pressable
+                onPress={() => void pickAndSyncPhotos()}
+                style={{
+                  flex: 1,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 14,
+                  backgroundColor: palette.accent,
+                  paddingVertical: 12,
+                }}
+              >
+                <Text style={{ color: '#ffffff', fontSize: 14, fontWeight: '700' }}>
+                  Pick Photos
+                </Text>
+              </Pressable>
+            ) : null}
 
-          <Pressable
-            disabled={syncing || !supportsPhotoLibrarySync}
-            onPress={() => void syncRecentPhotos()}
-            style={{
-              flex: 1,
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 14,
-              borderWidth: 1,
-              borderColor: borderColor(isDark),
-              backgroundColor: mutedCardBackground(isDark),
-              paddingVertical: 12,
-              opacity: syncing || !supportsPhotoLibrarySync ? 0.75 : 1,
-            }}
-          >
-            <Text style={{ color: textColor(isDark), fontSize: 14, fontWeight: '700' }}>
-              {supportsPhotoLibrarySync ? 'Sync 12 Recent' : 'Recent sync pending'}
-            </Text>
-          </Pressable>
-        </View>
+            <Pressable
+              onPress={() => void syncFullLibrary()}
+              style={{
+                flex: 1,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: borderColor(isDark),
+                backgroundColor: mutedCardBackground(isDark),
+                paddingVertical: 12,
+              }}
+            >
+              <Text style={{ color: textColor(isDark), fontSize: 14, fontWeight: '700' }}>
+                Sync Library
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
 
-        {lastSync ? (
+        {libraryDisplayStatus ? (
           <View
             style={{
               borderRadius: 16,
@@ -267,21 +377,16 @@ export function FotosSyncControls() {
               gap: 4,
             }}
           >
-            <Row
-              label="Access"
-              value={lastSync.accessPrivileges ?? (lastSync.permissionGranted ? 'granted' : 'denied')}
-              isDark={isDark}
-            />
-            <Row
-              label="Synced"
-              value={`${lastSync.syncedCount} of ${lastSync.requestedCount}`}
-              isDark={isDark}
-            />
-            <Row label="Skipped" value={String(lastSync.skippedCount)} isDark={isDark} />
-            {lastSync.deferredAssets.length ? (
+            <Row label="Access" value={libraryDisplayStatus.access} isDark={isDark} />
+            <Row label="Synced" value={libraryDisplayStatus.synced} isDark={isDark} />
+            <Row label="Skipped" value={libraryDisplayStatus.skipped} isDark={isDark} />
+            {isLibraryBusy && libraryDisplayStatus.deferredCount > 0 ? (
+              <Row label="Waiting for iCloud" value={String(libraryDisplayStatus.deferredCount)} isDark={isDark} />
+            ) : null}
+            {!isLibraryBusy && effectiveSync?.deferredAssets.length ? (
               <View style={{ gap: 8, paddingVertical: 8 }}>
-                <Row label="Waiting for iCloud" value={String(lastSync.deferredAssets.length)} isDark={isDark} />
-                {lastSync.deferredAssets.slice(0, 3).map(({ asset, thumbnailUri }) => (
+                <Row label="Waiting for iCloud" value={String(effectiveSync.deferredAssets.length)} isDark={isDark} />
+                {effectiveSync.deferredAssets.slice(0, 3).map(({ asset, thumbnailUri }) => (
                   <View key={asset.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     {thumbnailUri ? <Image source={{ uri: thumbnailUri }} style={{ width: 40, height: 40, borderRadius: 6 }} /> : null}
                     <Text numberOfLines={1} style={{ color: textColor(isDark), flex: 1 }}>{asset.filename}</Text>
@@ -289,31 +394,30 @@ export function FotosSyncControls() {
                 ))}
                 <Pressable
                   accessibilityRole="button"
-                  disabled={syncing}
-                  onPress={() => void syncDeferredPhotos(lastSync.deferredAssets.map(({ asset }) => asset.id))}
-                  style={{ backgroundColor: palette.accent, borderRadius: 10, padding: 10, opacity: syncing ? 0.6 : 1 }}
+                  onPress={() => void syncDeferredPhotos(effectiveSync.deferredAssets.map(({ asset }) => asset.id))}
+                  style={{ backgroundColor: palette.accent, borderRadius: 10, padding: 10 }}
                 >
                   <Text style={{ color: '#ffffff', textAlign: 'center', fontWeight: '600' }}>Download from iCloud</Text>
                 </Pressable>
               </View>
             ) : null}
-            {lastSync.albumSyncError ? (
-              <Text style={{ color: palette.danger, fontSize: 13 }}>Gallery albums could not sync. {lastSync.albumSyncError}</Text>
+            {!isLibraryBusy && effectiveSync?.albumSyncError ? (
+              <Text style={{ color: palette.danger, fontSize: 13 }}>Gallery albums could not sync. {effectiveSync.albumSyncError}</Text>
             ) : null}
-            {lastSync.issues.slice(0, 3).map((issue) => (
+            {!isLibraryBusy ? effectiveSync?.issues.slice(0, 3).map((issue) => (
               <Text
                 key={`${issue.assetId}:${issue.reason}`}
                 style={{ color: mutedTextColor(isDark), fontSize: 13, lineHeight: 18 }}
               >
                 {issue.filename}: {issue.reason}
               </Text>
-            ))}
+            )) : null}
           </View>
         ) : null}
 
-        {syncError ? (
+        {effectiveSyncError ? (
           <Text style={{ color: palette.danger, fontSize: 13, lineHeight: 18 }}>
-            {syncError}
+            {effectiveSyncError}
           </Text>
         ) : null}
       </View>
@@ -433,100 +537,6 @@ export function FotosSyncControls() {
             {shareError}
           </Text>
         ) : null}
-      </View>
-
-      <View
-        style={{
-          backgroundColor: cardBackground(isDark),
-          borderRadius: 20,
-          borderWidth: 1,
-          borderColor: borderColor(isDark),
-          padding: 18,
-          gap: 14,
-        }}
-      >
-        <Text style={{ color: textColor(isDark), fontSize: 17, fontWeight: '700' }}>
-          Fotos Section
-        </Text>
-
-        {[
-          {
-            label: 'Accept trusted sharing',
-            value: snapshot.fotosSettings.acceptSharing,
-            key: 'acceptSharing' as const,
-          },
-          {
-            label: 'Face analytics',
-            value: snapshot.fotosSettings.faceAnalyticsEnabled,
-            key: 'faceAnalyticsEnabled' as const,
-          },
-          {
-            label: 'Semantic search',
-            value: snapshot.fotosSettings.semanticSearchEnabled,
-            key: 'semanticSearchEnabled' as const,
-          },
-        ].map((item) => (
-          <View
-            key={item.key}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 16,
-              paddingVertical: 4,
-            }}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: textColor(isDark), fontSize: 15, fontWeight: '600' }}>
-                {item.label}
-              </Text>
-            </View>
-            <Switch
-              value={item.value}
-              onValueChange={(enabled) => void updateFotosSettings({ [item.key]: enabled })}
-              trackColor={{ false: '#cfd5cf', true: palette.accent }}
-              thumbColor="#ffffff"
-            />
-          </View>
-        ))}
-
-        <View
-          style={{
-            marginTop: 4,
-            flexDirection: 'row',
-            flexWrap: 'wrap',
-            gap: 10,
-          }}
-        >
-          {['reference', 'metadata', 'ingest'].map((mode) => {
-            const selected = snapshot.fotosSettings.defaultMode === mode;
-            return (
-              <Pressable
-                key={mode}
-                onPress={() => void updateFotosSettings({ defaultMode: mode as never })}
-                style={{
-                  borderRadius: 999,
-                  borderWidth: 1,
-                  borderColor: selected ? palette.accent : borderColor(isDark),
-                  backgroundColor: selected ? palette.accentSoft : mutedCardBackground(isDark),
-                  paddingHorizontal: 14,
-                  paddingVertical: 10,
-                }}
-              >
-                <Text
-                  style={{
-                    color: selected ? palette.accentStrong : textColor(isDark),
-                    fontSize: 13,
-                    fontWeight: '700',
-                    textTransform: 'capitalize',
-                  }}
-                >
-                  {mode}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
       </View>
     </>
   );

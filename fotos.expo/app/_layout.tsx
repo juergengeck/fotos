@@ -13,6 +13,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Model, ModelProvider, getModel, setGlobalModel } from '../ios-ui';
 import { installCommServerGuard } from '../src/install-commserver-guard';
 import { palette } from '../src/theme';
+import {useFotosLibraryAutoSync} from '../ios-ui/hooks/useFotosLibraryAutoSync';
 import {useFotosShareInboxAutoDrain} from '../ios-ui/hooks/useFotosShareInboxAutoDrain';
 import {useGlueLogin} from '../ios-ui/hooks/useGlueLogin';
 import {GlueLoginField} from '../ios-ui/components/GlueLoginField';
@@ -357,6 +358,7 @@ export default function RootLayout() {
   } = useAppInit();
 
   useFotosShareInboxAutoDrain(model, authenticated && !initializing && !error);
+  useFotosLibraryAutoSync(model, authenticated && !initializing && !error);
 
   if (error) {
     return (

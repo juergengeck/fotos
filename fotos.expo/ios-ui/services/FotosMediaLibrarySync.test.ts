@@ -68,11 +68,7 @@ vi.mock('@refinio/fotos.core', async importOriginal => ({
 }));
 vi.mock('@refinio/fotos.core/filesystem', () => ({FOTOS_THUMBNAIL_MAX_EDGE: 512,
     readFotosThumbnailDimensions: mocks.thumbnailDimensions}));
-vi.mock('@refinio/source.media', () => ({
-    createMediaSource: (params: object) => ({$type$: 'Source', id: 'source', ...params}),
-    createMediaSourceEntry: (params: object) => ({$type$: 'SourceEntry', sourceRef: 'source-ref', ...params}),
-    appendMediaBookContent: async () => undefined,
-}));
+// Exercise the real @refinio/source.media DAG functions (Source, SourceEntry, Book) against the fixture store.
 vi.mock('./FotosShareInbox', () => ({readFotosShareInboxBatches: mocks.batches, deleteFotosShareInboxBatch: mocks.deleteBatch, getFotosShareInboxStatus: async () => ({})}));
 vi.mock('./FotosMobileCollectionShare', () => ({shareFotosMobileCollection: vi.fn()}));
 import {FotosMediaLibrarySync, type FotosIntakeMode} from './FotosMediaLibrarySync';
@@ -81,19 +77,20 @@ function idOf(obj: any): string {
     if (obj.$type$ === 'FotosCollection') return createHash('sha256').update(`collection:${obj.id}`).digest('hex');
     if (obj.$type$ === 'FotosMediaVariant') return `variant:${obj.contentHash}:${obj.role}`;
     if (obj.$type$ === 'FotosMediaLocator') return `locator:${obj.variant}:${obj.locator}`;
+    if (obj.$type$ === 'Book') return `Book:${obj.author}:${obj.name}`;
     return `${obj.$type$}:${obj.id ?? obj.locator ?? ''}`;
 }
 function fixture(owner: string | undefined = OWNER, mode: FotosIntakeMode = 'reference') {
-    const stored = new Map<string, any>(), writes: any[] = [];
+    const stored = new Map<string, any>(), hashes = new Map<string, string>(), writes: any[] = [];
     const deps = {
         calculateIdHashOfObj: async (obj: any) => idOf(obj),
         getObjectByIdHash: async (id: string) => {
             if (!stored.has(id)) throw Object.assign(new Error('not found'), {name: 'FileNotFoundError'});
-            return {obj: stored.get(id)};
+            return {obj: stored.get(id), hash: hashes.get(id)};
         },
         storeVersionedObject: async (obj: any) => {
             const idHash = idOf(obj), hash = `hash:${writes.length}:${idHash}`;
-            writes.push(obj); stored.set(idHash, obj); mocks.objects.set(hash, obj);
+            writes.push(obj); stored.set(idHash, obj); hashes.set(idHash, hash); mocks.objects.set(hash, obj);
             return {hash, idHash};
         },
         getOwnerId: (): string | undefined => owner, getInstanceId: () => 'device-1', getIntakeMode: async () => mode,
@@ -304,7 +301,9 @@ describe('Expo reference-first media acquisition', () => {
         expect(await service.syncAssetIds(['cloud'])).toMatchObject({syncedCount: 0, skippedCount: 0,
             deferredAssets: [{asset: {id: 'cloud'}, status: 'icloud-deferred', thumbnailUri: 'file:///thumbnail.jpg'}]});
         expect(mocks.inspect).toHaveBeenLastCalledWith('cloud', false, 512);
-        expect(writes).toEqual([]);
+        expect(writes.some(obj => ['FotosEntry', 'FotosMediaVariant', 'FotosMediaLocator', 'FotosManifest'].includes(obj.$type$))).toBe(false);
+        expect(writes.find(obj => obj.$type$ === 'SourceEntry')).toMatchObject({locator: 'cloud', summary: 'icloud-deferred'});
+        expect(writes.find(obj => obj.$type$ === 'SourceEntry')?.contentHash).toBeUndefined();
         expect(mocks.blob).not.toHaveBeenCalled();
         expect(await service.syncAssetIds(['cloud'], true)).toMatchObject({syncedCount: 1, deferredAssets: []});
         expect(mocks.inspect).toHaveBeenLastCalledWith('cloud', true, 512);
@@ -435,5 +434,112 @@ describe('Expo reference-first media acquisition', () => {
         const {service, writes, deps} = fixture(); deps.getObjectByIdHash = async () => {throw new Error('storage offline');};
         expect(await service.syncAssetIds(['asset-1'])).toMatchObject({syncedCount: 0, skippedCount: 1});
         expect(writes).toEqual([]); expect(mocks.record).not.toHaveBeenCalled();
+    });
+    it('auto-syncs unsynced local library assets in batches without prompting when permission is denied', async () => {
+        mocks.permissions.mockResolvedValueOnce({granted: false, accessPrivileges: 'none'});
+        const {service} = fixture();
+        const denied = await service.syncLibrary();
+        expect(denied).toMatchObject({permissionGranted: false, requestedCount: 0, syncedCount: 0});
+        expect(mocks.listAssets).not.toHaveBeenCalled();
+    });
+    it('indexes new library assets incrementally, reports progress, attaches the change observer, and skips already-indexed assets', async () => {
+        const progress: Array<{discoveredCount: number; processedCount: number; syncedCount: number}> = [];
+        mocks.listAssets.mockImplementation(async (offset: number) => offset === 0 ? {
+            assets: [
+                {id: 'asset-1', filename: 'first.jpg', width: 2, height: 2, mediaType: 'photo', mediaSubtypes: [], duration: 0, favorite: false},
+                {id: 'asset-2', filename: 'second.jpg', width: 2, height: 2, mediaType: 'photo', mediaSubtypes: [], duration: 0, favorite: false},
+            ],
+            nextOffset: 2,
+            cursor: 'cursor-1',
+        } : {
+            assets: [
+                {id: 'asset-3', filename: 'third.jpg', width: 2, height: 2, mediaType: 'photo', mediaSubtypes: [], duration: 0, favorite: false},
+            ],
+            nextOffset: undefined,
+        });
+        mocks.listAlbums.mockResolvedValue({
+            albums: [{id: 'album-1', name: 'Favorites', kind: 'user'}],
+            nextOffset: undefined,
+        });
+        mocks.listAlbumMembers.mockResolvedValue({
+            assetIds: ['asset-1'],
+            nextOffset: undefined,
+        });
+        const {service} = fixture();
+        const firstPass = await service.syncLibrary({
+            batchSize: 2,
+            onProgress: value => progress.push({
+                discoveredCount: value.discoveredCount,
+                processedCount: value.processedCount,
+                syncedCount: value.syncedCount,
+            }),
+        });
+        expect(firstPass).toMatchObject({permissionGranted: true, requestedCount: 3, syncedCount: 3, skippedCount: 0});
+        expect(progress[0]).toEqual({discoveredCount: 3, processedCount: 0, syncedCount: 0});
+        expect(progress.at(-1)).toEqual({discoveredCount: 3, processedCount: 3, syncedCount: 3});
+        expect(mocks.listener).toBeDefined();
+        expect(mocks.listAlbums).toHaveBeenCalled();
+
+        mocks.inspect.mockClear();
+        const secondPass = await service.syncLibrary({batchSize: 2});
+        expect(secondPass).toMatchObject({permissionGranted: true, requestedCount: 0, syncedCount: 0, skippedCount: 0});
+        expect(mocks.inspect).not.toHaveBeenCalled();
+    });
+    it('stops cleanly between assets when cancelled mid-batch and preserves already-indexed items', async () => {
+        mocks.listAssets.mockResolvedValue({
+            assets: [
+                {id: 'asset-1', filename: 'first.jpg', width: 2, height: 2, mediaType: 'photo', mediaSubtypes: [], duration: 0, favorite: false},
+                {id: 'asset-2', filename: 'second.jpg', width: 2, height: 2, mediaType: 'photo', mediaSubtypes: [], duration: 0, favorite: false},
+            ],
+            nextOffset: undefined,
+        });
+        let cancelled = false;
+        const {service} = fixture();
+        const result = await service.syncLibrary({
+            batchSize: 2,
+            isCancelled: () => cancelled,
+            onProgress: value => {
+                if (value.processedCount >= 1) cancelled = true;
+            },
+        });
+        expect(result).toMatchObject({permissionGranted: true, requestedCount: 2, syncedCount: 1, cancelled: true});
+        expect(await service.getLocalPhotoHashes()).toEqual(new Map([['asset-1', CONTENT]]));
+    });
+    it('persists Source.checkpoint and deferred SourceEntry in the ONE DAG across restarts without re-scanning', async () => {
+        mocks.listAssets.mockImplementation(async (offset: number) => offset === 0 ? {
+            assets: [
+                {id: 'asset-1', filename: 'local.jpg', width: 2, height: 2, mediaType: 'photo', mediaSubtypes: [], duration: 0, favorite: false, creationTime: 3000, modificationTime: 1000},
+                {id: 'asset-2', filename: 'icloud.jpg', width: 2, height: 2, mediaType: 'photo', mediaSubtypes: [], duration: 0, favorite: false, creationTime: 2000, modificationTime: 2000},
+            ],
+            nextOffset: undefined,
+        } : {assets: [], nextOffset: undefined});
+        mocks.inspect.mockImplementation(async (id: string) => id === 'asset-2'
+            ? {status: 'icloud-deferred', asset: {id: 'asset-2', filename: 'icloud.jpg', width: 2, height: 2, mediaType: 'photo', mediaSubtypes: [], duration: 0, favorite: false, creationTime: 2000, modificationTime: 2000}}
+            : {status: 'available', contentHash: CONTENT, byteSize: 4, thumbnailUri: 'file:///tmp/thumb.jpg', asset: {id, filename: 'local.jpg', width: 2, height: 2, mediaType: 'photo', mediaSubtypes: [], duration: 0, favorite: false, creationTime: 3000, modificationTime: 1000}});
+
+        // First app session: indexes asset-1, records deferred SourceEntry for asset-2, and checkpoints Source in the DAG.
+        const shared = fixture();
+        const pass1 = await shared.service.syncLibrary({mode: 'auto', batchSize: 10});
+        expect(pass1).toMatchObject({permissionGranted: true, requestedCount: 2, syncedCount: 1});
+        expect(pass1.deferredAssets).toHaveLength(1);
+        const sourceObj = [...shared.stored.values()].find(obj => obj.$type$ === 'Source');
+        expect(sourceObj?.checkpoint).toBeTruthy();
+        expect(JSON.parse(sourceObj.checkpoint)).toMatchObject({v: 1, newestCreationTime: 3000, oldestScannedCreationTime: 2000});
+        expect(typeof JSON.parse(sourceObj.checkpoint).completedAt).toBe('number');
+        expect(sourceObj.predecessor).toBeTruthy();
+
+        // Simulated cold app restart: fresh FotosMediaLibrarySync sharing ONLY the ONE DAG store (zero side-channel storage).
+        mocks.inspect.mockClear();
+        mocks.listAlbums.mockClear();
+        const progressOnRestart: any[] = [];
+        const restartedService = new FotosMediaLibrarySync(shared.deps);
+        const pass2 = await restartedService.syncLibrary({
+            mode: 'auto',
+            onProgress: value => progressOnRestart.push(value),
+        });
+        expect(pass2).toMatchObject({permissionGranted: true, requestedCount: 0, syncedCount: 0, skippedCount: 0});
+        expect(mocks.inspect).not.toHaveBeenCalled();
+        expect(mocks.listAlbums).not.toHaveBeenCalled();
+        expect(progressOnRestart).toEqual([]);
     });
 });

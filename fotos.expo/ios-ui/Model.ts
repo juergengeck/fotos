@@ -71,6 +71,7 @@ import {
 } from './services/discovery-settings';
 import {
     FotosMediaLibrarySync,
+    type FotosPhotoLibrarySyncOptions,
     type FotosSharedFileImportSummary,
     type FotosPhotoLibrarySyncSummary,
 } from './services/FotosMediaLibrarySync';
@@ -729,6 +730,15 @@ export default class Model {
         }
 
         return this._fotosMediaLibrarySync;
+    }
+
+    async syncPhotoLibrary(options?: FotosPhotoLibrarySyncOptions): Promise<FotosPhotoLibrarySyncSummary> {
+        const service = this.fotosMediaLibrarySync;
+        if (!service) {
+            throw new Error('[Model] Photo-library sync is unavailable before runtime initialization');
+        }
+
+        return service.syncLibrary(options);
     }
 
     async syncRecentPhotoLibraryAssets(limit?: number): Promise<FotosPhotoLibrarySyncSummary> {

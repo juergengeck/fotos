@@ -9,9 +9,11 @@ describe('Fotos runtime storage schema', () => {
         for (const name of ['FotosEntry', 'FotosManifest', 'FotosMediaVariant', 'FotosMediaLocator',
             'FotosShareCertificateChain', 'WriterPolicy', 'Assembly', 'Task', 'InstanceRound',
             'Plan', 'ChatTrieEntry', 'Device', 'TargetModuleSettings',
+            'Source', 'SourceEntry', 'SourceRun', 'Book',
             'DimensionState', 'DimensionStateReference', 'PhoneBookProjectionRegistry']) {
             expect(names).toContain(name);
         }
         expect(reverseMaps.has('FotosShareCertificateChain')).toBe(true);
+        expect(reverseMaps.get('SourceEntry')?.has('sourceId')).toBe(true);
     });
 });
