@@ -9,7 +9,7 @@ const {
 } = require('@expo/config-plugins');
 
 const EXTENSION_NAME = 'fotosShareExtension';
-const EXTENSION_BUNDLE_ID = 'fotos.ios.share';
+const EXTENSION_BUNDLE_ID = 'one.fotos.share';
 const APP_GROUP_ID = 'group.fotos.ios';
 const DEPLOYMENT_TARGET = '17.0';
 const TEMPLATE_DIR = path.join(__dirname, 'fotos-share-extension');
@@ -88,7 +88,11 @@ function withFotosShareExtensionXcodeProject(config) {
     ensureTargetDependency(project, appTarget.uuid, targetUuid);
     ensureEmbedAppExtensionsPhase(project, appTarget.uuid);
     ensureExtensionGroupFiles(project, EXTENSION_DIR, targetUuid);
-    ensureExtensionBuildSettings(project, targetUuid, appleTeamId);
+    ensureExtensionBuildSettings(project, targetUuid, {
+      appleTeamId,
+      version: modConfig.version || '1.0.0',
+      buildNumber: modConfig.ios?.buildNumber || '1',
+    });
     ensureExtensionProductIsEmbedded(project, appTarget.uuid);
     normalizeExtensionProductComments(project, appTarget.uuid);
 
@@ -128,9 +132,16 @@ function ensureTargetBuildPhases(project, targetUuid) {
 }
 
 function ensureBuildPhase(project, targetUuid, isa, comment) {
-  if (!project.buildPhaseObject(isa, comment, targetUuid)) {
+  if (!getTargetBuildPhase(project, targetUuid, isa)) {
     project.addBuildPhase([], isa, comment, targetUuid);
   }
+}
+
+function getTargetBuildPhase(project, targetUuid, isa) {
+  const target = project.pbxNativeTargetSection()[targetUuid];
+  const phases = project.hash.project.objects[isa] || {};
+  const phase = target.buildPhases.find(({ value }) => phases[value]);
+  return phase && phases[phase.value];
 }
 
 function ensureTargetDependencySections(project) {
@@ -267,7 +278,7 @@ function normalizeGroupFileReference(project, groupName, filepath) {
 
 function ensureBuildFileInSourcesPhase(project, targetUuid, fileRefUuid, basename) {
   const buildFileSection = project.pbxBuildFileSection() || {};
-  const sourcesPhase = project.pbxSourcesBuildPhaseObj(targetUuid);
+  const sourcesPhase = getTargetBuildPhase(project, targetUuid, 'PBXSourcesBuildPhase');
 
   if (!sourcesPhase) {
     throw new Error('[withFotosShareExtension] Sources build phase is missing from extension target.');
@@ -322,7 +333,7 @@ function removeBuildFileFromOtherSourcesPhases(project, targetUuid, fileRefUuid)
       continue;
     }
 
-    const sourcesPhase = project.pbxSourcesBuildPhaseObj(candidateTargetUuid);
+    const sourcesPhase = getTargetBuildPhase(project, candidateTargetUuid, 'PBXSourcesBuildPhase');
     if (!sourcesPhase?.files) {
       continue;
     }
@@ -331,7 +342,10 @@ function removeBuildFileFromOtherSourcesPhases(project, targetUuid, fileRefUuid)
   }
 }
 
-function ensureExtensionBuildSettings(project, targetUuid, appleTeamId) {
+function ensureExtensionBuildSettings(project, targetUuid, options) {
+  const { appleTeamId, version, buildNumber } = typeof options === 'object' && options !== null
+    ? options
+    : { appleTeamId: options, version: '1.0.0', buildNumber: '1' };
   const target = project.pbxNativeTargetSection()[targetUuid];
   if (!target) {
     throw new Error('[withFotosShareExtension] Extension target is missing from PBXNativeTarget.');
@@ -350,6 +364,8 @@ function ensureExtensionBuildSettings(project, targetUuid, appleTeamId) {
       '"$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks"';
     configuration.buildSettings.PRODUCT_BUNDLE_IDENTIFIER = `"${EXTENSION_BUNDLE_ID}"`;
     configuration.buildSettings.PRODUCT_NAME = `"${EXTENSION_NAME}"`;
+    configuration.buildSettings.MARKETING_VERSION = `"${version || '1.0.0'}"`;
+    configuration.buildSettings.CURRENT_PROJECT_VERSION = `"${buildNumber || '1'}"`;
     configuration.buildSettings.SKIP_INSTALL = 'YES';
     configuration.buildSettings.SWIFT_VERSION = '5.0';
     configuration.buildSettings.TARGETED_DEVICE_FAMILY = '"1,2"';

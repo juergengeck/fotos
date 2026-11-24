@@ -1,0 +1,39 @@
+import {useEffect, useState, type ComponentType} from 'react';
+import {Image, StyleSheet, type ViewProps} from 'react-native';
+import {requireMediaExpoImage, type MediaExpoImageProps} from '@refinio/media.expo';
+import {readBlobAsBase64} from '@refinio/one.core/lib/storage-blob.js';
+import type {FotosGalleryItem} from '../services/FotosMobileGallery';
+
+type PhotoKitImageProps = ViewProps & MediaExpoImageProps;
+let PhotoKitImage: ComponentType<PhotoKitImageProps> | undefined;
+
+export function FotosGalleryImage({
+    item, resizeMode = 'cover', allowNetworkAccess,
+}: {
+    item: {asset?: Pick<NonNullable<FotosGalleryItem['asset']>, 'id'>; entry?: FotosGalleryItem['entry']};
+    resizeMode?: 'cover' | 'contain';
+    allowNetworkAccess?: boolean;
+}) {
+    const thumb = item.entry?.thumb;
+    const assetId = item.asset?.id;
+    const effectiveNetworkAccess = allowNetworkAccess ?? (resizeMode === 'cover');
+    const [thumbnail, setThumbnail] = useState<{hash: string; uri: string}>();
+    useEffect(() => {
+        if (!thumb || assetId) return;
+        let disposed = false;
+        void readBlobAsBase64(thumb).then(bytes => {
+            const mime = bytes.startsWith('iVBORw') ? 'png' : bytes.startsWith('UklGR') ? 'webp' : 'jpeg';
+            if (!disposed) setThumbnail({hash: thumb, uri: `data:image/${mime};base64,${bytes}`});
+        }).catch(() => {});
+        return () => { disposed = true; };
+    }, [thumb, assetId]);
+
+    if (assetId) {
+        PhotoKitImage ??= requireMediaExpoImage<PhotoKitImageProps>();
+        return <PhotoKitImage style={StyleSheet.absoluteFill} assetId={assetId} resizeMode={resizeMode} allowNetworkAccess={effectiveNetworkAccess} />;
+    }
+    if (thumbnail && thumbnail.hash === thumb) {
+        return <Image accessible={false} style={StyleSheet.absoluteFill} source={{uri: thumbnail.uri}} resizeMode={resizeMode} />;
+    }
+    return null;
+}

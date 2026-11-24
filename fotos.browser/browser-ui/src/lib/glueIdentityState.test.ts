@@ -6,12 +6,26 @@ import {
 } from '@glueone/glue.core';
 import {
     requirePreparedGlueIdentity,
+    recordAdmittedNativeGlueOwner,
+    resolveReusableGlueIdentity,
     resolveGlueDisplayName,
     resolveGlueIdentityState,
     resolveGluePublicationIdentity,
 } from './glueIdentityState';
 
 describe('glueIdentityState', () => {
+    it('retains the exact native owner only with admission evidence bound to this runtime', () => {
+        const settingsPlan = {};
+        const owner = 'a'.repeat(64);
+        expect(resolveReusableGlueIdentity(settingsPlan, owner, owner)).toBeNull();
+        recordAdmittedNativeGlueOwner(settingsPlan, owner);
+        expect(resolveReusableGlueIdentity(settingsPlan, owner, owner)).toBe(owner);
+        expect(resolveReusableGlueIdentity(settingsPlan, null, owner)).toBe(owner);
+        expect(resolveReusableGlueIdentity({}, owner, owner)).toBeNull();
+        expect(() => resolveReusableGlueIdentity(settingsPlan, 'b'.repeat(64), owner)).toThrow('differs from');
+        expect(() => resolveReusableGlueIdentity(settingsPlan, owner, 'b'.repeat(64))).toThrow('differs from');
+    });
+
     it('resolves legacy publication identity values', () => {
         const values = {
             publicationIdentity: 'legacy-person-id',

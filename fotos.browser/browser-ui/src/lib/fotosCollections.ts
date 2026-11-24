@@ -238,7 +238,8 @@ export function collectionMatchesPhoto(
     collection: FotosCollectionDefinition,
     photo: PhotoEntry,
 ): boolean {
-    if (collection.photoHashes.includes(photo.hash)) {
+    if (collection.photoHashes.includes(photo.hash)
+        || (photo.contentHash && collection.photoHashes.includes(photo.contentHash))) {
         return true;
     }
 

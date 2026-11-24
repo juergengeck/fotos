@@ -2,10 +2,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import {File as NodeFile, Blob as NodeBlob} from 'node:buffer';
 import {webcrypto as crypto} from 'node:crypto';
+import {readFileSync} from 'node:fs';
+import {URL as NodeURL} from 'node:url';
 
 const File = NodeFile as unknown as typeof globalThis.File;
 const Blob = NodeBlob as unknown as typeof globalThis.Blob;
-import { copyFilesToDirectory, hashImageFile, ingestDirectory, isImportableMediaFile } from './browserIngest';
+import { copyFilesToDirectory, hashImageFile, ingestDirectory, isImportableMediaFile, matchesOriginalContentHash } from './browserIngest';
 
 vi.mock('./mediaThumbnail.js', () => ({
     generateMediaThumbnail: vi.fn(async () => new Blob(['poster'], {type: 'image/jpeg'})),
@@ -121,6 +123,19 @@ describe('copyFilesToDirectory', () => {
 });
 
 describe('media import identity', () => {
+    it('uses the shared PNG identity across file and embedded metadata changes', async () => {
+        const fixtures = new NodeURL('../../../../../one/packages/media.core/test/fixtures/bitfield-hash/', import.meta.url);
+        const plain = readFileSync(new NodeURL('plain.png', fixtures));
+        const withMetadata = readFileSync(new NodeURL('with-exif-and-text.png', fixtures));
+        const first = new File([plain], 'old-name.png', {lastModified: 1});
+        const second = new File([withMetadata], 'new-name.png', {lastModified: 2});
+        expect(await hashImageFile(second)).toBe(await hashImageFile(first));
+        const legacyHash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', withMetadata)),
+            byte => byte.toString(16).padStart(2, '0')).join('');
+        expect(await matchesOriginalContentHash(await second.arrayBuffer(), legacyHash)).toBe(true);
+        expect(await matchesOriginalContentHash(await first.arrayBuffer(), legacyHash)).toBe(false);
+    });
+
     it('indexes a video-only directory without passing video bytes to image analysis', async () => {
         const root = new MemoryDirectoryHandle('library');
         const file = new File(['original movie'], 'clip.mp4', {type: 'video/mp4'});

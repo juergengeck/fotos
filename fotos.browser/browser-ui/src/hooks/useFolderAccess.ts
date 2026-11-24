@@ -9,6 +9,7 @@ import {
     getGallerySurfaceProfile,
     planGalleryIntake,
 } from '@refinio/fotos.core';
+import {readFotosOriginal} from '@refinio/fotos.core/filesystem';
 import type {
     FaceAnalysisResult,
     FaceClusterInfo,
@@ -17,7 +18,7 @@ import type {
     GallerySurface,
     GallerySurfaceProfile,
 } from '@refinio/fotos.core';
-import { copyFilesToDirectory, hashImageFile, ingestDirectory, type IngestProgress, type FaceWorkerHandle } from '@/lib/browserIngest';
+import { copyFilesToDirectory, ingestDirectory, matchesOriginalContentHash, type IngestProgress, type FaceWorkerHandle } from '@/lib/browserIngest';
 import {parseFotosEntryByteSize} from '../../../../fotos.core/src/ingest/index-html.js';
 import {readFotosIndexWithExactByteSizes} from '@/lib/fotosIndexByteSizeMigration';
 import { createFaceWorker } from '@/lib/faceWorkerClient';
@@ -497,6 +498,7 @@ function parseOneIndex(html: string, relPath: string): PhotoEntry[] {
 
         entries.push({
             hash: streamId || contentHash,
+            ...(contentHash ? {contentHash} : {}),
             name,
             managed: 'metadata',
             sourcePath: relPath ? `${relPath}/${name}` : name,
@@ -586,6 +588,7 @@ function faceInfoFromRemoteAnalysis(entry: FotosEntry, faces: RemoteFaceAnalysis
         count: faces.count,
         bboxes: faces.bboxes,
         scores: faces.scores,
+        ...(faces.names ? {names: faces.names} : {}),
         embeddings: faces.embeddings,
         crops: [],
     };
@@ -604,7 +607,7 @@ async function materializeRemoteFotosEntry(
         await calculateIdHashOfObj(entry as any) as SHA256IdHash<FotosEntry>,
     );
     const cacheEntries: Array<[key: string, url: string]> = [];
-    const remoteSourceKey = thumbUrl ? `remote:${entry.contentHash}` : undefined;
+    const remoteSourceKey = `remote:${entry.contentHash}`;
 
     if (thumbUrl && remoteSourceKey) {
         cacheEntries.push([remoteSourceKey, thumbUrl]);
@@ -626,11 +629,11 @@ async function materializeRemoteFotosEntry(
             hash: entry.contentHash,
             name: remoteName,
             managed: 'metadata',
-            ...(remoteSourceKey ? { sourcePath: remoteSourceKey } : {}),
+            sourcePath: remoteSourceKey,
             ...(folderPath ? { folderPath } : {}),
             ...(entry.mime ? { mimeType: entry.mime } : {}),
-            ...(remoteSourceKey ? { thumb: remoteSourceKey } : {}),
-            tags: folderPath ? [folderPath.split('/')[0]!] : [],
+            ...(thumbUrl ? { thumb: remoteSourceKey } : {}),
+            tags: [...new Set([...(entry.tags ?? []), ...(folderPath ? [folderPath.split('/')[0]!] : [])])],
             capturedAt,
             updatedAt,
             exif: buildExifFromFotosEntry(entry),
@@ -753,7 +756,7 @@ async function readAnalysisSourceFile(handle: FileSystemDirectoryHandle, photo: 
         if (!hash) throw new Error(`Cannot analyze ${photo.name}: index content hash missing.`);
         return hash;
     });
-    if (await hashImageFile(file) !== expectedHash) {
+    if (!await matchesOriginalContentHash(await file.arrayBuffer(), expectedHash)) {
         throw new Error(`Cannot analyze ${photo.name}: source content changed since indexing; saved analysis retained. Rescan the folder first.`);
     }
     return file;
@@ -1683,6 +1686,8 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     const clusterDimRef = useRef<FaceClusterDimension | null>(null);
     const clusterThresholdRef = useRef<number | null>(null);
     const previousAllowsLocalFaceEnrichmentRef = useRef(allowsLocalFaceEnrichment);
+    // Exact admitted snapshots feed original reads; version heads may arrive later.
+    const remoteOriginalEntriesRef = useRef<Map<string, FotosEntry>>(new Map());
     const managedFolders = useMemo<ManagedFolder[]>(() => folders.map(folder => ({
         id: folder.id,
         name: folder.label,
@@ -1795,8 +1800,10 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
 
     // Both initial manifest projection and live imports use the same materializer.
     const receiveFotosEntry = useCallback(async (entry: FotosEntry) => {
+        if (!/^[a-f0-9]{64}$/.test(entry.contentHash)) throw new Error('Invalid received Fotos content hash');
         const rootHandle = rootHandleRef.current;
         const materialized = await materializeRemoteFotosEntry(entry);
+        remoteOriginalEntriesRef.current.set(`remote:${entry.contentHash}`, entry);
         let shouldKeepRemoteAssets = false;
         let shouldOpenRemoteGallery = false;
         let shouldWriteFilesystemFaces = false;
@@ -1805,7 +1812,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
 
         const nextEntries = (() => {
             const prev = entriesRef.current;
-            const idx = prev.findIndex(p => p.hash === entry.contentHash);
+            const idx = prev.findIndex(p => (p.contentHash ?? p.hash) === entry.contentHash);
             if (idx < 0) {
                 shouldKeepRemoteAssets = true;
                 shouldOpenRemoteGallery = !rootHandle;
@@ -1816,7 +1823,9 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             }
 
             const photo = prev[idx];
-            const nextFaces = shouldAdoptIncomingFaces(photo.faces, materialized.photo.faces)
+            const receivedFacesChanged = isRemoteGalleryEntry(photo)
+                && (Boolean(materialized.photo.faces?.embeddings) || entry.faceCount === 0);
+            const nextFaces = (receivedFacesChanged || shouldAdoptIncomingFaces(photo.faces, materialized.photo.faces))
                 ? materialized.photo.faces
                 : photo.faces;
             const nextPhoto: PhotoEntry = {
@@ -2938,6 +2947,7 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             setEntries(folderRemaining);
         }
 
+        remoteOriginalEntriesRef.current.delete(`remote:${removedPhoto.hash}`);
         const cachedKeys = [
             removedPhoto.sourcePath,
             removedPhoto.thumb,
@@ -3186,6 +3196,16 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
     }, [findFolderForEntry, findFolderForPath]);
 
     const readFile = useCallback(async (relativePath: string): Promise<File> => {
+        if (relativePath.startsWith('remote:')) {
+            const match = /^remote:([a-f0-9]{64})$/.exec(relativePath);
+            if (!match) throw new Error('Invalid remote Fotos source path');
+            const entry = remoteOriginalEntriesRef.current.get(relativePath);
+            if (!entry || entry.contentHash !== match[1]) throw new Error('Remote Fotos original has no matching admitted entry');
+            const name = basenameFromPath(entry.sourcePath);
+            if (!name || !entry.mime?.trim()) throw new Error('Remote Fotos original metadata is missing its filename or MIME type');
+            const {content} = await readFotosOriginal(entry);
+            return new File([content], name, {type: entry.mime});
+        }
         const handle = findFolderForPath(relativePath)?.handle ?? rootHandleRef.current;
         if (!handle) throw new Error('No folder open');
         return readFileFromHandle(handle, relativePath);
@@ -3203,7 +3223,8 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
         for (const folder of foldersRef.current) {
             const localEntries = folder.entries.filter(entry => (
                 !isRemoteGalleryEntry(entry)
-                && (!requestedHashes || requestedHashes.has(entry.hash))
+                && (!requestedHashes || requestedHashes.has(entry.hash)
+                    || requestedHashes.has(entry.contentHash ?? entry.hash))
             ));
             if (localEntries.length === 0) {
                 continue;
@@ -3215,6 +3236,14 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             });
         }
     }, [claimAuthorshipOnIngest, entries, isOpen]);
+
+    const commitFaceMetadataEdits = useCallback(async (handle: FileSystemDirectoryHandle, affected: PhotoEntry[]) => {
+        for (const photo of affected) {
+            await updateIndexHtmlFaceData(handle, photo, buildFaceDataAttrsFromEntry(photo));
+            publishAnalysis(photo, {faces: photo.faces});
+        }
+        if (affected.length) await ensureSyncedToOneCore(affected.map(photo => photo.contentHash ?? photo.hash));
+    }, [ensureSyncedToOneCore, publishAnalysis]);
 
     const renameFace = useCallback(async (clusterId: string, name: string) => queueFaceMetadataMutation(async () => {
         const currentEntries = entriesRef.current;
@@ -3265,11 +3294,8 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             return updated;
         });
 
-        for (const entry of affectedEntries) {
-            await updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry));
-            publishAnalysis(entry, {faces: entry.faces});
-        }
-    }), [ensureClusterDimensionForEditing, publishAnalysis]);
+        await commitFaceMetadataEdits(handle, affectedEntries);
+    }), [ensureClusterDimensionForEditing, commitFaceMetadataEdits]);
 
     const deleteFace = useCallback(async (clusterId: string) => queueFaceMetadataMutation(async () => {
         const currentEntries = entriesRef.current;
@@ -3320,11 +3346,8 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             return updated;
         });
 
-        for (const entry of affectedEntries) {
-            await updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry));
-            publishAnalysis(entry, {faces: entry.faces});
-        }
-    }), [ensureClusterDimensionForEditing, publishAnalysis]);
+        await commitFaceMetadataEdits(handle, affectedEntries);
+    }), [ensureClusterDimensionForEditing, commitFaceMetadataEdits]);
 
     const associateFaceWithCluster = useCallback(async (
         photoHash: string,
@@ -3433,7 +3456,8 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
 
         clusterDimRef.current = await rebuildPersistedClusterStateFromEntries(handle, nextEntries, clusterThreshold);
         clusterThresholdRef.current = clusterThreshold;
-    }), [clusterThreshold, publishAnalysis]);
+        await ensureSyncedToOneCore(affectedEntries.map(photo => photo.contentHash ?? photo.hash));
+    }), [clusterThreshold, ensureSyncedToOneCore, publishAnalysis]);
 
     const mergeFaceClusters = useCallback(async (
         targetClusterId: string,
@@ -3544,7 +3568,8 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
 
         clusterDimRef.current = await rebuildPersistedClusterStateFromEntries(handle, nextEntries, clusterThreshold);
         clusterThresholdRef.current = clusterThreshold;
-    }), [clusterThreshold, publishAnalysis]);
+        await ensureSyncedToOneCore(affectedEntries.map(photo => photo.contentHash ?? photo.hash));
+    }), [clusterThreshold, ensureSyncedToOneCore, publishAnalysis]);
 
     const groupFaceClustersAsPerson = useCallback(async (clusterIds: string[], preferredPersonId?: string) => queueFaceMetadataMutation(async () => {
         const currentEntries = entriesRef.current;
@@ -3645,12 +3670,9 @@ export function useFolderAccess(options: UseFolderAccessOptions = {}): FolderAcc
             return personId;
         }
 
-        for (const entry of affectedEntries) {
-            await updateIndexHtmlFaceData(handle, entry, buildFaceDataAttrsFromEntry(entry));
-            publishAnalysis(entry, {faces: entry.faces});
-        }
+        await commitFaceMetadataEdits(handle, affectedEntries);
         return personId;
-    }), [ensureClusterDimensionForEditing, publishAnalysis]);
+    }), [ensureClusterDimensionForEditing, commitFaceMetadataEdits]);
 
     const separatePersonGroup = useCallback(async (personId: string) => queueFaceMetadataMutation(async () => {
         const currentEntries = entriesRef.current;

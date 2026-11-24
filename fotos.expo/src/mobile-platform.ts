@@ -62,16 +62,14 @@ export function getFotosPlatformCapabilities(): FotosPlatformCapabilities {
   }
 
   if (currentPlatform === 'android') {
-    // Keep Android conservative until the native discovery, transport,
-    // media-library ingest, and local-model paths are verified end to end.
     return {
       currentPlatform,
       platformLabel: 'Android',
-      supportsLocalNetworkDiscovery: false,
+      supportsLocalNetworkDiscovery: true,
       supportsVerifiedPeerCollection: false,
-      supportsPeerPairing: false,
-      supportsUdpHandshake: false,
-      supportsPhotoLibrarySync: false,
+      supportsPeerPairing: true,
+      supportsUdpHandshake: true,
+      supportsPhotoLibrarySync: true,
       supportsShareInbox: false,
       supportsLocalModels: false,
       supportsLocalMLX: false,

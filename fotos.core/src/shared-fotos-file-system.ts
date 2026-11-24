@@ -3,6 +3,7 @@ import {calculateHashOfObj} from '@refinio/one.core/lib/util/object.js';
 import {createCryptoHash} from '@refinio/one.core/lib/system/crypto-helpers.js';
 import {projectReceivedFotosShares} from './received-shares.js';
 import {readFotosOriginal} from './fotos-file-system.js';
+import {getFotosEntryProjectionVersion, projectFotosEntryReferences, type FotosEntryReference} from './fotos-entry-projection.js';
 import type {FotosEntry} from './recipes/FotosRecipes.js';
 export {FotosRecipes} from './recipes/FotosRecipes.js';
 
@@ -159,14 +160,28 @@ export class SharedFotosFileSystem {
       scope.scope.kind === 'collection' && scope.verified && scope.status === 'active');
     const directories = new Set(['/']);
     const photos: Photo[] = [];
+    const paths = new Map<string, Photo>();
     for (const scope of scopes) {
       const root = getSharedFotosCollectionPath(scope.scope.id, scope.issuer);
       directories.add(root);
+      const references: FotosEntryReference[] = [];
       for (const entry of scope.entries) {
         if (!entry.sourcePath) failure(-22, 'Shared Fotos entry has no source path');
         const path = canonical(`${root}/${entry.sourcePath}`);
-        if (photos.some(photo => photo.path === path)) failure(-17, 'Conflicting paths in a shared Fotos collection');
-        photos.push({path, entry, hash: await this.hashEntry(entry)});
+        const hash = await this.hashEntry(entry);
+        const previous = paths.get(path);
+        if (previous && previous.entry.contentHash !== entry.contentHash) failure(-17, `Conflicting paths in a shared Fotos collection: ${JSON.stringify({
+          path, issuer: scope.issuer, scope: scope.scope, certificateIdHash: scope.certificateIdHash,
+          previous: {hash: previous.hash, contentHash: previous.entry.contentHash},
+          incoming: {hash, contentHash: entry.contentHash},
+        })}`);
+        paths.set(path, {path, entry, hash});
+        references.push({hash, entry});
+      }
+      for (const reference of projectFotosEntryReferences(references)) {
+        const path = canonical(`${root}/${reference.entry.sourcePath}`);
+        photos.push({path, entry: reference.entry,
+          hash: await getFotosEntryProjectionVersion(reference, this.hashTree)});
         let parent = path.slice(0, path.lastIndexOf('/'));
         while (parent !== root) { directories.add(parent); parent = parent.slice(0, parent.lastIndexOf('/')); }
       }

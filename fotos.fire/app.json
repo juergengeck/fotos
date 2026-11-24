@@ -3,17 +3,13 @@
     "name": "fotos.one",
     "slug": "fotos-fire",
     "scheme": "fotosfire",
-    "version": "0.1.0",
+    "version": "0.1.4",
     "orientation": "landscape",
     "icon": "../fotos.expo/assets/icon.png",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "android": {
       "package": "one.fotos.fire",
-      "adaptiveIcon": {
-        "foregroundImage": "../fotos.expo/assets/adaptive-icon.png",
-        "backgroundColor": "#111111"
-      },
       "blockedPermissions": [
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
@@ -23,7 +19,8 @@
         "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
         "android.permission.RECORD_AUDIO",
         "android.permission.SYSTEM_ALERT_WINDOW"
-      ]
+      ],
+      "versionCode": 5
     },
     "plugins": [
       [
@@ -41,7 +38,7 @@
           "image": "../fotos.expo/assets/splash-icon.png",
           "imageWidth": 160,
           "resizeMode": "contain",
-          "backgroundColor": "#111111"
+          "backgroundColor": "#ffffff"
         }
       ]
     ],

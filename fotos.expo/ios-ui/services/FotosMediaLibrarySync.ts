@@ -1,25 +1,44 @@
 import * as Crypto from 'expo-crypto';
-import { EncodingType, readAsStringAsync } from 'expo-file-system/legacy';
+import {File} from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 import { Platform } from 'react-native';
 import {
     appendFotosDeviceBookContent,
+    applyGalleryDelta,
+    createFotosManualCollection,
     createFotosMediaLocator,
     createFotosMediaVariant,
     normalizeImageBytesForContentHash,
+    matchesImageContentHash,
+    getOwnedFotosManifestId,
+    isFotosManualCollectionForOwner,
+    MAX_FOTOS_COLLECTION_MEMBERS,
+    MAX_FOTOS_ENTRY_TAGS,
+    MAX_FOTOS_TAG_LENGTH,
+    makeFotosDeviceBookId,
+    projectFotosEntryReferences,
+    type FotosDeviceBook,
+    type FotosCollection,
+    type FotosGalleryAlbumBinding,
     recordFotosAcquisition,
     type FotosEntry,
     type FotosManifest,
     type FotosMediaLocator,
     type FotosMediaVariant,
 } from '@refinio/fotos.core';
+import {FOTOS_THUMBNAIL_MAX_EDGE, readFotosThumbnailDimensions} from '@refinio/fotos.core/filesystem';
 import {
     appendMediaBookContent,
     createMediaSource,
     createMediaSourceEntry,
-} from '../../../../one/packages/source.media/src/services/MediaSourceService.js';
+    readMediaBook,
+} from '@refinio/source.media';
+import type {Source, SourceEntry} from '@refinio/source.core';
+import {createAccess} from '@refinio/one.core/lib/access.js';
+import {SET_ACCESS_MODE} from '@refinio/one.core/lib/storage-base-common.js';
+import {getObject} from '@refinio/one.core/lib/storage-unversioned-objects.js';
 import {storeArrayBufferAsBlob} from '@refinio/one.core/lib/storage-blob.js';
-import type {Person} from '@refinio/one.core/lib/recipes.js';
+import type {BLOB, Person} from '@refinio/one.core/lib/recipes.js';
 import type { SHA256Hash, SHA256IdHash } from '@refinio/one.core/lib/util/type-checks.js';
 import {
     deleteFotosShareInboxBatch,
@@ -28,25 +47,49 @@ import {
     type FotosShareInboxQueuedItem,
     type FotosShareInboxStatus,
 } from './FotosShareInbox';
+import {getFotosPhotoKit, type FotosPhotoKitAsset, type FotosPhotoKitChange, type FotosPhotoKitNative} from './FotosPhotoKit';
+import {reconcileFotosPhotoKitAlbums} from './FotosPhotoKitAlbums';
+import {visitFotosPhotoKitPages} from './FotosPhotoKitPaging';
+import {shareFotosMobileCollection} from './FotosMobileCollectionShare';
 
 const DEFAULT_RECENT_LIMIT = 12;
-const CURRENT_PLATFORM = Platform.OS;
-const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-const BASE64_LOOKUP = (() => {
-    const table = new Int16Array(123).fill(-1);
-    for (let index = 0; index < BASE64_ALPHABET.length; index += 1) {
-        table[BASE64_ALPHABET.charCodeAt(index)] = index;
-    }
-    return table;
-})();
+// Serialize the read/merge/write publication sequence across service instances.
+let publications: Promise<void> = Promise.resolve();
+function publishSerially<T>(work: () => Promise<T>): Promise<T> {
+    const next = publications.then(work);
+    publications = next.then(() => undefined, () => undefined);
+    return next;
+}
+export type FotosIntakeMode = 'reference' | 'metadata' | 'ingest';
+const GALLERY_LOCATORS = {
+    ios: {platform: 'ios', kind: 'phasset'},
+    android: {platform: 'android', kind: 'media-store'},
+} as const;
+
+function getGalleryLocator() {
+    const platform = Platform.OS;
+    return platform === 'ios' || platform === 'android' ? GALLERY_LOCATORS[platform] : undefined;
+}
+
+export function isEditableFotosCollection(owner: string | undefined, id: string): boolean {
+    return owner !== undefined && isFotosManualCollectionForOwner(id, owner);
+}
 
 interface VersionedObjectLookup {
     obj: unknown;
+    hash?: string;
 }
 
 interface StoredVersionedObject {
     idHash: string;
     hash: string;
+}
+
+export interface FotosMobileSourceCheckpoint {
+    v: 1;
+    completedAt?: number;
+    newestCreationTime?: number;
+    oldestScannedCreationTime?: number;
 }
 
 interface FotosMediaLibrarySyncDeps {
@@ -55,12 +98,32 @@ interface FotosMediaLibrarySyncDeps {
     storeVersionedObject: (obj: object) => Promise<StoredVersionedObject>;
     getInstanceId: () => string | undefined;
     getOwnerId: () => string | undefined;
+    getIntakeMode?: () => FotosIntakeMode | Promise<FotosIntakeMode>;
 }
 
 export interface FotosPhotoLibrarySyncIssue {
     assetId: string;
     filename: string;
     reason: string;
+}
+
+export interface FotosPhotoLibrarySyncProgress {
+    discoveredCount: number;
+    processedCount: number;
+    syncedCount: number;
+    deferredCount: number;
+    skippedCount: number;
+}
+
+export interface FotosPhotoLibrarySyncOptions {
+    mode?: 'auto' | 'full';
+    requestPermission?: boolean;
+    limit?: number;
+    rescanExisting?: boolean;
+    allowNetworkAccess?: boolean;
+    batchSize?: number;
+    isCancelled?: () => boolean;
+    onProgress?: (progress: FotosPhotoLibrarySyncProgress) => void;
 }
 
 export interface FotosPhotoLibrarySyncSummary {
@@ -73,7 +136,16 @@ export interface FotosPhotoLibrarySyncSummary {
         assetId: string;
         contentHash: string;
     }>;
+    deferredAssets: FotosDeferredPhotoKitAsset[];
     issues: FotosPhotoLibrarySyncIssue[];
+    albumSyncError?: string;
+    cancelled?: boolean;
+}
+
+export interface FotosDeferredPhotoKitAsset {
+    asset: FotosPhotoKitAsset;
+    status: 'icloud-deferred';
+    thumbnailUri?: string;
 }
 
 export interface FotosSharedFileImportIssue {
@@ -101,6 +173,7 @@ interface SyncedAssetResult {
 
 type AssetSyncOutcome =
     | { status: 'synced'; result: SyncedAssetResult }
+    | { status: 'icloud-deferred'; result: FotosDeferredPhotoKitAsset }
     | { status: 'skipped'; issue: FotosPhotoLibrarySyncIssue };
 
 function toHex(buffer: ArrayBuffer): string {
@@ -112,46 +185,51 @@ function toHex(buffer: ArrayBuffer): string {
     return hex;
 }
 
-function decodeBase64(base64: string): Uint8Array {
-    const sanitized = base64.replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
-    const padding = sanitized.endsWith('==') ? 2 : sanitized.endsWith('=') ? 1 : 0;
-    const outputLength = Math.max(0, Math.floor((sanitized.length * 3) / 4) - padding);
-    const output = new Uint8Array(outputLength);
-
-    let outIndex = 0;
-    for (let index = 0; index < sanitized.length; index += 4) {
-        const char1 = sanitized.charCodeAt(index);
-        const char2 = sanitized.charCodeAt(index + 1);
-        const char3 = sanitized.charAt(index + 2);
-        const char4 = sanitized.charAt(index + 3);
-
-        const value1 = BASE64_LOOKUP[char1] ?? -1;
-        const value2 = BASE64_LOOKUP[char2] ?? -1;
-        const value3 = char3 === '=' ? 0 : BASE64_LOOKUP[sanitized.charCodeAt(index + 2)] ?? -1;
-        const value4 = char4 === '=' ? 0 : BASE64_LOOKUP[sanitized.charCodeAt(index + 3)] ?? -1;
-
-        if (value1 < 0 || value2 < 0 || (char3 !== '=' && value3 < 0) || (char4 !== '=' && value4 < 0)) {
-            throw new Error('Invalid base64 payload');
-        }
-
-        const chunk = (value1 << 18) | (value2 << 12) | (value3 << 6) | value4;
-        output[outIndex++] = (chunk >> 16) & 0xff;
-        if (char3 !== '=') {
-            output[outIndex++] = (chunk >> 8) & 0xff;
-        }
-        if (char4 !== '=') {
-            output[outIndex++] = chunk & 0xff;
-        }
+function deleteTemporaryFile(uri: string): void {
+    try {
+        const file = new File(uri);
+        if (file.exists) file.delete();
+    } catch (error) {
+        console.warn('[FotosPhotoKit] Temporary file cleanup failed', error);
     }
+}
 
-    return output;
+async function readTemporaryBytes(uri: string): Promise<Uint8Array> {
+    try {
+        return await new File(uri).bytes();
+    } finally {
+        deleteTemporaryFile(uri);
+    }
 }
 
 function toIsoTimestamp(value: number | undefined): string | undefined {
-    if (!value) {
+    if (value === undefined || !Number.isFinite(value)) {
         return undefined;
     }
     return new Date(value).toISOString();
+}
+
+function normalizeModTime(value: number | undefined): number {
+    return typeof value === 'number' && Number.isFinite(value) ? Math.floor(value) : 0;
+}
+
+function parseSourceCheckpoint(raw: string | undefined): FotosMobileSourceCheckpoint {
+    if (!raw) return {v: 1};
+    try {
+        const parsed = JSON.parse(raw) as Partial<FotosMobileSourceCheckpoint>;
+        if (!parsed || typeof parsed !== 'object' || parsed.v !== 1) return {v: 1};
+        return {
+            v: 1,
+            ...(typeof parsed.completedAt === 'number' && Number.isFinite(parsed.completedAt)
+                ? {completedAt: parsed.completedAt} : {}),
+            ...(typeof parsed.newestCreationTime === 'number' && Number.isFinite(parsed.newestCreationTime)
+                ? {newestCreationTime: parsed.newestCreationTime} : {}),
+            ...(typeof parsed.oldestScannedCreationTime === 'number' && Number.isFinite(parsed.oldestScannedCreationTime)
+                ? {oldestScannedCreationTime: parsed.oldestScannedCreationTime} : {}),
+        };
+    } catch {
+        return {v: 1};
+    }
 }
 
 function getExifRecord(value: unknown): Record<string, unknown> {
@@ -176,7 +254,8 @@ function getExifString(exif: Record<string, unknown>, keys: string[]): string | 
 
 function getExifNumber(exif: Record<string, unknown>, keys: string[]): number | undefined {
     for (const key of keys) {
-        const value = exif[key];
+        const raw = exif[key];
+        const value = Array.isArray(raw) ? raw[0] : raw;
         if (typeof value === 'number' && Number.isFinite(value)) {
             return value;
         }
@@ -205,19 +284,29 @@ function normalizeExifDate(value: string | undefined): string | undefined {
 
 function mimeFromFilename(filename: string): string {
     const lower = filename.toLowerCase();
-    if (lower.endsWith('.heic') || lower.endsWith('.heif')) return 'image/heic';
+    if (lower.endsWith('.heic')) return 'image/heic';
+    if (lower.endsWith('.heif')) return 'image/heif';
+    if (lower.endsWith('.avif')) return 'image/avif';
     if (lower.endsWith('.png')) return 'image/png';
     if (lower.endsWith('.webp')) return 'image/webp';
     if (lower.endsWith('.gif')) return 'image/gif';
     if (lower.endsWith('.tif') || lower.endsWith('.tiff')) return 'image/tiff';
+    if (lower.endsWith('.dng')) return 'image/x-adobe-dng';
+    if (lower.endsWith('.mov')) return 'video/quicktime';
+    if (lower.endsWith('.mp4')) return 'video/mp4';
+    if (lower.endsWith('.m4v')) return 'video/x-m4v';
     return 'image/jpeg';
+}
+
+function fileExtension(filename: string): string {
+    return filename.match(/\.([a-z0-9]{1,10})$/i)?.[1].toLowerCase() ?? 'jpg';
 }
 
 function timestampOrNow(value: string | undefined): string {
     return value ?? new Date().toISOString();
 }
 
-function createIssue(asset: MediaLibrary.Asset, reason: string): FotosPhotoLibrarySyncIssue {
+function createIssue(asset: Pick<FotosPhotoKitAsset, 'id' | 'filename'>, reason: string): FotosPhotoLibrarySyncIssue {
     return {
         assetId: asset.id,
         filename: asset.filename,
@@ -225,26 +314,46 @@ function createIssue(asset: MediaLibrary.Asset, reason: string): FotosPhotoLibra
     };
 }
 
-function buildEntryFromAsset(params: {
-    asset: MediaLibrary.Asset;
-    assetInfo: MediaLibrary.AssetInfo;
+export function buildEntryFromAsset(params: {
+    asset: FotosPhotoKitAsset;
     contentHash: string;
     byteSize: number;
 }): FotosEntry {
-    const { asset, assetInfo, contentHash, byteSize } = params;
-    const exif = getExifRecord(assetInfo.exif);
+    const {asset, contentHash, byteSize} = params;
+    const rawExif = getExifRecord(asset.exif);
+    const exif = {...getExifRecord(rawExif['{TIFF}'] ?? rawExif.TIFF),
+        ...getExifRecord(rawExif['{ExifAux}'] ?? rawExif.ExifAux),
+        ...getExifRecord(rawExif['{Exif}'] ?? rawExif.Exif), ...rawExif};
+    const gps = getExifRecord(rawExif['{GPS}'] ?? rawExif.GPS);
     const cameraMake = getExifString(exif, ['Make']);
     const cameraModel = getExifString(exif, ['Model']);
     const camera = [cameraMake, cameraModel].filter(Boolean).join(' ').trim();
-    const gpsLat = getExifNumber(exif, ['GPSLatitude', 'latitude']);
-    const gpsLon = getExifNumber(exif, ['GPSLongitude', 'longitude']);
+    const reportedLat = getExifNumber(exif, ['GPSLatitude', 'latitude']) ?? getExifNumber(gps, ['Latitude']);
+    const reportedLon = getExifNumber(exif, ['GPSLongitude', 'longitude']) ?? getExifNumber(gps, ['Longitude']);
+    const gpsLat = asset.location?.latitude ?? (reportedLat === undefined ? undefined
+        : getExifString(gps, ['LatitudeRef']) === 'S' ? -Math.abs(reportedLat) : reportedLat);
+    const gpsLon = asset.location?.longitude ?? (reportedLon === undefined ? undefined
+        : getExifString(gps, ['LongitudeRef']) === 'W' ? -Math.abs(reportedLon) : reportedLon);
+    const mediaSubtypes = new Set(asset.mediaSubtypes);
+    const reportedAltitude = getExifNumber(exif, ['GPSAltitude', 'altitude']) ?? getExifNumber(gps, ['Altitude']);
+    const altitude = asset.location?.altitude ?? (reportedAltitude === undefined ? undefined
+        : getExifNumber(gps, ['AltitudeRef']) === 1 ? -Math.abs(reportedAltitude) : reportedAltitude);
+    const orientation = getExifNumber(exif, ['Orientation']);
 
     const entry: FotosEntry = {
         $type$: 'FotosEntry',
         contentHash,
         streamId: contentHash,
-        mime: mimeFromFilename(asset.filename),
+        mime: asset.mimeType ?? mimeFromFilename(asset.filename),
         size: byteSize,
+        sourcePath: `Photo Library/${contentHash}.${fileExtension(asset.filename)}`,
+        folderPath: 'Photo Library',
+        originalFilename: asset.filename,
+        ...(Number.isFinite(asset.duration) && asset.duration >= 0 ? {duration: asset.duration} : {}),
+        ...(asset.favorite !== undefined ? {favorite: asset.favorite} : {}),
+        ...(mediaSubtypes.size ? {mediaSubtypes} : {}),
+        ...(altitude !== undefined ? {exifGpsAlt: altitude} : {}),
+        ...(orientation !== undefined ? {orientation} : {}),
         ...(toIsoTimestamp(asset.creationTime) ? { capturedAt: toIsoTimestamp(asset.creationTime) } : {}),
         ...(toIsoTimestamp(asset.modificationTime) ? { updatedAt: toIsoTimestamp(asset.modificationTime) } : {}),
         ...(normalizeExifDate(getExifString(exif, ['DateTimeOriginal', 'DateTimeDigitized', 'DateTime']))
@@ -268,81 +377,357 @@ function buildEntryFromAsset(params: {
 }
 
 export class FotosMediaLibrarySync {
-    private manifestIdHash: SHA256IdHash<FotosManifest> | null = null;
+    private readonly galleryLocator = getGalleryLocator();
+    private androidVisibility?: {ids: Set<string>; complete: boolean};
+    private readonly localAssets = new Map<string, Set<string>>();
+    private readonly albumAssetHashes = new Map<string, string>();
+    private readonly assetVerificationTimes = new Map<string, string>();
+    private readonly deferredAssets = new Map<string, FotosDeferredPhotoKitAsset>();
+    private readonly knownSourceEntries = new Map<string, {deferred: boolean; updatedAt: number}>();
+    private mobileSource?: {id: string; idHash: string; hash?: string; checkpoint: FotosMobileSourceCheckpoint};
+    private localAssetLoad?: Promise<void>;
+    private subscription?: {remove(): void};
+    private pendingWork: Promise<void> = Promise.resolve();
+    private closed = false;
 
     constructor(private readonly deps: FotosMediaLibrarySyncDeps) {}
 
     async syncRecentAssets(limit: number = DEFAULT_RECENT_LIMIT): Promise<FotosPhotoLibrarySyncSummary> {
-        if (CURRENT_PLATFORM !== 'ios') {
-            return {
-                permissionGranted: false,
-                accessPrivileges: null,
-                requestedCount: 0,
-                syncedCount: 0,
-                skippedCount: 1,
-                syncedEntries: [],
-                issues: [{
-                    assetId: 'platform',
-                    filename: 'photo-library',
-                    reason: `Photo-library sync is currently wired for iOS; current platform is ${CURRENT_PLATFORM}.`,
-                }],
-            };
-        }
-
-        const permission = await this.ensurePermission();
-        if (!permission.granted) {
-            return {
-                permissionGranted: false,
-                accessPrivileges: permission.accessPrivileges ?? null,
-                requestedCount: 0,
-                syncedCount: 0,
-                skippedCount: 0,
-                syncedEntries: [],
-                issues: [],
-            };
-        }
-
-        const page = await MediaLibrary.getAssetsAsync({
-            first: limit,
-            mediaType: MediaLibrary.MediaType.photo,
-            sortBy: [['creationTime', false]],
+        return this.syncAfterPermission(0, async native => {
+            const count = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : DEFAULT_RECENT_LIMIT;
+            if (!count) return [];
+            const ids = new Set<string>();
+            await visitFotosPhotoKitPages(
+                (offset, cursor) => native.listAssets(offset, Math.min(200, count - ids.size), cursor),
+                cursor => native.releaseCursor(cursor),
+                page => {
+                    if (!page.assets.length && page.nextOffset !== undefined) {
+                        throw new Error('The gallery returned an empty continuing asset page');
+                    }
+                    for (const asset of page.assets) ids.add(asset.id);
+                    return ids.size < count;
+                },
+            );
+            return [...ids];
         });
-
-        return this.syncAssetRefs(page.assets, permission);
     }
 
-    async syncAssetIds(assetIds: string[]): Promise<FotosPhotoLibrarySyncSummary> {
-        if (CURRENT_PLATFORM !== 'ios') {
+    async syncLibrary(options: FotosPhotoLibrarySyncOptions = {}): Promise<FotosPhotoLibrarySyncSummary> {
+        const empty: FotosPhotoLibrarySyncSummary = {
+            permissionGranted: false,
+            accessPrivileges: null,
+            requestedCount: 0,
+            syncedCount: 0,
+            skippedCount: 0,
+            syncedEntries: [],
+            deferredAssets: [],
+            issues: [],
+        };
+        if (!this.galleryLocator) {
             return {
-                permissionGranted: false,
-                accessPrivileges: null,
-                requestedCount: 0,
-                syncedCount: 0,
+                ...empty,
                 skippedCount: 1,
-                syncedEntries: [],
                 issues: [{
                     assetId: 'platform',
                     filename: 'photo-library',
-                    reason: `Photo-library sync is currently wired for iOS; current platform is ${CURRENT_PLATFORM}.`,
+                    reason: 'Photo-library sync requires iOS or Android.',
                 }],
             };
         }
-
-        const permission = await this.ensurePermission();
+        const permission = options.requestPermission
+            ? await this.ensurePermission()
+            : await MediaLibrary.getPermissionsAsync(false, ['photo', 'video']);
         if (!permission.granted) {
+            return {...empty, accessPrivileges: permission.accessPrivileges ?? null};
+        }
+
+        const native = this.observeLibrary(permission);
+        const shouldCancel = () => this.closed || Boolean(options.isCancelled?.());
+        try {
+            await this.ensureLocalAssetIndex();
+        } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error);
             return {
-                permissionGranted: false,
+                permissionGranted: true,
                 accessPrivileges: permission.accessPrivileges ?? null,
-                requestedCount: assetIds.length,
+                requestedCount: 0,
                 syncedCount: 0,
                 skippedCount: 0,
                 syncedEntries: [],
+                deferredAssets: [],
                 issues: [],
+                albumSyncError: reason,
             };
         }
 
-        const uniqueAssetIds = [...new Set(assetIds.filter((assetId) => assetId.length > 0))];
-        return this.syncAssetRefs(uniqueAssetIds, permission);
+        const mode = options.mode ?? 'full';
+        const rescanExisting = Boolean(options.rescanExisting);
+        const sourceCheckpoint = this.mobileSource?.checkpoint ?? {v: 1};
+        const incrementalHeadOnly = mode === 'auto' && !rescanExisting && sourceCheckpoint.completedAt !== undefined;
+        const limit = options.limit !== undefined && Number.isFinite(options.limit)
+            ? Math.max(0, Math.floor(options.limit))
+            : undefined;
+        const visibleIds = new Set<string>();
+        const pendingAssets: Array<{id: string; modTime: number; creationTime?: number}> = [];
+        let cancelled = shouldCancel();
+        let consecutiveKnown = 0;
+        let newestVisibleCreationTime = sourceCheckpoint.newestCreationTime;
+        let oldestScannedCreationTime = sourceCheckpoint.oldestScannedCreationTime;
+
+        if (!cancelled && (limit === undefined || limit > 0)) {
+            const pageSize = incrementalHeadOnly ? 60 : 200;
+            await visitFotosPhotoKitPages(
+                (offset, cursor) => {
+                    const remaining = limit === undefined ? pageSize : Math.min(pageSize, limit - visibleIds.size);
+                    return native.listAssets(offset, Math.max(1, remaining), cursor);
+                },
+                cursor => native.releaseCursor(cursor),
+                page => {
+                    if (!page.assets.length && page.nextOffset !== undefined) {
+                        throw new Error('The gallery returned an empty continuing asset page');
+                    }
+                    for (const asset of page.assets) {
+                        if (visibleIds.has(asset.id)) continue;
+                        visibleIds.add(asset.id);
+                        if (typeof asset.creationTime === 'number' && Number.isFinite(asset.creationTime)) {
+                            const created = Math.floor(asset.creationTime);
+                            newestVisibleCreationTime = newestVisibleCreationTime === undefined
+                                ? created : Math.max(newestVisibleCreationTime, created);
+                        }
+                        const modTime = normalizeModTime(asset.modificationTime);
+                        const handled = !rescanExisting && this.isAssetHandledInDag(asset.id, modTime);
+                        if (handled) {
+                            consecutiveKnown += 1;
+                            if (incrementalHeadOnly && consecutiveKnown >= 12) {
+                                return false;
+                            }
+                        } else {
+                            consecutiveKnown = 0;
+                            pendingAssets.push({id: asset.id, modTime, creationTime: asset.creationTime});
+                        }
+                        if (limit !== undefined && visibleIds.size >= limit) break;
+                    }
+                    if (shouldCancel()) {
+                        cancelled = true;
+                        return false;
+                    }
+                    if (incrementalHeadOnly && pendingAssets.length === 0) {
+                        return false;
+                    }
+                    return limit === undefined || visibleIds.size < limit;
+                },
+            );
+        }
+
+        if (incrementalHeadOnly && pendingAssets.length === 0) {
+            return {
+                permissionGranted: true,
+                accessPrivileges: permission.accessPrivileges ?? null,
+                requestedCount: 0,
+                syncedCount: 0,
+                skippedCount: 0,
+                syncedEntries: [],
+                deferredAssets: [],
+                issues: [],
+                ...(cancelled ? {cancelled: true} : {}),
+            };
+        }
+
+        const syncedEntries: SyncedAssetResult[] = [];
+        const deferredAssets: FotosDeferredPhotoKitAsset[] = [];
+        const issues: FotosPhotoLibrarySyncIssue[] = [];
+        const alreadyHandledCount = incrementalHeadOnly ? 0 : Math.max(0, visibleIds.size - pendingAssets.length);
+        const progressTotal = incrementalHeadOnly ? pendingAssets.length : visibleIds.size;
+        let processedCount = 0;
+        const emitProgress = () => {
+            if (pendingAssets.length === 0) return;
+            options.onProgress?.({
+                discoveredCount: progressTotal,
+                processedCount: alreadyHandledCount + processedCount,
+                syncedCount: syncedEntries.length,
+                deferredCount: deferredAssets.length,
+                skippedCount: issues.length,
+            });
+        };
+        emitProgress();
+
+        const batchSize = options.batchSize !== undefined && Number.isFinite(options.batchSize)
+            ? Math.max(1, Math.floor(options.batchSize))
+            : 24;
+        const allowNetworkAccess = Boolean(options.allowNetworkAccess);
+        let albumBindingsChanged = false;
+        let albumSyncedSinceLastChange = false;
+        let albumSyncError: string | undefined;
+
+        for (let start = 0; start < pendingAssets.length; start += batchSize) {
+            if (shouldCancel()) {
+                cancelled = true;
+                break;
+            }
+            const chunk = pendingAssets.slice(start, start + batchSize);
+            const isFirstChunk = start === 0;
+            const isFinalChunk = start + batchSize >= pendingAssets.length;
+            await this.enqueue(async () => {
+                let chunkBindingsChanged = false;
+                let chunkAdvancedWatermark = false;
+                for (const {id: assetId, creationTime} of chunk) {
+                    if (shouldCancel()) {
+                        cancelled = true;
+                        break;
+                    }
+                    const previousHash = this.albumAssetHashes.get(assetId);
+                    const outcome = await this.syncAsset(native, assetId, allowNetworkAccess);
+                    processedCount += 1;
+                    if (outcome.status === 'synced') {
+                        const changed = previousHash !== outcome.result.contentHash;
+                        chunkBindingsChanged ||= changed;
+                        albumBindingsChanged ||= changed;
+                        if (changed) albumSyncedSinceLastChange = false;
+                        syncedEntries.push(outcome.result);
+                        chunkAdvancedWatermark = true;
+                    } else if (outcome.status === 'icloud-deferred') {
+                        deferredAssets.push(outcome.result);
+                        chunkAdvancedWatermark = true;
+                    } else {
+                        issues.push(outcome.issue);
+                    }
+                    if (typeof creationTime === 'number' && Number.isFinite(creationTime)) {
+                        const created = Math.floor(creationTime);
+                        oldestScannedCreationTime = oldestScannedCreationTime === undefined
+                            ? created : Math.min(oldestScannedCreationTime, created);
+                    }
+                    emitProgress();
+                }
+
+                if (chunkAdvancedWatermark && !this.closed) {
+                    await this.advanceMobileLibraryCheckpoint({
+                        ...(newestVisibleCreationTime !== undefined ? {newestCreationTime: newestVisibleCreationTime} : {}),
+                        ...(oldestScannedCreationTime !== undefined ? {oldestScannedCreationTime} : {}),
+                    });
+                }
+
+                const shouldReconcileAlbums = (isFirstChunk && chunkBindingsChanged)
+                    || (isFinalChunk && !cancelled)
+                    || (cancelled && albumBindingsChanged && !albumSyncedSinceLastChange);
+                if (shouldReconcileAlbums && !this.closed) {
+                    try {
+                        await this.syncAlbums(native, permission.accessPrivileges === 'all');
+                        albumSyncedSinceLastChange = true;
+                        albumSyncError = undefined;
+                    } catch (error) {
+                        albumSyncError = error instanceof Error ? error.message : String(error);
+                    }
+                }
+            });
+            if (cancelled) break;
+        }
+
+        if (pendingAssets.length === 0 && !cancelled && !this.closed) {
+            await this.enqueue(async () => {
+                try {
+                    await this.syncAlbums(native, permission.accessPrivileges === 'all');
+                    albumSyncError = undefined;
+                } catch (error) {
+                    albumSyncError = error instanceof Error ? error.message : String(error);
+                }
+            });
+        }
+
+        if (!cancelled && limit === undefined && !this.closed) {
+            await this.enqueue(async () => {
+                await this.advanceMobileLibraryCheckpoint({
+                    completedAt: Date.now(),
+                    ...(newestVisibleCreationTime !== undefined ? {newestCreationTime: newestVisibleCreationTime} : {}),
+                    ...(oldestScannedCreationTime !== undefined ? {oldestScannedCreationTime} : {}),
+                });
+            });
+        }
+
+        return {
+            permissionGranted: true,
+            accessPrivileges: permission.accessPrivileges ?? null,
+            requestedCount: pendingAssets.length,
+            syncedCount: syncedEntries.length,
+            skippedCount: issues.length,
+            syncedEntries,
+            deferredAssets,
+            issues,
+            ...(albumSyncError ? {albumSyncError} : {}),
+            ...(cancelled ? {cancelled: true} : {}),
+        };
+    }
+
+    async syncAssetIds(assetIds: string[], allowNetworkAccess = false): Promise<FotosPhotoLibrarySyncSummary> {
+        const ids = [...new Set(assetIds.filter(assetId => assetId.length > 0))];
+        return this.syncAfterPermission(ids.length, async () => ids, allowNetworkAccess);
+    }
+
+    private async syncAfterPermission(
+        requestedCount: number,
+        getIds: (native: FotosPhotoKitNative) => Promise<string[]>,
+        allowNetworkAccess = false,
+    ): Promise<FotosPhotoLibrarySyncSummary> {
+        const empty = {permissionGranted: false, accessPrivileges: null, requestedCount, syncedCount: 0,
+            skippedCount: 0, syncedEntries: [], deferredAssets: [], issues: []};
+        if (!this.galleryLocator) {
+            return {...empty, skippedCount: 1, issues: [{
+                assetId: 'platform', filename: 'photo-library', reason: 'Photo-library sync requires iOS or Android.',
+            }]};
+        }
+        const permission = await this.ensurePermission();
+        if (!permission.granted) return {...empty, accessPrivileges: permission.accessPrivileges ?? null};
+        const native = this.observeLibrary(permission);
+        return this.enqueue(async () => this.syncAssetRefsSerially(native, await getIds(native), permission, allowNetworkAccess));
+    }
+
+    private observeLibrary(permission: MediaLibrary.PermissionResponse): FotosPhotoKitNative {
+        if (this.closed) throw new Error('Photo-library sync has stopped');
+        const native = getFotosPhotoKit();
+        if (!this.subscription) {
+            if (this.galleryLocator?.platform === 'android') {
+                void this.enqueue(async () => {
+                    this.androidVisibility = await this.readAndroidVisibility(native, permission);
+                }).catch(error => {
+                    if (!this.closed) console.warn('[FotosGallery] Android gallery scan failed', error);
+                });
+            }
+            this.subscription = native.addListener('onLibraryChange', change => this.onLibraryChange(native, change));
+        }
+        return native;
+    }
+
+    private async readAndroidVisibility(native: FotosPhotoKitNative, permission: MediaLibrary.PermissionResponse) {
+        const ids = new Set<string>();
+        await visitFotosPhotoKitPages(
+            (offset, cursor) => native.listAssets(offset, 200, cursor),
+            cursor => native.releaseCursor(cursor),
+            page => {
+                if (!page.assets.length && page.nextOffset !== undefined) {
+                    throw new Error('The gallery returned an empty continuing asset page');
+                }
+                for (const asset of page.assets) ids.add(asset.id);
+            },
+        );
+        const current = await MediaLibrary.getPermissionsAsync(false, ['photo', 'video']);
+        return {ids, complete: permission.accessPrivileges === 'all' && current.granted && current.accessPrivileges === 'all'};
+    }
+
+    private enqueue<T>(work: () => Promise<T>): Promise<T> {
+        const result = publishSerially(async () => {
+            if (this.closed) throw new Error('Photo-library sync has stopped');
+            return work();
+        });
+        this.pendingWork = result.then(() => undefined, () => undefined);
+        return result;
+    }
+
+    async dispose(): Promise<void> {
+        this.closed = true;
+        this.subscription?.remove();
+        this.subscription = undefined;
+        await this.pendingWork;
+        await this.localAssetLoad?.catch(() => undefined);
+        for (const assetId of this.deferredAssets.keys()) this.clearDeferredAsset(assetId);
     }
 
     async getShareInboxStatus(): Promise<FotosShareInboxStatus> {
@@ -350,6 +735,10 @@ export class FotosMediaLibrarySync {
     }
 
     async importPendingSharedInbox(): Promise<FotosSharedFileImportSummary> {
+        return this.enqueue(() => this.importSharedInbox());
+    }
+
+    private async importSharedInbox(): Promise<FotosSharedFileImportSummary> {
         const batches = await readFotosShareInboxBatches();
         if (batches.length === 0) {
             return {
@@ -380,118 +769,106 @@ export class FotosMediaLibrarySync {
             summary.issues.push(...result.issues);
 
             if (result.skippedCount === 0) {
-                deleteFotosShareInboxBatch(batch);
+                await deleteFotosShareInboxBatch(batch);
             }
         }
 
         return summary;
     }
 
-    private async syncAssetRefs(
-        assetRefs: MediaLibrary.AssetRef[],
+    private async syncAssetRefsSerially(
+        native: FotosPhotoKitNative,
+        assetIds: string[],
         permission: MediaLibrary.PermissionResponse,
+        allowNetworkAccess = false,
+        refreshAlbums = true,
     ): Promise<FotosPhotoLibrarySyncSummary> {
-        const syncedEntries: FotosPhotoLibrarySyncSummary['syncedEntries'] = [];
+        const syncedEntries: SyncedAssetResult[] = [];
+        const deferredAssets: FotosDeferredPhotoKitAsset[] = [];
         const issues: FotosPhotoLibrarySyncIssue[] = [];
+        try {
+            await this.ensureLocalAssetIndex();
+        } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error);
+            return {
+                permissionGranted: true,
+                accessPrivileges: permission.accessPrivileges ?? null,
+                requestedCount: assetIds.length,
+                syncedCount: 0,
+                skippedCount: assetIds.length,
+                syncedEntries,
+                deferredAssets,
+                issues: assetIds.map(assetId => ({assetId, filename: assetId, reason})),
+                albumSyncError: reason,
+            };
+        }
+        let albumBindingsChanged = false;
 
-        for (const assetRef of assetRefs) {
-            const outcome = await this.syncAsset(assetRef);
+        for (const assetId of assetIds) {
+            const previousHash = this.albumAssetHashes.get(assetId);
+            const outcome = await this.syncAsset(native, assetId, allowNetworkAccess);
             if (outcome.status === 'synced') {
+                albumBindingsChanged ||= previousHash !== outcome.result.contentHash;
                 syncedEntries.push(outcome.result);
-            } else {
-                issues.push(outcome.issue);
             }
+            else if (outcome.status === 'icloud-deferred') deferredAssets.push(outcome.result);
+            else issues.push(outcome.issue);
         }
 
+        let albumSyncError: string | undefined;
+        try {
+            if (refreshAlbums || albumBindingsChanged) await this.syncAlbums(native, permission.accessPrivileges === 'all');
+        } catch (error) {
+            albumSyncError = error instanceof Error ? error.message : String(error);
+        }
         return {
             permissionGranted: true,
             accessPrivileges: permission.accessPrivileges ?? null,
-            requestedCount: assetRefs.length,
+            requestedCount: assetIds.length,
             syncedCount: syncedEntries.length,
             skippedCount: issues.length,
             syncedEntries,
+            deferredAssets,
             issues,
+            ...(albumSyncError ? {albumSyncError} : {}),
         };
     }
 
     private async ensurePermission(): Promise<MediaLibrary.PermissionResponse> {
-        const existing = await MediaLibrary.getPermissionsAsync(false, ['photo']);
-        if (existing.granted) {
-            return existing;
-        }
-        return MediaLibrary.requestPermissionsAsync(false, ['photo']);
+        const existing = await MediaLibrary.getPermissionsAsync(false, ['photo', 'video']);
+        return existing.granted ? existing : MediaLibrary.requestPermissionsAsync(false, ['photo', 'video']);
     }
 
-    private async syncAsset(assetRef: MediaLibrary.AssetRef): Promise<AssetSyncOutcome> {
-        let assetInfo: MediaLibrary.AssetInfo;
+    private async syncAsset(native: FotosPhotoKitNative, assetId: string, allowNetworkAccess: boolean): Promise<AssetSyncOutcome> {
+        let original;
         try {
-            assetInfo = await MediaLibrary.getAssetInfoAsync(assetRef, {
-                shouldDownloadFromNetwork: false,
-            });
+            original = await native.inspectOriginal(assetId, allowNetworkAccess, FOTOS_THUMBNAIL_MAX_EDGE);
         } catch (error) {
-            const assetId = typeof assetRef === 'string' ? assetRef : assetRef.id;
-            return {
-                status: 'skipped',
-                issue: {
-                    assetId,
-                    filename: typeof assetRef === 'string' ? assetRef : assetRef.filename,
-                    reason: `Failed to resolve asset info: ${error instanceof Error ? error.message : String(error)}`,
-                },
-            };
+            return {status: 'skipped', issue: createIssue({id: assetId, filename: assetId},
+                'Failed to inspect gallery original: ' + (error instanceof Error ? error.message : String(error)))};
         }
-        const asset = assetInfo;
-
-        if (assetInfo.isNetworkAsset && !assetInfo.localUri) {
-            return {
-                status: 'skipped',
-                issue: createIssue(asset, 'Asset is only available in iCloud and has no local bytes yet.'),
-            };
+        const {asset} = original;
+        if (original.status === 'icloud-deferred') {
+            const deferred = await this.deferAsset(native, asset);
+            await this.recordDeferredSourceEntry(asset);
+            return {status: 'icloud-deferred', result: deferred};
         }
 
-        if (!assetInfo.localUri || !assetInfo.localUri.startsWith('file://')) {
-            return {
-                status: 'skipped',
-                issue: createIssue(asset, 'Asset did not expose a readable local file URI.'),
-            };
-        }
-
-        let bytes: Uint8Array;
+        const {contentHash, byteSize} = original;
+        let unconsumedThumbnail = original.thumbnailUri;
         try {
-            bytes = await this.readLocalBytes(assetInfo.localUri);
-        } catch (error) {
-            return {
-                status: 'skipped',
-                issue: createIssue(
-                    asset,
-                    `Failed to read asset bytes: ${error instanceof Error ? error.message : String(error)}`,
-                ),
-            };
-        }
-
-        let contentHash: string;
-        try {
-            contentHash = await this.computeContentHash(bytes);
-        } catch (error) {
-            return {
-                status: 'skipped',
-                issue: createIssue(
-                    asset,
-                    `Failed to compute content hash: ${error instanceof Error ? error.message : String(error)}`,
-                ),
-            };
-        }
-
-        try {
-            const entry = buildEntryFromAsset({
-                asset,
-                assetInfo,
-                contentHash,
-                byteSize: bytes.byteLength,
-            });
+            if (!/^[a-f0-9]{64}$/.test(contentHash) || !Number.isSafeInteger(byteSize) || byteSize <= 0) {
+                throw new Error('The gallery returned an invalid media identity');
+            }
+            const entry = buildEntryFromAsset({asset, contentHash, byteSize});
             const entryIdHash = await this.deps.calculateIdHashOfObj(entry as object) as SHA256IdHash<FotosEntry>;
             const existingEntry = await this.readVersionedObject<FotosEntry>(entryIdHash);
 
-            const originalBlob = await storeArrayBufferAsBlob(bytes);
+            const observer = this.requireOwner();
+            const mode = await this.deps.getIntakeMode?.() ?? 'reference';
+            const originalBlob = mode === 'ingest'
+                ? await storeArrayBufferAsBlob(await this.readVerifiedOriginal(native, asset.id, entry, allowNetworkAccess))
+                : undefined;
             const originalVariant = createFotosMediaVariant({
                 contentHash,
                 family: entryIdHash,
@@ -502,33 +879,40 @@ export class FotosMediaLibrarySync {
                 height: entry.exifHeight,
                 createdAt: entry.capturedAt ?? entry.updatedAt,
                 label: asset.filename,
-                blob: originalBlob.hash,
+                ...(originalBlob ? {blob: originalBlob.hash} : {}),
             });
             const variantResult = await this.deps.storeVersionedObject(originalVariant as object);
+            const verifiedAt = this.albumAssetHashes.get(asset.id) === contentHash
+                ? this.assetVerificationTimes.get(asset.id) : new Date().toISOString();
             const locatorResult = await this.storeLocalLocator(
                 variantResult.idHash as SHA256IdHash<FotosMediaVariant>,
                 asset.id,
-                entry.updatedAt ?? entry.capturedAt,
+                verifiedAt,
             );
             const sourceState = await this.storeMobileLibrarySourceState({
                 assetId: asset.id,
                 filename: asset.filename,
                 contentHash,
-                updatedAt: entry.updatedAt ?? entry.capturedAt,
+                updatedAt: normalizeModTime(asset.modificationTime),
             });
 
+            const thumbnailUri = asset.mediaType === 'video'
+                ? await native.thumbnailFile(asset.id, FOTOS_THUMBNAIL_MAX_EDGE, allowNetworkAccess)
+                : unconsumedThumbnail;
+            unconsumedThumbnail = undefined;
+            const thumbnail = thumbnailUri
+                ? await this.storeThumbnail(thumbnailUri, entryIdHash, variantResult.idHash as SHA256IdHash<FotosMediaVariant>)
+                : undefined;
             const mergedVariants = new Set(existingEntry?.variants ?? new Set<SHA256Hash<FotosMediaVariant>>());
             mergedVariants.add(variantResult.hash as SHA256Hash<FotosMediaVariant>);
+            if (thumbnail) mergedVariants.add(thumbnail.hash as SHA256Hash<FotosMediaVariant>);
 
             const mergedEntry: FotosEntry = {
-                ...(existingEntry ?? {}),
-                ...entry,
-                streamId: existingEntry?.streamId ?? entry.streamId,
+                ...applyGalleryDelta(existingEntry ?? undefined, {observed: entry}),
+                ...(thumbnail ? {thumb: thumbnail.blob} : {}),
                 variants: mergedVariants,
             };
 
-            const observer = this.deps.getOwnerId();
-            if (!observer) throw new Error('Fotos acquisition requires the local owner identity');
             mergedEntry.acquisitionObservations = new Set([
                 ...(existingEntry?.acquisitionObservations ?? []),
                 await recordFotosAcquisition({
@@ -544,18 +928,19 @@ export class FotosMediaLibrarySync {
                 }),
             ]);
             const entryResult = await this.deps.storeVersionedObject(mergedEntry as object);
+            const deviceId = this.deps.getInstanceId() ?? Platform.OS;
             await appendFotosDeviceBookContent(this.deps, {
-                deviceId: this.deps.getInstanceId() ?? 'ios',
+                deviceId,
                 role: 'mobile',
                 entries: [entryResult.hash as SHA256Hash<FotosEntry>],
                 sourceIdHashes: [sourceState.sourceIdHash as any],
                 entryIdHashes: [sourceState.entryIdHash as any],
-                variants: [variantResult.hash as SHA256Hash<FotosMediaVariant>],
+                variants: mergedVariants,
                 locators: [locatorResult.hash],
             });
             await appendMediaBookContent(this.deps, {
                 author: observer as SHA256IdHash<Person>,
-                deviceId: this.deps.getInstanceId() ?? 'ios',
+                deviceId,
                 sourceIdHashes: [sourceState.sourceIdHash],
                 entryIdHashes: [sourceState.entryIdHash],
                 sourceRefs: sourceState.sourceRef ? [sourceState.sourceRef] : undefined,
@@ -567,6 +952,10 @@ export class FotosMediaLibrarySync {
             });
 
             await this.addEntryToManifest(entryResult.hash as SHA256Hash<FotosEntry>);
+            this.rememberLocalAsset(contentHash, asset.id);
+            this.albumAssetHashes.set(asset.id, contentHash);
+            if (verifiedAt) this.assetVerificationTimes.set(asset.id, verifiedAt);
+            this.clearDeferredAsset(asset.id);
             return {
                 status: 'synced',
                 result: {
@@ -582,6 +971,8 @@ export class FotosMediaLibrarySync {
                     `Failed to persist fotos objects: ${error instanceof Error ? error.message : String(error)}`,
                 ),
             };
+        } finally {
+            if (unconsumedThumbnail) deleteTemporaryFile(unconsumedThumbnail);
         }
     }
 
@@ -591,6 +982,7 @@ export class FotosMediaLibrarySync {
 
         for (const item of items) {
             try {
+                this.requireOwner();
                 const bytes = await this.readLocalBytes(item.fileUri);
                 const contentHash = await this.computeContentHash(bytes);
                 const mime = item.mimeType ?? mimeFromFilename(item.originalName);
@@ -601,6 +993,9 @@ export class FotosMediaLibrarySync {
                     mime,
                     size: bytes.byteLength,
                     updatedAt: timestampOrNow(item.createdAt),
+                    sourcePath: `Shared Files/${contentHash}.${fileExtension(item.originalName)}`,
+                    folderPath: 'Shared Files',
+                    originalFilename: item.originalName,
                 };
 
                 const entryIdHash = await this.deps.calculateIdHashOfObj(entry as object) as SHA256IdHash<FotosEntry>;
@@ -705,34 +1100,31 @@ export class FotosMediaLibrarySync {
         };
     }
 
-    private async readLocalBytes(localUri: string): Promise<Uint8Array> {
-        const encoded = await readAsStringAsync(localUri, {
-            encoding: EncodingType.Base64,
-        });
-        return decodeBase64(encoded);
+    private readLocalBytes(localUri: string): Promise<Uint8Array> {
+        return new File(localUri).bytes();
     }
 
     private async computeContentHash(bytes: Uint8Array): Promise<string> {
-        const normalized = normalizeImageBytesForContentHash(bytes);
-        const digestInputBuffer = new ArrayBuffer(normalized.byteLength);
-        const digestInput = new Uint8Array(digestInputBuffer);
-        digestInput.set(normalized);
-        const digest = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, digestInput);
-        return toHex(digest);
+        return this.digestBytes(normalizeImageBytesForContentHash(bytes));
+    }
+
+    private async digestBytes(bytes: Uint8Array): Promise<string> {
+        const digestInput = Uint8Array.from(bytes);
+        return toHex(await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, digestInput));
     }
 
     private async storeLocalLocator(
         variant: SHA256IdHash<FotosMediaVariant>,
-        phAssetId: string,
+        assetId: string,
         lastVerifiedAt?: string,
     ): Promise<{ hash: SHA256Hash<FotosMediaLocator>; idHash: SHA256IdHash<FotosMediaLocator> }> {
         const deviceId = this.deps.getInstanceId();
+        if (!this.galleryLocator) throw new Error('Photo-library locators require iOS or Android.');
         const locator = createFotosMediaLocator({
             variant,
-            platform: 'ios',
-            kind: 'phasset',
+            ...this.galleryLocator,
             scope: 'device-local',
-            locator: phAssetId,
+            locator: assetId,
             ...(deviceId ? { deviceId } : {}),
             ...(lastVerifiedAt ? { lastVerifiedAt } : {}),
         });
@@ -744,36 +1136,177 @@ export class FotosMediaLibrarySync {
         };
     }
 
+    private makeMobileLibrarySourceObject(options?: {
+        checkpoint?: FotosMobileSourceCheckpoint;
+        predecessor?: SHA256Hash<Source>;
+    }): Source {
+        const platform = Platform.OS;
+        const deviceId = this.deps.getInstanceId() ?? platform;
+        const checkpointJson = options?.checkpoint && (
+            options.checkpoint.completedAt !== undefined
+            || options.checkpoint.newestCreationTime !== undefined
+            || options.checkpoint.oldestScannedCreationTime !== undefined
+        ) ? JSON.stringify(options.checkpoint) : undefined;
+        return createMediaSource({
+            family: 'mobile-library',
+            locator: 'expo-media-library',
+            platform,
+            deviceId,
+            title: `${platform} Photo Library`,
+            ...(checkpointJson ? {checkpoint: checkpointJson} : {}),
+            ...(options?.predecessor ? {predecessor: options.predecessor} : {}),
+        });
+    }
+
+    private async readMobileLibrarySource(): Promise<{
+        id: string;
+        idHash: string;
+        hash?: string;
+        checkpoint: FotosMobileSourceCheckpoint;
+    } | null> {
+        const base = this.makeMobileLibrarySourceObject();
+        const idHash = await this.deps.calculateIdHashOfObj(base as object);
+        try {
+            const existing = await this.deps.getObjectByIdHash(idHash);
+            const obj = existing.obj as Source;
+            const loaded = {
+                id: obj.id ?? base.id,
+                idHash,
+                ...(existing.hash ? {hash: existing.hash} : {}),
+                checkpoint: parseSourceCheckpoint(obj.checkpoint),
+            };
+            this.mobileSource = loaded;
+            return loaded;
+        } catch (error) {
+            if (error instanceof Error && error.name === 'FileNotFoundError') return null;
+            throw error;
+        }
+    }
+
+    private async ensureMobileLibrarySource(): Promise<{
+        id: string;
+        idHash: string;
+        hash?: string;
+        checkpoint: FotosMobileSourceCheckpoint;
+    }> {
+        if (this.mobileSource) return this.mobileSource;
+        const existing = await this.readMobileLibrarySource();
+        if (existing) return existing;
+        const created = this.makeMobileLibrarySourceObject();
+        const stored = await this.deps.storeVersionedObject(created as object);
+        this.mobileSource = {
+            id: created.id,
+            idHash: stored.idHash,
+            hash: stored.hash,
+            checkpoint: {v: 1},
+        };
+        return this.mobileSource;
+    }
+
+    private async advanceMobileLibraryCheckpoint(patch: Partial<Omit<FotosMobileSourceCheckpoint, 'v'>>): Promise<void> {
+        const current = await this.ensureMobileLibrarySource();
+        const next: FotosMobileSourceCheckpoint = {
+            v: 1,
+            ...(current.checkpoint.completedAt !== undefined ? {completedAt: current.checkpoint.completedAt} : {}),
+            ...(current.checkpoint.newestCreationTime !== undefined ? {newestCreationTime: current.checkpoint.newestCreationTime} : {}),
+            ...(current.checkpoint.oldestScannedCreationTime !== undefined ? {oldestScannedCreationTime: current.checkpoint.oldestScannedCreationTime} : {}),
+        };
+        if (patch.completedAt !== undefined) {
+            next.completedAt = patch.completedAt;
+        }
+        if (patch.newestCreationTime !== undefined) {
+            next.newestCreationTime = next.newestCreationTime === undefined
+                ? patch.newestCreationTime
+                : Math.max(next.newestCreationTime, patch.newestCreationTime);
+        }
+        if (patch.oldestScannedCreationTime !== undefined) {
+            next.oldestScannedCreationTime = next.oldestScannedCreationTime === undefined
+                ? patch.oldestScannedCreationTime
+                : Math.min(next.oldestScannedCreationTime, patch.oldestScannedCreationTime);
+        }
+        if (
+            next.completedAt === current.checkpoint.completedAt
+            && next.newestCreationTime === current.checkpoint.newestCreationTime
+            && next.oldestScannedCreationTime === current.checkpoint.oldestScannedCreationTime
+        ) {
+            return;
+        }
+        const updated = this.makeMobileLibrarySourceObject({
+            checkpoint: next,
+            ...(current.hash ? {predecessor: current.hash as SHA256Hash<Source>} : {}),
+        });
+        const stored = await this.deps.storeVersionedObject(updated as object);
+        this.mobileSource = {
+            id: current.id,
+            idHash: stored.idHash,
+            hash: stored.hash,
+            checkpoint: next,
+        };
+    }
+
     private async storeMobileLibrarySourceState(params: {
         assetId: string;
         filename: string;
         contentHash: string;
-        updatedAt?: string;
+        updatedAt?: number;
     }): Promise<{ sourceIdHash: string; entryIdHash: string; sourceRef: string }> {
-        const deviceId = this.deps.getInstanceId() ?? CURRENT_PLATFORM;
-        const source = createMediaSource({
-            family: 'mobile-library',
-            locator: 'expo-media-library',
-            platform: CURRENT_PLATFORM,
-            deviceId,
-            title: `${CURRENT_PLATFORM} Photo Library`,
-        });
-        const storedSource = await this.deps.storeVersionedObject(source as object);
+        const platform = Platform.OS;
+        const source = await this.ensureMobileLibrarySource();
+        const updatedAt = params.updatedAt && params.updatedAt > 0 ? params.updatedAt : undefined;
         const sourceEntry = createMediaSourceEntry({
             sourceId: source.id,
-            sourceIdHash: storedSource.idHash,
+            sourceIdHash: source.idHash,
             entryKind: 'mobile-asset',
             locator: params.assetId,
             title: params.filename,
-            summary: `${CURRENT_PLATFORM} media library asset`,
+            summary: `${platform} media library asset`,
             contentHash: params.contentHash,
+            ...(updatedAt !== undefined ? {updatedAt} : {}),
         });
         const storedEntry = await this.deps.storeVersionedObject(sourceEntry as object);
+        this.knownSourceEntries.set(params.assetId, {
+            deferred: false,
+            updatedAt: updatedAt ?? 0,
+        });
         return {
-            sourceIdHash: storedSource.idHash,
+            sourceIdHash: source.idHash,
             entryIdHash: storedEntry.idHash,
             sourceRef: String(sourceEntry.sourceRef ?? ''),
         };
+    }
+
+    private async recordDeferredSourceEntry(asset: FotosPhotoKitAsset): Promise<void> {
+        const modTime = normalizeModTime(asset.modificationTime);
+        const existing = this.knownSourceEntries.get(asset.id);
+        if (existing?.deferred && (modTime === 0 || existing.updatedAt >= modTime)) {
+            return;
+        }
+        const owner = this.deps.getOwnerId();
+        if (!owner) return;
+        try {
+            const source = await this.ensureMobileLibrarySource();
+            const sourceEntry = createMediaSourceEntry({
+                sourceId: source.id,
+                sourceIdHash: source.idHash,
+                entryKind: 'mobile-asset',
+                locator: asset.id,
+                title: asset.filename,
+                summary: 'icloud-deferred',
+                ...(modTime > 0 ? {updatedAt: modTime} : {}),
+            });
+            const storedEntry = await this.deps.storeVersionedObject(sourceEntry as object);
+            const deviceId = this.deps.getInstanceId() ?? Platform.OS;
+            await appendMediaBookContent(this.deps, {
+                author: owner as SHA256IdHash<Person>,
+                deviceId,
+                sourceIdHashes: [source.idHash],
+                entryIdHashes: [storedEntry.idHash],
+                sourceRefs: sourceEntry.sourceRef ? [String(sourceEntry.sourceRef)] : undefined,
+            });
+            this.knownSourceEntries.set(asset.id, {deferred: true, updatedAt: modTime});
+        } catch (error) {
+            console.warn('[FotosPhotoKit] Failed to record deferred SourceEntry in DAG', error);
+        }
     }
 
     private async storeShareIntentSourceState(params: {
@@ -783,13 +1316,14 @@ export class FotosMediaLibrarySync {
         batchId: string;
         updatedAt?: string;
     }): Promise<{ sourceIdHash: string; entryIdHash: string; sourceRef: string }> {
-        const deviceId = this.deps.getInstanceId() ?? CURRENT_PLATFORM;
+        const platform = Platform.OS;
+        const deviceId = this.deps.getInstanceId() ?? platform;
         const source = createMediaSource({
             family: 'share-intent',
             locator: params.batchId,
-            platform: CURRENT_PLATFORM,
+            platform,
             deviceId,
-            title: `${CURRENT_PLATFORM} Share Intent`,
+            title: `${platform} Share Intent`,
         });
         const storedSource = await this.deps.storeVersionedObject(source as object);
         const sourceEntry = createMediaSourceEntry({
@@ -798,7 +1332,7 @@ export class FotosMediaLibrarySync {
             entryKind: 'shared-file',
             locator: params.locator,
             title: params.filename,
-            summary: `${CURRENT_PLATFORM} shared import`,
+            summary: `${platform} shared import`,
             contentHash: params.contentHash,
         });
         const storedEntry = await this.deps.storeVersionedObject(sourceEntry as object);
@@ -819,60 +1353,396 @@ export class FotosMediaLibrarySync {
         }
     }
 
-    private async getManifestIdHash(): Promise<SHA256IdHash<FotosManifest>> {
-        if (this.manifestIdHash) {
-            return this.manifestIdHash;
-        }
-
-        this.manifestIdHash = await this.deps.calculateIdHashOfObj({
-            $type$: 'FotosManifest',
-            id: 'fotos',
-            entries: new Set(),
-            authenticityAttestations: new Set(),
-        }) as SHA256IdHash<FotosManifest>;
-
-        return this.manifestIdHash;
+    private requireOwner(): string {
+        const owner = this.deps.getOwnerId();
+        if (!owner) throw new Error('Fotos acquisition requires the local owner identity');
+        getOwnedFotosManifestId(owner);
+        return owner;
     }
 
-    private async ensureFotosManifest(): Promise<SHA256IdHash<FotosManifest>> {
-        const manifestIdHash = await this.getManifestIdHash();
-        const existing = await this.readVersionedObject<FotosManifest>(manifestIdHash);
-        if (existing) {
-            return manifestIdHash;
-        }
+    private rememberLocalAsset(contentHash: string, assetId: string): void {
+        const ids = this.localAssets.get(contentHash) ?? new Set<string>();
+        ids.add(assetId);
+        this.localAssets.set(contentHash, ids);
+    }
 
-        await this.deps.storeVersionedObject({
-            $type$: 'FotosManifest',
-            id: 'fotos',
-            entries: new Set(),
-            authenticityAttestations: new Set(),
+    private async ensureLocalAssetIndex(): Promise<void> {
+        this.localAssetLoad ??= this.loadLocalAssetIndex().catch(error => {
+            this.localAssetLoad = undefined;
+            throw error;
         });
-
-        return manifestIdHash;
+        await this.localAssetLoad;
     }
 
-    private async addEntryToManifest(entryHash: SHA256Hash<FotosEntry>): Promise<void> {
-        const manifestIdHash = await this.ensureFotosManifest();
-        const existingManifest = await this.readVersionedObject<FotosManifest>(manifestIdHash);
-        const manifest = existingManifest ?? {
-            $type$: 'FotosManifest' as const,
-            id: 'fotos',
-            entries: new Set<SHA256Hash<FotosEntry>>(),
-            authenticityAttestations: new Set(),
-        };
+    private isAssetHandledInDag(assetId: string, modTime: number): boolean {
+        if (this.albumAssetHashes.has(assetId)) {
+            const known = this.knownSourceEntries.get(assetId);
+            return !known || modTime === 0 || known.updatedAt === 0 || known.updatedAt >= modTime;
+        }
+        if (this.deferredAssets.has(assetId)) return true;
+        const known = this.knownSourceEntries.get(assetId);
+        if (known && (modTime === 0 || known.updatedAt === 0 || known.updatedAt >= modTime)) {
+            return true;
+        }
+        return false;
+    }
 
-        const entries = new Set(manifest.entries);
-        if (entries.has(entryHash)) {
+    private async loadLocalAssetIndex(): Promise<void> {
+        if (!this.galleryLocator) return;
+        const deviceId = this.deps.getInstanceId();
+        if (!deviceId) throw new Error('The gallery requires the local device identity');
+
+        const bookId = await this.deps.calculateIdHashOfObj({$type$: 'FotosDeviceBook', id: makeFotosDeviceBookId(deviceId)});
+        const book = await this.readVersionedObject<FotosDeviceBook>(bookId);
+        const locatorHashes = [...(book?.locators ?? [])];
+        for (let offset = 0; offset < locatorHashes.length; offset += 32) {
+            const batch = await Promise.all(locatorHashes.slice(offset, offset + 32).map(async hash => {
+                const locator = await getObject(hash);
+                if (!this.isDeviceGalleryLocator(locator, deviceId)) return null;
+                const variant = await this.readVersionedObject<FotosMediaVariant>(locator.variant);
+                if (variant?.role !== 'original') return null;
+                return {locator, variant};
+            }));
+            for (const resolved of batch) {
+                if (!resolved) continue;
+                const {locator, variant} = resolved;
+                this.rememberLocalAsset(variant.contentHash, locator.locator);
+                const currentHash = this.albumAssetHashes.get(locator.locator);
+                const currentTime = this.assetVerificationTimes.get(locator.locator) ?? '';
+                const lastVerifiedAt = locator.lastVerifiedAt ?? '';
+                if (!currentHash || lastVerifiedAt > currentTime || (lastVerifiedAt === currentTime && variant.contentHash < currentHash)) {
+                    this.albumAssetHashes.set(locator.locator, variant.contentHash);
+                    this.assetVerificationTimes.set(locator.locator, lastVerifiedAt);
+                }
+            }
+        }
+
+        // Hydrate mobile-library Source checkpoint and known SourceEntries directly from the ONE DAG.
+        const source = await this.readMobileLibrarySource().catch(() => null);
+        const owner = this.deps.getOwnerId();
+        if (!owner || typeof readMediaBook !== 'function') return;
+        const mediaBook = await readMediaBook(this.deps, owner as SHA256IdHash<Person>, deviceId).catch(() => undefined);
+        const entryIdHashes = mediaBook?.obj?.entryIdHashes ?? [];
+        for (let offset = 0; offset < entryIdHashes.length; offset += 32) {
+            const entries = await Promise.all(entryIdHashes.slice(offset, offset + 32).map(async idHash => {
+                return this.readVersionedObject<SourceEntry>(idHash).catch(() => null);
+            }));
+            for (const entry of entries) {
+                if (!entry || entry.$type$ !== 'SourceEntry' || entry.kind !== 'mobile-asset') continue;
+                if (source && entry.sourceId !== source.idHash) continue;
+                const updatedAt = normalizeModTime(entry.updatedAt);
+                const deferred = !entry.contentHash && entry.summary === 'icloud-deferred';
+                const current = this.knownSourceEntries.get(entry.locator);
+                // Indexed SourceEntry (with contentHash) supersedes an earlier deferred SourceEntry.
+                if (!current || (current.deferred && !deferred) || updatedAt >= current.updatedAt) {
+                    this.knownSourceEntries.set(entry.locator, {deferred, updatedAt});
+                }
+            }
+        }
+    }
+
+    private isDeviceGalleryLocator(locator: FotosMediaLocator, deviceId: string): boolean {
+        return locator.scope === 'device-local' && locator.deviceId === deviceId
+            && locator.kind === this.galleryLocator?.kind && locator.platform === this.galleryLocator?.platform;
+    }
+
+    async getLocalPhotoHashes(): Promise<ReadonlyMap<string, string>> {
+        await this.ensureLocalAssetIndex();
+        if (this.galleryLocator && !this.closed && !this.subscription) {
+            const access = await MediaLibrary.getPermissionsAsync(false, ['photo', 'video']);
+            if (access.granted && !this.closed) this.observeLibrary(access);
+        }
+        return new Map(this.albumAssetHashes);
+    }
+
+    async addPhotoTag(contentHash: string, value: string): Promise<void> {
+        const tag = value.normalize('NFC').trim().replace(/\s+/g, ' ');
+        if (!tag || tag.length > MAX_FOTOS_TAG_LENGTH) throw new Error(`Enter a tag of up to ${MAX_FOTOS_TAG_LENGTH} characters.`);
+        return this.enqueue(async () => {
+            const owner = this.requireOwner();
+            const {manifest, manifestId} = await this.requireOwnedManifest(owner);
+            const references = [];
+            const tags = new Set<string>();
+            for (const hash of manifest.entries) {
+                const entry = await getObject(hash);
+                if (entry.contentHash !== contentHash) continue;
+                references.push({hash, entry});
+                for (const label of entry.tags ?? []) tags.add(label);
+            }
+            const selected = projectFotosEntryReferences(references)[0];
+            if (!selected) throw new Error('Only photos in your library can be tagged.');
+            if ([...tags].some(label => label.toLowerCase() === tag.toLowerCase())) return;
+            if (tags.size >= MAX_FOTOS_ENTRY_TAGS) throw new Error(`A photo can have up to ${MAX_FOTOS_ENTRY_TAGS} tags.`);
+            const tagged: FotosEntry = {...selected.entry, tags: new Set([...tags, tag])};
+            const stored = await this.deps.storeVersionedObject(tagged);
+            await this.storeOwnedManifest(owner, manifestId, {
+                ...manifest, entries: new Set([...manifest.entries, stored.hash as SHA256Hash<FotosEntry>]),
+            });
+        });
+    }
+
+    async shareCollectionWithPeer(collectionId: string, peerId: string, verifyPeer: () => Promise<void>): Promise<void> {
+        return this.enqueue(async () => {
+            const owner = this.requireOwner();
+            if (!/^[a-f0-9]{64}$/.test(peerId) || peerId === owner) throw new Error('Choose a trusted peer.');
+            await verifyPeer();
+            if (this.requireOwner() !== owner) throw new Error('Your Fotos account changed.');
+            const {manifest} = await this.requireOwnedManifest(owner);
+            await shareFotosMobileCollection(owner as SHA256IdHash<Person>, manifest, collectionId, peerId as SHA256IdHash<Person>);
+        });
+    }
+
+    async addPhotoToCollection(contentHash: string, target: {id: string} | {name: string}): Promise<void> {
+        return this.enqueue(async () => {
+            const owner = this.requireOwner();
+            const {manifest, manifestId} = await this.requireOwnedManifest(owner);
+            let ownsPhoto = false;
+            for (const ref of manifest.entries) {
+                if ((await getObject(ref)).contentHash === contentHash) {
+                    ownsPhoto = true;
+                    break;
+                }
+            }
+            if (!ownsPhoto) throw new Error('Add a photo from your library to a Fotos collection.');
+
+            const refs = new Set(manifest.collections ?? []);
+            let collection: FotosCollection | undefined;
+            if ('id' in target) {
+                if (!isEditableFotosCollection(owner, target.id)) throw new Error('Choose an editable Fotos collection.');
+                for (const ref of refs) {
+                    const existing = await getObject(ref);
+                    if (existing.id !== target.id) continue;
+                    collection = existing;
+                    refs.delete(ref);
+                    break;
+                }
+                if (!collection) throw new Error('This Fotos collection is unavailable.');
+                if (collection.photoHashes.has(contentHash)) return;
+                if (collection.photoHashes.size >= MAX_FOTOS_COLLECTION_MEMBERS) throw new Error('This collection is full.');
+            } else {
+                const name = target.name.trim();
+                if (!name) throw new Error('Enter a collection name.');
+                collection = createFotosManualCollection({owner, uuid: Crypto.randomUUID(), name, photoHashes: []});
+            }
+            const next: FotosCollection = {
+                $type$: 'FotosCollection', id: collection.id, name: collection.name,
+                photoHashes: new Set([...collection.photoHashes, contentHash]),
+            };
+            const stored = await this.deps.storeVersionedObject(next);
+            refs.add(stored.hash as SHA256Hash<FotosCollection>);
+            await this.storeOwnedManifest(owner, manifestId, {...manifest, collections: refs});
+        });
+    }
+
+    private async requireOwnedManifest(owner: string) {
+        const id = getOwnedFotosManifestId(owner);
+        const manifestId = await this.deps.calculateIdHashOfObj({$type$: 'FotosManifest', id}) as SHA256IdHash<FotosManifest>;
+        const manifest = await this.readVersionedObject<FotosManifest>(manifestId);
+        if (!manifest || manifest.$type$ !== 'FotosManifest' || manifest.id !== id) {
+            throw new Error('Your Fotos library is unavailable.');
+        }
+        return {manifest, manifestId};
+    }
+
+    /** Resolve a verified original from any device-local locator, including legacy raw IDs. */
+    async resolveOriginal(entry: FotosEntry, allowNetworkAccess = false): Promise<ArrayBuffer> {
+        const native = getFotosPhotoKit();
+        await this.ensureLocalAssetIndex();
+        for (const id of this.localAssets.get(entry.contentHash) ?? []) {
+            try {
+                const bytes = await this.readVerifiedOriginal(native, id, entry, allowNetworkAccess);
+                return Uint8Array.from(bytes).buffer;
+            } catch {
+                // Try the next locator for this exact content.
+                continue;
+            }
+        }
+        throw new Error('No verified local gallery original is available for this content hash');
+    }
+
+    private async readVerifiedOriginal(
+        native: FotosPhotoKitNative, assetId: string, entry: FotosEntry, allowNetworkAccess: boolean,
+    ): Promise<Uint8Array> {
+        const bytes = await readTemporaryBytes(await native.originalFile(assetId, allowNetworkAccess));
+        if (!await matchesImageContentHash(bytes, entry.contentHash, value => this.digestBytes(value))) {
+            throw new Error('The gallery original no longer matches the expected content hash');
+        }
+        return bytes;
+    }
+
+    private async storeThumbnail(
+        uri: string,
+        family: SHA256IdHash<FotosEntry>,
+        original: SHA256IdHash<FotosMediaVariant>,
+    ): Promise<StoredVersionedObject & {blob: SHA256Hash<BLOB>}> {
+        const bytes = await readTemporaryBytes(uri);
+        const {width, height} = readFotosThumbnailDimensions(bytes);
+        const blob = await storeArrayBufferAsBlob(bytes);
+        const variant = await this.deps.storeVersionedObject(createFotosMediaVariant({
+            contentHash: await this.digestBytes(bytes), family, role: 'thumbnail', mime: 'image/jpeg',
+            byteSize: bytes.byteLength, width, height, blob: blob.hash, derivedFrom: original,
+        }));
+        return {...variant, blob: blob.hash};
+    }
+
+    private async deferAsset(native: FotosPhotoKitNative, asset: FotosPhotoKitAsset): Promise<FotosDeferredPhotoKitAsset> {
+        const previous = this.deferredAssets.get(asset.id);
+        const thumbnailUri = previous?.asset.modificationTime === asset.modificationTime && previous?.thumbnailUri
+            || await native.thumbnailFile(asset.id, FOTOS_THUMBNAIL_MAX_EDGE, false).catch(() => null);
+        if (previous?.thumbnailUri && previous.thumbnailUri !== thumbnailUri) deleteTemporaryFile(previous.thumbnailUri);
+        const deferred: FotosDeferredPhotoKitAsset = {asset, status: 'icloud-deferred', ...(thumbnailUri ? {thumbnailUri} : {})};
+        this.deferredAssets.set(asset.id, deferred);
+        return deferred;
+    }
+
+    private clearDeferredAsset(assetId: string): void {
+        const deferred = this.deferredAssets.get(assetId);
+        if (deferred?.thumbnailUri) deleteTemporaryFile(deferred.thumbnailUri);
+        this.deferredAssets.delete(assetId);
+    }
+
+    private onLibraryChange(native: FotosPhotoKitNative, change: FotosPhotoKitChange): void {
+        if (this.closed) return;
+        void this.enqueue(async () => {
+            const permission = await MediaLibrary.getPermissionsAsync(false, ['photo', 'video']);
+            if (!permission.granted) {
+                this.androidVisibility = undefined;
+                for (const assetId of this.deferredAssets.keys()) this.clearDeferredAsset(assetId);
+                return;
+            }
+            await this.ensureLocalAssetIndex();
+            const removed = new Set(change.removed);
+            const changed = new Set([...change.inserted, ...change.changed]);
+            if (this.galleryLocator?.platform === 'android') {
+                await this.applyAndroidVisibility(native, permission, change, changed, removed);
+            } else if (change.requiresReload) {
+                for (const assetId of this.albumAssetHashes.keys()) changed.add(assetId);
+                for (const assetId of this.deferredAssets.keys()) changed.add(assetId);
+            }
+            if (removed.size && permission.accessPrivileges === 'all') {
+                await this.retireLocalPhotoLocators(removed);
+            }
+            for (const assetId of removed) {
+                this.albumAssetHashes.delete(assetId);
+                this.assetVerificationTimes.delete(assetId);
+                this.knownSourceEntries.delete(assetId);
+                this.clearDeferredAsset(assetId);
+            }
+            if (removed.size) {
+                for (const [hash, assets] of this.localAssets) {
+                    for (const id of assets) if (removed.has(id)) assets.delete(id);
+                    if (!assets.size) this.localAssets.delete(hash);
+                }
+            }
+            for (const assetId of removed) changed.delete(assetId);
+            const refreshAlbums = change.albumsChanged || removed.size > 0 || change.requiresReload;
+            const result = changed.size
+                ? await this.syncAssetRefsSerially(native, [...changed], permission, false, refreshAlbums)
+                : undefined;
+            if (result?.skippedCount || result?.albumSyncError) console.warn('[FotosPhotoKit] Some changes could not be applied');
+            if (!result && refreshAlbums) {
+                await this.syncAlbums(native, permission.accessPrivileges === 'all');
+            }
+        }).catch(error => {
+            if (!this.closed) console.warn('[FotosPhotoKit] Library change could not be applied', error);
+        });
+    }
+
+    private async applyAndroidVisibility(
+        native: FotosPhotoKitNative, permission: MediaLibrary.PermissionResponse, change: FotosPhotoKitChange,
+        changed: Set<string>, removed: Set<string>,
+    ): Promise<void> {
+        const previous = this.androidVisibility;
+        if (!change.requiresReload) {
+            for (const id of change.inserted) previous?.ids.add(id);
+            for (const id of removed) previous?.ids.delete(id);
             return;
         }
 
-        entries.add(entryHash);
+        const observed = await this.readAndroidVisibility(native, permission);
+        this.androidVisibility = observed;
+        for (const id of observed.ids) {
+            if (this.albumAssetHashes.has(id) || (observed.complete && previous?.complete && !previous.ids.has(id))) {
+                changed.add(id);
+            }
+        }
+        if (!observed.complete || !previous?.complete) return;
+        for (const id of previous.ids) {
+            // A detachable volume can disappear from the visible gallery without deleting its originals.
+            if (!observed.ids.has(id) && /^content:\/\/media\/external(?:_primary)?\//.test(id)) removed.add(id);
+        }
+    }
 
-        await this.deps.storeVersionedObject({
-            $type$: 'FotosManifest',
-            id: 'fotos',
-            entries,
-            authenticityAttestations: new Set(manifest.authenticityAttestations ?? []),
+    private async retireLocalPhotoLocators(removed: ReadonlySet<string>): Promise<void> {
+        const deviceId = this.deps.getInstanceId();
+        if (!deviceId) throw new Error('The gallery requires the local device identity');
+        const idHash = await this.deps.calculateIdHashOfObj({$type$: 'FotosDeviceBook', id: makeFotosDeviceBookId(deviceId)});
+        const book = await this.readVersionedObject<FotosDeviceBook>(idHash);
+        if (!book?.locators?.size) return;
+        const locators = new Set<SHA256Hash<FotosMediaLocator>>();
+        for (const ref of book.locators) {
+            const locator = await getObject(ref);
+            if (this.isDeviceGalleryLocator(locator, deviceId) && removed.has(locator.locator)) continue;
+            locators.add(ref);
+        }
+        if (locators.size !== book.locators.size) {
+            const access = await MediaLibrary.getPermissionsAsync(false, ['photo', 'video']);
+            if (access.granted && access.accessPrivileges === 'all') {
+                await this.deps.storeVersionedObject({...book, locators, updatedAt: Math.max(Date.now(), book.updatedAt)});
+            }
+        }
+    }
+
+    private async syncAlbums(native: FotosPhotoKitNative, fullAccess: boolean): Promise<void> {
+        if (!this.galleryLocator) return;
+        const owner = this.requireOwner();
+        const deviceId = this.deps.getInstanceId();
+        if (!deviceId) throw new Error('Gallery albums require the local device identity');
+        const id = getOwnedFotosManifestId(owner);
+        const manifestIdHash = await this.deps.calculateIdHashOfObj({$type$: 'FotosManifest', id}) as SHA256IdHash<FotosManifest>;
+        const manifest = await this.readVersionedObject<FotosManifest>(manifestIdHash);
+        const {collections, albumBindings, changed} = await reconcileFotosPhotoKitAlbums({
+            native, ownerId: owner, platform: this.galleryLocator.platform,
+            libraryId: await this.digestBytes(new TextEncoder().encode(deviceId)),
+            fullAccess, assetHashes: this.albumAssetHashes, existingRefs: manifest?.collections ?? new Set(),
+            bindingRefs: manifest?.albumBindings ?? new Set(),
+            allocateCollectionUuid: Crypto.randomUUID,
+            calculateCollectionId: async collection => await this.deps.calculateIdHashOfObj(
+                {$type$: 'FotosCollection', id: collection.id},
+            ) as SHA256IdHash<FotosCollection>,
+            readCollection: hash => getObject(hash),
+            readBinding: hash => getObject(hash),
+            storeCollection: async collection => (await this.deps.storeVersionedObject(collection)).hash as SHA256Hash<FotosCollection>,
+            storeBinding: async binding => (await this.deps.storeVersionedObject(binding)).hash as SHA256Hash<FotosGalleryAlbumBinding>,
         });
+        if (!changed) return;
+        const currentAccess = await MediaLibrary.getPermissionsAsync(false, ['photo', 'video']);
+        if (!currentAccess.granted || (fullAccess && currentAccess.accessPrivileges !== 'all')) {
+            throw new Error('Gallery access changed during album reconciliation');
+        }
+        await this.storeOwnedManifest(owner, manifestIdHash, {
+            ...(manifest ?? {}), $type$: 'FotosManifest', id, entries: manifest?.entries ?? new Set(), collections, albumBindings,
+        });
+    }
+
+    private async addEntryToManifest(entryHash: SHA256Hash<FotosEntry>): Promise<void> {
+        const owner = this.requireOwner();
+        const id = getOwnedFotosManifestId(owner);
+        const manifestIdHash = await this.deps.calculateIdHashOfObj({$type$: 'FotosManifest', id}) as SHA256IdHash<FotosManifest>;
+        const manifest = await this.readVersionedObject<FotosManifest>(manifestIdHash);
+        // The legacy global root may contain peer-owned entries. Preserve it untouched;
+        // never republish its contents under the current owner's authority without evidence.
+        const entries = new Set(manifest?.entries ?? []);
+        entries.add(entryHash);
+        await this.storeOwnedManifest(owner, manifestIdHash, {
+            ...(manifest ?? {}), $type$: 'FotosManifest', id, entries,
+            authenticityAttestations: new Set(manifest?.authenticityAttestations ?? []),
+        });
+    }
+
+    private async storeOwnedManifest(owner: string, idHash: SHA256IdHash<FotosManifest>, manifest: FotosManifest): Promise<void> {
+        await createAccess([{id: idHash,
+            person: [owner as SHA256IdHash<Person>], hashGroup: [], mode: SET_ACCESS_MODE.ADD}]);
+        await this.deps.storeVersionedObject(manifest);
     }
 }

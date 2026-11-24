@@ -10,6 +10,7 @@ function run(cmd, args, cwd = root) {
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status || 1);
 }
+run('node', ['../fotos.expo/scripts/verify-vendor-install.js', '.', '../fotos.expo/.vendorrc.json']);
 run('pnpm', ['exec', 'expo', 'prebuild', '--platform', 'android', '--no-install']);
 run('./gradlew', [':app:assembleRelease', '--console=plain', '-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m', '-PreactNativeArchitectures=armeabi-v7a'], path.join(root, 'android'));
 console.log('APK: ' + path.join(root, 'android/app/build/outputs/apk/release/app-release.apk'));

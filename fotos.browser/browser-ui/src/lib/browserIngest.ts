@@ -7,6 +7,7 @@
  */
 
 import ExifReader from 'exifreader';
+import {hasLegacyRawImageHash, matchesImageContentHash, normalizeImageBytesForContentHash} from '@refinio/fotos.core/content-hash';
 import { getMediaMimeType, getMediaPlaybackKind, isSupportedMediaFile } from '@refinio/media.core/media-types';
 import { generateMediaThumbnail } from './mediaThumbnail.js';
 import { getRuntimeBrowserCryptoSupport } from './browserCryptoSupport.js';
@@ -79,52 +80,13 @@ async function sha256(data: BufferSource): Promise<string> {
         .join('');
 }
 
-function isJpeg(buf: Uint8Array): boolean {
-    return buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xd8;
-}
-
-/**
- * Strip JPEG metadata segments (APPn, COM) so content hash is stable
- * across metadata edits. Same logic as one.fotos/hash.ts.
- */
-function stripJpegMetadata(buf: Uint8Array): Uint8Array {
-    const chunks: Uint8Array[] = [];
-    chunks.push(buf.slice(0, 2)); // SOI
-
-    let pos = 2;
-    while (pos < buf.length - 1) {
-        if (buf[pos] !== 0xff) break;
-        const marker = buf[pos + 1];
-
-        if (marker === 0xd9) { chunks.push(buf.slice(pos, pos + 2)); break; }
-        if (marker === 0xda) { chunks.push(buf.slice(pos)); break; }
-        if ((marker >= 0xd0 && marker <= 0xd7) || marker === 0x01) {
-            chunks.push(buf.slice(pos, pos + 2));
-            pos += 2;
-            continue;
-        }
-        if (pos + 3 >= buf.length) break;
-        const segLen = (buf[pos + 2] << 8) | buf[pos + 3];
-        if ((marker >= 0xe0 && marker <= 0xef) || marker === 0xfe) {
-            pos += 2 + segLen;
-            continue;
-        }
-        chunks.push(buf.slice(pos, pos + 2 + segLen));
-        pos += 2 + segLen;
-    }
-
-    let total = 0;
-    for (const c of chunks) total += c.length;
-    const out = new Uint8Array(total);
-    let offset = 0;
-    for (const c of chunks) { out.set(c, offset); offset += c.length; }
-    return out;
-}
-
 export async function hashImageFile(file: File): Promise<string> {
-    const buf = new Uint8Array(await file.arrayBuffer());
-    const data = isJpeg(buf) ? stripJpegMetadata(buf) : buf;
-    return sha256(data.slice());
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    return sha256(normalizeImageBytesForContentHash(bytes).slice());
+}
+
+export function matchesOriginalContentHash(content: ArrayBuffer, contentHash: string): Promise<boolean> {
+    return matchesImageContentHash(new Uint8Array(content), contentHash, input => sha256(input.slice()));
 }
 
 async function computeStreamId(
@@ -588,7 +550,9 @@ export async function ingestDirectory(
             const data: Record<string, string> = {};
 
             // Content hash
-            const contentHash = await hashImageFile(img.file);
+            const bytes = new Uint8Array(await img.file.arrayBuffer());
+            const normalized = normalizeImageBytesForContentHash(bytes);
+            const contentHash = await sha256(normalized.slice());
             data['content-hash'] = contentHash;
 
             // EXIF
@@ -608,7 +572,10 @@ export async function ingestDirectory(
             const streamId = await computeStreamId(contentHash, exif.date, img.mime);
             data['stream-id'] = streamId;
 
-            const preserved = preservedIndexAttrs.get(contentHash);
+            let preserved = preservedIndexAttrs.get(contentHash);
+            if (!preserved && preservedIndexAttrs.size && hasLegacyRawImageHash(bytes, normalized)) {
+                preserved = preservedIndexAttrs.get(await sha256(bytes));
+            }
             if (preserved) {
                 Object.assign(data, preserved);
             }

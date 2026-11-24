@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { FsEntry, FolderMetadata, IngestProgress } from './types.js';
 import { ONE_DIR, THUMBS_DIR } from './types.js';
-import { hashImageBytes, computeStreamId } from './hash.js';
+import { computeStreamId, sha256Hex } from './hash.js';
+import {hasLegacyRawImageHash, normalizeImageBytesForContentHash} from '../content-hash.js';
 import { extractExif } from './exif.js';
 import { renderIndexHtml, parseIndexHtml, parseFolderMeta, parseFolderIndex, type ParsedPhotoEntry } from './index-html.js';
 import { listImages, readImageBytes, generateThumbnail, writeBytes } from './platform-node.js';
@@ -66,7 +67,8 @@ export async function ingestFolder(
         const data: Record<string, string> = {};
 
         // Content hash
-        const contentHash = await hashImageBytes(bytes);
+        const normalized = normalizeImageBytesForContentHash(bytes);
+        const contentHash = await sha256Hex(normalized);
         data['content-hash'] = contentHash;
 
         // EXIF
@@ -87,7 +89,10 @@ export async function ingestFolder(
         data['stream-id'] = streamId;
 
         // Preserve face/semantic data from prior ingestion
-        const preserved = preservedAttrs.get(contentHash);
+        let preserved = preservedAttrs.get(contentHash);
+        if (!preserved && preservedAttrs.size && hasLegacyRawImageHash(bytes, normalized)) {
+            preserved = preservedAttrs.get(await sha256Hex(bytes));
+        }
         if (preserved) Object.assign(data, preserved);
 
         // Thumbnail

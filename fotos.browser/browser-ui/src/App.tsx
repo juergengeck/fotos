@@ -46,9 +46,11 @@ import {
 import { isSnapshotEqual, type FotosBreadcrumbSnapshot } from '@/lib/fotosHistorySettings';
 import {
     grantFotosAccess,
-    retainFotosManifestConvergence,
     revokeLegacyFotosManifestAccess,
+    getFotosNativeOwnerContext,
+    readNativeOwnedFotosEntries,
 } from '@/lib/fotos-manifest';
+import {getOwnedFotosManifestId} from '../../../fotos.core/src/owned-fotos-manifest.js';
 import { resolveShareGrantPersonIds } from '@/lib/shareGrantTargets';
 import {
     ensureConfiguredGlueIdentity,
@@ -90,7 +92,7 @@ import {
     projectReceivedFotosShares,
     type ReceivedFotosShareScope,
 } from '@refinio/fotos.core/received-shares';
-import type { FotosShareScope } from '@refinio/fotos.core';
+import type { FotosEntry, FotosShareScope } from '@refinio/fotos.core';
 import {
     FOTOS_SHARE_PIN_MAX_ATTEMPTS,
     isFotosSharePinFormat,
@@ -444,6 +446,8 @@ export function App({ fotosModel: initialModel }: AppProps) {
         setIncomingShareInvite(invite);
     }, []);
     const [receivedShareScopes, setReceivedShareScopes] = useState<ReceivedFotosShareScope[]>([]);
+    const [nativeOwnedLibrary, setNativeOwnedLibrary] = useState<{owner: string | null; entries: FotosEntry[]}>({owner: null, entries: []});
+    const [nativeOwnedLibraryError, setNativeOwnedLibraryError] = useState<string | null>(null);
     const shareCommitCoordinatorRef = useRef(new FotosShareCommitCoordinator());
     const [confirmState, setConfirmState] = useState<{
         open: boolean;
@@ -511,10 +515,52 @@ export function App({ fotosModel: initialModel }: AppProps) {
         updateAcceptSharing,
     } = useSettings(fotosModel);
     const fotosCollections = useFotosCollections(fotosModel);
+    const nativeOwnerContext = getFotosNativeOwnerContext();
+    const admittedNativeOwner = fotosModel?.initialized && nativeOwnerContext && nativeOwnerContext === fotosModel.ownerId
+        ? nativeOwnerContext : null;
     const receivedEntries = useMemo(
-        () => receivedShareScopes.flatMap(scope => scope.entries),
-        [receivedShareScopes],
+        () => [...new Map([
+            ...receivedShareScopes.flatMap(scope => scope.entries),
+            ...(admittedNativeOwner && nativeOwnedLibrary.owner === admittedNativeOwner ? nativeOwnedLibrary.entries : []),
+        ].map(entry => [entry.contentHash, entry])).values()],
+        [receivedShareScopes, nativeOwnedLibrary, admittedNativeOwner],
     );
+    useEffect(() => {
+        setNativeOwnedLibrary({owner: admittedNativeOwner, entries: []});
+        setNativeOwnedLibraryError(null);
+        if (!admittedNativeOwner) return;
+        const owner = admittedNativeOwner;
+        const manifestId = getOwnedFotosManifestId(owner);
+        let cancelled = false;
+        let running = false;
+        let queued = false;
+        const refresh = async () => {
+            if (running) {queued = true; return;}
+            running = true;
+            try {
+                const entries = await readNativeOwnedFotosEntries(owner);
+                if (!cancelled) {
+                    setNativeOwnedLibrary({owner, entries});
+                    setNativeOwnedLibraryError(null);
+                }
+            } catch (error) {
+                if (!cancelled) setNativeOwnedLibraryError(error instanceof Error ? error.message : String(error));
+            } finally {
+                running = false;
+                if (queued && !cancelled) {queued = false; void refresh();}
+            }
+        };
+        void refresh();
+        const stopVersioned = onVersionedObj.addListener(result => {
+            const obj = result.obj as {$type$: string; id?: string};
+            if ((obj.$type$ === 'FotosManifest' && obj.id === manifestId) || obj.$type$ === 'FotosEntry') void refresh();
+        });
+        // Semantic arrivals re-evaluate this exact accepted root when prerequisites arrive.
+        const stopImported = onChumObjectImported.addListener(event => {
+            if (event.imported.kind === 'object' && ['FotosManifest', 'FotosEntry'].includes(event.imported.type)) void refresh();
+        });
+        return () => {cancelled = true; stopVersioned(); stopImported();};
+    }, [admittedNativeOwner, fotosModel]);
     const headlessFolder = useHeadlessSource(headlessUrl);
     const gallery = useGallery({
         faceAnalyticsEnabled: settings.analysis.faceAnalyticsEnabled,
@@ -663,6 +709,10 @@ export function App({ fotosModel: initialModel }: AppProps) {
     );
     const locallyOwnedPhotoHashes = useMemo(
         () => new Set(locallyOwnedGalleryEntries.map(photo => photo.hash)),
+        [locallyOwnedGalleryEntries],
+    );
+    const contentHashByGalleryHash = useMemo(
+        () => new Map(locallyOwnedGalleryEntries.map(photo => [photo.hash, photo.contentHash ?? photo.hash])),
         [locallyOwnedGalleryEntries],
     );
     const selectedPhotosForCollections = useMemo(
@@ -1395,6 +1445,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
         if (params.contentHashes.length === 0) {
             throw new Error('This scope has no photos to share.');
         }
+        const contentHashes = [...new Set(params.contentHashes.map(hash => contentHashByGalleryHash.get(hash) ?? hash))];
 
         const scopeKey = `${params.scope.kind}:${params.scope.id}`;
         const previousPersonIds = expandSharePersonIds(params.previousPersonIds);
@@ -1402,7 +1453,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
         const fingerprint = JSON.stringify({
             issuer: String(issuer),
             recipients: [...nextPersonIds].sort(),
-            content: [...params.contentHashes].sort(),
+            content: [...contentHashes].sort(),
         });
         const result = await shareCommitCoordinatorRef.current.commit({
             scopeKey,
@@ -1422,7 +1473,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 await traceFotosSharePhase(
                     params.scope,
                     'selected-photo-sync',
-                    () => gallery.folder.ensureSyncedToOneCore(params.contentHashes),
+                    () => gallery.folder.ensureSyncedToOneCore(contentHashes),
                 );
                 const snapshot = await traceFotosSharePhase(
                     params.scope,
@@ -1432,7 +1483,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                 const entryHashByContentHash = new Map(
                     (snapshot?.resolvedEntries ?? []).map(entry => [entry.contentHash, entry.entryHash]),
                 );
-                const missingHashes = params.contentHashes.filter(hash => !entryHashByContentHash.has(hash));
+                const missingHashes = contentHashes.filter(hash => !entryHashByContentHash.has(hash));
                 if (missingHashes.length > 0) {
                     throw new Error(`${missingHashes.length} photo${missingHashes.length === 1 ? '' : 's'} could not be prepared for sharing.`);
                 }
@@ -1445,7 +1496,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
                         scope: params.scope,
                         previousPersonIds: committedPreviousPersonIds,
                         nextPersonIds,
-                        entryHashes: params.contentHashes.map(hash => entryHashByContentHash.get(hash) as any),
+                        entryHashes: contentHashes.map(hash => entryHashByContentHash.get(hash) as any),
                     }),
                 );
                 certificateBackfilledScopesRef.current.add(scopeKey);
@@ -1458,7 +1509,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
         });
         params.persist();
         return result;
-    }, [expandSharePersonIds, fotosModel?.publicationIdentity, gallery.folder.ensureSyncedToOneCore]);
+    }, [contentHashByGalleryHash, expandSharePersonIds, fotosModel?.publicationIdentity, gallery.folder.ensureSyncedToOneCore]);
 
     const requestShareAssignment = useCallback((params: {
         scope: FotosShareScope;
@@ -1679,7 +1730,7 @@ export function App({ fotosModel: initialModel }: AppProps) {
 
         await gallery.folder.ensureSyncedToOneCore();
         const manifestSnapshot = await fotosShareController.refreshManifest();
-        const sharedCount = manifestSnapshot?.entryCount ?? 0;
+        const sharedCount = manifestSnapshot?.contentHashes.length ?? 0;
         if (sharedCount === 0) {
             throw new Error('No photos are ready to share yet.');
         }
@@ -2539,14 +2590,6 @@ export function App({ fotosModel: initialModel }: AppProps) {
 
     useEffect(() => {
         if (!fotosModel?.initialized) {
-            return;
-        }
-
-        return retainFotosManifestConvergence();
-    }, [fotosModel?.initialized]);
-
-    useEffect(() => {
-        if (!fotosModel?.initialized) {
             setShareManifestHash(null);
             return;
         }
@@ -3122,6 +3165,18 @@ export function App({ fotosModel: initialModel }: AppProps) {
                     personIds: collection.personIds,
                     transitions,
                 };
+            },
+            createDeviceEnrollmentInvitation: async () => {
+                const activeModel = debugRuntimeRef.current.model;
+                const plan = activeModel?.connectionModule?.connectionPlan;
+                if (!plan || !activeModel.ownerId || activeModel.publicationIdentity !== activeModel.ownerId) {
+                    throw new Error('A native same-owner Fotos identity is required for device enrollment');
+                }
+                const result = await plan.createPairingInvitation({mode: 'IoM', webUrl: 'https://fotos.one/app'});
+                if (!result.success || !result.invitation?.url) {
+                    throw new Error(result.error || 'Fotos could not create an own-device invitation');
+                }
+                return {url: result.invitation.url};
             },
             createPairingInvitation: async () => {
                 const activeModel = debugRuntimeRef.current.model;
@@ -4006,9 +4061,9 @@ export function App({ fotosModel: initialModel }: AppProps) {
     return (
         <>
             {appContent}
-            {gallery.folder.error && (
+            {(nativeOwnedLibraryError || gallery.folder.error) && (
                 <div role="alert" className="fixed bottom-4 left-4 right-4 z-[80] mx-auto max-w-2xl rounded-lg border border-[#e94560]/35 bg-[#38151b] p-4 text-sm text-white shadow-xl">
-                    {gallery.folder.error}
+                    {nativeOwnedLibraryError || gallery.folder.error}
                 </div>
             )}
             {incomingShareError && incomingShareStatus === 'connected' ? (

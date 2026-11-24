@@ -1,26 +1,25 @@
 import {
   createBrowserCredentialVault,
-  createBrowserGlueLogin,
-  type BrowserGlueLoginResult,
+  createBrowserGlueEnrollment,
+  type GlueEnrollmentInput,
+  type GlueEnrollmentReceipt,
 } from '@glueone/auth.core';
-import { resolveFotosBootAccount, selectFotosGlueAccount, type FotosCredentialVault } from './fotosBootCreds.js';
+import { resolveFotosBootAccount, selectFotosNativeGlueAccount, type FotosCredentialVault } from './fotosBootCreds.js';
 
 type Vault = FotosCredentialVault;
-type GlueLogin = {
-  login(options?: { loginHint?: string; signal?: AbortSignal }): Promise<BrowserGlueLoginResult>;
-  resume(): Promise<BrowserGlueLoginResult | undefined>;
-};
+type GlueEnrollment = (options: GlueEnrollmentInput) => Promise<GlueEnrollmentReceipt>;
 
-export function createFotosGlueLoginSession(auth: GlueLogin, vault: Vault) {
+export function createFotosGlueLoginSession(enroll: GlueEnrollment, vault: Vault) {
   let busy = false;
   return {
     async signIn(options: { loginHint?: string; signal?: AbortSignal } = {}): Promise<void> {
       if (busy) throw new Error('Glue login already in progress');
       busy = true;
       try {
-        const result = await auth.login(options);
+        if (!options.loginHint?.trim()) throw new Error('Enter your registered glue.one name to connect this device');
+        const result = await enroll({ ...options, loginHint: options.loginHint.trim() });
         options.signal?.throwIfAborted();
-        await selectFotosGlueAccount(result.identity.personId, vault, { signal: options.signal });
+        await selectFotosNativeGlueAccount(result, vault, { signal: options.signal });
         options.signal?.throwIfAborted();
       } finally {
         busy = false;
@@ -29,12 +28,14 @@ export function createFotosGlueLoginSession(auth: GlueLogin, vault: Vault) {
     async resolveBoot() {
       // Remove credentials cached by the old, unverified redirect implementation.
       try { sessionStorage.removeItem('one_auth_token'); } catch {}
-      const result = await auth.resume();
       const url = new URL(window.location.href);
+      if (url.searchParams.has('one_token')) {
+        url.searchParams.delete('one_token');
+        window.history.replaceState(window.history.state, '', url.toString());
+        throw new Error('Legacy Glue login callback cannot enroll this device; sign in again');
+      }
       const requested = url.searchParams.get('fotosAccount');
-      // Verification and sealing finish before changing the selected account or opening ONE.
-      if (result) await selectFotosGlueAccount(result.identity.personId, vault, { preservePendingCreation: requested === 'new' });
-      const accountSelector = requested === 'new' ? requested : result ? null : requested;
+      const accountSelector = requested;
       if (url.searchParams.has('fotosAccount')) {
         url.searchParams.delete('fotosAccount');
         window.history.replaceState(window.history.state, '', url.toString());
@@ -53,5 +54,5 @@ const localVault = {
 };
 let session: ReturnType<typeof createFotosGlueLoginSession> | undefined;
 export function getFotosGlueLogin() {
-  return session ??= createFotosGlueLoginSession(createBrowserGlueLogin({ vault: localVault }), localVault);
+  return session ??= createFotosGlueLoginSession(createBrowserGlueEnrollment({ instanceNamePrefix: 'fotos' }), localVault);
 }

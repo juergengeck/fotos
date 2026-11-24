@@ -23,6 +23,7 @@ import type { SHA256IdHash } from '@refinio/one.core/lib/util/type-checks.js';
 import type { Person } from '@refinio/one.core/lib/recipes.js';
 import { getLocalInstanceOfPerson } from '@refinio/one.models/lib/misc/instance.js';
 import { GlueIdentityPlan, type GlueIdentityDeps } from '@vger/vger.glue/plans/GlueIdentityPlan.js';
+import { resolveReusableGlueIdentity } from './glueIdentityState.js';
 import { API_BASE } from '../config.js';
 
 async function getConfiguredGlueIdentity(
@@ -276,8 +277,8 @@ export async function ensureConfiguredGlueIdentity(
       trimmedDisplayName,
     );
   }
-  const needsFreshGlueIdentity =
-    !configuredPublicationIdentity || configuredPublicationIdentity === ownerId;
+  configuredPublicationIdentity = resolveReusableGlueIdentity(settingsPlan, configuredPublicationIdentity, ownerId);
+  const needsFreshGlueIdentity = !configuredPublicationIdentity;
 
   if (!needsFreshGlueIdentity) {
     const nextValues = {
@@ -422,8 +423,8 @@ export async function ensureStartupGlueIdentity(
     );
   }
 
-  const needsFreshGlueIdentity =
-    !configuredPublicationIdentity || configuredPublicationIdentity === ownerId;
+  configuredPublicationIdentity = resolveReusableGlueIdentity(settingsPlan, configuredPublicationIdentity, ownerId);
+  const needsFreshGlueIdentity = !configuredPublicationIdentity;
 
   if (!needsFreshGlueIdentity && !preferredDisplayName) {
     await createGlueProfileCredential(settingsPlan, leuteModel);

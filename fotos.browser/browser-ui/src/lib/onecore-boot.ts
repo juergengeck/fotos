@@ -5,13 +5,14 @@ import { createLocalDevicesPlan, type DevicesPlan } from '@refinio/device.core';
  *
  * Follows the same pattern as glue.browser's bootGlueModel():
  *   1. Create MultiUser with all required recipes
- *   2. Login or register with auto-generated credentials (localStorage/sessionStorage)
+ *   2. Open the exact account credentials from the encrypted browser vault
  *   3. Initialize ModuleRegistry (CoreModule, ChatModule, IndexModule, TrustModule, ConnectionModule, GlueModule)
  *   4. Activate glue.one only when sync is explicitly enabled
  *   5. Fire-and-forget headless connection when sync is enabled
  *   6. Return FotosModel
  */
 import MultiUser from '@refinio/one.models/lib/models/Authenticator/MultiUser.js';
+import { assertNativeGlueEnrollmentCustody, glueEnrollmentInstanceKeyPairs, installNativeGlueEnrollment, verifyGlueEnrollmentReceipt, type GlueEnrollmentReceipt } from '@glueone/auth.core';
 
 import type LeuteModel from '@refinio/one.models/lib/models/Leute/LeuteModel.js';
 import type ConnectionsModel from '@refinio/one.models/lib/models/ConnectionsModel.js';
@@ -38,6 +39,8 @@ import { ExportPlan } from '@vger/vger.core/plans/ExportPlan.js';
 
 import {
   DEFAULT_GLUE_CONNECTION_BINDING_ID,
+  updateGlueIdentityBinding,
+  updateGlueIdentityProfile,
 } from '@glueone/glue.core';
 import {
   InstanceSettingsStorage,
@@ -48,25 +51,27 @@ import {
 } from '@refinio/settings.core';
 
 // ONE.core instance helpers
-import { closeInstance, getInstanceIdHash, getInstanceOwnerIdHash } from '@refinio/one.core/lib/instance.js';
+import { closeInstance, instanceExists, getInstanceIdHash, getInstanceOwnerIdHash } from '@refinio/one.core/lib/instance.js';
 import { storeVersionedObject } from '@refinio/one.core/lib/storage-versioned-objects.js';
 import { getLocalInstanceOfPerson } from '@refinio/one.models/lib/misc/instance.js';
 import { onChumImportBatch } from '@refinio/one.core/lib/chum-sync.js';
 
 import { registerFotosHistorySettings } from './fotosHistorySettings.js';
 import { registerFotosSettings } from './fotosSettings.js';
-import { fotosContentRules } from './fotosSyncRules.js';
 import { API_BASE, COMM_SERVER_URL } from '../config.js';
+import { markFotosNativeGlueEnrollmentInstalled } from './fotosBootCreds.js';
 import { getFotosGlueLogin } from './fotosGlueLogin.js';
-import { resolveGluePublicationIdentity } from './glueIdentityState.js';
+import {setFotosNativeOwnerContext} from './fotos-manifest.js';
+import { recordAdmittedNativeGlueOwner, resolveReusableGlueIdentity, resolveGluePublicationIdentity } from './glueIdentityState.js';
 import {
   FotosOneCoreRecipes,
   FotosReverseMaps,
   FotosReverseMapsForIdObjects,
+  FotosSyncRules,
 } from './fotosOneCoreConfig.js';
 
 // ---------------------------------------------------------------------------
-// Credentials (auto-generated, stored in localStorage/sessionStorage)
+// Credentials (device vault custody; public account metadata in Web Storage)
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
@@ -188,6 +193,7 @@ function closeFotosRuntime(): Promise<void> {
       oneInstance = null;
       registryInstance = null;
       publicationIdentity = null;
+      setFotosNativeOwnerContext(null);
       modelUpdater?.(prev => prev ? { ...prev, initialized: false, headlessConnected: false } : null);
       modelUpdater = null;
     }
@@ -216,35 +222,16 @@ async function getConfiguredPublicationIdentity(
   publicationIdentity: SHA256IdHash<Person> | null;
   syncEnabled: boolean;
 }> {
-  try {
-    const { values } = await settingsPlan.getSection({ moduleId: 'glue' });
-    const configuredPublicationIdentity = resolveGluePublicationIdentity(
-      values,
-      null,
-      DEFAULT_GLUE_CONNECTION_BINDING_ID,
-    );
-    const syncEnabled = values.syncEnabled === true;
-
-    if (
-      !configuredPublicationIdentity ||
-      configuredPublicationIdentity === ownerId
-    ) {
-      return {
-        publicationIdentity: null,
-        syncEnabled,
-      };
-    }
-
-    return {
-      publicationIdentity: configuredPublicationIdentity as SHA256IdHash<Person>,
-      syncEnabled,
-    };
-  } catch {
-    return {
-      publicationIdentity: null,
-      syncEnabled: false,
-    };
-  }
+  const { values } = await settingsPlan.getSection({ moduleId: 'glue' });
+  const configuredPublicationIdentity = resolveReusableGlueIdentity(settingsPlan, resolveGluePublicationIdentity(
+    values,
+    null,
+    DEFAULT_GLUE_CONNECTION_BINDING_ID,
+  ), ownerId);
+  return {
+    publicationIdentity: configuredPublicationIdentity as SHA256IdHash<Person> | null,
+    syncEnabled: values.syncEnabled === true,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -255,6 +242,8 @@ async function initModules(
   one: MultiUser,
   commServerUrl: string,
   generation: number,
+  nativeEnrollment?: GlueEnrollmentReceipt,
+  enrollAccountId?: string,
 ): Promise<FotosModel> {
   registerSubscriptionSettings();
   registerDeviceSettings();
@@ -267,6 +256,19 @@ async function initModules(
     instanceIdHash: getInstanceIdHash()!,
   });
   const settingsPlan = new SettingsPlan(storage);
+  if (nativeEnrollment) recordAdmittedNativeGlueOwner(settingsPlan, nativeEnrollment.personId);
+  if (nativeEnrollment && enrollAccountId) {
+    const { values } = await settingsPlan.getSection({ moduleId: 'glue' });
+    const withProfile = { ...values, ...updateGlueIdentityProfile(values, nativeEnrollment.personId,
+      { displayName: nativeEnrollment.identity }) };
+    await settingsPlan.updateSection({ moduleId: 'glue', values: {
+      ...withProfile,
+      ...updateGlueIdentityBinding(withProfile, nativeEnrollment.personId, DEFAULT_GLUE_CONNECTION_BINDING_ID),
+      syncEnabled: true,
+      sameOwnerIoMEnabled: true,
+    } });
+    await markFotosNativeGlueEnrollmentInstalled(enrollAccountId, nativeEnrollment);
+  }
   const devicesPlan = await createLocalDevicesPlan({ displayName: 'Fotos browser', platform: 'browser' });
   const ownerId = getInstanceOwnerIdHash()! as SHA256IdHash<Person>;
   const glueStartup = await getConfiguredPublicationIdentity(settingsPlan, ownerId);
@@ -306,7 +308,7 @@ async function initModules(
   };
   registry.supply('OneCore', oneCore);
   // Trust modules compose rules with owner-bound handlers for this runtime.
-  registry.supply('SyncRules', new Map(fotosContentRules));
+  registry.supply('SyncRules', new Map(FotosSyncRules));
   registry.supply('PostStoreImportBatch', onChumImportBatch);
   registry.supply('SettingsPlan', settingsPlan);
   registry.supply('DevicesPlan', devicesPlan);
@@ -378,6 +380,8 @@ async function initModules(
       return () => window.removeEventListener('beforeunload', cb);
     };
     browserGlueModule.getLocalTransportCapabilities = async () => ['webrtc', 'commserver-relay'];
+    browserGlueModule.preparePeerSyncAccess = (ownId, remotePersonId, remotePublicKeyHex) =>
+      nextConnectionModule.preparePeerSyncAccess(ownId as any, remotePersonId as any, remotePublicKeyHex as any);
     browserGlueModule.connectToPeerByKey = (key, ownId, capabilities, remoteId, relayUrl) =>
       nextConnectionModule.connectToPeerByKey(key, ownId as any, capabilities, remoteId as any, undefined, relayUrl);
     browserGlueModule.connectToPeerDirectByKey = (key, ownId, capabilities, remoteId, peerPublicKey) =>
@@ -412,6 +416,8 @@ async function initModules(
       getPresenceStoredSnapshot: limit => browserGlueModule.getPresenceStoredSnapshot(limit),
       getPresenceTrace: limit => browserGlueModule.getPresenceTrace(limit),
     });
+    nextConnectionModule.setKnownPersonKeysAuthority(browserGlueModule.authorizeKnownPersonKeys);
+    nextConnectionModule.setPeerIdentityEvidenceExchange(browserGlueModule.peerIdentityEvidenceExchange);
 
     registry.register(glueModule);
   }
@@ -494,6 +500,8 @@ async function openFotosModel(onStatus?: (status: string) => void): Promise<Foto
       persistent: credentialsPersisted,
       sessionScoped,
       storageDirectory,
+      nativeEnrollment,
+      nativeEnrollmentPendingInstall,
     } = await getFotosGlueLogin().resolveBoot();
 
     const one = new MultiUser({
@@ -515,14 +523,34 @@ async function openFotosModel(onStatus?: (status: string) => void): Promise<Foto
     });
 
     onStatus?.('opening storage');
-    await one.loginOrRegister(email, secret, instanceName);
+    let installEnrollment = Boolean(nativeEnrollmentPendingInstall);
+    if (nativeEnrollment) {
+      // Validate custody before any registration can write the wrong key records.
+      glueEnrollmentInstanceKeyPairs(nativeEnrollment);
+      if (await instanceExists(instanceName, email)) {
+        await one.login(email, secret, instanceName);
+        await assertNativeGlueEnrollmentCustody(nativeEnrollment);
+      } else {
+        await verifyGlueEnrollmentReceipt({ name: nativeEnrollment.identity, personId: nativeEnrollment.personId,
+          instanceId: nativeEnrollment.instanceId, enrollment: nativeEnrollment.request }, nativeEnrollment,
+          { signal: AbortSignal.timeout(15_000) });
+        await one.registerWithIdentityKeys(nativeEnrollment.keys, nativeEnrollment.creds);
+        installEnrollment = true;
+      }
+    } else {
+      await one.loginOrRegister(email, secret, instanceName);
+    }
     console.log('[fotos.one] ONE.core booted:', email);
 
     // Existing instances restore their persisted reverse maps. Enable the new
     // trust indexes before any trust owner can author its first native state.
     await preparePersonalTrustStorage();
+    if (installEnrollment && nativeEnrollment) {
+      await installNativeGlueEnrollment(nativeEnrollment);
+    }
+    setFotosNativeOwnerContext(nativeEnrollment?.personId ?? null);
     onStatus?.('initializing');
-    return await initModules(one, COMM_SERVER_URL, generation);
+    return await initModules(one, COMM_SERVER_URL, generation, nativeEnrollment, installEnrollment ? accountId : undefined);
   } catch (error) {
     onStatus?.('startup failed — local data remains on this device');
     try {

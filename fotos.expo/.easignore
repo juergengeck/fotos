@@ -1,6 +1,6 @@
 # Native build artifacts - EAS rebuilds these
-ios/
-android/
+/ios/
+/android/
 
 # Build caches
 .expo/

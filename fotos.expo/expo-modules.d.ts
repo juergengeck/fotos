@@ -49,6 +49,8 @@ declare module 'expo-file-system/next' {
 }
 
 declare module 'expo-file-system/legacy' {
+  export function deleteAsync(uri: string, options?: {idempotent?: boolean}): Promise<void>;
+
   export enum EncodingType {
     UTF8 = 'utf8',
     Base64 = 'base64',
@@ -85,4 +87,10 @@ declare module 'expo-file-system/legacy' {
     fileUri: string,
     options?: ReadingOptions
   ): Promise<string>;
+}
+
+declare module '*.png' {
+  import type { ImageSourcePropType } from 'react-native';
+  const source: ImageSourcePropType;
+  export default source;
 }

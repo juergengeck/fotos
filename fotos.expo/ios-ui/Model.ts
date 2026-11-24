@@ -1,32 +1,8 @@
-/**
- * VGER iOS Model - Modular Architecture
- *
- * Orchestrates module lifecycle using demand/supply pattern:
- *
- * PHASE 1: Supply platform adapters (IOSLLMPlatform, ExportPlan, MeaningPlan, etc.)
- * PHASE 2: Register modules (CoreModule, AIModule, ChatModule, etc.)
- * PHASE 3: Setup providers (mDNS config, discovery service)
- * PHASE 4: Initialize all modules (topological sort, dependency injection)
- * PHASE 5: Post-init (instance assemblies, topic analysis, AI listener, discovery collection)
- *
- * For class-based Model, the phases map to:
- * - constructor: Phase 1 (supply adapters) + Phase 2 (register modules)
- * - init(): Phase 3 (setup providers) -> Phase 4 (initAll) -> Phase 5 (post-init)
- */
-
+import { createFotosRuntimeModules } from './fotos-runtime-modules';
+import { getFotosRuntimeRecipeConfig } from './fotos-runtime-recipes';
+/** Fotos mobile runtime: identity, trust, connections, settings and gallery sync. */
 import MultiUser from '@refinio/one.models/lib/models/Authenticator/MultiUser.js';
 import { OEvent } from '@refinio/one.models/lib/misc/OEvent.js';
-import RecipesStable from '@refinio/one.models/lib/recipes/recipes-stable.js';
-import RecipesExperimental from '@refinio/one.models/lib/recipes/recipes-experimental.js';
-import GlueContentRecipes from '@glueone/glue.core/recipes/GlueContentRecipes.js';
-import {
-    ReverseMapsStable,
-    ReverseMapsForIdObjectsStable
-} from '@refinio/one.models/lib/recipes/reversemaps-stable.js';
-import {
-    ReverseMapsExperimental,
-    ReverseMapsForIdObjectsExperimental
-} from '@refinio/one.models/lib/recipes/reversemaps-experimental.js';
 
 // ONE.core imports for StoryFactory and instance info
 import { storeVersionedObject, getObjectByIdHash } from '@refinio/one.core/lib/storage-versioned-objects.js';
@@ -34,14 +10,13 @@ import { getObject, storeUnversionedObject } from '@refinio/one.core/lib/storage
 import { getOnlyLatestReferencingObjsHashAndId } from '@refinio/one.core/lib/reverse-map-query.js';
 import type { SHA256IdHash } from '@refinio/one.core/lib/util/type-checks.js';
 import type { Instance, Person } from '@refinio/one.core/lib/recipes.js';
+import { onChumImportBatch } from '@refinio/one.core/lib/chum-sync.js';
 import { getInstanceIdHash, getInstanceOwnerIdHash } from '@refinio/one.core/lib/instance.js';
 import { createCryptoApiFromDefaultKeys } from '@refinio/one.core/lib/keychain/keychain.js';
 import { calculateHashOfObj, calculateIdHashOfObj } from '@refinio/one.core/lib/util/object.js';
 
 // Device management - Device.displayName is source of truth for mDNS name
 import {
-    DeviceCoreRecipes,
-    DeviceCoreReverseMaps,
     DevicePlan,
     DevicesPlan,
     registerDevicesPlan,
@@ -51,19 +26,21 @@ import {
 // Instance tracking - creates retroactive assemblies for Instance and Owner
 import { InstancePlan } from '@vger/vger.core/plans/InstancePlan.js';
 
-// MeaningPlan - semantic similarity plan for KnowledgeNavigatorModule
-// On iOS, created without MeaningDimension/EmbeddingProvider (gracefully degrades).
-// When iOS gains embedding support, call meaningPlan.setDimension() to activate.
-import { MeaningPlan } from '@vger/vger.core/plans/MeaningPlan.js';
-import { registerVgerCoreSettings } from '@vger/vger.core/settings';
+import { ModuleRegistry, initializeModuleGraph } from '@refinio/api/plan-system';
+
+import { ExportPlan } from '@vger/vger.core/plans/ExportPlan.js';
+import { registerDeviceSettings } from '@refinio/settings.devices';
 import {
-    initializeMobileLibraryModules,
-    shutdownModules,
-    type InitResult,
-    type PlatformAdapters,
-    type ModuleInitializationProfile,
-    getLocalInstancePlanTypesForProfile,
-} from '@vger/vger.core/initialization/initializeMobileLibraryModules.js';
+    DEFAULT_GLUE_CONNECTION_BINDING_ID,
+    updateGlueIdentityBinding,
+    updateGlueIdentityProfile,
+} from '@glueone/glue.core';
+import {
+    glueEnrollmentInstanceKeyPairs,
+    installNativeGlueEnrollment,
+    type GlueEnrollmentReceipt,
+} from '@glueone/auth.core/mobile';
+import appConfig from '../app.json';
 import {
     getFotosPlatformCapabilities,
     getFotosPlatformDefaults,
@@ -71,51 +48,21 @@ import {
     type FotosPlatformCapabilities,
 } from '../src/mobile-platform';
 
-import { VGER_CORE_RECIPES } from '@vger/vger.core/recipes';
-
-// Assembly recipes - use local lenient StoryRecipe (allows optional product)
-import { StoryRecipe } from './recipes/StoryRecipe';
-import { AssemblyRecipe, TraceContentRecipe } from '@refinio/assembly.core/recipes';
-
-// Plan recipe from refinio.api
-import { PlanRecipe } from '@refinio/api/recipes';
-
-// Trust.core recipes
-import { AllRecipes as TrustCoreRecipes, AllReverseMaps as TrustCoreReverseMaps } from '@refinio/trust.core/recipes/index.js';
-
-// Cube.core recipes
-import { CubeCoreRecipes } from '@refinio/cube.core';
-
-// Meaning.core recipes for semantic embedding dimension
-import { MeaningCoreRecipes } from '@refinio/meaning.core/recipes/index.js';
-
-import { SourceImapRecipes } from '@refinio/source.imap/recipes';
-import { contentRules } from '@refinio/sync.core/rules/default-rules.js';
-import { FotosRecipes } from '@refinio/fotos.core';
-
 // Settings.core recipes and storage (for IoM-compatible settings)
 import {
-    SettingsRecipes,
     SettingsPlan,
     SettingsPlanMetadata,
     SecretsPlan,
     SecretsPlanMetadata,
     InstanceSettingsStorage,
+    registerBuiltInSettings,
 } from '@refinio/settings.core';
-import { registerFotosSettings } from './fotos-settings';
+import { normalizeFotosSettingsSection, registerFotosSettings } from './fotos-settings';
 
 // Module system
-import { operationRegistry } from '@refinio/api/registry';
-import { DeviceModule } from '@vger/vger.core/modules/DeviceModule.js';
-import { MCPModule } from '@vger/vger.core/modules/MCPModule.js';
-import { LocalModelModule } from './modules/LocalModelModule';
-import { registerExpoImapSourceOperation } from './plans/imap-source';
+import { getGlobalOperationRegistry, operationRegistry } from '@refinio/api/registry';
 
-// iOS-specific adapters for AIModule
-import { IOSLLMPlatform } from '../adapters/ios-llm-platform';
-import { iosOllamaValidator, iosConfigManager } from '../adapters/ios-llm-config';
-
-// iOS-specific mDNS discovery provider (matches vger.cube's MDNSDiscoveryAdapter)
+// Native mDNS discovery for direct peer routes.
 import { iOSMDNSDiscoveryAdapter, type iOSMDNSConfig } from './services/iOSMDNSDiscoveryAdapter';
 import {
     getDiscoveryCollectionSettings,
@@ -124,23 +71,21 @@ import {
 } from './services/discovery-settings';
 import {
     FotosMediaLibrarySync,
+    type FotosPhotoLibrarySyncOptions,
     type FotosSharedFileImportSummary,
     type FotosPhotoLibrarySyncSummary,
 } from './services/FotosMediaLibrarySync';
 import type { FotosShareInboxStatus } from './services/FotosShareInbox';
 
-// IngestionPlan from memory.core (platform-agnostic)
-import { IngestionPlan } from '@refinio/memory.core';
-
 // Discovery collection adapter (verified peer discovery)
 import { DiscoveryCollectionAdapter } from './services/DiscoveryCollectionAdapter';
+import { createFotosDirectTransports } from './services/FotosDirectTransports';
 
 interface ModelOptions {
     webUrl?: string;
     storageDirectory?: string;
     localDeviceType?: string;
     localInstancePlatform?: FotosInstancePlatform;
-    moduleProfile?: ModuleInitializationProfile;
     defaultDeviceDisplayName?: string;
     defaultInstanceName?: string;
     appLabel?: string;
@@ -151,18 +96,14 @@ type ResolvedModelOptions = Required<ModelOptions>;
 interface InitializedModuleRegistry {
     getModule(moduleName: string): any;
     getStoryFactory?: () => any;
+    shutdownAll(): Promise<void>;
 }
 
 function getDefaultModelOptions(): ResolvedModelOptions {
     return {
         webUrl: 'https://fotos.one',
-        moduleProfile: 'mobile-library',
         ...getFotosPlatformDefaults(),
     };
-}
-
-function normalizeSharedPlatform(platform: FotosInstancePlatform): 'ios' | 'cube' | 'browser' | 'headless' | 'html' | 'fire' | 'unknown' {
-    return platform === 'android' ? 'unknown' : platform;
 }
 
 // =============================================================================
@@ -170,20 +111,17 @@ function normalizeSharedPlatform(platform: FotosInstancePlatform): 'ios' | 'cube
 // =============================================================================
 
 /**
- * Model - Main model class for VGER iOS
+ * Model - Fotos mobile runtime
  *
  * Uses modular architecture with ModuleRegistry.
  * Modules handle their own initialization and dependencies.
  */
 export default class Model {
     public onOneModelsReady = new OEvent<() => void>();
-    public onContactsChanged = new OEvent<() => void>();
     public onTopicsChanged = new OEvent<() => void>();
+    public onContactsChanged = new OEvent<() => void>();
     public onConnectionsChanged = new OEvent<() => void>();
     public initialized: boolean = false;
-
-    // Topic name cache - O(1) lookup, populated at init, updated on topic changes
-    private topicNameCache = new Map<string, string>();
 
     // ownerId and instanceId are available from ONE.core after login
     get ownerId(): string | undefined { return getInstanceOwnerIdHash(); }
@@ -196,36 +134,28 @@ export default class Model {
     private readonly webUrl: string;
     private readonly modelOptions: ResolvedModelOptions;
     private readonly currentPlatformCapabilities: FotosPlatformCapabilities;
+    private readonly fotosOneCoreConfig = getFotosRuntimeRecipeConfig();
 
     // MultiUser instance (ONE.core authentication and storage)
     public one: MultiUser;
 
-    // iOS-specific adapters (kept as references for post-init wiring)
-    // Initialized in supplyPlatformAdapters() called from constructor
-    private iosLlmPlatform!: IOSLLMPlatform;
-    private localModelModule!: LocalModelModule;
-    private meaningPlan!: MeaningPlan;
-    private initResult: InitResult | null = null;
-
     // Discovery collection adapter (verified peer discovery via handshake)
     private discoveryCollectionAdapter: DiscoveryCollectionAdapter | null = null;
-
-    // Ingestion plan (created lazily after initialization)
-    private _ingestionPlan: InstanceType<typeof IngestionPlan> | null = null;
+    private directTransports: Awaited<ReturnType<typeof createFotosDirectTransports>> | null = null;
 
     // Settings storage (lazy initialized)
     private _settingsStorage: InstanceSettingsStorage | null = null;
     private _settingsPlan: SettingsPlan | null = null;
     private _secretsPlan: SecretsPlan | null = null;
     private _devicesPlan: DevicesPlan | null = null;
-    private _imapSourcePlan: ReturnType<typeof registerExpoImapSourceOperation> | null = null;
     private _fotosMediaLibrarySync: FotosMediaLibrarySync | null = null;
     private settingsUnsubscribe: (() => void) | null = null;
     private lastDiscoveryEnabled: boolean | null = null;
+    private pendingGlueEnrollment: GlueEnrollmentReceipt | null = null;
 
     constructor(
         private commServerUrl: string,
-        webUrlOrOptions: string | ModelOptions = 'https://vger.one'
+        webUrlOrOptions: string | ModelOptions = 'https://fotos.one'
     ) {
         const options = typeof webUrlOrOptions === 'string'
             ? { webUrl: webUrlOrOptions }
@@ -243,11 +173,6 @@ export default class Model {
         console.log('[Model] Runtime platform:', this.currentPlatformCapabilities.platformLabel);
         console.log('[Model] CommServer URL:', commServerUrl);
         console.log('[Model] Web URL:', this.webUrl);
-
-        this.iosLlmPlatform = new IOSLLMPlatform();
-        this.localModelModule = new LocalModelModule();
-        this.meaningPlan = new MeaningPlan();
-        this.modules.set('localModel', this.localModelModule);
 
         // Setup ONE.core MultiUser with all recipes
         this.one = this.createMultiUser();
@@ -271,7 +196,6 @@ export default class Model {
             get settingsPlan() { return model._settingsPlan ?? undefined; },
             get secretsPlan() { return model._secretsPlan ?? undefined; },
             get devicesPlan() { return model._devicesPlan ?? undefined; },
-            get localModelPlan() { return model.localModelModule.localModelPlan; },
             getInfo: () => ({
                 ownerId: getInstanceOwnerIdHash(),
                 initialized: model.initialized,
@@ -289,73 +213,12 @@ export default class Model {
      * Create MultiUser instance with all recipes.
      */
     private createMultiUser(): MultiUser {
-        const recipeGroups: Array<{ name: string; recipes: any[] }> = [
-            { name: 'one.models/stable', recipes: RecipesStable },
-            { name: 'one.models/experimental', recipes: RecipesExperimental },
-            { name: 'glue.core/content', recipes: GlueContentRecipes },
-            { name: 'vger.core', recipes: VGER_CORE_RECIPES },
-            { name: 'assembly.core', recipes: [StoryRecipe, AssemblyRecipe, TraceContentRecipe] },
-            { name: 'refinio.api', recipes: [PlanRecipe] },
-            { name: 'trust.core', recipes: TrustCoreRecipes as any[] },
-            { name: 'cube.core', recipes: CubeCoreRecipes },
-            { name: 'meaning.core', recipes: MeaningCoreRecipes },
-            { name: 'device.core', recipes: DeviceCoreRecipes },
-            { name: 'source.imap', recipes: SourceImapRecipes },
-            { name: 'settings.core', recipes: SettingsRecipes },
-            { name: 'fotos.core', recipes: FotosRecipes as any[] },
-        ];
-
-        const recipes: any[] = [];
-        for (const group of recipeGroups) {
-            if (!Array.isArray(group.recipes)) {
-                throw new Error(`[Model] Recipe group ${group.name} is not an array`);
-            }
-
-            group.recipes.forEach((recipe, index) => {
-                if (recipe === undefined) {
-                    throw new Error(`[Model] Recipe ${group.name}[${index}] is undefined`);
-                }
-                if (recipe === null || typeof recipe !== 'object') {
-                    throw new Error(`[Model] Recipe ${group.name}[${index}] is not an object`);
-                }
-                if (recipe.$type$ !== 'Recipe') {
-                    throw new Error(`[Model] Recipe ${group.name}[${index}] has invalid $type$: ${String(recipe.$type$)}`);
-                }
-                if (typeof recipe.name !== 'string' || recipe.name.length === 0) {
-                    throw new Error(`[Model] Recipe ${group.name}[${index}] has invalid name`);
-                }
-                if (!Array.isArray(recipe.rule)) {
-                    throw new Error(`[Model] Recipe ${group.name}[${index}] (${recipe.name}) has invalid rule`);
-                }
-                recipes.push(recipe);
-            });
-        }
-
-        const recipeNames = recipes.map((recipe) => recipe.name);
-        const nameCounts = new Map<string, number>();
-        for (const name of recipeNames) {
-            nameCounts.set(name, (nameCounts.get(name) || 0) + 1);
-        }
-        const duplicateNames = [...nameCounts.entries()].filter(([, count]) => count > 1);
-        if (duplicateNames.length > 0) {
-            throw new Error(`[Model] Duplicate recipes detected: ${duplicateNames.map(([name]) => name).join(', ')}`);
-        }
-
+        const {recipes, reverseMaps, reverseMapsForIdObjects} = this.fotosOneCoreConfig;
         return new MultiUser({
             directory: this.modelOptions.storageDirectory,
             recipes,
-            reverseMaps: new Map([
-                ...ReverseMapsStable,
-                ...ReverseMapsExperimental,
-                ...TrustCoreReverseMaps,
-                ...(DeviceCoreReverseMaps || []),
-                ['LLM', new Set(['owner'])],
-                ['AI', new Set(['owner'])]
-            ]) as any,
-            reverseMapsForIdObjects: new Map([
-                ...ReverseMapsForIdObjectsStable,
-                ...ReverseMapsForIdObjectsExperimental
-            ]),
+            reverseMaps: reverseMaps as never,
+            reverseMapsForIdObjects,
             storageInitTimeout: 20000
         });
     }
@@ -363,6 +226,16 @@ export default class Model {
     // =========================================================================
     // PHASE 3-5: INITIALIZATION (called on login)
     // =========================================================================
+
+    async loginWithGlueEnrollment(receipt: GlueEnrollmentReceipt): Promise<void> {
+        glueEnrollmentInstanceKeyPairs(receipt);
+        this.pendingGlueEnrollment = receipt;
+        try {
+            await this.one.registerWithIdentityKeys(receipt.keys, receipt.creds);
+        } finally {
+            this.pendingGlueEnrollment = null;
+        }
+    }
 
     async init(instanceName?: string, _secret?: string): Promise<void> {
         if (this.initialized) {
@@ -372,11 +245,8 @@ export default class Model {
         try {
             console.log('[Model] ===== Initializing all modules =====');
 
-            const adapters = await this.createPlatformAdapters(instanceName);
-            const result = await initializeMobileLibraryModules(adapters);
-            this.initResult = result;
-            this.moduleRegistry = result.registry;
-            this.bindInitializedModules(result.registry);
+            this.moduleRegistry = await this.initializeRuntime();
+            this.bindInitializedModules(this.moduleRegistry);
             this.runtimeCoreInitialized = true;
 
             // Verify critical modules are initialized
@@ -388,9 +258,6 @@ export default class Model {
             // PHASE 5: Post-init lifecycle
             await this.postInit(instanceName);
 
-            // Register local IMAP query surfaces over synced storage.
-            this._imapSourcePlan = registerExpoImapSourceOperation();
-
             // Mark as initialized
             this.initialized = true;
             console.log(`[Model] Owner ID: ${this.ownerId?.substring(0, 8)}...`);
@@ -401,8 +268,9 @@ export default class Model {
             console.log('[Model] ===== Initialization complete =====');
         } catch (error) {
             console.error('[Model] Initialization failed:', error);
-            this.initialized = false;
-            this.runtimeCoreInitialized = false;
+            try { await this.shutdown(); } catch (cleanupError) {
+                throw new AggregateError([error, cleanupError], 'Fotos runtime startup and cleanup failed', {cause: error});
+            }
             throw error;
         }
     }
@@ -411,81 +279,54 @@ export default class Model {
     // PHASE 3: SETUP PROVIDERS
     // =========================================================================
 
-    /**
-     * Create the shared platform adapter object consumed by vger.core's
-     * demand/supply module initializer.
-     */
-    private async createPlatformAdapters(instanceName?: string): Promise<PlatformAdapters> {
-        console.log('[Model] Phase 3: Preparing shared platform adapters...');
-
+    private async initializeRuntime(): Promise<ModuleRegistry> {
         await this.supplySettingsPlan();
         const discoveryEnabled = this.currentPlatformCapabilities.supportsLocalNetworkDiscovery
-            ? await getPersistedDiscoveryEnabled({
-                settingsPlan: this._settingsPlan,
-            })
-            : false;
-        const mdnsConfig = this.currentPlatformCapabilities.supportsLocalNetworkDiscovery
-            ? await this.buildMDNSConfig()
-            : null;
+            ? await getPersistedDiscoveryEnabled({ settingsPlan: this._settingsPlan }) : false;
         this.lastDiscoveryEnabled = discoveryEnabled;
-
-        const adapters: PlatformAdapters = {
-            platform: normalizeSharedPlatform(this.modelOptions.localInstancePlatform),
-            oneCore: this.runtimeCore,
-            llmPlatform: this.iosLlmPlatform,
-            llmConfigAdapter: { ollamaValidator: iosOllamaValidator, configManager: iosConfigManager },
-            commServerUrl: this.commServerUrl,
-            webUrl: this.webUrl,
-            settingsPlan: this._settingsPlan,
-            secretsPlan: this._secretsPlan,
-            devicesPlan: this._devicesPlan,
-            instanceId: this.instanceId as SHA256IdHash<Instance> | undefined,
-            instanceName: instanceName || this.modelOptions.defaultInstanceName,
+        const {modules, connection} = createFotosRuntimeModules(this.commServerUrl, this.webUrl);
+        // ConnectionModule requires chat/group plans for pairing and group sync.
+        // AI, memory, inference, agent and IMAP modules are not part of this graph.
+        return initializeModuleGraph({
+            registry: new ModuleRegistry(getGlobalOperationRegistry()),
+            modules,
+            supplies: {
+                OneCore: this.runtimeCore,
+                ExportPlan: new ExportPlan(),
+                SettingsPlan: this._settingsPlan,
+                SecretsPlan: this._secretsPlan,
+                DevicesPlan: this._devicesPlan,
+                SyncRules: new Map(this.fotosOneCoreConfig.syncRules),
+                PostStoreImportBatch: onChumImportBatch,
+            },
             storageFunction: storeVersionedObject,
-            additionalSupplies: {
-                MeaningPlan: this.meaningPlan,
-                SyncRules: contentRules,
-            },
-            additionalModules: [
-                new DeviceModule(),
-                new MCPModule(),
-                this.localModelModule,
-            ],
-            beforeInit: async (_registry: any, connectionModule: any) => {
-                this.wireLocalModelPlan();
-                if (!this.currentPlatformCapabilities.supportsLocalNetworkDiscovery || !mdnsConfig) {
-                    console.log(
-                        `[Model] Local discovery stays gated on ${this.currentPlatformCapabilities.platformLabel} in this runtime slice`
-                    );
-                    return;
+            beforeInit: async registry => {
+                if (this.currentPlatformCapabilities.supportsUdpHandshake) {
+                    const ownerId = getInstanceOwnerIdHash();
+                    const instanceId = getInstanceIdHash();
+                    if (!ownerId || !instanceId) throw new Error('Direct transports require a Fotos instance identity');
+                    this.directTransports = await createFotosDirectTransports({
+                        connection, ownerId, instanceId, commServerUrl: this.commServerUrl,
+                        assertCurrent: () => {
+                            if (this.ownerId !== ownerId || this.instanceId !== instanceId) {
+                                throw new Error('Fotos direct transport identity was retired');
+                            }
+                        },
+                    });
+                    registry.supply('QuicVCProvider', this.directTransports.manager);
+                    registry.supply('TransportMatcher', this.directTransports.matcher);
                 }
-                const mdnsAdapter = new iOSMDNSDiscoveryAdapter(mdnsConfig);
-                connectionModule.setLocalDiscoveryProvider(mdnsAdapter, discoveryEnabled);
-                console.log(`[Model] mDNS discovery provider set on ConnectionModule (autoStart=${discoveryEnabled})`);
+                if (this.currentPlatformCapabilities.supportsLocalNetworkDiscovery) {
+                    connection.setLocalDiscoveryProvider(
+                        new iOSMDNSDiscoveryAdapter(await this.buildMDNSConfig()), discoveryEnabled);
+                }
             },
-            contextProvider: {
-                getDeviceName: async () => this.modelOptions.defaultDeviceDisplayName,
-                getLocale: () => 'en',
-            },
-            options: {
-                disableWhatsApp: true,
-                deviceType: this.modelOptions.localDeviceType,
-                enableGlueServices: true,
-            },
-        };
-
-        if (!adapters.settingsPlan || !adapters.secretsPlan || !adapters.devicesPlan) {
-            throw new Error('[Model] Shared settings, secrets, and devices plans must be created before module init');
-        }
-
-        console.log('[Model] Phase 3 complete');
-        return adapters;
+        });
     }
 
     /**
      * Create the shared `settings`, `secrets`, and `devices` plans.
-     * The plans are fed into initializeModules() so AI/Memory/Connection
-     * consume the same public plan surfaces via ModuleRegistry demands.
+     * The retained modules consume these plans through ModuleRegistry demands.
      */
     private async supplySettingsPlan(): Promise<void> {
         const instanceId = this.instanceId;
@@ -494,7 +335,8 @@ export default class Model {
         }
 
         // Register dynamic settings sections before creating storage.
-        registerVgerCoreSettings();
+        registerBuiltInSettings();
+        registerDeviceSettings();
         registerFotosSettings();
 
         const storage = new InstanceSettingsStorage({
@@ -502,6 +344,26 @@ export default class Model {
             ownerPersonIdHash: this.ownerId as SHA256IdHash<Person> | undefined,
         });
         const settingsPlan = new SettingsPlan(storage);
+        if (this.pendingGlueEnrollment) {
+            const receipt = this.pendingGlueEnrollment;
+            await installNativeGlueEnrollment(receipt, {
+                trustedAuthorityRootPublicKeys: appConfig.expo.extra.glueAuthorityRootPublicKeys,
+            });
+            const { values } = await settingsPlan.getSection({ moduleId: 'glue' });
+            const withProfile = {
+                ...values,
+                ...updateGlueIdentityProfile(values, receipt.personId, { displayName: receipt.identity }),
+            };
+            await settingsPlan.updateSection({
+                moduleId: 'glue',
+                values: {
+                    ...withProfile,
+                    ...updateGlueIdentityBinding(withProfile, receipt.personId, DEFAULT_GLUE_CONNECTION_BINDING_ID),
+                    syncEnabled: true,
+                    sameOwnerIoMEnabled: true,
+                },
+            });
+        }
         const secretsPlan = new SecretsPlan();
         const devicesPlan = new DevicesPlan({
             getDevicePlan: () => this.devicePlan,
@@ -532,11 +394,8 @@ export default class Model {
             throw new Error('[Model] Cannot build mDNS config - ownerId or instanceId not available');
         }
 
-        const cryptoApi = await createCryptoApiFromDefaultKeys(instanceId as SHA256IdHash<Instance>);
-        const pubKeyHex = Array.from(cryptoApi.publicEncryptionKey)
-            .map(b => b.toString(16).padStart(2, '0'))
-            .join('');
-        console.log('[Model] Got mDNS encryption public key:', pubKeyHex.substring(0, 16) + '...');
+        const direct = this.directTransports;
+        if (!direct) throw new Error('mDNS discovery requires the bound Fotos direct transport');
 
         const { getInstanceOwnerEmail } = await import('@refinio/one.core/lib/instance.js');
         const email = getInstanceOwnerEmail();
@@ -566,41 +425,24 @@ export default class Model {
 
         return {
             deviceId: instanceId,
-            pubKey: pubKeyHex,
+            pubKey: direct.localPublicKeyHex,
             personId: ownerId,
             ...(email ? { email } : {}),
             displayName,
             deviceType: this.modelOptions.localDeviceType,
-            ...(this.currentPlatformCapabilities.supportsUdpHandshake ? { quicvcPort: 49497 } : {}),
-            capabilities: this.currentPlatformCapabilities.supportsUdpHandshake ? ['quicvc'] : [],
+            quicvcPort: direct.port,
+            capabilities: ['quicvc', 'webrtc', 'commserver-relay'],
         };
-    }
-
-    /**
-     * Wire LocalModelPlan to IOSLLMPlatform before initAll().
-     * This allows AIModule.init() to discover installed models via platform.
-     */
-    private wireLocalModelPlan(): void {
-        if (this.localModelModule.localModelPlan && this.iosLlmPlatform) {
-            this.iosLlmPlatform.setLocalModelPlan(this.localModelModule.localModelPlan);
-            console.log('[Model] LocalModelPlan wired to IOSLLMPlatform');
-        }
     }
 
     private bindInitializedModules(registry: InitializedModuleRegistry): void {
         const requiredModules = {
             core: 'CoreModule',
-            index: 'IndexModule',
+            assembly: 'AssemblyModule',
             trust: 'TrustModule',
-            journal: 'JournalModule',
-            analysis: 'AnalysisModule',
-            memory: 'MemoryModule',
-            knowledgeNavigator: 'KnowledgeNavigatorModule',
             chat: 'ChatModule',
-            ai: 'AIModule',
             connection: 'ConnectionModule',
             device: 'DeviceModule',
-            mcp: 'MCPModule',
             instance: 'InstanceModule',
         } as const;
 
@@ -612,7 +454,6 @@ export default class Model {
             }
             nextModules.set(alias, module);
         }
-        nextModules.set('localModel', this.localModelModule);
         this.modules = nextModules;
     }
 
@@ -639,7 +480,7 @@ export default class Model {
             instanceModule.setLocalInstance(
                 this.instanceId as any,
                 this.modelOptions.localInstancePlatform,
-                getLocalInstancePlanTypesForProfile(this.modelOptions.moduleProfile),
+                ['settings', 'secrets', 'devices', 'connections', 'trust'],
                 this.modelOptions.defaultDeviceDisplayName
             );
             console.log('[Model] InstanceModule configured');
@@ -657,6 +498,8 @@ export default class Model {
     private async postInit(instanceName?: string): Promise<void> {
         console.log('[Model] Phase 5: Post-init...');
 
+        this.directTransports?.start(this.trustModel);
+
         // Create retroactive Assemblies for Instance and Owner
         await this.createInstanceAssemblies(instanceName);
 
@@ -664,38 +507,10 @@ export default class Model {
         this.wireConnectionEvents();
         this.wireDiscoverySettings();
 
-        // Build topic name cache for instant O(1) lookups
-        console.log('[Model] Building topic name cache...');
-        await this.buildTopicNameCache();
-        console.log('[Model] Topic name cache ready');
-
         // Initialize discovery collection adapter
         console.log('[Model] Initializing discovery collection adapter...');
         await this.initializeDiscoveryCollection();
         console.log('[Model] Discovery collection adapter initialized');
-
-        // Initialize topic analysis (creates TopicAnalysisModel, ProposalsPlan, etc.)
-        console.log('[Model] Initializing topic analysis...');
-        const aiModule = this.modules.get('ai');
-        await aiModule.initTopicAnalysis();
-        console.log('[Model] Topic analysis initialized');
-
-        if (!this.initResult) {
-            throw new Error('[Model] Shared module init result missing before data load');
-        }
-        console.log('[Model] Loading shared AI/Memory data...');
-        await this.initResult.startListeners();
-        console.log('[Model] Shared AI/Memory data loaded');
-
-        // Scan existing AI conversations
-        console.log('[Model] Scanning existing AI conversations...');
-        const registeredCount = await this.aiAssistantPlan.scanExistingConversations();
-        console.log(`[Model] Registered ${registeredCount} existing AI topics`);
-
-        // Start AI message listener
-        console.log('[Model] Starting AI message listener...');
-        await aiModule.startMessageListener(this.ownerId);
-        console.log('[Model] AI message listener started');
 
         console.log('[Model] Phase 5 complete');
     }
@@ -733,11 +548,6 @@ export default class Model {
     private wireConnectionEvents(): void {
         const connectionModule = this.modules.get('connection');
         connectionModule.onContactsChanged(() => this.onContactsChanged.emit());
-        connectionModule.onTopicsChanged(async () => {
-            // Rebuild topic name cache BEFORE emitting event to avoid race conditions
-            await this.buildTopicNameCache().catch(e => console.error('[Model] Failed to rebuild topic cache:', e));
-            this.onTopicsChanged.emit();
-        });
         connectionModule.onConnectionsChanged(() => this.onConnectionsChanged.emit());
     }
 
@@ -774,6 +584,7 @@ export default class Model {
      * Initialize discovery collection adapter with required dependencies.
      */
     private async initializeDiscoveryCollection(): Promise<void> {
+        if (!this.currentPlatformCapabilities.supportsVerifiedPeerCollection) return;
         try {
             const coreModule = this.modules.get('core');
 
@@ -820,140 +631,32 @@ export default class Model {
 
     async shutdown(): Promise<void> {
         console.log('[Model] Shutting down...');
-
-        try {
-            // Shutdown discovery collection adapter
-            if (this.discoveryCollectionAdapter) {
-                await this.discoveryCollectionAdapter.shutdown();
-                this.discoveryCollectionAdapter = null;
-            }
-            this.settingsUnsubscribe?.();
-            this.settingsUnsubscribe = null;
-
-            // Shutdown all modules in reverse order through the shared init context.
-            await shutdownModules();
-
-            this.initialized = false;
-            this.runtimeCoreInitialized = false;
-            this.moduleRegistry = null;
-            this.initResult = null;
-            this.modules.clear();
-            this.modules.set('localModel', this.localModelModule);
-            this._settingsStorage = null;
-            this._settingsPlan = null;
-            this._secretsPlan = null;
-            this._devicesPlan = null;
-            this._fotosMediaLibrarySync = null;
-            // Note: ownerId/instanceId are getters from ONE.core - cleared automatically on logout
-            this.lastDiscoveryEnabled = null;
-
-            console.log('[Model] Shutdown complete');
-        } catch (error) {
-            console.error('[Model] Shutdown error:', error);
-            throw error;
+        const errors: unknown[] = [];
+        for (const cleanup of [
+            () => this._fotosMediaLibrarySync?.dispose(),
+            () => this.discoveryCollectionAdapter?.shutdown(),
+            () => this.settingsUnsubscribe?.(),
+            () => this.directTransports?.stop(),
+            () => this.moduleRegistry?.shutdownAll(),
+        ]) {
+            try { await cleanup(); } catch (error) { errors.push(error); }
         }
+        this.settingsUnsubscribe = null;
+        this.discoveryCollectionAdapter = null;
+        this.directTransports = null;
+        this.initialized = false;
+        this.runtimeCoreInitialized = false;
+        this.moduleRegistry = null;
+        this.modules.clear();
+        this._settingsStorage = null;
+        this._settingsPlan = null;
+        this._secretsPlan = null;
+        this._devicesPlan = null;
+        this._fotosMediaLibrarySync = null;
+        this.lastDiscoveryEnabled = null;
+        if (errors.length) throw new AggregateError(errors, 'Fotos runtime shutdown failed');
+        console.log('[Model] Shutdown complete');
     }
-
-    // =========================================================================
-    // TOPIC NAME CACHE
-    // =========================================================================
-
-    /**
-     * Get topic display name from cache - O(1) lookup.
-     * Returns the cached display name, or a truncated hash if not found.
-     */
-    getTopicName(topicId: string): string {
-        return this.topicNameCache.get(topicId) || `Chat ${topicId.substring(0, 8)}`;
-    }
-
-    /**
-     * Build topic name cache from TopicRegistry.
-     * Uses allWithIdHash() to avoid recomputing hashes.
-     * Called at init and when topics change.
-     */
-    async buildTopicNameCache(): Promise<void> {
-        if (!this.topicModel) {
-            console.warn('[Model] Cannot build topic name cache - topicModel not ready');
-            return;
-        }
-
-        try {
-            const startTime = Date.now();
-            const topicsWithIds = await this.topicModel.topics.allWithIdHash();
-
-            this.topicNameCache.clear();
-            for (const { topic, idHash } of topicsWithIds) {
-                const name = topic.displayName ?? topic.originalName ?? `Chat ${String(idHash).substring(0, 8)}`;
-                this.topicNameCache.set(String(idHash), name);
-            }
-
-            console.log(`[Model] Topic name cache built: ${this.topicNameCache.size} topics in ${Date.now() - startTime}ms`);
-        } catch (error) {
-            console.error('[Model] Failed to build topic name cache:', error);
-        }
-    }
-
-    /**
-     * Update a single topic in the cache (called when topic is renamed)
-     */
-    updateTopicNameCache(topicId: string, displayName: string): void {
-        this.topicNameCache.set(topicId, displayName);
-    }
-
-    // =========================================================================
-    // GLUE.ONE SHARING
-    // =========================================================================
-
-    /**
-     * Share a message to the glue.one public topic.
-     * The glue topic has demandsTrustLevel: 'none' making it publicly accessible.
-     */
-    async shareToGlue(message: {
-        id: string;
-        text: string;
-        senderName: string;
-        topicName?: string;
-    }): Promise<{ success: boolean; error?: string }> {
-        try {
-            // Get glue topic ID from AIAssistantPlan's topic manager
-            let glueTopicId = this.aiAssistantPlan?.getGlueTopicId();
-
-            if (!glueTopicId) {
-                // Ensure default chats are created (includes glue topic)
-                await this.aiAssistantPlan?.ensureDefaultChats?.();
-                glueTopicId = this.aiAssistantPlan?.getGlueTopicId();
-            }
-
-            if (!glueTopicId) {
-                return { success: false, error: 'Glue topic not available' };
-            }
-
-            // Format the shared content
-            let content = message.text;
-            if (message.topicName) {
-                content = `*Shared from "${message.topicName}"*\n\n${content}`;
-            }
-
-            // Post to glue topic via chatPlan
-            const result = await this.chatPlan.sendMessage({
-                topicId: glueTopicId,
-                content,
-                senderId: this.ownerId
-            });
-
-            return result;
-        } catch (error) {
-            console.error('[Model] shareToGlue failed:', error);
-            return {
-                success: false,
-                error: error instanceof Error ? error.message : 'Unknown error'
-            };
-        }
-    }
-
-    // =========================================================================
-    // GETTERS: MODULE ACCESSORS
-    // =========================================================================
 
     // --- Core Module ---
     get leuteModel() { return this.modules.get('core').leuteModel; }
@@ -962,37 +665,13 @@ export default class Model {
     get connections() { return this.modules.get('connection').connectionsModel; }
     get settings() { return this.modules.get('core').settings; }
     /** Topic update events from CoreModule - emits topicId when messages change (via CHUM or local) */
-    get onTopicUpdated() { return this.modules.get('core').onTopicUpdated; }
 
     // --- Trust Module ---
     get trustModel() { return this.modules.get('trust').trustModel; }
     get trustPlan() { return this.modules.get('trust').trustPlan; }
 
-    // --- Chat Module ---
-    get chatPlan() { return this.modules.get('chat').chatPlan; }
-    get groupPlan() { return this.modules.get('chat').groupPlan; }
-    get contactsPlan() { return this.modules.get('chat').contactsPlan; }
-    get exportPlan() { return this.modules.get('chat').exportPlan; }
-    get feedForwardPlan() { return this.modules.get('chat').feedForwardPlan; }
-    get topicGroupManager() { return this.modules.get('chat').topicGroupManager; }
-
-    // --- AI Module ---
-    get aiPlan() { return this.modules.get('ai').aiPlan; }
-    get aiAssistantPlan() { return this.modules.get('ai').aiAssistantPlan; }
-    get topicAnalysisPlan() { return this.modules.get('ai').topicAnalysisPlan; }
-    get llmConfigPlan() { return this.modules.get('ai').llmConfigPlan; }
-    get proposalsPlan() { return this.modules.get('ai').proposalsPlan; }
-    get keywordDetailPlan() { return this.modules.get('ai').keywordDetailPlan; }
-    get wordCloudSettingsPlan() { return this.modules.get('ai').wordCloudSettingsPlan; }
-    get cryptoPlan() { return this.modules.get('ai').cryptoPlan; }
-    get auditPlan() { return this.modules.get('ai').auditPlan; }
-    get subjectsPlan() { return this.modules.get('ai').subjectsPlan; }
-    get llmManager() { return this.modules.get('ai').llmManager; }
-    get llmObjectManager() { return this.modules.get('ai').llmObjectManager; }
-    get aiObjectManager() { return this.modules.get('ai').aiObjectManager; }
-    get aiSettingsManager() { return this.modules.get('ai').aiSettingsManager; }
-    get topicAnalysisModel() { return this.modules.get('ai').topicAnalysisModel; }
-    get aiMessageListener() { return this.modules.get('ai').aiMessageListener; }
+    get chatPlan() { return this.modules.get('chat')?.chatPlan; }
+    get contactsPlan() { return this.modules.get('chat')?.contactsPlan; }
 
     // --- Connection Module ---
     get connectionPlan() { return this.modules.get('connection')?.connectionPlan; }
@@ -1002,36 +681,8 @@ export default class Model {
     // --- Device Module ---
     get devicePlan() { return this.modules.get('device')?.devicePlan; }
 
-    // --- MCP Module ---
-    get mcpModule() { return this.modules.get('mcp'); }
-    get mcpDemandManager() { return this.modules.get('mcp').demandManager; }
-    get mcpRemoteClient() { return this.modules.get('mcp').remoteClient; }
-
-    // --- Journal Module ---
-    get journalModule() { return this.modules.get('journal'); }
-    get journalPlan() { return this.modules.get('journal').journalPlan; }
-    get assemblyPlan() { return this.modules.get('journal').assemblyPlan; }
-    get assemblyDimension() { return this.modules.get('journal').assemblyDimension; }
-
-    // --- LocalModel Module ---
-    get localModelPlan() { return this.modules.get('localModel')?.localModelPlan; }
-
-    // --- Memory Module ---
-    get coreMemoryPlan() { return this.modules.get('memory')?.getCoreMemoryPlan(); }
-    get memoryTopicsPlan() { return this.modules.get('memory')?.getMemoryTopicsPlan(); }
-    get memoryPlan() { return this.memoryTopicsPlan; }
-    get chatMemoryPlan() { return this.modules.get('memory')?.chatMemoryPlan; }
-
     // --- Instance Module ---
     get instanceRegistryPlan() { return this.modules.get('instance')?.instanceRegistryPlan; }
-
-    // --- Explicit public plan accessors ---
-    // Expo UI must consume narrow surfaced plans, not the registry itself.
-    get imapSourcePlan() { return this._imapSourcePlan ?? undefined; }
-
-    // --- Cube storage / plan ---
-    get cubeStorage() { return this.modules.get('ai')?.cubeStorage; }
-    get cubePlan() { return this.modules.get('ai')?.cubePlan; }
 
     get platformCapabilities(): FotosPlatformCapabilities {
         return this.currentPlatformCapabilities;
@@ -1072,10 +723,22 @@ export default class Model {
                 storeVersionedObject: async (obj) => await storeVersionedObject(obj as any) as any,
                 getInstanceId: () => this.instanceId,
                 getOwnerId: () => this.ownerId,
+                getIntakeMode: async () => normalizeFotosSettingsSection(
+                    (await this._settingsPlan?.getSection({ moduleId: 'fotos' }))?.values,
+                ).defaultMode,
             });
         }
 
         return this._fotosMediaLibrarySync;
+    }
+
+    async syncPhotoLibrary(options?: FotosPhotoLibrarySyncOptions): Promise<FotosPhotoLibrarySyncSummary> {
+        const service = this.fotosMediaLibrarySync;
+        if (!service) {
+            throw new Error('[Model] Photo-library sync is unavailable before runtime initialization');
+        }
+
+        return service.syncLibrary(options);
     }
 
     async syncRecentPhotoLibraryAssets(limit?: number): Promise<FotosPhotoLibrarySyncSummary> {
@@ -1087,13 +750,13 @@ export default class Model {
         return service.syncRecentAssets(limit);
     }
 
-    async syncPhotoLibraryAssetsById(assetIds: string[]): Promise<FotosPhotoLibrarySyncSummary> {
+    async syncPhotoLibraryAssetsById(assetIds: string[], allowNetworkAccess = false): Promise<FotosPhotoLibrarySyncSummary> {
         const service = this.fotosMediaLibrarySync;
         if (!service) {
             throw new Error('[Model] Photo-library sync is unavailable before runtime initialization');
         }
 
-        return service.syncAssetIds(assetIds);
+        return service.syncAssetIds(assetIds, allowNetworkAccess);
     }
 
     async getPendingSharedInboxStatus(): Promise<FotosShareInboxStatus> {
@@ -1114,17 +777,30 @@ export default class Model {
         return service.importPendingSharedInbox();
     }
 
-    // --- Ingestion Plan (lazy) ---
-    get ingestionPlan(): InstanceType<typeof IngestionPlan> | null {
-        if (!this.initialized) return null;
-        if (!this._ingestionPlan) {
-            this._ingestionPlan = new IngestionPlan({
-                chatPlan: this.chatPlan,
-                leuteModel: this.leuteModel,
-                aiAssistantPlan: this.aiAssistantPlan,
-                aiPlan: this.aiPlan
-            });
+    async listTrustedFotosPeers(): Promise<Array<{id: string; name: string}>> {
+        const owner = this.ownerId;
+        if (!this.initialized || !owner || !this.contactsPlan) throw new Error('Trusted contacts are unavailable.');
+        const result = await this.contactsPlan.getContactsWithTrust();
+        if (!result.success || !result.data) throw new Error(result.error ?? 'Trusted contacts are unavailable.');
+        if (this.ownerId !== owner) throw new Error('Your Fotos account changed.');
+        const peers = new Map<string, {id: string; name: string}>();
+        for (const contact of result.data) {
+            const id = contact.personId;
+            if (typeof id !== 'string' || !/^[a-f0-9]{64}$/.test(id) || id === owner
+                || contact.trustLevel !== 'trusted' || contact.canSync !== true || contact.isAI) continue;
+            peers.set(id, {id, name: contact.name || contact.email || id});
         }
-        return this._ingestionPlan;
+        return [...peers.values()].sort((a, b) => a.name.localeCompare(b.name));
     }
+
+    async shareFotosCollection(collectionId: string, peerId: string): Promise<void> {
+        const service = this.fotosMediaLibrarySync;
+        if (!service) throw new Error('Your Fotos library is unavailable.');
+        await service.shareCollectionWithPeer(collectionId, peerId, async () => {
+            if (!(await this.listTrustedFotosPeers()).some(peer => peer.id === peerId)) {
+                throw new Error('This peer is no longer trusted to sync.');
+            }
+        });
+    }
+
 }

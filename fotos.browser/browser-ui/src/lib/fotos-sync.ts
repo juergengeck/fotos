@@ -31,6 +31,7 @@ import {hasCurrentAnalysisVariants, storeAnalysisVariants} from './analysis-vari
 import {isMissingVersionedObject} from './one-storage-errors.js';
 import {getMediaMimeType} from '@refinio/media.core/media-types';
 import type {FotosEntry} from '@refinio/fotos.core';
+import {isJpeg} from '@refinio/fotos.core/content-hash';
 import type {PhotoEntry} from '@/types/fotos';
 import {
     createFotosAuthenticityAttestation,
@@ -56,7 +57,7 @@ import {
     createMediaSourceEntry,
     readMediaBook,
 } from '@refinio/source.media/services';
-import {hashImageFile} from './browserIngest.js';
+import {matchesOriginalContentHash} from './browserIngest.js';
 import {recordFotosAcquisition} from '../../../../fotos.core/src/media-acquisition.js';
 
 export interface SyncPhotosToOneCoreOptions {
@@ -76,7 +77,7 @@ export function shouldClaimFotosAuthorship(
 function createFotosEntryMetadata(photo: PhotoEntry): FotosEntry {
     const entry: FotosEntry = {
         $type$: 'FotosEntry',
-        contentHash: photo.hash,
+        contentHash: photo.contentHash ?? photo.hash,
         streamId: photo.hash,
         mime: getMediaMimeType(photo.name, photo.mimeType),
         size: photo.size,
@@ -160,7 +161,7 @@ async function findCompleteOriginalVariant(
             if (
                 variant.role === 'original'
                 && String(variant.family) === String(entryIdHash)
-                && variant.contentHash === photo.hash
+                && variant.contentHash === entry.contentHash
                 && variant.mime === getMediaMimeType(photo.name, photo.mimeType)
                 && variant.byteSize === photo.size
                 && typeof variant.blob === 'string'
@@ -238,7 +239,7 @@ async function isPhotoAlreadySynced(
         : requiredAuthenticitySigner === null
             ? null
             : manifestAttestations.find(attestation =>
-                attestation.contentHash === photo.hash
+                attestation.contentHash === expected.contentHash
                 && attestation.signerPersonId === requiredAuthenticitySigner,
             ) ?? null;
     if (requiredAuthenticitySigner !== undefined && !requiredAttestation) return false;
@@ -347,19 +348,12 @@ async function storeOriginalBlob(
     }
 
     const file = await readFileFromHandle(rootHandle, sourcePath);
-    if (file.size !== photo.size) {
-        throw new Error(
-            `[fotos-sync] Original size changed for ${sourcePath}: expected ${photo.size}, got ${file.size}`,
-        );
+    const content = await file.arrayBuffer();
+    const expected = photo.contentHash ?? photo.hash;
+    if (!await matchesOriginalContentHash(content, expected)) {
+        throw new Error(`[fotos-sync] Original content changed for ${sourcePath}: expected ${expected}`);
     }
-    const contentHash = await hashImageFile(file);
-    if (contentHash !== photo.hash) {
-        throw new Error(
-            `[fotos-sync] Original content changed for ${sourcePath}: expected ${photo.hash}, got ${contentHash}`,
-        );
-    }
-
-    return (await storeArrayBufferAsBlob(await file.arrayBuffer())).hash;
+    return (await storeArrayBufferAsBlob(content)).hash;
 }
 
 function isPersistentBrowserLocator(locator: string | undefined): locator is string {
@@ -421,7 +415,7 @@ async function createBrowserSourceState(photo: PhotoEntry): Promise<BrowserSourc
         locator: photo.sourcePath?.trim() || photo.name,
         title: photo.name,
         summary: photo.folderPath?.trim() ? `Imported from ${photo.folderPath}` : 'Imported from browser gallery',
-        contentHash: photo.hash,
+        contentHash: photo.contentHash ?? photo.hash,
     }) as unknown as Record<string, unknown>;
 
     return {
@@ -625,7 +619,7 @@ async function storeFotosMediaState(
     const locatorIdHashes = new Set<SHA256IdHash<FotosMediaLocator>>();
 
     const originalVariant = createFotosMediaVariant({
-        contentHash: photo.hash,
+        contentHash: photo.contentHash ?? photo.hash,
         family: entryIdHash,
         role: 'original',
         mime,
@@ -701,7 +695,7 @@ export async function extractThumbUrlFromEntry(entry: FotosEntry): Promise<strin
     try {
         const buffer = await readBlobAsArrayBuffer(entry.thumb);
         return URL.createObjectURL(new Blob([buffer], {
-            type: entry.mime || 'application/octet-stream',
+            type: isJpeg(new Uint8Array(buffer)) ? 'image/jpeg' : entry.mime || 'application/octet-stream',
         }));
     } catch (err) {
         console.warn('[fotos-sync] Failed to read thumb BLOB:', err);
@@ -756,6 +750,8 @@ export async function syncPhotoToOneCore(
     }
 
     const previous = await getVersionedObjectIfPresent(entryIdHash);
+    const previousEntry = previous?.obj as FotosEntry | undefined;
+    if (previousEntry?.tags?.size) entry.tags = previousEntry.tags;
     const observation = await recordFotosAcquisition({
         observer: author,
         originalVariant: mediaState.originalVariant,
@@ -767,7 +763,7 @@ export async function syncPhotoToOneCore(
         },
     });
     entry.acquisitionObservations = new Set([
-        ...((previous?.obj as FotosEntry | undefined)?.acquisitionObservations ?? []), observation,
+        ...(previousEntry?.acquisitionObservations ?? []), observation,
     ]);
 
     // Store the versioned object (idempotent — same contentHash isId = same object)
@@ -779,7 +775,7 @@ export async function syncPhotoToOneCore(
 
     if (authenticityContext) {
         try {
-            const attestation = createFotosAuthenticityAttestation(photo.hash, authenticityContext);
+            const attestation = createFotosAuthenticityAttestation(entry.contentHash, authenticityContext);
             const attestationResult = await storeVersionedObject(
                 attestation as unknown as FotosAuthenticityAttestation,
             );

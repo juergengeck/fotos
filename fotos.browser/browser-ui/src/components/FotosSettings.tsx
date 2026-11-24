@@ -68,7 +68,7 @@ function isIdentityInputError(message: string): boolean {
     );
 }
 
-export function GlueAccountSignIn({ disabled = false, loginHint, label = 'glue.one' }: { disabled?: boolean; loginHint?: string; label?: string }) {
+export function GlueAccountSignIn({ disabled = false, loginHint, label }: { disabled?: boolean; loginHint?: string; label?: string }) {
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const request = useRef<AbortController | null>(null);
@@ -92,9 +92,14 @@ export function GlueAccountSignIn({ disabled = false, loginHint, label = 'glue.o
     return (
         <div className="shrink-0 max-w-xs space-y-2">
             <button type="button" onClick={signIn} disabled={busy || disabled}
-                aria-label="Sign in with glue.one"
-                className="min-h-11 px-2.5 py-2 rounded-md bg-white/10 text-xs text-white/80 hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff9db0] disabled:opacity-50">
-                {busy ? <Loader2 aria-label="Signing in with glue.one" className="w-3.5 h-3.5 animate-spin" /> : label}
+                aria-label="Sign in with glue.one" title="Sign in with glue.one"
+                className={label
+                    ? 'inline-flex items-center gap-2 min-h-11 px-3 py-2 rounded-md bg-white/10 text-xs text-white/80 hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff9db0] disabled:opacity-50'
+                    : 'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-transparent p-0 disabled:opacity-50'}>
+                {busy
+                    ? <Loader2 aria-label="Signing in with glue.one" className="w-4 h-4 animate-spin text-white/80" />
+                    : <img src={`${import.meta.env.BASE_URL}glueone-icon.svg`} alt="" aria-hidden="true" className={label ? 'h-4 w-4 object-contain' : 'h-full w-full object-contain'} />}
+                {label && !busy ? <span>{label}</span> : null}
             </button>
             {busy && <button type="button" onClick={() => request.current?.abort()} className="text-xs text-white/60">Cancel sign-in</button>}
             {error && <p role="alert" className="text-xs text-red-300">{error}</p>}

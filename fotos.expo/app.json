@@ -7,11 +7,11 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "fotos.ios",
+      "bundleIdentifier": "one.fotos",
       "appleTeamId": "26W8AC52QS",
+      "buildNumber": "2026112403",
       "infoPlist": {
         "NSBonjourServices": [
           "_one-refinio._udp"
@@ -28,11 +28,7 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "fotos.android",
-      "permissions": [
-        "android.permission.BLUETOOTH",
-        "android.permission.BLUETOOTH_ADMIN",
-        "android.permission.BLUETOOTH_CONNECT"
-      ]
+      "permissions": ["android.permission.CHANGE_WIFI_MULTICAST_STATE"]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -45,48 +41,26 @@
           "image": "./assets/splash-icon.png",
           "imageWidth": 180,
           "resizeMode": "contain",
-          "backgroundColor": "#111111"
+          "backgroundColor": "#ffffff"
         }
       ],
-      "./plugins/withMLXSupport",
       "./plugins/withFotosShareExtension",
-      [
-        "llama.rn",
-        {
-          "enableEntitlements": true,
-          "entitlementsProfile": "production",
-          "forceCxx20": true,
-          "enableOpenCL": true
-        }
-      ],
-      [
-        "expo-audio",
-        {
-          "microphonePermission": "Allow $(PRODUCT_NAME) to access audio when local capture and sync flows require it."
-        }
-      ],
+      "./plugins/withIosSceneLifecycle",
       [
         "expo-media-library",
         {
           "photosPermission": "Allow $(PRODUCT_NAME) to access your photo library so fotos can reference originals by content hash and reuse trusted analysis across devices.",
-          "savePhotosPermission": false
+          "savePhotosPermission": "Allow $(PRODUCT_NAME) to save photos you export to Apple Photos."
         }
       ],
-      [
-        "react-native-ble-plx",
-        {
-          "isBackgroundEnabled": true,
-          "modes": [
-            "peripheral",
-            "central"
-          ],
-          "bluetoothAlwaysPermission": "Allow $(PRODUCT_NAME) to connect to Bluetooth devices"
-        }
-      ],
+      "@refinio/media.expo/app.plugin.cjs",
       "expo-secure-store",
       "expo-font"
     ],
     "extra": {
+      "glueAuthorityRootPublicKeys": [
+        "4d5130b4666b4fb30b5b905fc51b9bbb44a4b3eed14b05b3cd1f4a54bdbd1543"
+      ],
       "router": {},
       "eas": {
         "projectId": "fotos-expo-template"

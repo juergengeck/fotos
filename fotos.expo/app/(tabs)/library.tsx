@@ -1,606 +1,298 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, Switch, Text, View, useColorScheme } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
-import { useModel } from '../../ios-ui';
-import type {
-  FotosPhotoLibrarySyncIssue,
-  FotosPhotoLibrarySyncSummary,
-} from '../../ios-ui/services/FotosMediaLibrarySync';
-import type { FotosSharedFileImportSummary } from '../../ios-ui/services/FotosMediaLibrarySync';
-import type { FotosShareInboxStatus } from '../../ios-ui/services/FotosShareInbox';
-import { useFotosRuntime } from '../../src/hooks/use-fotos-runtime';
+import {useCallback, useMemo, useRef, useState} from 'react';
 import {
-  borderColor,
-  cardBackground,
-  mutedCardBackground,
-  mutedTextColor,
-  palette,
-  screenBackground,
-  textColor,
-} from '../../src/theme';
+    ActivityIndicator,
+    Linking,
+    Pressable,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
+    useColorScheme,
+    useWindowDimensions,
+    type NativeScrollEvent,
+    type NativeSyntheticEvent,
+} from 'react-native';
+import {FlashList, type FlashListRef} from '@shopify/flash-list';
+import {useRouter} from 'expo-router';
+import {Check, Cloud, FolderOpen, Images, Search, Tag, Users} from 'lucide-react-native';
+import {useModel} from '../../ios-ui';
+import {FotosGalleryImage} from '../../ios-ui/components/FotosGalleryImage';
+import {FotosTimelineScrubber} from '../../ios-ui/components/FotosTimelineScrubber';
+import {useFotosLibraryAutoSyncStatus} from '../../ios-ui/hooks/useFotosLibraryAutoSync';
+import {useFotosMobileGallery} from '../../ios-ui/hooks/useFotosMobileGallery';
+import {useFotosShareInboxAutoDrainStatus} from '../../ios-ui/hooks/useFotosShareInboxAutoDrain';
+import type {FotosGalleryItem} from '../../ios-ui/services/FotosMobileGallery';
 import {
-  getGallerySurfaceProfile,
-  planGalleryIntake,
-} from '@refinio/fotos.core';
+    buildFotosTimelineLayout,
+    clampUnit,
+    resolveActiveTimelineSection,
+    type FotosTimelineRowDescriptor,
+} from '../../ios-ui/services/FotosTimelineScrubberModel';
+import {borderColor, cardBackground, mutedCardBackground, mutedTextColor, palette, screenBackground, textColor} from '../../src/theme';
 
-function Row({ label, value, isDark }: { label: string; value: string; isDark: boolean }) {
-  return (
-    <View
-      style={{
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        gap: 16,
-        paddingVertical: 10,
-      }}
-    >
-      <Text style={{ color: mutedTextColor(isDark), fontSize: 13, fontWeight: '600' }}>
-        {label}
-      </Text>
-      <Text
-        selectable
-        style={{
-          color: textColor(isDark),
-          fontSize: 13,
-          flexShrink: 1,
-          textAlign: 'right',
-        }}
-      >
-        {value}
-      </Text>
-    </View>
-  );
+const filters = ['All', 'Local', 'Shared', 'Albums', 'People'] as const;
+type Filter = typeof filters[number];
+type Row =
+    | {kind: 'day'; id: string; label: string; shortLabel: string}
+    | {kind: 'photos'; id: string; items: FotosGalleryItem[]};
+const dateLabel = new Intl.DateTimeFormat(undefined, {dateStyle: 'long'});
+const shortDayMonth = new Intl.DateTimeFormat(undefined, {day: 'numeric', month: 'short'});
+const shortMonthYear = new Intl.DateTimeFormat(undefined, {month: 'short', year: '2-digit'});
+const numberOfColumns = 3;
+const DAY_ROW_HEIGHT = 44;
+
+function formatShortDayLabel(timestamp: number, currentYear: number): string {
+    const date = new Date(timestamp);
+    return date.getFullYear() === currentYear
+        ? shortDayMonth.format(date)
+        : shortMonthYear.format(date);
+}
+
+function makeRows(items: FotosGalleryItem[], filter: Filter, search: string, people?: ReadonlyMap<string, string[]>): Row[] {
+    const groups = new Map<string | undefined, {shortLabel: string; photos: FotosGalleryItem[]}>();
+    const query = search.trim().toLocaleLowerCase();
+    const currentYear = new Date().getFullYear();
+    for (const item of items) {
+        if ((filter === 'Local' && !item.asset) || (filter === 'Shared' && !item.shared)
+            || (filter === 'Albums' && !item.albums.length) || (filter === 'People' && !item.entry?.faceCount)) continue;
+        if (query && ![
+            item.name, item.entry?.folderPath, item.entry?.exifCamera, item.entry?.exifLens,
+            item.date, ...(item.entry?.mediaSubtypes ?? []), ...(item.entry?.tags ?? []), ...item.albums,
+            ...(people?.get(item.id) ?? []),
+        ].some(value => value?.toLocaleLowerCase().includes(query))) continue;
+        const timestamp = item.date ? Date.parse(item.date) : NaN;
+        const day = Number.isFinite(timestamp) ? dateLabel.format(timestamp) : undefined;
+        let group = groups.get(day);
+        if (!group) {
+            group = {
+                shortLabel: Number.isFinite(timestamp) ? formatShortDayLabel(timestamp, currentYear) : 'Undated',
+                photos: [],
+            };
+            groups.set(day, group);
+        }
+        group.photos.push(item);
+    }
+    return [...groups].flatMap(([day, {shortLabel, photos}]) => {
+        const rows: Row[] = [{kind: 'day', id: `day:${day}`, label: day ?? 'Undated', shortLabel}];
+        for (let offset = 0; offset < photos.length; offset += numberOfColumns) {
+            const group = photos.slice(offset, offset + numberOfColumns);
+            rows.push({kind: 'photos', id: `row:${group[0].id}`, items: group});
+        }
+        return rows;
+    });
 }
 
 export default function LibraryScreen() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const model = useModel();
-  const { snapshot, updateFotosSettings } = useFotosRuntime();
-  const { platformCapabilities } = snapshot;
-  const supportsPhotoLibrarySync = platformCapabilities.supportsPhotoLibrarySync;
-  const supportsShareInbox = platformCapabilities.supportsShareInbox;
-  const [syncing, setSyncing] = useState(false);
-  const [lastSync, setLastSync] = useState<FotosPhotoLibrarySyncSummary | null>(null);
-  const [syncError, setSyncError] = useState<string | null>(null);
-  const [shareImporting, setShareImporting] = useState(false);
-  const [shareInboxStatus, setShareInboxStatus] = useState<FotosShareInboxStatus | null>(null);
-  const [lastShareImport, setLastShareImport] = useState<FotosSharedFileImportSummary | null>(null);
-  const [shareError, setShareError] = useState<string | null>(null);
+    const model = useModel();
+    const inbox = useFotosShareInboxAutoDrainStatus(model);
+    const librarySync = useFotosLibraryAutoSyncStatus(model);
+    const router = useRouter();
+    const dark = useColorScheme() === 'dark';
+    const window = useWindowDimensions();
+    const listRef = useRef<FlashListRef<Row>>(null);
+    const [filter, setFilter] = useState<Filter>('All');
+    const [search, setSearch] = useState('');
+    const [listSize, setListSize] = useState({width: window.width, height: 0});
+    const [contentHeight, setContentHeight] = useState(0);
+    const [scrollOffset, setScrollOffset] = useState(0);
+    const searchPeople = filter === 'People' || Boolean(search.trim());
+    const gallery = useFotosMobileGallery(model, searchPeople);
+    const rows = useMemo(() => makeRows(gallery.items, filter, search, gallery.people), [gallery.items, filter, search, gallery.people]);
+    const error = gallery.localError ?? gallery.entryError;
+    const indexingEmpty = librarySync.running && (filter === 'Albums' || filter === 'People' || gallery.items.length === 0);
+    const loading = gallery.loadingEntries || gallery.loadingPhotos || indexingEmpty || (searchPeople && !gallery.people);
+    const syncIssue = librarySync.lastError ?? inbox.lastError;
+    const syncLabel = librarySync.running
+        ? (librarySync.discoveredCount > 0 ? `${librarySync.processedCount}/${librarySync.discoveredCount}` : 'Syncing…')
+        : inbox.running ? 'Importing' : syncIssue ? 'Sync issue' : 'Sync';
+    const showLocalPaging = filter === 'All' || filter === 'Local';
 
-  const intakeCards = useMemo(() => ([
-    planGalleryIntake('fotos-browser-mobile', 'photo-library'),
-    planGalleryIntake('fotos-browser-mobile', 'shared-files'),
-    planGalleryIntake('lama-fire', 'remote-manifest'),
-  ]), []);
-  const profile = getGallerySurfaceProfile('fotos-browser-mobile');
+    const photoRowHeight = useMemo(() => {
+        const availableWidth = Math.max(120, (listSize.width || window.width) - 12 - (numberOfColumns - 1) * 3);
+        return availableWidth / numberOfColumns + 3;
+    }, [listSize.width, window.width]);
 
-  const refreshShareInboxStatus = useCallback(async () => {
-    try {
-      const status = await model.getPendingSharedInboxStatus();
-      setShareInboxStatus(status);
-    } catch (error) {
-      setShareError(error instanceof Error ? error.message : String(error));
-    }
-  }, [model]);
-
-  useEffect(() => {
-    void refreshShareInboxStatus();
-  }, [refreshShareInboxStatus]);
-
-  const syncRecentPhotos = useCallback(async () => {
-    setSyncError(null);
-    setSyncing(true);
-    try {
-      const result = await model.syncRecentPhotoLibraryAssets(12);
-      setLastSync(result);
-    } catch (error) {
-      setSyncError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setSyncing(false);
-    }
-  }, [model]);
-
-  const pickAndSyncPhotos = useCallback(async () => {
-    setSyncError(null);
-    setSyncing(true);
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: 'images',
-        allowsMultipleSelection: true,
-        selectionLimit: 12,
-        orderedSelection: true,
-        quality: 1,
-      });
-
-      if (result.canceled) {
-        return;
-      }
-
-      const assetIds = [...new Set(
-        result.assets
-          .map((asset) => asset.assetId ?? null)
-          .filter((assetId): assetId is string => typeof assetId === 'string' && assetId.length > 0),
-      )];
-
-      const missingIdIssues: FotosPhotoLibrarySyncIssue[] = result.assets
-        .filter((asset) => !asset.assetId)
-        .map((asset) => ({
-          assetId: asset.uri,
-          filename: asset.fileName ?? asset.uri.split('/').pop() ?? 'selected-photo',
-          reason: 'The picker did not expose a stable media-library asset id for this selection.',
-        }));
-
-      if (assetIds.length === 0) {
-        setLastSync({
-          permissionGranted: true,
-          accessPrivileges: null,
-          requestedCount: result.assets.length,
-          syncedCount: 0,
-          skippedCount: missingIdIssues.length,
-          syncedEntries: [],
-          issues: missingIdIssues,
+    const timelineLayout = useMemo(() => {
+        const descriptors: FotosTimelineRowDescriptor[] = rows.map(row =>
+            row.kind === 'day'
+                ? {kind: 'day', label: row.label, shortLabel: row.shortLabel}
+                : {kind: 'photos'},
+        );
+        return buildFotosTimelineLayout({
+            rows: descriptors,
+            dayRowHeight: DAY_ROW_HEIGHT,
+            photoRowHeight,
+            viewportHeight: listSize.height,
         });
-        return;
-      }
+    }, [rows, photoRowHeight, listSize.height]);
 
-      const syncResult = await model.syncPhotoLibraryAssetsById(assetIds);
-      setLastSync({
-        ...syncResult,
-        requestedCount: result.assets.length,
-        skippedCount: syncResult.skippedCount + missingIdIssues.length,
-        issues: [...syncResult.issues, ...missingIdIssues],
-      });
-      await refreshShareInboxStatus();
-    } catch (error) {
-      setSyncError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setSyncing(false);
-    }
-  }, [model, refreshShareInboxStatus]);
+    const effectiveMaxScroll = useMemo(() => {
+        const measuredMax = contentHeight > 0 && listSize.height > 0
+            ? Math.max(0, contentHeight - listSize.height)
+            : 0;
+        return Math.max(measuredMax, timelineLayout.maxScroll);
+    }, [contentHeight, listSize.height, timelineLayout.maxScroll]);
 
-  const importPendingSharedInbox = useCallback(async () => {
-    setShareError(null);
-    setShareImporting(true);
-    try {
-      const result = await model.importPendingSharedInbox();
-      setLastShareImport(result);
-      await refreshShareInboxStatus();
-    } catch (error) {
-      setShareError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setShareImporting(false);
-    }
-  }, [model, refreshShareInboxStatus]);
+    const scrollProgress = effectiveMaxScroll > 0 ? clampUnit(scrollOffset / effectiveMaxScroll) : 0;
+    const activeSection = useMemo(
+        () => resolveActiveTimelineSection(timelineLayout.sections, scrollOffset),
+        [timelineLayout.sections, scrollOffset],
+    );
 
-  return (
-    <ScrollView
-      contentInsetAdjustmentBehavior="automatic"
-      style={{ flex: 1, backgroundColor: screenBackground(isDark) }}
-      contentContainerStyle={{ padding: 16, gap: 16 }}
-    >
-      <View
-        style={{
-          backgroundColor: cardBackground(isDark),
-          borderRadius: 22,
-          borderWidth: 1,
-          borderColor: borderColor(isDark),
-          padding: 18,
-          gap: 10,
-        }}
-      >
-        <Text style={{ color: textColor(isDark), fontSize: 24, fontWeight: '700' }}>
-          fotos mobile authority surface
-        </Text>
-        <Text style={{ color: mutedTextColor(isDark), fontSize: 15, lineHeight: 21 }}>
-          This package now boots through the same ONE runtime shape as `vger.expo`: MultiUser,
-          recipes, reverse maps, settings/secrets/devices plans, mDNS discovery, handshake-backed
-          collection, and the shared module graph. The actual photo-library and CHUM gallery flows
-          can land on that base without a rewrite.
-        </Text>
-      </View>
+    const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+        const nextOffset = Math.max(0, event.nativeEvent.contentOffset.y);
+        setScrollOffset(nextOffset);
+    }, []);
 
-      <View
-        style={{
-          backgroundColor: cardBackground(isDark),
-          borderRadius: 20,
-          borderWidth: 1,
-          borderColor: borderColor(isDark),
-          padding: 18,
-        }}
-      >
-        <Text style={{ color: textColor(isDark), fontSize: 17, fontWeight: '700' }}>
-          Surface Profile
-        </Text>
-        <Text style={{ marginTop: 6, color: mutedTextColor(isDark), fontSize: 14, lineHeight: 20 }}>
-          {profile.summary}
-        </Text>
-        <View style={{ marginTop: 12 }}>
-          <Row label="Primary action" value={profile.primaryActionLabel} isDark={isDark} />
-          <Row label="Role" value={profile.role} isDark={isDark} />
-          <Row label="Default source" value={profile.defaultSource} isDark={isDark} />
-          <Row label="Live peers" value="See Devices tab" isDark={isDark} />
-          <Row
-            label="Trusted devices"
-            value={String(snapshot.trustedDeviceCount)}
-            isDark={isDark}
-          />
-        </View>
-      </View>
+    const handleScrubToRatio = useCallback((ratio: number) => {
+        const clamped = clampUnit(ratio);
+        const targetOffset = clamped * effectiveMaxScroll;
+        setScrollOffset(targetOffset);
+        listRef.current?.scrollToOffset({offset: targetOffset, animated: false});
+        if (clamped >= 0.92 && rows.length > 0 && gallery.canLoadMore && showLocalPaging && !search.trim()) {
+            gallery.loadMore();
+        }
+    }, [effectiveMaxScroll, rows.length, gallery, showLocalPaging, search]);
 
-      <View
-        style={{
-          backgroundColor: cardBackground(isDark),
-          borderRadius: 20,
-          borderWidth: 1,
-          borderColor: borderColor(isDark),
-          padding: 18,
-          gap: 12,
-        }}
-      >
-        <View style={{ gap: 6 }}>
-          <Text style={{ color: textColor(isDark), fontSize: 17, fontWeight: '700' }}>
-            Photo Library
-          </Text>
-          <Text style={{ color: mutedTextColor(isDark), fontSize: 14, lineHeight: 20 }}>
-            Sync the most recent camera-roll items into the shared fotos model. This stores a
-            canonical `FotosEntry`, an `original` variant, and a device-local asset locator without
-            cloning the gallery UI.
-          </Text>
-        </View>
+    const handleScrollToTop = useCallback(() => {
+        setScrollOffset(0);
+        listRef.current?.scrollToOffset({offset: 0, animated: true});
+    }, []);
 
-        {!supportsPhotoLibrarySync ? (
-          <View
-            style={{
-              borderRadius: 16,
-              backgroundColor: mutedCardBackground(isDark),
-              padding: 14,
-            }}
-          >
-            <Text style={{ color: mutedTextColor(isDark), fontSize: 13, lineHeight: 18 }}>
-              {platformCapabilities.platformLabel} still boots the shared runtime, but photo-library
-              ingest is gated in this slice until the Android media path is verified end to end.
-            </Text>
-          </View>
-        ) : null}
-
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Pressable
-            disabled={syncing || !supportsPhotoLibrarySync}
-            onPress={() => void pickAndSyncPhotos()}
-            style={{
-              flex: 1,
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 14,
-              backgroundColor: syncing || !supportsPhotoLibrarySync ? palette.accentSoft : palette.accent,
-              paddingVertical: 12,
-              opacity: syncing || !supportsPhotoLibrarySync ? 0.75 : 1,
-            }}
-          >
-            <Text style={{ color: syncing ? palette.accentStrong : '#ffffff', fontSize: 14, fontWeight: '700' }}>
-              {syncing ? 'Working...' : supportsPhotoLibrarySync ? 'Pick Photos' : 'Photo sync pending'}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            disabled={syncing || !supportsPhotoLibrarySync}
-            onPress={() => void syncRecentPhotos()}
-            style={{
-              flex: 1,
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 14,
-              borderWidth: 1,
-              borderColor: borderColor(isDark),
-              backgroundColor: mutedCardBackground(isDark),
-              paddingVertical: 12,
-              opacity: syncing || !supportsPhotoLibrarySync ? 0.75 : 1,
-            }}
-          >
-            <Text style={{ color: textColor(isDark), fontSize: 14, fontWeight: '700' }}>
-              {supportsPhotoLibrarySync ? 'Sync 12 Recent' : 'Recent sync pending'}
-            </Text>
-          </Pressable>
-        </View>
-
-        {lastSync ? (
-          <View
-            style={{
-              borderRadius: 16,
-              backgroundColor: mutedCardBackground(isDark),
-              padding: 14,
-              gap: 4,
-            }}
-          >
-            <Row
-              label="Access"
-              value={lastSync.accessPrivileges ?? (lastSync.permissionGranted ? 'granted' : 'denied')}
-              isDark={isDark}
-            />
-            <Row
-              label="Synced"
-              value={`${lastSync.syncedCount} of ${lastSync.requestedCount}`}
-              isDark={isDark}
-            />
-            <Row label="Skipped" value={String(lastSync.skippedCount)} isDark={isDark} />
-            {lastSync.issues.slice(0, 3).map((issue) => (
-              <Text
-                key={`${issue.assetId}:${issue.reason}`}
-                style={{ color: mutedTextColor(isDark), fontSize: 13, lineHeight: 18 }}
-              >
-                {issue.filename}: {issue.reason}
-              </Text>
-            ))}
-          </View>
-        ) : null}
-
-        {syncError ? (
-          <Text style={{ color: palette.danger, fontSize: 13, lineHeight: 18 }}>
-            {syncError}
-          </Text>
-        ) : null}
-      </View>
-
-      <View
-        style={{
-          backgroundColor: cardBackground(isDark),
-          borderRadius: 20,
-          borderWidth: 1,
-          borderColor: borderColor(isDark),
-          padding: 18,
-          gap: 12,
-        }}
-      >
-        <View style={{ gap: 6 }}>
-          <Text style={{ color: textColor(isDark), fontSize: 17, fontWeight: '700' }}>
-            Share Inbox
-          </Text>
-          <Text style={{ color: mutedTextColor(isDark), fontSize: 14, lineHeight: 20 }}>
-            The share extension deposits files into an App Group inbox. Importing them here feeds
-            the same fotos sync service and media model used by photo-library ingest.
-          </Text>
-        </View>
-
-        {!supportsShareInbox ? (
-          <View
-            style={{
-              borderRadius: 16,
-              backgroundColor: mutedCardBackground(isDark),
-              padding: 14,
-            }}
-          >
-            <Text style={{ color: mutedTextColor(isDark), fontSize: 13, lineHeight: 18 }}>
-              Share-to-app import is currently iOS-only. Android intent ingestion will need its own
-              inbox and import path before this section becomes active.
-            </Text>
-          </View>
-        ) : null}
-
-        <View
-          style={{
-            borderRadius: 16,
-            backgroundColor: mutedCardBackground(isDark),
-            padding: 14,
-            gap: 4,
-          }}
-        >
-          <Row
-            label="Pending batches"
-            value={String(shareInboxStatus?.batchCount ?? 0)}
-            isDark={isDark}
-          />
-          <Row
-            label="Pending items"
-            value={String(shareInboxStatus?.itemCount ?? 0)}
-            isDark={isDark}
-          />
-        </View>
-
-        <Pressable
-          disabled={!supportsShareInbox || shareImporting || (shareInboxStatus?.itemCount ?? 0) === 0}
-          onPress={() => void importPendingSharedInbox()}
-          style={{
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: 14,
-            backgroundColor:
-              !supportsShareInbox || shareImporting || (shareInboxStatus?.itemCount ?? 0) === 0
-                ? palette.accentSoft
-                : palette.accent,
-            paddingVertical: 12,
-            opacity: !supportsShareInbox || shareImporting || (shareInboxStatus?.itemCount ?? 0) === 0 ? 0.75 : 1,
-          }}
-        >
-          <Text
-            style={{
-              color:
-                !supportsShareInbox || shareImporting || (shareInboxStatus?.itemCount ?? 0) === 0
-                  ? palette.accentStrong
-                  : '#ffffff',
-              fontSize: 14,
-              fontWeight: '700',
-            }}
-          >
-            {shareImporting
-              ? 'Importing shared items...'
-              : supportsShareInbox
-                ? 'Import Pending Shared Items'
-                : 'Share inbox pending'}
-          </Text>
-        </Pressable>
-
-        {lastShareImport ? (
-          <View
-            style={{
-              borderRadius: 16,
-              backgroundColor: mutedCardBackground(isDark),
-              padding: 14,
-              gap: 4,
-            }}
-          >
-            <Row label="Imported" value={`${lastShareImport.syncedCount} of ${lastShareImport.requestedCount}`} isDark={isDark} />
-            <Row label="Skipped" value={String(lastShareImport.skippedCount)} isDark={isDark} />
-            {lastShareImport.issues.slice(0, 3).map((issue) => (
-              <Text
-                key={`${issue.locator}:${issue.reason}`}
-                style={{ color: mutedTextColor(isDark), fontSize: 13, lineHeight: 18 }}
-              >
-                {issue.filename}: {issue.reason}
-              </Text>
-            ))}
-          </View>
-        ) : null}
-
-        {shareError ? (
-          <Text style={{ color: palette.danger, fontSize: 13, lineHeight: 18 }}>
-            {shareError}
-          </Text>
-        ) : null}
-      </View>
-
-      <View style={{ gap: 12 }}>
-        {intakeCards.map((plan) => (
-          <View
-            key={`${plan.surface}:${plan.source}`}
-            style={{
-              backgroundColor: cardBackground(isDark),
-              borderRadius: 18,
-              borderWidth: 1,
-              borderColor: borderColor(isDark),
-              padding: 16,
-              gap: 8,
-            }}
-          >
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
-              <Text style={{ color: textColor(isDark), fontSize: 16, fontWeight: '700' }}>
-                {plan.source}
-              </Text>
-              <View
-                style={{
-                  borderRadius: 999,
-                  backgroundColor: plan.supported ? palette.accentSoft : '#f3e7de',
-                  paddingHorizontal: 10,
-                  paddingVertical: 4,
-                }}
-              >
-                <Text
-                  style={{
-                    color: plan.supported ? palette.accentStrong : palette.danger,
-                    fontSize: 12,
-                    fontWeight: '700',
-                  }}
-                >
-                  {plan.supported ? 'supported' : 'pending'}
-                </Text>
-              </View>
+    return (
+        <View style={[styles.screen, {backgroundColor: screenBackground(dark)}]}>
+            <View style={styles.controls}>
+                <View style={styles.toolbar}>
+                    <View style={[styles.search, {backgroundColor: cardBackground(dark), borderColor: borderColor(dark)}]}>
+                        <Search size={17} color={mutedTextColor(dark)} />
+                        <TextInput accessibilityLabel="Search photos" value={search} onChangeText={setSearch}
+                            placeholder="Search photos" placeholderTextColor={mutedTextColor(dark)}
+                            style={[styles.searchInput, {color: textColor(dark)}]} returnKeyType="search" clearButtonMode="while-editing" />
+                    </View>
+                    <Pressable accessibilityRole="button" accessibilityLabel="Open sync status" onPress={() => router.push('/runtime')}
+                        style={[styles.pill, {backgroundColor: syncIssue ? cardBackground(dark) : mutedCardBackground(dark)}]}>
+                        <Cloud size={15} color={syncIssue ? palette.danger : palette.accent} />
+                        <Text numberOfLines={1} style={{color: textColor(dark), fontWeight: '600', fontSize: 12}}>
+                            {syncLabel}
+                        </Text>
+                    </Pressable>
+                </View>
+                <View style={styles.filters}>
+                    {filters.map(name => (
+                        <Pressable key={name} accessibilityRole="button" accessibilityState={{selected: name === filter}}
+                            onPress={() => setFilter(name)} style={[styles.filter, name === filter && {backgroundColor: palette.accentSoft}]}>
+                            <Text style={{color: name === filter ? palette.accentStrong : mutedTextColor(dark), fontWeight: '700', fontSize: 13}}>{name}</Text>
+                        </Pressable>
+                    ))}
+                </View>
+                {gallery.supportsPhotos && gallery.permission && !gallery.permission.granted ? (
+                    <Pressable accessibilityRole="button" onPress={() => void (
+                        gallery.permission?.canAskAgain ? gallery.requestPermission() : Linking.openSettings()
+                    )}>
+                        <Text style={styles.action}>{gallery.permission.canAskAgain ? 'Show photos from this device' : 'Open photo permission settings'}</Text>
+                    </Pressable>
+                ) : null}
+                {error ? (
+                    <Pressable accessibilityRole="button" accessibilityLabel="Refresh library" onPress={gallery.reload}>
+                        <Text style={{color: palette.danger}}>{error} Tap to retry.</Text>
+                    </Pressable>
+                ) : null}
             </View>
-            <Text style={{ color: mutedTextColor(isDark), fontSize: 14, lineHeight: 20 }}>
-              {plan.summary}
-            </Text>
-            <Row label="Mode" value={plan.mode ?? 'n/a'} isDark={isDark} />
-            <Row label="Face enrichment" value={plan.faceEnrichment} isDark={isDark} />
-            <Row
-              label="Writes sidecars"
-              value={plan.writesSidecars ? 'yes' : 'not on mobile'}
-              isDark={isDark}
-            />
-          </View>
-        ))}
-      </View>
-
-      <View
-        style={{
-          backgroundColor: cardBackground(isDark),
-          borderRadius: 20,
-          borderWidth: 1,
-          borderColor: borderColor(isDark),
-          padding: 18,
-          gap: 14,
-        }}
-      >
-        <Text style={{ color: textColor(isDark), fontSize: 17, fontWeight: '700' }}>
-          Fotos Section
-        </Text>
-
-        {[
-          {
-            label: 'Accept trusted sharing',
-            value: snapshot.fotosSettings.acceptSharing,
-            key: 'acceptSharing' as const,
-          },
-          {
-            label: 'Face analytics',
-            value: snapshot.fotosSettings.faceAnalyticsEnabled,
-            key: 'faceAnalyticsEnabled' as const,
-          },
-          {
-            label: 'Semantic search',
-            value: snapshot.fotosSettings.semanticSearchEnabled,
-            key: 'semanticSearchEnabled' as const,
-          },
-        ].map((item) => (
-          <View
-            key={item.key}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 16,
-              paddingVertical: 4,
-            }}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: textColor(isDark), fontSize: 15, fontWeight: '600' }}>
-                {item.label}
-              </Text>
-            </View>
-            <Switch
-              value={item.value}
-              onValueChange={(enabled) => void updateFotosSettings({ [item.key]: enabled })}
-              trackColor={{ false: '#cfd5cf', true: palette.accent }}
-              thumbColor="#ffffff"
-            />
-          </View>
-        ))}
-
-        <View
-          style={{
-            marginTop: 4,
-            flexDirection: 'row',
-            flexWrap: 'wrap',
-            gap: 10,
-          }}
-        >
-          {['reference', 'metadata', 'ingest'].map((mode) => {
-            const selected = snapshot.fotosSettings.defaultMode === mode;
-            return (
-              <Pressable
-                key={mode}
-                onPress={() => void updateFotosSettings({ defaultMode: mode as never })}
-                style={{
-                  borderRadius: 999,
-                  borderWidth: 1,
-                  borderColor: selected ? palette.accent : borderColor(isDark),
-                  backgroundColor: selected ? palette.accentSoft : mutedCardBackground(isDark),
-                  paddingHorizontal: 14,
-                  paddingVertical: 10,
+            <View
+                style={styles.listContainer}
+                onLayout={event => {
+                    const {width, height} = event.nativeEvent.layout;
+                    setListSize(current =>
+                        Math.abs(current.width - width) < 1 && Math.abs(current.height - height) < 1
+                            ? current
+                            : {width, height},
+                    );
                 }}
-              >
-                <Text
-                  style={{
-                    color: selected ? palette.accentStrong : textColor(isDark),
-                    fontSize: 13,
-                    fontWeight: '700',
-                    textTransform: 'capitalize',
-                  }}
-                >
-                  {mode}
-                </Text>
-              </Pressable>
-            );
-          })}
+            >
+                <FlashList<Row>
+                    ref={listRef}
+                    data={rows}
+                    keyExtractor={row => row.id}
+                    getItemType={row => row.kind}
+                    contentContainerStyle={styles.grid}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                    scrollEventThrottle={16}
+                    onScroll={handleScroll}
+                    onContentSizeChange={(_width, height) => setContentHeight(height)}
+                    onEndReached={() => { if (rows.length > 0 && gallery.canLoadMore && showLocalPaging && !search.trim()) gallery.loadMore(); }}
+                    onEndReachedThreshold={0.55}
+                    ListEmptyComponent={(
+                        <View style={styles.empty}>
+                            {loading ? <ActivityIndicator color={palette.accent} /> : <Images color={mutedTextColor(dark)} size={32} />}
+                            <Text style={{color: mutedTextColor(dark)}}>
+                                {indexingEmpty
+                                    ? (librarySync.discoveredCount > 0
+                                        ? `Indexing local photos and albums… (${librarySync.processedCount}/${librarySync.discoveredCount})`
+                                        : 'Indexing local photos and albums…')
+                                    : loading ? 'Loading photos…' : search ? 'No photos match your search' : 'No photos to show'}
+                            </Text>
+                        </View>
+                    )}
+                    ListFooterComponent={rows.length > 0 && gallery.canLoadMore && showLocalPaging ? (
+                        <Pressable accessibilityRole="button" onPress={gallery.loadMore} disabled={gallery.loadingPhotos} style={styles.more}>
+                            <Text style={styles.action}>{gallery.loadingPhotos ? 'Loading photos…' : 'Load more local photos'}</Text>
+                        </Pressable>
+                    ) : null}
+                    renderItem={({item}) => item.kind === 'day' ? (
+                        <Text accessibilityRole="header" style={[styles.day, {color: textColor(dark)}]}>{item.label}</Text>
+                    ) : (
+                        <View style={styles.photoRow}>
+                            {item.items.map(photo => (
+                                <Pressable key={photo.id} accessibilityRole="button" accessibilityLabel={photo.name}
+                                    onPress={() => router.push({pathname: '/photo/[contentHash]', params: {
+                                        contentHash: photo.entry?.contentHash ?? (photo.id === photo.asset?.id ? 'local' : photo.id),
+                                        assetId: photo.asset?.id, title: photo.name,
+                                    }})}
+                                    style={[styles.tile, {backgroundColor: mutedCardBackground(dark)}]}>
+                                    <FotosGalleryImage item={photo} />
+                                    <View style={styles.badges} pointerEvents="none">
+                                        {photo.owned && <Check size={14} color="white" accessibilityLabel="Synced" />}
+                                        {photo.shared && <Cloud size={14} color="white" accessibilityLabel="Shared" />}
+                                        {photo.albums.length > 0 && <FolderOpen size={14} color="white" accessibilityLabel="In an album" />}
+                                        {Boolean(photo.entry?.tags?.size) && <Tag size={14} color="white" accessibilityLabel="Tagged" />}
+                                        {Boolean(photo.entry?.faceCount) && <Users size={14} color="white"
+                                            accessibilityLabel={gallery.people?.get(photo.id)?.join(', ') || 'People detected'} />}
+                                    </View>
+                                </Pressable>
+                            ))}
+                            {Array.from({length: numberOfColumns - item.items.length}, (_, index) => <View key={index} style={styles.tile} />)}
+                        </View>
+                    )}
+                />
+                <FotosTimelineScrubber
+                    layout={timelineLayout}
+                    progress={scrollProgress}
+                    activeLabel={activeSection?.label}
+                    onScrubToRatio={handleScrubToRatio}
+                    onScrollToTop={handleScrollToTop}
+                />
+            </View>
         </View>
-      </View>
-    </ScrollView>
-  );
+    );
 }
+
+const styles = StyleSheet.create({
+    screen: {flex: 1},
+    listContainer: {flex: 1},
+    controls: {paddingVertical: 10, paddingHorizontal: 12, gap: 10},
+    toolbar: {flexDirection: 'row', alignItems: 'center', gap: 8},
+    search: {flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 12, paddingHorizontal: 10},
+    searchInput: {flex: 1, minHeight: 40, fontSize: 15},
+    pill: {flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 16, paddingVertical: 8, paddingHorizontal: 10, flexShrink: 0},
+    filters: {flexDirection: 'row', flexWrap: 'wrap', gap: 5},
+    filter: {paddingVertical: 7, paddingHorizontal: 11, borderRadius: 16},
+    grid: {paddingHorizontal: 6, paddingBottom: 18},
+    day: {marginTop: 14, marginBottom: 8, paddingHorizontal: 6, fontSize: 17, fontWeight: '700'},
+    photoRow: {flexDirection: 'row', gap: 3, marginBottom: 3},
+    tile: {flex: 1, aspectRatio: 1, overflow: 'hidden', borderRadius: 4, justifyContent: 'flex-end', alignItems: 'flex-start'},
+    badges: {gap: 3, flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 5, margin: 4},
+    empty: {alignItems: 'center', padding: 28, gap: 8},
+    more: {alignItems: 'center', padding: 14},
+    action: {color: palette.accent, padding: 4, fontWeight: '700'},
+});

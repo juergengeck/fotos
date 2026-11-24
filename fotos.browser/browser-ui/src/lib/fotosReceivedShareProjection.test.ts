@@ -102,6 +102,19 @@ describe('projectReceivedFotosShares', () => {
         expect(reopened[0]?.entries).toHaveLength(2);
     });
 
+    it('counts one image while retaining 100 exact authorized metadata references', async () => {
+        const deps = depsFor();
+        deps.listLatestCertificateChains = vi.fn(async () => [
+            {hash: 'active-chain-hash', idHash: 'stable-chain-id', timestamp: 1},
+        ]);
+        const entries = Array.from({length: 100}, (_, index) => `entry-${index}` as any);
+        deps.getManifest = vi.fn(async () => createFotosShareManifest({issuer, scope, entries}));
+        deps.getEntry = vi.fn(async () => ({$type$: 'FotosEntry', contentHash: 'one-image'} as any));
+        const projection = await projectReceivedFotosShares(subject, async () => true, deps);
+        expect(projection[0]).toMatchObject({status: 'active', verified: true, photoCount: 1});
+        expect(projection[0].entries).toHaveLength(100);
+    });
+
     it('never loads photo content through an unverified certificate', async () => {
         const deps = depsFor();
         await projectReceivedFotosShares(subject, async () => false, deps);

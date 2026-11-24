@@ -12,18 +12,21 @@ import type {SHA256Hash, SHA256IdHash} from '@refinio/one.core/lib/util/type-che
 import {
     createFotosMediaVariant,
     decodeEmbeddingSet,
+    decodeFotosFaceDetections,
     EMBEDDING_DIM,
     encodeEmbeddingSet,
     FACE_DETECTION_MODEL_ID,
+    FACE_DETECTIONS_MIME,
     FACE_EMBEDDING_MODEL_ID,
     facesToDataAttrs,
     FOTOS_EMBEDDING_SET_MIME,
+    normalizeFotosFaceName,
 } from '@refinio/fotos.core';
-import type {EmbeddingSet, FotosEntry, FotosMediaVariant} from '@refinio/fotos.core';
+import type {EmbeddingSet, FotosEntry, FotosFaceDetections, FotosMediaVariant} from '@refinio/fotos.core';
 import type {PhotoEntry, SemanticInfo} from '@/types/fotos';
 import {isMissingVersionedObject} from './one-storage-errors.js';
 
-export const FACE_DETECTIONS_MIME = 'application/vnd.fotos.face-detections+json';
+export {FACE_DETECTIONS_MIME};
 
 export interface AnalysisPayload {
     modelId: string;
@@ -35,11 +38,6 @@ export interface AnalysisPayload {
 export interface StoredVariantRef {
     hash: SHA256Hash<FotosMediaVariant>;
     idHash: SHA256IdHash<FotosMediaVariant>;
-}
-
-interface FaceDetectionsDocument {
-    modelId: string;
-    faces: Array<{bbox: [number, number, number, number]; score: number}>;
 }
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
@@ -72,9 +70,12 @@ export async function buildAnalysisPayloads(photo: PhotoEntry): Promise<Analysis
         }
         payloads.push(await embeddingPayload({modelId: FACE_EMBEDDING_MODEL_ID, dimensions: EMBEDDING_DIM, values: faces.embeddings}));
 
-        const detections: FaceDetectionsDocument = {
+        const detections: FotosFaceDetections = {
             modelId: FACE_DETECTION_MODEL_ID,
-            faces: faces.bboxes.map((bbox, index) => ({bbox, score: faces.scores[index]})),
+            faces: faces.bboxes.map((bbox, index) => {
+                const name = normalizeFotosFaceName(faces.names?.[index]);
+                return {bbox, score: faces.scores[index], ...(name ? {name} : {})};
+            }),
         };
         payloads.push(await payload(FACE_DETECTION_MODEL_ID, FACE_DETECTIONS_MIME, new TextEncoder().encode(JSON.stringify(detections))));
     }
@@ -150,6 +151,7 @@ export interface RemoteFaceAnalysis {
     count: number;
     bboxes: Array<[number, number, number, number]>;
     scores: number[];
+    names?: string[];
     embeddings: Float32Array;
     /** Attributes for one/index.html, built from real detections only. */
     dataAttrs: Record<string, string>;
@@ -172,7 +174,7 @@ export async function extractRemoteAnalysis(
     family: SHA256IdHash<FotosEntry>,
 ): Promise<RemoteAnalysis> {
     let faceEmbeddings: Float32Array | undefined;
-    let detections: FaceDetectionsDocument | undefined;
+    let detections: FotosFaceDetections | undefined;
     let semantic: SemanticInfo | undefined;
 
     for (const variant of await loadEntryVariants(entry)) {
@@ -183,10 +185,7 @@ export async function extractRemoteAnalysis(
         const bytes = await readBlobAsArrayBuffer(variant.blob);
 
         if (variant.mime === FACE_DETECTIONS_MIME) {
-            const document = JSON.parse(new TextDecoder().decode(bytes)) as FaceDetectionsDocument;
-            if (document.modelId !== variant.label || !Array.isArray(document.faces)) {
-                throw new Error(`Face detections variant ${variant.contentHash} is malformed (model ${document.modelId}, label ${variant.label})`);
-            }
+            const document = decodeFotosFaceDetections(bytes, variant.label);
             detections = requireSingle(detections, document, 'face detections', entry);
             continue;
         }
@@ -226,6 +225,7 @@ export async function extractRemoteAnalysis(
         count,
         bboxes: detections.faces.map(face => face.bbox),
         scores: detections.faces.map(face => face.score),
+        ...(detections.faces.some(face => face.name) ? {names: detections.faces.map(face => face.name ?? 'Unknown')} : {}),
         embeddings,
         dataAttrs: facesToDataAttrs({
             faces: detections.faces.map((face, index) => ({

@@ -217,6 +217,7 @@ export async function projectReceivedFotosShares(
                 || manifest.scopeId !== scope.id
                 || manifest.id !== buildFotosShareManifestId(String(certificate.issuer), scope)
             ) return invalidScope(reference, 'Share manifest binding is invalid', certificate);
+            const entries = await Promise.all(Array.from(manifest.entries, hash => deps.getEntry(hash)));
             return {
                 certificateIdHash,
                 certificateHash: String(chain.certificate),
@@ -224,8 +225,8 @@ export async function projectReceivedFotosShares(
                 scope,
                 status: 'active' as const,
                 verified: true,
-                photoCount: manifest.entries.size,
-                entries: await Promise.all(Array.from(manifest.entries, hash => deps.getEntry(hash))),
+                photoCount: new Set(entries.map(entry => entry.contentHash)).size,
+                entries,
                 observedAt,
                 issuedAt: certificate.issuedAt,
                 revokedAt: null,

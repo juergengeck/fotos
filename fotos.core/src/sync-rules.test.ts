@@ -3,7 +3,14 @@ import {SyncFilterFactory} from '@refinio/sync.core/services/SyncFilterFactory.j
 import {contentRules} from '@refinio/sync.core/rules/default-rules.js';
 import type {EffectivePersonalTrust} from '@refinio/trust.core/types/personal-trust.js';
 import type {TrustLevel} from '@refinio/trust.core/types/trust-types.js';
-import {fotosContentRules} from './sync-rules.js';
+import type {SHA256IdHash} from '@refinio/one.core/lib/util/type-checks.js';
+import type {FotosCollection} from './recipes/FotosRecipes.js';
+import {canImportFotosEntry, canImportFotosGalleryAlbumBinding, canImportFotosManifest, fotosContentRules} from './sync-rules.js';
+import {getOwnedFotosManifestId} from './owned-fotos-manifest.js';
+import {createFotosAlbumCollection, createFotosGalleryCollection, createFotosManualCollection,
+    getFotosCollectionOwner, isFotosManualCollectionForOwner} from './fotos-collection.js';
+import {buildFotosGalleryAlbumBindingId, createFotosGalleryAlbumBinding,
+    isFotosGalleryAlbumBindingFromLibrary} from './fotos-gallery-album-binding.js';
 
 const chain = {
     $type$: 'FotosShareCertificateChain',
@@ -49,6 +56,175 @@ function importFilter(trustLevel: TrustLevel, rules = fotosContentRules) {
 }
 
 describe('Fotos root admission through SyncFilterFactory', () => {
+    const owner = 'a'.repeat(64);
+    const otherOwner = 'b'.repeat(64);
+    const ownedRoot = {$type$: 'FotosManifest', id: getOwnedFotosManifestId(owner), entries: new Set(['entry-hash'])};
+
+    it('admits full and ID-only scoped roots for the exact authenticated owner self lane', async () => {
+        const factory = new SyncFilterFactory({rules: fotosContentRules});
+        factory.preparePeerTrust(owner, {kind: 'self', ownerId: owner});
+        const filter = factory.createImportFilter(owner);
+        expect(await filter('owned-version', 'FotosManifest', ownedRoot, 'object')).toBe(true);
+        expect(await filter('owned-id', 'FotosManifest', {$type$: 'FotosManifest', id: ownedRoot.id}, 'id')).toBe(true);
+    });
+
+    it('denies another scoped owner even on an accepted self lane', async () => {
+        const factory = new SyncFilterFactory({rules: fotosContentRules});
+        factory.preparePeerTrust(otherOwner, {kind: 'self', ownerId: otherOwner});
+        const filter = factory.createImportFilter(otherOwner);
+        expect(await filter('foreign-version', 'FotosManifest', ownedRoot, 'object')).toBe(false);
+        expect(await filter('foreign-id', 'FotosManifest', {$type$: 'FotosManifest', id: ownedRoot.id}, 'id')).toBe(false);
+    });
+
+    it('admits album membership for the owner without making it part of the media ID', async () => {
+        const source = {owner, libraryId: 'c'.repeat(64), albumId: 'Photos/L0/001', photoHashes: ['d'.repeat(64)]};
+        const album = createFotosAlbumCollection({...source, name: 'Trip'});
+        expect(createFotosAlbumCollection({...source, name: 'Summer Trip'}).id).toBe(album.id);
+        expect(createFotosAlbumCollection({...source, name: 'Trip', libraryId: 'e'.repeat(64)}).id).not.toBe(album.id);
+        const factory = new SyncFilterFactory({rules: fotosContentRules});
+        factory.preparePeerTrust(owner, {kind: 'self', ownerId: owner});
+        factory.preparePeerTrust(otherOwner, {kind: 'self', ownerId: otherOwner});
+        const filter = factory.createImportFilter(owner);
+        const root = {...ownedRoot, collections: new Set(['f'.repeat(64)])};
+        expect(await filter('album', 'FotosCollection', album, 'object')).toBe(true);
+        expect(await filter('album-id', 'FotosCollection', {$type$: 'FotosCollection', id: album.id}, 'id')).toBe(true);
+        expect(await filter('bad-album', 'FotosCollection', {...album, photoHashes: new Set(['filename.png'])}, 'object')).toBe(false);
+        expect(await filter('album-root', 'FotosManifest', root, 'object')).toBe(true);
+        expect(await filter('legacy-album-root', 'FotosManifest', {...root, id: 'fotos'}, 'object')).toBe(false);
+        const otherFilter = factory.createImportFilter(otherOwner);
+        expect(await otherFilter('foreign-album', 'FotosCollection', album, 'object')).toBe(false);
+        const manual = createFotosManualCollection({
+            owner, uuid: '60796074-0163-4a40-8677-26830240e6ea', name: 'Trip', photoHashes: source.photoHashes,
+        });
+        expect(await filter('manual-collection', 'FotosCollection', manual, 'object')).toBe(true);
+        expect(await otherFilter('foreign-manual-collection', 'FotosCollection', manual, 'object')).toBe(false);
+    });
+
+    it('keeps native source identities stable across metadata edits and distinct across libraries and platforms', () => {
+        const source = {owner, platform: 'ios' as const, libraryId: 'c'.repeat(64), albumId: 'Photos/L0:001 🏖'};
+        const params = {...source, collection: 'e'.repeat(64) as SHA256IdHash<FotosCollection>,
+            name: 'Trip', photoHashes: ['d'.repeat(64)]};
+        const binding = createFotosGalleryAlbumBinding(params);
+        expect(createFotosGalleryAlbumBinding({...params, name: 'Summer Trip', photoHashes: []}).id).toBe(binding.id);
+        expect(isFotosGalleryAlbumBindingFromLibrary(binding.id, owner, 'ios', source.libraryId)).toBe(true);
+        expect(isFotosGalleryAlbumBindingFromLibrary(binding.id, owner, 'android', source.libraryId)).toBe(false);
+        expect(isFotosGalleryAlbumBindingFromLibrary(binding.id, otherOwner, 'ios', source.libraryId)).toBe(false);
+        expect(buildFotosGalleryAlbumBindingId({...source, platform: 'android'})).not.toBe(binding.id);
+        expect(buildFotosGalleryAlbumBindingId({...source, libraryId: 'f'.repeat(64)})).not.toBe(binding.id);
+        expect(() => buildFotosGalleryAlbumBindingId({...source, owner: owner.toUpperCase()})).toThrow();
+        expect(() => buildFotosGalleryAlbumBindingId({...source, libraryId: 'native-library-id'})).toThrow();
+        expect(() => buildFotosGalleryAlbumBindingId({...source, albumId: ''})).toThrow();
+        expect(() => buildFotosGalleryAlbumBindingId({...source, albumId: 'a'.repeat(4096)})).toThrow();
+        expect(() => createFotosGalleryAlbumBinding({...params, collection: 'native-album-id' as SHA256IdHash<FotosCollection>})).toThrow();
+        expect(() => createFotosGalleryAlbumBinding({...params, name: ''})).toThrow();
+        expect(() => createFotosGalleryAlbumBinding({...params, photoHashes: ['filename.jpg']})).toThrow();
+    });
+
+    it('creates gallery collections independent of source album IDs while preserving manual and old album identities', async () => {
+        const params = {owner, uuid: '60796074-0163-4a40-8677-26830240e6ea', name: 'Trip', photoHashes: ['d'.repeat(64)]};
+        const collection = createFotosGalleryCollection(params);
+        expect(collection.id).toBe(`fotos-gallery-collection:v1:${owner}:${params.uuid}`);
+        expect(getFotosCollectionOwner(collection.id)).toBe(owner);
+        expect(isFotosManualCollectionForOwner(collection.id, owner)).toBe(false);
+        expect(createFotosGalleryCollection({...params, name: 'Summer Trip', photoHashes: []}).id).toBe(collection.id);
+        expect(() => createFotosGalleryCollection({...params, uuid: 'native-album-id'})).toThrow();
+        expect(() => createFotosGalleryCollection({...params, owner: owner.toUpperCase()})).toThrow();
+        expect(() => createFotosGalleryCollection({...params, photoHashes: ['filename.jpg']})).toThrow();
+        expect(createFotosAlbumCollection({...params, libraryId: 'c'.repeat(64), albumId: 'Photos/L0/001'}).id)
+            .toBe(`fotos-album:v1:${owner}:${'c'.repeat(64)}:Photos%2FL0%2F001`);
+        expect(isFotosManualCollectionForOwner(createFotosManualCollection(params).id, owner)).toBe(true);
+        const factory = new SyncFilterFactory({rules: fotosContentRules});
+        factory.preparePeerTrust(owner, {kind: 'self', ownerId: owner});
+        const filter = factory.createImportFilter(owner);
+        expect(await filter('gallery-collection', 'FotosCollection', collection, 'object')).toBe(true);
+    });
+
+    it('admits typed album binding versions, identities and exact manifest refs only on the owner self lane', async () => {
+        const binding = createFotosGalleryAlbumBinding({owner, platform: 'ios', libraryId: 'c'.repeat(64),
+            albumId: 'Photos/L0/001', collection: 'e'.repeat(64) as SHA256IdHash<FotosCollection>,
+            name: 'Trip', photoHashes: ['d'.repeat(64)]});
+        const root = {...ownedRoot, albumBindings: new Set(['f'.repeat(64)])};
+        const factory = new SyncFilterFactory({rules: fotosContentRules});
+        factory.preparePeerTrust(owner, {kind: 'self', ownerId: owner});
+        factory.preparePeerTrust(otherOwner, {kind: 'self', ownerId: otherOwner});
+        const filter = factory.createImportFilter(owner);
+        const otherFilter = factory.createImportFilter(otherOwner);
+        const id = {$type$: binding.$type$, id: binding.id};
+        expect(await filter('binding-version', binding.$type$, binding, 'object')).toBe(true);
+        expect(await filter('binding-id', binding.$type$, id, 'id')).toBe(true);
+        expect(await filter('binding-missing-payload', binding.$type$, id, 'object')).toBe(false);
+        expect(await filter('binding-root', 'FotosManifest', root, 'object')).toBe(true);
+        expect(await otherFilter('foreign-binding-version', binding.$type$, binding, 'object')).toBe(false);
+        expect(await otherFilter('foreign-binding-id', binding.$type$, id, 'id')).toBe(false);
+        expect(await otherFilter('foreign-binding-root', 'FotosManifest', root, 'object')).toBe(false);
+        expect(await importFilter('trusted')('external-binding-version', binding.$type$, binding, 'object')).toBe(false);
+        expect(await filter('legacy-binding-root', 'FotosManifest', {...root, id: 'fotos'}, 'object')).toBe(false);
+        expect(await filter('binding-root-array', 'FotosManifest', {...root, albumBindings: [...root.albumBindings]}, 'object')).toBe(false);
+        expect(await filter('binding-root-bad-hash', 'FotosManifest', {...root, albumBindings: new Set(['version-hash'])}, 'object')).toBe(false);
+        const context = {peerTrustLevel: 'me' as const, remotePersonId: owner,
+            peerTrust: {kind: 'self' as const, ownerId: owner}};
+        for (const change of [
+            {collection: 'native-album-id'}, {name: ''}, {photoHashes: new Set(['filename.jpg'])},
+            {id: binding.id.replace(':ios:', ':web:')}, {id: binding.id.replace('%2F', '%2f')},
+            {id: binding.id.replace('Photos%2F', '%FF')},
+        ]) expect(canImportFotosGalleryAlbumBinding(context, {...binding, ...change})).toBe(false);
+        expect(canImportFotosGalleryAlbumBinding({...context, peerTrust: undefined}, binding)).toBe(false);
+        expect(canImportFotosGalleryAlbumBinding({...context, peerTrustLevel: 'ignore'}, binding)).toBe(false);
+    });
+
+    it('accepts bounded gallery metadata while validating its values', () => {
+        const context = {peerTrustLevel: 'trusted' as const};
+        const entry = {$type$: 'FotosEntry', contentHash: 'content', streamId: 'stream', mime: 'image/png', size: 42};
+        const metadata = {duration: 3.2, favorite: true, mediaSubtypes: new Set(['live-photo']),
+            orientation: 8, exifGpsAlt: -10, originalFilename: 'image.png'};
+        expect(canImportFotosEntry(context, entry)).toBe(true);
+        expect(canImportFotosEntry(context, {...entry, ...metadata})).toBe(true);
+        expect(canImportFotosEntry(context, {...entry, duration: -1})).toBe(false);
+        expect(canImportFotosEntry(context, {...entry, favorite: 'true'})).toBe(false);
+        expect(canImportFotosEntry(context, {...entry, orientation: 9})).toBe(false);
+        expect(canImportFotosEntry(context, {...entry, mediaSubtypes: new Set(['unknown'])})).toBe(false);
+        expect(canImportFotosEntry(context, {...entry, tags: new Set(['Trip', 'Family'])})).toBe(true);
+        expect(canImportFotosEntry(context, {...entry, tags: new Set(['a'.repeat(81)])})).toBe(false);
+    });
+
+    it.each([false, true])('denies external personal-trust admission even when IoM promotion is %s', async iom => {
+        const factory = new SyncFilterFactory({rules: fotosContentRules});
+        factory.preparePeerTrust(owner, {kind: 'personal', projection: {
+            owner: otherOwner, subject: owner, scope: 'personal', trustLevel: 'trusted', state: 'effective',
+            sourceKind: 'direct', projectionHash: 'trust-evidence', sourceBundleHashes: ['trust-source'],
+        } as EffectivePersonalTrust});
+        const filter = factory.createImportFilter(owner, async () => iom);
+        expect(await filter('external-version', 'FotosManifest', ownedRoot, 'object')).toBe(false);
+        expect(await filter('external-id', 'FotosManifest', {$type$: 'FotosManifest', id: ownedRoot.id}, 'id')).toBe(false);
+    });
+
+    it('denies scoped roots with missing owner facts, ignored trust, or noncanonical authenticated ids', () => {
+        expect(canImportFotosManifest({peerTrustLevel: 'me', remotePersonId: owner}, ownedRoot)).toBe(false);
+        expect(canImportFotosManifest({peerTrustLevel: 'me', remotePersonId: owner,
+            peerTrust: {kind: 'self', ownerId: otherOwner}}, ownedRoot)).toBe(false);
+        expect(canImportFotosManifest({peerTrustLevel: 'ignore', remotePersonId: owner,
+            peerTrust: {kind: 'self', ownerId: owner}}, ownedRoot)).toBe(false);
+        expect(canImportFotosManifest({peerTrustLevel: 'me', remotePersonId: owner.toUpperCase(),
+            peerTrust: {kind: 'self', ownerId: owner.toUpperCase()}}, ownedRoot)).toBe(false);
+    });
+
+    it('continues to validate scoped version payloads rather than treating a missing payload as an ID object', async () => {
+        const factory = new SyncFilterFactory({rules: fotosContentRules});
+        factory.preparePeerTrust(owner, {kind: 'self', ownerId: owner});
+        const filter = factory.createImportFilter(owner);
+        expect(await filter('bad-version', 'FotosManifest', {...ownedRoot, entries: ['entry-hash']}, 'object')).toBe(false);
+        expect(await filter('bad-version', 'FotosManifest', {...ownedRoot, entries: undefined, extra: true}, 'object')).toBe(false);
+        expect(await filter('missing-payload', 'FotosManifest', {$type$: 'FotosManifest', id: ownedRoot.id}, 'object')).toBe(false);
+        expect(await filter('missing-version', 'FotosManifest', undefined, 'object')).toBe(false);
+        expect(await filter('wrong-namespace', 'FotosManifest', {...ownedRoot, id: `fotos:${owner}:extra`}, 'object')).toBe(false);
+    });
+
+    it('preserves both legacy root forms for existing non-native accounts', async () => {
+        const filter = importFilter('low');
+        expect(await filter('legacy-version', 'FotosManifest', {...ownedRoot, id: 'fotos'}, 'object')).toBe(true);
+        expect(await filter('legacy-id', 'FotosManifest', {$type$: 'FotosManifest', id: 'fotos'}, 'id')).toBe(true);
+    });
+
     it('admits shared manifest and certificate chain roots that generic content rules deny', async () => {
         const genericFilter = importFilter('trusted', contentRules);
         const fotosFilter = importFilter('trusted');

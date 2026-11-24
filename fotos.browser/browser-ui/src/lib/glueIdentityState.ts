@@ -72,3 +72,24 @@ export function requirePreparedGlueIdentity(
 
     return normalizedExpectedPersonId;
 }
+
+// Runtime evidence belongs to the SettingsPlan of the opened, custody-checked store.
+const admittedNativeOwners = new WeakMap<object, string>();
+
+/** Feed forward canonical native admission after installation or offline custody validation. */
+export function recordAdmittedNativeGlueOwner(settingsPlan: object, personId: string): void {
+    if (!/^[a-f0-9]{64}$/.test(personId)) throw new Error('Invalid admitted native Glue owner');
+    admittedNativeOwners.set(settingsPlan, personId);
+}
+
+/** Keep the admitted native owner through settings edits without granting visitor owners admission. */
+export function resolveReusableGlueIdentity(settingsPlan: object, configuredPersonId: string | null, ownerId: string | null): string | null {
+    const admittedOwner = admittedNativeOwners.get(settingsPlan);
+    if (admittedOwner) {
+        if (admittedOwner !== ownerId || (configuredPersonId && configuredPersonId !== admittedOwner)) {
+            throw new Error('Configured Glue identity differs from the admitted native owner');
+        }
+        return admittedOwner;
+    }
+    return configuredPersonId && configuredPersonId !== ownerId ? configuredPersonId : null;
+}

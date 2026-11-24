@@ -1,6 +1,6 @@
 // hash.test.ts
-import { describe, it, expect } from 'vitest';
-import { isJpeg, stripJpegMetadata, sha256Hex, computeStreamId } from './hash.js';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { isJpeg, stripJpegMetadata, sha256Hex, hashImageBytes, computeStreamId } from './hash.js';
 
 describe('isJpeg', () => {
     it('detects JPEG magic bytes', () => {
@@ -38,6 +38,54 @@ describe('sha256Hex', () => {
         const hash = await sha256Hex(data);
         expect(hash).toMatch(/^[0-9a-f]{64}$/);
         expect(hash).toBe('2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824');
+    });
+});
+
+describe('portable byte hashing without global Buffer', () => {
+    const helloHash = '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824';
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('hashes standalone ArrayBuffer and Uint8Array inputs when Buffer is absent', async () => {
+        const bytes = new TextEncoder().encode('hello');
+        vi.stubGlobal('Buffer', undefined);
+        expect(await sha256Hex(bytes.buffer)).toBe(helloHash);
+        expect(await sha256Hex(bytes)).toBe(helloHash);
+    });
+
+    it('hashes only the selected nonzero-offset Uint8Array bytes', async () => {
+        const backing = new Uint8Array([0xff, 0x00, ...new TextEncoder().encode('hello'), 0xee, 0xdd]);
+        vi.stubGlobal('Buffer', undefined);
+        expect(await sha256Hex(backing.subarray(2, 7))).toBe(helloHash);
+    });
+
+    it('hashes the exact bounded DataView instead of its entire backing buffer', async () => {
+        const backing = new Uint8Array([0xff, 0x00, ...new TextEncoder().encode('hello'), 0xee, 0xdd]);
+        vi.stubGlobal('Buffer', undefined);
+        expect(await sha256Hex(new DataView(backing.buffer, 2, 5))).toBe(helloHash);
+    });
+
+    it('preserves the raw bytes of multibyte typed-array views', async () => {
+        const backing = new Uint8Array([0xff, 0x00, ...new TextEncoder().encode('hello!'), 0xee, 0xdd]);
+        vi.stubGlobal('Buffer', undefined);
+        expect(await sha256Hex(new Uint16Array(backing.buffer, 2, 3)))
+            .toBe('ce06092fb948d9ffac7d1a376e404b26b7575bcc11ee05a4615fef4fec3a308b');
+    });
+
+    it('respects an empty view even when the backing buffer contains bytes', async () => {
+        const backing = new Uint8Array([0xff, 0x00, 0xee]);
+        vi.stubGlobal('Buffer', undefined);
+        expect(await sha256Hex(new DataView(backing.buffer, 1, 0)))
+            .toBe('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855');
+    });
+
+    it('preserves canonical JPEG content hashes after metadata normalization', async () => {
+        const jpeg = new Uint8Array([
+            0xff, 0xd8, 0xff, 0xe1, 0x00, 0x04, 0x11, 0x22,
+            0xff, 0xda, 0x00, 0x04, 0x55, 0x66, 0x77, 0x88, 0xff, 0xd9,
+        ]);
+        vi.stubGlobal('Buffer', undefined);
+        expect(await hashImageBytes(jpeg))
+            .toBe('29e23f65903eb7504ced3090c5f3e156e45069cbc8bca8d8c9c189a8ebcf4d90');
     });
 });
 

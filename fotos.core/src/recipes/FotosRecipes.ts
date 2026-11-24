@@ -7,7 +7,7 @@
  * Keyed by contentHash (isId) -- all instances converge on the same object.
  *
  * FotosManifest: singleton versioned object listing all FotosEntry refs.
- * Fixed id 'fotos' ensures deterministic idHash across all instances.
+ * Legacy id 'fotos' is retained; admitted native owners use 'fotos:<Person id>'.
  * IdAccess grants on this manifest gate who can sync photo metadata.
  */
 import type {BLOB, CLOB, Person, Recipe, VersionNode} from '@refinio/one.core/lib/recipes.js';
@@ -23,6 +23,13 @@ import type {FotosMediaVariant} from './FotosMediaRecipes.js';
 // ---------------------------------------------------------------------------
 // TypeScript interfaces
 // ---------------------------------------------------------------------------
+
+export const FOTOS_MEDIA_SUBTYPES = [
+    'live-photo', 'hdr', 'panorama', 'screenshot', 'depth', 'burst', 'cinematic', 'high-frame-rate',
+] as const;
+export type FotosMediaSubtype = typeof FOTOS_MEDIA_SUBTYPES[number];
+export const MAX_FOTOS_ENTRY_TAGS = 64;
+export const MAX_FOTOS_TAG_LENGTH = 80;
 
 export interface FotosEntry {
     $type$: 'FotosEntry';
@@ -44,12 +51,19 @@ export interface FotosEntry {
     exifIso?: number;
     exifGpsLat?: number;
     exifGpsLon?: number;
+    exifGpsAlt?: number;
     exifWidth?: number;
     exifHeight?: number;
+    orientation?: number;
+    originalFilename?: string;
+    duration?: number;
+    favorite?: boolean;
+    mediaSubtypes?: Set<FotosMediaSubtype>;
     thumb?: SHA256Hash<BLOB>;
     variants?: Set<SHA256Hash<FotosMediaVariant>>;
     acquisitionObservations?: Set<SHA256Hash<ProvenanceObservation>>;
     faceCount?: number;
+    tags?: Set<string>;
 }
 
 export const FOTOS_AUTHENTICITY_SCHEME = 'fotos-authenticity-v1';
@@ -72,6 +86,27 @@ export interface FotosManifest {
     id: string;
     entries: Set<SHA256Hash<FotosEntry>>;
     authenticityAttestations?: Set<SHA256Hash<FotosAuthenticityAttestation>>;
+    collections?: Set<SHA256Hash<FotosCollection>>;
+    albumBindings?: Set<SHA256Hash<FotosGalleryAlbumBinding>>;
+}
+
+/** A collection in one owner's gallery. Members refer to media identities. */
+export interface FotosCollection {
+    $type$: 'FotosCollection';
+    $versionHash$?: SHA256Hash<VersionNode>;
+    id: string;
+    name: string;
+    photoHashes: Set<string>;
+}
+
+/** One native album source bound to an independent gallery collection identity. */
+export interface FotosGalleryAlbumBinding {
+    $type$: 'FotosGalleryAlbumBinding';
+    $versionHash$?: SHA256Hash<VersionNode>;
+    id: string;
+    collection: SHA256IdHash<FotosCollection>;
+    name: string;
+    photoHashes: Set<string>;
 }
 
 export type FotosShareScopeKind = 'gallery' | 'collection' | 'person';
@@ -153,6 +188,8 @@ declare module '@OneObjectInterfaces' {
     export interface OneIdObjectInterfaces {
         FotosEntry: Pick<FotosEntry, '$type$' | 'contentHash'>;
         FotosManifest: Pick<FotosManifest, '$type$' | 'id'>;
+        FotosCollection: Pick<FotosCollection, '$type$' | 'id'>;
+        FotosGalleryAlbumBinding: Pick<FotosGalleryAlbumBinding, '$type$' | 'id'>;
         FotosAuthenticityAttestation: Pick<FotosAuthenticityAttestation, '$type$' | 'id'>;
         FotosShareManifest: Pick<FotosShareManifest, '$type$' | 'id'>;
         FotosShareCertificate: Pick<FotosShareCertificate, '$type$' | 'id'>;
@@ -163,6 +200,8 @@ declare module '@OneObjectInterfaces' {
     export interface OneVersionedObjectInterfaces {
         FotosEntry: FotosEntry;
         FotosManifest: FotosManifest;
+        FotosCollection: FotosCollection;
+        FotosGalleryAlbumBinding: FotosGalleryAlbumBinding;
         FotosAuthenticityAttestation: FotosAuthenticityAttestation;
         FotosShareManifest: FotosShareManifest;
         FotosShareCertificate: FotosShareCertificate;
@@ -196,8 +235,14 @@ export const FotosEntryRecipe: Recipe = {
         {itemprop: 'exifIso', optional: true, itemtype: {type: 'integer'}},
         {itemprop: 'exifGpsLat', optional: true, itemtype: {type: 'number'}},
         {itemprop: 'exifGpsLon', optional: true, itemtype: {type: 'number'}},
+        {itemprop: 'exifGpsAlt', optional: true, itemtype: {type: 'number'}},
         {itemprop: 'exifWidth', optional: true, itemtype: {type: 'integer'}},
         {itemprop: 'exifHeight', optional: true, itemtype: {type: 'integer'}},
+        {itemprop: 'orientation', optional: true, itemtype: {type: 'integer'}},
+        {itemprop: 'originalFilename', optional: true, itemtype: {type: 'string'}},
+        {itemprop: 'duration', optional: true, itemtype: {type: 'number'}},
+        {itemprop: 'favorite', optional: true, itemtype: {type: 'boolean'}},
+        {itemprop: 'mediaSubtypes', optional: true, itemtype: {type: 'set', item: {type: 'string'}}},
         {itemprop: 'thumb', optional: true, itemtype: {type: 'referenceToBlob'}},
         {
             itemprop: 'variants',
@@ -208,7 +253,8 @@ export const FotosEntryRecipe: Recipe = {
             }
         },
         {itemprop: 'acquisitionObservations', optional: true, itemtype: {type: 'set', item: {type: 'referenceToObj', allowedTypes: new Set(['ProvenanceObservation'])}}},
-        {itemprop: 'faceCount', optional: true, itemtype: {type: 'integer'}}
+        {itemprop: 'faceCount', optional: true, itemtype: {type: 'integer'}},
+        {itemprop: 'tags', optional: true, itemtype: {type: 'set', item: {type: 'string'}}}
     ]
 };
 
@@ -219,7 +265,7 @@ export const FotosManifestRecipe: Recipe = {
         {
             itemprop: 'id',
             isId: true,
-            itemtype: {type: 'string', regexp: /^fotos$/}
+            itemtype: {type: 'string', regexp: /^fotos(?::[a-f0-9]{64})?$/}
         },
         {
             itemprop: 'entries',
@@ -235,7 +281,44 @@ export const FotosManifestRecipe: Recipe = {
                 type: 'set',
                 item: {type: 'referenceToObj', allowedTypes: new Set(['FotosAuthenticityAttestation'])}
             }
+        },
+        {
+            itemprop: 'collections',
+            optional: true,
+            itemtype: {
+                type: 'set',
+                item: {type: 'referenceToObj', allowedTypes: new Set(['FotosCollection'])}
+            }
+        },
+        {
+            itemprop: 'albumBindings',
+            optional: true,
+            itemtype: {
+                type: 'set',
+                item: {type: 'referenceToObj', allowedTypes: new Set(['FotosGalleryAlbumBinding'])}
+            }
         }
+    ]
+};
+
+export const FotosCollectionRecipe: Recipe = {
+    $type$: 'Recipe',
+    name: 'FotosCollection',
+    rule: [
+        {itemprop: 'id', isId: true, itemtype: {type: 'string'}},
+        {itemprop: 'name', itemtype: {type: 'string'}},
+        {itemprop: 'photoHashes', itemtype: {type: 'set', item: {type: 'string'}}}
+    ]
+};
+
+export const FotosGalleryAlbumBindingRecipe: Recipe = {
+    $type$: 'Recipe',
+    name: 'FotosGalleryAlbumBinding',
+    rule: [
+        {itemprop: 'id', isId: true, itemtype: {type: 'string'}},
+        {itemprop: 'collection', itemtype: {type: 'referenceToId', allowedTypes: new Set(['FotosCollection'])}},
+        {itemprop: 'name', itemtype: {type: 'string'}},
+        {itemprop: 'photoHashes', itemtype: {type: 'set', item: {type: 'string'}}}
     ]
 };
 
@@ -361,6 +444,8 @@ export const FotosSharePinProofRecipe: Recipe = {
 export const FotosRecipes: Recipe[] = [
     FotosEntryRecipe,
     FotosManifestRecipe,
+    FotosCollectionRecipe,
+    FotosGalleryAlbumBindingRecipe,
     FotosAuthenticityAttestationRecipe,
     FotosShareManifestRecipe,
     FotosShareCertificateRecipe,

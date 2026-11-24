@@ -1,7 +1,6 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "baseUrl": ".",
     "strict": true,
     "module": "esnext",
     "esModuleInterop": true,
@@ -14,12 +13,6 @@
       ],
       "@/*": [
         "./*"
-      ],
-      "@refinio/fotos.core": [
-        "../fotos.core/src/index.ts"
-      ],
-      "@refinio/fotos.core/*": [
-        "../fotos.core/src/*"
       ],
       "@refinio/fotos.ui": [
         "../fotos.ui/src/index.ts"

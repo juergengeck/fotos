@@ -15,13 +15,17 @@
       "import": "./dist/faces.js",
       "types": "./dist/faces.d.ts"
     },
+    "./similarity": {
+      "import": "./dist/similarity.js",
+      "types": "./dist/similarity.d.ts"
+    },
     "./catalog": {
       "import": "./dist/fotos-catalog.js",
       "types": "./dist/fotos-catalog.d.ts"
     },
-    "./similarity": {
-      "import": "./dist/similarity.js",
-      "types": "./dist/similarity.d.ts"
+    "./content-hash": {
+      "types": "./dist/content-hash.d.ts",
+      "import": "./dist/content-hash.js"
     },
     "./ingest": {
       "import": "./dist/ingest/index.js",
@@ -43,9 +47,17 @@
       "import": "./dist/shared-fotos-file-system.js",
       "types": "./dist/shared-fotos-file-system.d.ts"
     },
+    "./share-publication": {
+      "types": "./dist/share-publication.d.ts",
+      "import": "./dist/share-publication.js"
+    },
     "./sync-rules": {
       "import": "./dist/sync-rules.js",
       "types": "./dist/sync-rules.d.ts"
+    },
+    "./one-core-config": {
+      "import": "./dist/one-core-config.js",
+      "types": "./dist/one-core-config.d.ts"
     }
   },
   "files": [
@@ -60,6 +72,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@refinio/media.core": "workspace:*",
     "@refinio/meaning.core": "workspace:*",
     "@refinio/one.core": "workspace:*",
     "@refinio/trust.core": "workspace:*",

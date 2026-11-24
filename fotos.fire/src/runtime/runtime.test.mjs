@@ -4,12 +4,12 @@ import {build} from 'esbuild';
 import {fileURLToPath} from 'node:url';
 
 const compiled = await build({
-  stdin: {contents: "export * from './RuntimeController'; export * from './media'; export * from './identity'; export * from './changes';",
+  stdin: {contents: "export * from './RuntimeController'; export * from './media'; export * from './identity'; export * from './changes'; export * from './schema';",
     resolveDir: fileURLToPath(new URL('.', import.meta.url)), loader: 'ts'},
   bundle: true, write: false, format: 'esm', platform: 'node', logLevel: 'silent',
 });
 const {RuntimeController, BlobMediaCache, blobCacheName, projectVerifiedPhotos,
-  loadDeviceIdentity, DEVICE_IDENTITY_KEY, classifyFotosArrival} = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString('base64')}`);
+  loadDeviceIdentity, openDeviceAccount, DEVICE_IDENTITY_KEY, DEVICE_STORAGE_DIRECTORY, classifyFotosArrival, admitRuntimeSchema} = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString('base64')}`);
 
 function deferred() {
   let resolve;
@@ -34,9 +34,13 @@ test('first startup persists secure identity before returning; later startup res
   let generated = 0;
   const random = async size => { generated++; return Uint8Array.from({length: size}, (_, index) => index); };
   const first = await loadDeviceIdentity(store, random);
-  assert.equal(JSON.parse(saved.get(DEVICE_IDENTITY_KEY)).secret, first.secret);
-  assert.equal(first.secret.length, 64);
-  assert.deepEqual(await loadDeviceIdentity(store, random), first);
+  assert.equal(JSON.parse(saved.get(DEVICE_IDENTITY_KEY)).secret, first.credentials.secret);
+  assert.equal(first.credentials.secret.length, 64);
+  assert.equal(first.provisioning, 'pending');
+  assert.equal(JSON.parse(saved.get(DEVICE_IDENTITY_KEY)).provisioning, 'pending');
+  const restored = await loadDeviceIdentity(store, random);
+  assert.deepEqual(restored.credentials, first.credentials);
+  assert.equal(restored.provisioning, 'pending');
   assert.equal(generated, 1);
 });
 
@@ -249,11 +253,213 @@ test('blob-only arrivals retain the authorized gallery while native materializat
 
 test('native arrivals distinguish authorization evidence from blob and variant materialization', () => {
   for (const type of ['FotosShareCertificate', 'FotosShareCertificateChain', 'FotosShareManifest',
-    'Signature', 'Profile', 'Someone', 'Keys', 'TrustKeysCertificate']) {
+    'Signature', 'Profile', 'Someone', 'Keys', 'TrustKeysCertificate', 'Certificate',
+    'IssuerKeyBundleStatus', 'EffectiveIssuerKeyHead', 'PersonalTrustAttestation',
+    'PersonalTrustProjection', 'OwnerCredentialTrustProjection', 'OwnerCredentialTrustState']) {
     assert.equal(classifyFotosArrival({kind: 'object', type}), 'authorization');
   }
   assert.equal(classifyFotosArrival({kind: 'blob', type: 'BLOB'}), 'media');
   assert.equal(classifyFotosArrival({kind: 'object', type: 'FotosMediaVariant'}), 'media');
   assert.equal(classifyFotosArrival({kind: 'object', type: 'FotosEntry'}), 'media');
   assert.equal(classifyFotosArrival({kind: 'object', type: 'Unrelated'}), undefined);
+});
+
+
+test('legacy and explicitly established identities never register a replacement after login failure', async () => {
+  for (const marker of [undefined, 'established']) {
+    const original = {version: 1, email: `fire-${'1'.repeat(32)}@device.fotos.one`,
+      secret: '2'.repeat(64), instanceName: 'Fotos Fire TV', ...(marker ? {provisioning: marker} : {})};
+    const serialized = JSON.stringify(original);
+    let writes = 0;
+    const store = {getItemAsync: async key => {
+      assert.equal(key, 'fotos.fire.local-identity.v1');
+      return serialized;
+    }, setItemAsync: async () => { writes++; }};
+    const loaded = await loadDeviceIdentity(store, async () => { throw new Error('must not generate new credentials'); });
+    const logins = [];
+    let provisioningCalls = 0;
+    const auth = {login: async (...args) => { logins.push(args); throw new Error('Existing storage unavailable'); },
+      loginOrRegister: async () => { provisioningCalls++; }};
+    await assert.rejects(openDeviceAccount(auth, loaded, store,
+      () => { throw new Error('authentication never succeeded'); }), /Existing storage unavailable/);
+    assert.deepEqual(logins, [[original.email, original.secret, original.instanceName]]);
+    assert.equal(provisioningCalls, 0);
+    assert.equal(writes, 0);
+    assert.equal(loaded.provisioning, 'established');
+  }
+  assert.equal(DEVICE_STORAGE_DIRECTORY, 'fotos.fire.storage');
+});
+
+test('a process restart before ONE storage creation provisions with the same durable credentials', async () => {
+  let serialized;
+  let entropyCalls = 0;
+  const store = {getItemAsync: async () => serialized ?? null,
+    setItemAsync: async (_key, value) => { serialized = value; }};
+  const first = await loadDeviceIdentity(store, async size => { entropyCalls++; return new Uint8Array(size); });
+  assert.equal(JSON.parse(serialized).provisioning, 'pending');
+  // The process stops here, before any ONE storage creation. Its replacement reads
+  // the durable pending marker and must use exactly those same credentials.
+  const restarted = await loadDeviceIdentity(store, async () => { throw new Error('must not regenerate'); });
+  const registrations = [];
+  let authenticated = false;
+  await openDeviceAccount({login: async () => { throw new Error('pending first provisioning needs existence-aware admission'); },
+    loginOrRegister: async (...args) => {
+      assert.equal(JSON.parse(serialized).provisioning, 'pending');
+      registrations.push(args);
+    }}, restarted, store, () => { authenticated = true; });
+  assert.deepEqual(registrations, [[first.credentials.email, first.credentials.secret, first.credentials.instanceName]]);
+  assert.equal(entropyCalls, 1);
+  assert.equal(authenticated, true);
+  assert.equal(JSON.parse(serialized).provisioning, 'established');
+  assert.equal(restarted.provisioning, 'established');
+  assert.equal('created' in JSON.parse(serialized), false);
+  const established = await loadDeviceIdentity(store, async () => { throw new Error('must not regenerate'); });
+  assert.deepEqual(established.credentials, first.credentials);
+  assert.equal(established.provisioning, 'established');
+});
+
+test('registration failure preserves pending credentials and surfaces the auth owner error', async () => {
+  let serialized;
+  const store = {getItemAsync: async () => serialized ?? null,
+    setItemAsync: async (_key, value) => { serialized = value; }};
+  const first = await loadDeviceIdentity(store, async size => new Uint8Array(size));
+  const failure = new Error('Instance creation interrupted');
+  await assert.rejects(openDeviceAccount({login: async () => {},
+    loginOrRegister: async () => { throw failure; }}, first, store,
+  () => { throw new Error('authentication never succeeded'); }), error => error === failure);
+  assert.equal(JSON.parse(serialized).provisioning, 'pending');
+  const restarted = await loadDeviceIdentity(store, async () => { throw new Error('must not regenerate'); });
+  assert.deepEqual(restarted.credentials, first.credentials);
+  assert.equal(restarted.provisioning, 'pending');
+});
+
+test('a completion-marker write failure reopens a fully provisioned instance without replacing its identity', async () => {
+  let serialized;
+  let failCompletion = true;
+  const store = {getItemAsync: async () => serialized ?? null, setItemAsync: async (_key, value) => {
+    if (JSON.parse(value).provisioning === 'established' && failCompletion) throw new Error('Keystore write interrupted');
+    serialized = value;
+  }};
+  const first = await loadDeviceIdentity(store, async size => new Uint8Array(size));
+  let instanceExists = false;
+  let registrations = 0;
+  let existingLogins = 0;
+  let authenticated = 0;
+  const auth = {login: async () => { throw new Error('pending provisioning must resolve interrupted registration'); },
+    loginOrRegister: async (...credentials) => {
+      assert.deepEqual(credentials, [first.credentials.email, first.credentials.secret, first.credentials.instanceName]);
+      if (instanceExists) existingLogins++;
+      else { registrations++; instanceExists = true; }
+    }};
+  await assert.rejects(openDeviceAccount(auth, first, store, () => { authenticated++; }), /Keystore write interrupted/);
+  assert.equal(authenticated, 1, 'backend owns logout cleanup before completion persistence can fail');
+  assert.equal(JSON.parse(serialized).provisioning, 'pending');
+  failCompletion = false;
+  const restarted = await loadDeviceIdentity(store, async () => { throw new Error('must not regenerate'); });
+  await openDeviceAccount(auth, restarted, store, () => { authenticated++; });
+  assert.equal(registrations, 1);
+  assert.equal(existingLogins, 1);
+  assert.equal(authenticated, 2);
+  assert.equal(JSON.parse(serialized).provisioning, 'established');
+});
+
+test('current runtime schema adds only missing recipe hashes and new index types, preserving stored definitions', async () => {
+  const oldRecipe = {$type$: 'Recipe', name: 'Existing', rule: []};
+  const newRecipe = {$type$: 'Recipe', name: 'NewTrustEvidence', rule: []};
+  const current = {recipe: new Set(['old-hash']),
+    enabledReverseMapTypes: new Map([['Existing', new Set(['subject'])], ['OldOnly', new Set(['owner'])]]),
+    enabledReverseMapTypesForIdObjects: new Map([['Existing', new Set(['id'])]])};
+  const desired = {recipes: [oldRecipe, newRecipe],
+    reverseMaps: new Map([['Existing', new Set(['subject'])], ['NewTrustEvidence', new Set(['subject'])]]),
+    reverseMapsForIdObjects: new Map([['Existing', new Set(['id'])], ['NewTrustEvidence', new Set(['id'])]])};
+  const writes = [];
+  await admitRuntimeSchema(current, desired, {
+    hashRecipe: async recipe => recipe === oldRecipe ? 'old-hash' : 'new-hash',
+    publish: async additions => { writes.push(additions); },
+  });
+  assert.equal(writes.length, 1);
+  assert.deepEqual(writes[0].recipes, [newRecipe]);
+  assert.deepEqual([...writes[0].enabledReverseMapTypes], [['NewTrustEvidence', new Set(['subject'])]]);
+  assert.deepEqual([...writes[0].enabledReverseMapTypesForIdObjects], [['NewTrustEvidence', new Set(['id'])]]);
+  assert.deepEqual([...current.enabledReverseMapTypes], [['Existing', new Set(['subject'])], ['OldOnly', new Set(['owner'])]]);
+  assert.deepEqual([...current.recipe], ['old-hash']);
+  // The exact persisted schema on the next startup requires no additional write.
+  await admitRuntimeSchema({recipe: new Set(['old-hash', 'new-hash']),
+    enabledReverseMapTypes: new Map([...current.enabledReverseMapTypes, ...writes[0].enabledReverseMapTypes]),
+    enabledReverseMapTypesForIdObjects: new Map([...current.enabledReverseMapTypesForIdObjects, ...writes[0].enabledReverseMapTypesForIdObjects])},
+  desired, {hashRecipe: async recipe => recipe === oldRecipe ? 'old-hash' : 'new-hash',
+    publish: async () => { throw new Error('schema is already admitted'); }});
+});
+
+test('conflicting existing object or identity index definitions stop admission before any persistence', async () => {
+  for (const conflictingField of ['reverseMaps', 'reverseMapsForIdObjects']) {
+    const current = {recipe: new Set(),
+      enabledReverseMapTypes: new Map([['Existing', new Set(['subject'])]]),
+      enabledReverseMapTypesForIdObjects: new Map([['Existing', new Set(['id'])]])};
+    const desired = {recipes: [], reverseMaps: new Map([['Existing', new Set(['subject'])]]),
+      reverseMapsForIdObjects: new Map([['Existing', new Set(['id'])]])};
+    desired[conflictingField].get('Existing').add('new-property');
+    let writes = 0;
+    await assert.rejects(admitRuntimeSchema(current, desired, {
+      hashRecipe: async () => { throw new Error('conflicts must fail before recipe hashing'); },
+      publish: async () => { writes++; },
+    }), /saved Fire TV reverse-map definition conflicts for Existing/);
+    assert.equal(writes, 0);
+    assert.deepEqual([...current.enabledReverseMapTypes.get('Existing')], ['subject']);
+    assert.deepEqual([...current.enabledReverseMapTypesForIdObjects.get('Existing')], ['id']);
+  }
+});
+
+test('schema persistence failure remains a startup failure and never mutates the admitted preimage', async () => {
+  const current = {recipe: new Set(['existing-hash']),
+    enabledReverseMapTypes: new Map(), enabledReverseMapTypesForIdObjects: new Map()};
+  const failure = new Error('Instance publication failed');
+  await assert.rejects(admitRuntimeSchema(current, {recipes: [],
+    reverseMaps: new Map([['NewTrustEvidence', new Set(['subject'])]]), reverseMapsForIdObjects: new Map()}, {
+    hashRecipe: async () => '', publish: async () => { throw failure; },
+  }), error => error === failure);
+  assert.equal(current.enabledReverseMapTypes.size, 0);
+  assert.deepEqual([...current.recipe], ['existing-hash']);
+});
+
+
+test('an auth-owner partial-storage failure is visible in the app and preserves pending credentials without replacement or erase', async () => {
+  const pending = {version: 1, email: `fire-${'3'.repeat(32)}@device.fotos.one`,
+    secret: '4'.repeat(64), instanceName: 'Fotos Fire TV', provisioning: 'pending'};
+  const serialized = JSON.stringify(pending);
+  let writes = 0;
+  let replacements = 0;
+  let erases = 0;
+  let authenticated = false;
+  const ownerFailure = new Error('[one.core] Required existing Instance record is missing; refusing identity creation');
+  const store = {getItemAsync: async () => serialized, setItemAsync: async () => { writes++; }};
+  const auth = {
+    login: async () => { throw new Error('pending state must use the canonical pending API'); },
+    loginOrRegister: async (...credentials) => {
+      assert.deepEqual(credentials, [pending.email, pending.secret, pending.instanceName]);
+      // Canonical instanceExists sees the partial directory, then strict login
+      // refuses its missing Instance record. The app must retain that failure.
+      throw ownerFailure;
+    },
+    register: async () => { replacements++; },
+    erase: async () => { erases++; },
+    logoutAndErase: async () => { erases++; },
+  };
+  const runtime = new RuntimeController(backend({open: async () => {
+    const loaded = await loadDeviceIdentity(store, async () => { throw new Error('must not generate replacement credentials'); });
+    await openDeviceAccount(auth, loaded, store, () => { authenticated = true; });
+  }}));
+  await runtime.start();
+  assert.equal(runtime.getSnapshot().status, 'error');
+  assert.equal(runtime.getSnapshot().error, ownerFailure.message);
+  assert.deepEqual(runtime.getSnapshot().photos, []);
+  assert.equal(authenticated, false);
+  assert.equal(writes, 0);
+  assert.equal(replacements, 0);
+  assert.equal(erases, 0);
+  const preserved = await loadDeviceIdentity(store, async () => { throw new Error('must not regenerate'); });
+  assert.equal(preserved.provisioning, 'pending');
+  assert.equal(preserved.credentials.secret, pending.secret);
+  assert.equal(await store.getItemAsync(DEVICE_IDENTITY_KEY), serialized);
+  await runtime.dispose();
 });

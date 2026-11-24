@@ -145,6 +145,7 @@ export interface FotosQaOperationHandlers {
         transitions: Array<{personId: string; status: 'active' | 'revoked'}>;
     }>;
     createPairingInvitation(): Promise<Invitation>;
+    createDeviceEnrollmentInvitation(): Promise<{url: string}>;
     acceptPairingInvitation(params: {invitation: Invitation}): Promise<{
         accepted: true;
         publicationIdentity: string;
@@ -403,6 +404,12 @@ export class FotosQaOperation {
         });
     }
 
+    /** Use the same own-device invitation operation as the Devices UI. */
+    async createDeviceEnrollmentInvitation(_params: Record<string, never> = {}) {
+        return await this._run('createDeviceEnrollmentInvitation', () =>
+            this._requireHandlers().createDeviceEnrollmentInvitation());
+    }
+
     async acceptPairingInvitation(params: {invitation: Invitation}) {
         return await this._run(
             'acceptPairingInvitation',
@@ -412,6 +419,20 @@ export class FotosQaOperation {
 
     async getOperationSnapshot(_params: Record<string, never> = {}): Promise<FotosQaOperationSnapshot> {
         return this._snapshot();
+    }
+
+    /** Observe a concrete photo arrival through the application's gallery projection. */
+    async waitForGalleryPhoto(params: {name: string; timeoutMs?: number}) {
+        if (typeof params.name !== 'string' || !params.name.trim()) throw new Error('A photo name is required');
+        const current = fotosQaAppState.getSnapshot();
+        const existing = current.gallery.items.find(photo => photo.name === params.name);
+        if (existing) return existing;
+        const snapshot = await fotosQaAppState.waitFor(state =>
+            state.gallery.items.some(photo => photo.name === params.name), {
+            afterStateRevision: current.stateRevision,
+            timeoutMs: params.timeoutMs,
+        });
+        return snapshot.gallery.items.find(photo => photo.name === params.name)!;
     }
 
     async waitForAppReady(params: {timeoutMs?: number} = {}): Promise<FotosQaOperationSnapshot> {

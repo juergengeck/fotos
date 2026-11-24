@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest';
+import {readFileSync} from 'node:fs';
 import {
     isJpeg,
+    matchesImageContentHash,
     normalizeImageBytesForContentHash,
     stripJpegMetadata,
 } from './content-hash.js';
+import {hashImageBytes, sha256Hex} from './ingest/hash.js';
+
+const fixtureDirectory = new URL('../../../one/packages/media.core/test/fixtures/bitfield-hash/', import.meta.url);
+const fixtures: Array<{file: string; contentHash: string}> = JSON.parse(
+    readFileSync(new URL('hashes.json', fixtureDirectory), 'utf8'),
+);
 
 describe('content-hash normalization', () => {
     it('detects jpeg headers', () => {
@@ -27,8 +35,26 @@ describe('content-hash normalization', () => {
         ]);
     });
 
-    it('only normalizes jpeg payloads', () => {
+    it('preserves bytes of unsupported and incomplete images', () => {
         const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
         expect(normalizeImageBytesForContentHash(png)).toBe(png);
+    });
+
+    it.each(fixtures)('matches the shared digest for $file', async ({file, contentHash}) => {
+        const bytes = readFileSync(new URL(file, fixtureDirectory));
+        expect(await hashImageBytes(bytes)).toBe(contentHash);
+    });
+
+    it('verifies repacked HEIC originals by content and preserves exact legacy references', async () => {
+        const original = readFileSync(new URL('grid.heic', fixtureDirectory));
+        const repacked = readFileSync(new URL('grid-metadata-repacked.heic', fixtureDirectory));
+        const differentTile = readFileSync(new URL('grid-changed-tile.heic', fixtureDirectory));
+        const canonical = await hashImageBytes(original);
+        const legacy = await sha256Hex(original);
+        expect(legacy).not.toBe(canonical);
+        await expect(matchesImageContentHash(repacked, canonical, sha256Hex)).resolves.toBe(true);
+        await expect(matchesImageContentHash(differentTile, canonical, sha256Hex)).resolves.toBe(false);
+        await expect(matchesImageContentHash(original, legacy, sha256Hex)).resolves.toBe(true);
+        await expect(matchesImageContentHash(repacked, legacy, sha256Hex)).resolves.toBe(false);
     });
 });

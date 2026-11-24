@@ -9,10 +9,17 @@ const workspaceRoot = path.resolve(projectRoot, '../..');
 const vgerRoot = path.resolve(workspaceRoot, 'vger');
 const oneRoot = path.resolve(workspaceRoot, 'one');
 const fotosRoot = path.resolve(projectRoot, '..');
+const expoRoot = path.resolve(fotosRoot, 'fotos.expo');
 
-config.watchFolders = [vgerRoot, oneRoot, fotosRoot];
+config.watchFolders = [
+  vgerRoot,
+  oneRoot,
+  path.resolve(fotosRoot, 'fotos.ui'),
+  path.resolve(fotosRoot, 'fotos.gallery'),
+  ...(projectRoot === expoRoot ? [] : [expoRoot]),
+];
 
-// Use the vger.expo Babel config for all transformed files (including workspace packages).
+// Use the Fotos Babel config for all transformed files (including workspace packages).
 // Required so NativeWind transforms are applied to shared RN components from vger.ui.
 config.transformer.enableBabelRCLookup = false;
 
@@ -25,8 +32,6 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, 'node_modules'),
 ];
 
-// Expo 54 handles monorepo resolution automatically.
-// We only need the crypto shim for react-native.
 // Platform initialization is handled by importing @refinio/one.core-expo/load-expo
 
 // Paths to canonical modules (must be single instance)
@@ -59,28 +64,14 @@ const NODE_ONLY_MODULES = [
 const nodeOnlyStub = path.resolve(__dirname, 'stubs/node-only-stub.js');
 const WORKSPACE_PREFIX_ALIASES = {
   '@vger/vger.ui/': path.resolve(oneRoot, 'packages/vger.ui/src/'),
-  '@refinio/coding.core/': path.resolve(oneRoot, 'packages/coding.core/src/'),
-  '@refinio/fotos.core/': path.resolve(fotosRoot, 'fotos.core/src/'),
   '@refinio/fotos.ui/': path.resolve(fotosRoot, 'fotos.ui/src/'),
   '@refinio/fotos.gallery/': path.resolve(fotosRoot, 'fotos.gallery/src/'),
-  '@refinio/source.openlegal/': path.resolve(oneRoot, 'packages/source.openlegal/src/'),
-  '@refinio/source.wikipedia/': path.resolve(oneRoot, 'packages/source.wikipedia/src/'),
-  '@refinio/trust.pdf/': path.resolve(oneRoot, 'packages/trust.pdf/dist/'),
 };
 const WORKSPACE_EXACT_ALIASES = {
-  '@refinio/fotos.core/shared-filesystem': path.resolve(fotosRoot, 'fotos.core/src/shared-fotos-file-system.ts'),
-  '@refinio/fotos.core/filesystem': path.resolve(fotosRoot, 'fotos.core/src/fotos-file-system.ts'),
-  '@refinio/provenance.core': path.resolve(oneRoot, 'packages/provenance.core/src/index.ts'),
-  '@refinio/provenance.core/storage-one': path.resolve(oneRoot, 'packages/provenance.core/src/storage-one.ts'),
   '@vger/vger.ui/native/devices': path.resolve(oneRoot, 'packages/vger.ui/src/components/device/DevicesManager.native.tsx'),
   '@vger/vger.ui': path.resolve(oneRoot, 'packages/vger.ui'),
-  '@refinio/coding.core': path.resolve(oneRoot, 'packages/coding.core/src/index.ts'),
-  '@refinio/fotos.core': path.resolve(fotosRoot, 'fotos.core/src/index.ts'),
   '@refinio/fotos.ui': path.resolve(fotosRoot, 'fotos.ui/src/index.ts'),
   '@refinio/fotos.gallery': path.resolve(fotosRoot, 'fotos.gallery/src/index.ts'),
-  '@refinio/source.openlegal': path.resolve(oneRoot, 'packages/source.openlegal/src/index.ts'),
-  '@refinio/source.wikipedia': path.resolve(oneRoot, 'packages/source.wikipedia/src/index.ts'),
-  '@refinio/trust.pdf': path.resolve(oneRoot, 'packages/trust.pdf/dist/index.js'),
 };
 const VENDORED_EXACT_ALIASES = {
   '@refinio/one.core-expo/load-expo': path.resolve(projectRoot, 'node_modules/@refinio/one.core-expo/dist/load-expo.js'),
@@ -92,10 +83,7 @@ const VENDORED_EXACT_ALIASES = {
     oneRoot,
     'packages/cube.core/src/dimensions/DimensionStateError.ts'
   ),
-  '@refinio/vger.agent/services/AgentOrchestrationRecorderService.js': path.resolve(
-    oneRoot,
-    'packages/vger.agent/src/services/AgentOrchestrationRecorderService.ts'
-  ),
+
 };
 const VENDORED_SINGLETON_SCOPES = [
   '@refinio/',
@@ -126,7 +114,6 @@ config.resolver.extraNodeModules = {
   '@refinio/one.core-expo': path.resolve(oneRoot, 'packages/one.core-expo'),
   '@refinio/one.core-expo/load-expo': path.resolve(oneRoot, 'packages/one.core-expo/src/load-expo.ts'),
   '@refinio/meaning.core': path.resolve(oneRoot, 'packages/meaning.core'),
-  '@refinio/fotos.core': path.resolve(fotosRoot, 'fotos.core/src'),
   '@refinio/fotos.ui': path.resolve(fotosRoot, 'fotos.ui/src'),
   '@refinio/fotos.gallery': path.resolve(fotosRoot, 'fotos.gallery/src'),
   '@shopify/flash-list': path.resolve(projectRoot, 'node_modules/@shopify/flash-list'),
