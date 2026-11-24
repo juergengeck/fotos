@@ -88,3 +88,9 @@ declare module 'expo-file-system/legacy' {
     options?: ReadingOptions
   ): Promise<string>;
 }
+
+declare module '*.png' {
+  import type { ImageSourcePropType } from 'react-native';
+  const source: ImageSourcePropType;
+  export default source;
+}

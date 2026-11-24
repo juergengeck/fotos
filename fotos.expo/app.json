@@ -41,7 +41,7 @@
           "image": "./assets/splash-icon.png",
           "imageWidth": 180,
           "resizeMode": "contain",
-          "backgroundColor": "#111111"
+          "backgroundColor": "#ffffff"
         }
       ],
       "./plugins/withFotosShareExtension",

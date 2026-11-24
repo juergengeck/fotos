@@ -299,7 +299,11 @@ describe('FotosSettings identity flows', () => {
     mockGlueSignIn.mockResolvedValue(undefined);
     setupHookState({ stateValues: [false, null] });
     const tree = renderNodes(GlueAccountSignIn({loginHint: '  Alice@glue.one  '}));
-    await findButtonByText(tree, 'glue.one').props.onClick();
+    const button = findHostNode(tree, node => node.type === 'button' && node.props['aria-label'] === 'Sign in with glue.one');
+    expect(button).toBeDefined();
+    const icon = findHostNode(button!.children, node => node.type === 'img');
+    expect(icon?.props.src).toBe(`${import.meta.env.BASE_URL}glueone-icon.svg`);
+    await button!.props.onClick();
     expect(mockGlueSignIn).toHaveBeenCalledWith({ loginHint: 'Alice@glue.one', signal: expect.any(AbortSignal) });
     expect(window.location.reload).toHaveBeenCalledTimes(1);
   });
@@ -317,7 +321,8 @@ describe('FotosSettings identity flows', () => {
     mockGlueSignIn.mockRejectedValue(new Error('Invalid Glue signature'));
     setupHookState({ stateValues: [false, null] });
     const tree = renderNodes(GlueAccountSignIn({}));
-    await findButtonByText(tree, 'glue.one').props.onClick();
+    const button = findHostNode(tree, node => node.type === 'button' && node.props['aria-label'] === 'Sign in with glue.one');
+    await button!.props.onClick();
     expect(stateSetters[1]).toHaveBeenCalledWith('Invalid Glue signature');
     expect(window.location.reload).not.toHaveBeenCalled();
   });

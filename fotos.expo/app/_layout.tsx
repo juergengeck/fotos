@@ -61,9 +61,11 @@ function LoginScreen({ busy: localBusy, onLogin, onGlueLogin }: LoginProps) {
       >
         <View style={{ alignItems: 'center', gap: 10 }}>
           <Image
-            source={require('../assets/icon.png')}
-            style={{ width: 96, height: 96, borderRadius: 24 }}
-            resizeMode="cover"
+            source={require('../assets/login-logo.png')}
+            accessibilityLabel="fotos.one"
+            accessibilityRole="image"
+            style={{ width: 96, height: 96 }}
+            resizeMode="contain"
           />
           <Text style={{ fontSize: 32, fontWeight: '700', color: palette.text }}>
             fotos.one

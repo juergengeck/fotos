@@ -329,7 +329,7 @@ export default defineConfig({
                 // Keep the worker limited to static icons. HTML and hashed
                 // bundles stay network-fetched so a rollout race can never
                 // leave the app shell stuck on stale assets.
-                globPatterns: ['cam.svg', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'manifest.webmanifest'],
+                globPatterns: ['cam.svg', 'glueone-icon.svg', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'manifest.webmanifest'],
                 globIgnores: ['**/_worker.js'],
             },
         }),
