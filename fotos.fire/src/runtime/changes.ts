@@ -8,11 +8,13 @@ const MEDIA_TYPES = new Set(['FotosEntry', 'FotosMediaVariant']);
 const TRUST_TYPES = new Set([
   'Profile', 'Someone', 'Person', 'Keys', 'SignKey', 'TrustKeysCertificate',
   'RightToDeclareTrustedKeysForSelfCertificate', 'RightToDeclareTrustedKeysForEverybodyCertificate',
+  'Certificate', 'CertificateRegistry', 'PublicKeyTrustIndex', 'TrustRelationship',
+  'IssuerKeyRootAuthority', 'IssuerKeyRootSelection', 'IssuerKeyCertificateBundle',
+  'IssuerKeyBundleStatus', 'EffectiveIssuerKeyHead', 'IssuerKeyLifecycleState',
+  'PersonalTrustAttestation', 'PersonalTrustAttestationBundle', 'PersonalTrustBundleStatus',
+  'PersonalTrustDelegation', 'PersonalTrustPolicy', 'PersonalTrustProjection',
+  'PersonalTrustSource', 'PersonalTrustState', 'OwnerCredentialTrustProjection', 'OwnerCredentialTrustState',
 ]);
-
-export function isTrustEvidenceType(type: string): boolean {
-  return TRUST_TYPES.has(type) || type === 'Signature';
-}
 
 export function classifyFotosArrival(imported: {kind: string; type: string}): FireTvChange | undefined {
   if (AUTHORIZATION_TYPES.has(imported.type) || TRUST_TYPES.has(imported.type)) return 'authorization';
