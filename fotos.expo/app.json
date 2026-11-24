@@ -11,7 +11,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "one.fotos",
       "appleTeamId": "26W8AC52QS",
-      "buildNumber": "2026112303",
+      "buildNumber": "2026112403",
       "infoPlist": {
         "NSBonjourServices": [
           "_one-refinio._udp"
@@ -58,6 +58,9 @@
       "expo-font"
     ],
     "extra": {
+      "glueAuthorityRootPublicKeys": [
+        "4d5130b4666b4fb30b5b905fc51b9bbb44a4b3eed14b05b3cd1f4a54bdbd1543"
+      ],
       "router": {},
       "eas": {
         "projectId": "fotos-expo-template"

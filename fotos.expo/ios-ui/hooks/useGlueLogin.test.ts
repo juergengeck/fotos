@@ -3,7 +3,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 const harness = vi.hoisted(() => ({
   setters: [] as Array<ReturnType<typeof vi.fn>>, cleanup: undefined as undefined | (() => void),
   ref: {current: null as AbortController | null},
-  login: vi.fn(), remember: vi.fn(), prepare: vi.fn(),
+  signIn: vi.fn(), remember: vi.fn(), prepare: vi.fn(),
 }));
 vi.mock('react', () => ({
   useRef: () => harness.ref,
@@ -11,83 +11,107 @@ vi.mock('react', () => ({
   useEffect: (effect: () => void | (() => void)) => {harness.cleanup = effect() || undefined;},
   useCallback: (callback: unknown) => callback,
 }));
-vi.mock('../services/glue-login', () => ({loginWithGlue: harness.login, prepareGlueSession: harness.prepare}));
+vi.mock('../services/glue-login', () => ({
+  signInWithGlueCanonical: harness.signIn,
+  prepareGlueSession: harness.prepare,
+}));
 import {useGlueLogin} from './useGlueLogin';
 
-beforeEach(() => {harness.ref.current = null; harness.setters.length = 0; harness.cleanup = undefined; harness.login.mockReset(); harness.remember.mockReset(); harness.prepare.mockReset(); harness.prepare.mockReturnValue(harness.remember);});
-afterEach(() => {harness.cleanup?.();});
-describe('Expo Glue login UI state', () => {
-  it('opens distinct verified subjects even when their account names differ from the hint', async () => {
-    const accountNames = [
-      'gecko@glue.one', 'gecko@other.one',
-      'alice-smith@glue.one', 'alicesmith@glue.one',
-      'a+b@glue.one', 'ab@glue.one',
-    ];
-    const onLogin = vi.fn(async () => {});
-    const hook = useGlueLogin(onLogin);
-    for (const [index, displayName] of accountNames.entries()) {
-      const personId = (index + 1).toString(16).repeat(64);
-      const secret = `secret-${index}`;
-      harness.login.mockResolvedValue({
-        localName: `glue:${personId}`, secret,
-        identity: { personId, displayName, pubkey: 'verified-key', authenticatedAt: 1 },
-      });
-      await hook.signIn('different optional prefill');
-      expect(onLogin).toHaveBeenLastCalledWith(`glue:${personId}`, secret);
-      expect(harness.remember).toHaveBeenLastCalledWith(personId);
-    }
-    expect(onLogin).toHaveBeenCalledTimes(accountNames.length);
-    expect(harness.login.mock.calls.every(([options]) => options.loginHint === 'different optional prefill')).toBe(true);
-    expect(harness.setters[1]!.mock.calls).toEqual(accountNames.map(() => [null]));
-  });
+const canonical = {
+  identity: 'gecko@glue.one',
+  personId: 'ab'.repeat(32),
+  instanceId: 'cd'.repeat(32),
+  email: 'gecko@glue.one',
+  instanceName: 'fotos-expo-12345678-1234-4123-8123-1234567890ab',
+  secret: '98'.repeat(32),
+};
 
-  it('shows progress and logs in using only verified subject credentials', async () => {
-    const onLogin = vi.fn(async () => {});
-    harness.login.mockResolvedValue({localName: 'glue:verified-subject', secret: 'random-local-secret', identity: {personId: 'verified-subject'}});
-    const hook = useGlueLogin(onLogin);
-    await hook.signIn('untrusted prefill');
-    expect(harness.login).toHaveBeenCalledWith({loginHint: 'untrusted prefill', signal: expect.any(AbortSignal)});
-    expect(onLogin).toHaveBeenCalledWith('glue:verified-subject', 'random-local-secret');
-    expect(harness.remember).toHaveBeenCalledWith('verified-subject');
+const hasLocalInstance = vi.fn(async () => false);
+
+beforeEach(() => {
+  harness.ref.current = null;
+  harness.setters.length = 0;
+  harness.cleanup = undefined;
+  harness.signIn.mockReset();
+  harness.remember.mockReset();
+  harness.prepare.mockReset();
+  harness.prepare.mockReturnValue(harness.remember);
+  hasLocalInstance.mockReset();
+  hasLocalInstance.mockResolvedValue(false);
+});
+afterEach(() => {harness.cleanup?.();});
+
+describe('Expo canonical Glue login UI state', () => {
+  it('enrolls and remembers canonical Glue credentials', async () => {
+    const onGlueAuth = vi.fn(async () => {});
+    const outcome = {kind: 'enrolled' as const, credentials: canonical, receipt: {personId: canonical.personId} as any};
+    harness.signIn.mockResolvedValue(outcome);
+    const hook = useGlueLogin(onGlueAuth, hasLocalInstance);
+    await hook.signIn('gecko');
+    expect(harness.signIn).toHaveBeenCalledWith({
+      loginHint: 'gecko',
+      signal: expect.any(AbortSignal),
+      hasLocalInstance,
+    });
+    expect(onGlueAuth).toHaveBeenCalledWith(outcome);
+    expect(harness.remember).toHaveBeenCalledWith(canonical);
     expect(harness.setters[0]!.mock.calls).toEqual([[true], [false]]);
     expect(harness.setters[1]!.mock.calls).toEqual([[null]]);
   });
+
   it('shows verification failures and leaves the local model untouched', async () => {
-    const onLogin = vi.fn(); harness.login.mockRejectedValue(new Error('Glue nonce mismatch'));
-    await useGlueLogin(onLogin).signIn('name');
-    expect(onLogin).not.toHaveBeenCalled(); expect(harness.remember).not.toHaveBeenCalled();
-    expect(harness.setters[1]).toHaveBeenLastCalledWith('Glue nonce mismatch');
+    const onGlueAuth = vi.fn();
+    harness.signIn.mockRejectedValue(new Error('Glue enrollment denied'));
+    await useGlueLogin(onGlueAuth, hasLocalInstance).signIn('gecko');
+    expect(onGlueAuth).not.toHaveBeenCalled();
+    expect(harness.remember).not.toHaveBeenCalled();
+    expect(harness.setters[1]).toHaveBeenLastCalledWith('Glue enrollment denied');
     expect(harness.setters[0]).toHaveBeenLastCalledWith(false);
-  });
-  it('cancels the actual pending session and never provisions after cancellation', async () => {
-    const onLogin = vi.fn(); let finish!: (value: unknown) => void;
-    harness.login.mockImplementation(() => new Promise(resolve => {finish = resolve;}));
-    const hook = useGlueLogin(onLogin); const pending = hook.signIn('name');
-    await hook.signIn('duplicate'); expect(harness.login).toHaveBeenCalledTimes(1);
-    const signal = harness.login.mock.calls[0]![0].signal as AbortSignal;
-    hook.cancel(); expect(signal.aborted).toBe(true);
-    finish({localName: 'glue:verified-subject', secret: 'secret'}); await pending;
-    expect(onLogin).not.toHaveBeenCalled(); expect(harness.remember).not.toHaveBeenCalled(); expect(harness.setters[0]).toHaveBeenLastCalledWith(false);
-  });
-  it('settles browser cancellation without an error or local account change', async () => {
-    const onLogin = vi.fn(); harness.login.mockResolvedValue(null);
-    await useGlueLogin(onLogin).signIn('name');
-    expect(onLogin).not.toHaveBeenCalled(); expect(harness.remember).not.toHaveBeenCalled(); expect(harness.setters[1]!.mock.calls).toEqual([[null]]);
-    expect(harness.setters[0]).toHaveBeenLastCalledWith(false);
-  });
-  it('aborts the pending session when the login screen unmounts', async () => {
-    harness.login.mockImplementation(({signal}: {signal: AbortSignal}) => new Promise(resolve => signal.addEventListener('abort', () => resolve(null))));
-    const pending = useGlueLogin(vi.fn()).signIn('name');
-    const signal = harness.login.mock.calls[0]![0].signal as AbortSignal;
-    harness.cleanup?.(); expect(signal.aborted).toBe(true); await pending;
-  });
-  it('captures session ownership before the local model can expose authenticated UI', async () => {
-    const order: string[] = [];
-    harness.login.mockResolvedValue({localName: 'glue:verified-subject', secret: 'secret', identity: {personId: 'verified-subject'}});
-    harness.prepare.mockImplementation(() => {order.push('prepare'); return harness.remember;});
-    harness.remember.mockImplementation(async () => {order.push('remember');});
-    await useGlueLogin(async () => {order.push('local-login');}).signIn('name');
-    expect(order).toEqual(['prepare', 'local-login', 'remember']);
   });
 
+  it('cancels the actual pending session and never provisions after cancellation', async () => {
+    const onGlueAuth = vi.fn();
+    let finish!: (value: unknown) => void;
+    harness.signIn.mockImplementation(() => new Promise(resolve => {finish = resolve;}));
+    const hook = useGlueLogin(onGlueAuth, hasLocalInstance);
+    const pending = hook.signIn('gecko');
+    await hook.signIn('duplicate');
+    expect(harness.signIn).toHaveBeenCalledTimes(1);
+    const signal = harness.signIn.mock.calls[0]![0].signal as AbortSignal;
+    hook.cancel();
+    expect(signal.aborted).toBe(true);
+    finish({kind: 'existing', credentials: canonical});
+    await pending;
+    expect(onGlueAuth).not.toHaveBeenCalled();
+    expect(harness.remember).not.toHaveBeenCalled();
+    expect(harness.setters[0]).toHaveBeenLastCalledWith(false);
+  });
+
+  it('settles browser cancellation without an error or local account change', async () => {
+    const onGlueAuth = vi.fn();
+    harness.signIn.mockResolvedValue(null);
+    await useGlueLogin(onGlueAuth, hasLocalInstance).signIn('gecko');
+    expect(onGlueAuth).not.toHaveBeenCalled();
+    expect(harness.remember).not.toHaveBeenCalled();
+    expect(harness.setters[1]!.mock.calls).toEqual([[null]]);
+    expect(harness.setters[0]).toHaveBeenLastCalledWith(false);
+  });
+
+  it('aborts the pending session when the login screen unmounts', async () => {
+    harness.signIn.mockImplementation(({signal}: {signal: AbortSignal}) => new Promise(resolve => signal.addEventListener('abort', () => resolve(null))));
+    const pending = useGlueLogin(vi.fn(), hasLocalInstance).signIn('gecko');
+    const signal = harness.signIn.mock.calls[0]![0].signal as AbortSignal;
+    harness.cleanup?.();
+    expect(signal.aborted).toBe(true);
+    await pending;
+  });
+
+  it('captures session ownership before the local model can expose authenticated UI', async () => {
+    const order: string[] = [];
+    harness.signIn.mockResolvedValue({kind: 'existing', credentials: canonical});
+    harness.prepare.mockImplementation(() => {order.push('prepare'); return harness.remember;});
+    harness.remember.mockImplementation(async () => {order.push('remember');});
+    await useGlueLogin(async () => {order.push('local-login');}, hasLocalInstance).signIn('gecko');
+    expect(order).toEqual(['prepare', 'local-login', 'remember']);
+  });
 });

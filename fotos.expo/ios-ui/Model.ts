@@ -31,6 +31,17 @@ import { ModuleRegistry, initializeModuleGraph } from '@refinio/api/plan-system'
 import { ExportPlan } from '@vger/vger.core/plans/ExportPlan.js';
 import { registerDeviceSettings } from '@refinio/settings.devices';
 import {
+    DEFAULT_GLUE_CONNECTION_BINDING_ID,
+    updateGlueIdentityBinding,
+    updateGlueIdentityProfile,
+} from '@glueone/glue.core';
+import {
+    glueEnrollmentInstanceKeyPairs,
+    installNativeGlueEnrollment,
+    type GlueEnrollmentReceipt,
+} from '@glueone/auth.core/mobile';
+import appConfig from '../app.json';
+import {
     getFotosPlatformCapabilities,
     getFotosPlatformDefaults,
     type FotosInstancePlatform,
@@ -139,6 +150,7 @@ export default class Model {
     private _fotosMediaLibrarySync: FotosMediaLibrarySync | null = null;
     private settingsUnsubscribe: (() => void) | null = null;
     private lastDiscoveryEnabled: boolean | null = null;
+    private pendingGlueEnrollment: GlueEnrollmentReceipt | null = null;
 
     constructor(
         private commServerUrl: string,
@@ -213,6 +225,16 @@ export default class Model {
     // =========================================================================
     // PHASE 3-5: INITIALIZATION (called on login)
     // =========================================================================
+
+    async loginWithGlueEnrollment(receipt: GlueEnrollmentReceipt): Promise<void> {
+        glueEnrollmentInstanceKeyPairs(receipt);
+        this.pendingGlueEnrollment = receipt;
+        try {
+            await this.one.registerWithIdentityKeys(receipt.keys, receipt.creds);
+        } finally {
+            this.pendingGlueEnrollment = null;
+        }
+    }
 
     async init(instanceName?: string, _secret?: string): Promise<void> {
         if (this.initialized) {
@@ -321,6 +343,26 @@ export default class Model {
             ownerPersonIdHash: this.ownerId as SHA256IdHash<Person> | undefined,
         });
         const settingsPlan = new SettingsPlan(storage);
+        if (this.pendingGlueEnrollment) {
+            const receipt = this.pendingGlueEnrollment;
+            await installNativeGlueEnrollment(receipt, {
+                trustedAuthorityRootPublicKeys: appConfig.expo.extra.glueAuthorityRootPublicKeys,
+            });
+            const { values } = await settingsPlan.getSection({ moduleId: 'glue' });
+            const withProfile = {
+                ...values,
+                ...updateGlueIdentityProfile(values, receipt.personId, { displayName: receipt.identity }),
+            };
+            await settingsPlan.updateSection({
+                moduleId: 'glue',
+                values: {
+                    ...withProfile,
+                    ...updateGlueIdentityBinding(withProfile, receipt.personId, DEFAULT_GLUE_CONNECTION_BINDING_ID),
+                    syncEnabled: true,
+                    sameOwnerIoMEnabled: true,
+                },
+            });
+        }
         const secretsPlan = new SecretsPlan();
         const devicesPlan = new DevicesPlan({
             getDevicePlan: () => this.devicePlan,

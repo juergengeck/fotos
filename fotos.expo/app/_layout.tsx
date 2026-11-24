@@ -16,7 +16,12 @@ import { palette } from '../src/theme';
 import {useFotosShareInboxAutoDrain} from '../ios-ui/hooks/useFotosShareInboxAutoDrain';
 import {useGlueLogin} from '../ios-ui/hooks/useGlueLogin';
 import {GlueLoginField} from '../ios-ui/components/GlueLoginField';
-import {restoreGlueSession, clearGlueSession} from '../ios-ui/services/glue-login';
+import {
+  clearGlueSession,
+  forgetGlueSubject,
+  restoreGlueSession,
+  type MobileGlueAuthOutcome,
+} from '../ios-ui/services/glue-login';
 
 const COMM_SERVER_URL = 'wss://api.glue.one/comm';
 
@@ -24,12 +29,14 @@ installCommServerGuard();
 
 interface LoginProps {
   busy: boolean;
+  notice?: string | null;
   onLogin: (username: string, password: string) => Promise<void>;
-  onGlueLogin: (localName: string, secret: string) => Promise<void>;
+  onGlueAuth: (outcome: MobileGlueAuthOutcome) => Promise<void>;
+  hasLocalInstance: (instanceName: string, email: string) => Promise<boolean>;
 }
 
-function LoginScreen({ busy: localBusy, onLogin, onGlueLogin }: LoginProps) {
-  const glue = useGlueLogin(onGlueLogin);
+function LoginScreen({ busy: localBusy, notice, onLogin, onGlueAuth, hasLocalInstance }: LoginProps) {
+  const glue = useGlueLogin(onGlueAuth, hasLocalInstance);
   const busy = localBusy || glue.busy;
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -90,7 +97,7 @@ function LoginScreen({ busy: localBusy, onLogin, onGlueLogin }: LoginProps) {
                 autoCapitalize="none"
                 autoCorrect={false}
                 clearButtonMode="while-editing"
-                placeholder="Your username"
+                placeholder="handle@glue.one"
                 style={{
                   borderWidth: 1,
                   borderColor: palette.border,
@@ -129,6 +136,20 @@ function LoginScreen({ busy: localBusy, onLogin, onGlueLogin }: LoginProps) {
             />
           </View>
         </View>
+
+        {notice && !error && !glue.error ? (
+          <View
+            style={{
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: palette.border,
+              backgroundColor: palette.surfaceMuted,
+              padding: 14,
+            }}
+          >
+            <Text style={{ color: palette.textMuted, fontSize: 14 }}>{notice}</Text>
+          </View>
+        ) : null}
 
         {error || glue.error ? (
           <View
@@ -174,18 +195,27 @@ function LoginScreen({ busy: localBusy, onLogin, onGlueLogin }: LoginProps) {
   );
 }
 
+function isMissingLocalUserError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err ?? '');
+  return /user does not exist/i.test(message);
+}
+
 function useAppInit() {
   const [model, setModel] = useState<Model | null>(null);
   const [initializing, setInitializing] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loginNotice, setLoginNotice] = useState<string | null>(null);
   const loginInFlight = useRef(false);
   const [loginBusy, setLoginBusy] = useState(false);
   const mountedRef = useRef(true);
 
 
+  const modelRef = useRef<Model | null>(null);
+  modelRef.current = model;
+
   const ensureModel = useCallback(() => {
-    const existingModel = model ?? getModel();
+    const existingModel = modelRef.current ?? getModel();
     if (existingModel) return existingModel;
 
     const nextModel = new Model(COMM_SERVER_URL);
@@ -200,13 +230,14 @@ function useAppInit() {
       }
     });
 
+    modelRef.current = nextModel;
     if (mountedRef.current) {
       setGlobalModel(nextModel);
       setModel(nextModel);
     }
 
     return nextModel;
-  }, [model]);
+  }, []);
 
   const startupRestore = useRef<Promise<void> | null>(null);
   useEffect(() => {
@@ -221,11 +252,24 @@ function useAppInit() {
           return;
         }
         if (existingModel) setModel(existingModel);
-        await restoreGlueSession(async (localName, secret) => {
+        await restoreGlueSession(async saved => {
           if (!mountedRef.current) return;
           const activeModel = ensureModel();
           // Reopening must never create a new account when local data is missing.
-          await activeModel.one.login(localName, secret, localName);
+          try {
+            await activeModel.one.login(saved.email, saved.secret, saved.instanceName);
+          } catch (loginErr) {
+            if (isMissingLocalUserError(loginErr)) {
+              // iOS Keychain survives app reinstall while local ONE storage was wiped.
+              // Forget the stale saved subject and return cleanly to sign-in.
+              await forgetGlueSubject(saved.personId).catch(() => {});
+              if (mountedRef.current) {
+                setLoginNotice('Local storage was reset after reinstall. Sign in again to continue.');
+              }
+              return;
+            }
+            throw loginErr;
+          }
         });
       })();
     }
@@ -255,24 +299,62 @@ function useAppInit() {
     }
   }, [ensureModel]);
 
-  const glueLogin = useCallback(async (localName: string, secret: string) => {
+  const glueAuth = useCallback(async (outcome: MobileGlueAuthOutcome) => {
     const activeModel = ensureModel();
-    await activeModel.one.loginOrRegister(localName, secret, localName);
+    if (outcome.kind === 'enrolled') {
+      await activeModel.loginWithGlueEnrollment(outcome.receipt);
+    } else {
+      await activeModel.one.login(
+        outcome.credentials.email,
+        outcome.credentials.secret,
+        outcome.credentials.instanceName,
+      );
+    }
   }, [ensureModel]);
 
+  const hasLocalInstance = useCallback(
+    async (instanceName: string, email: string) => {
+      const activeModel = ensureModel();
+      return activeModel.one.isRegistered(email, instanceName);
+    },
+    [ensureModel],
+  );
+
+  const resetStartupError = useCallback(async () => {
+    await clearGlueSession().catch(() => {});
+    if (mountedRef.current) {
+      setError(null);
+      setLoginNotice(null);
+    }
+  }, []);
+
   return {
-    glueLogin,
+    glueAuth,
+    hasLocalInstance,
     model,
     initializing,
     authenticated,
     error,
+    loginNotice,
+    resetStartupError,
     login,
     loginInFlight: loginBusy,
   };
 }
 
 export default function RootLayout() {
-  const { model, initializing, authenticated, error, login, glueLogin, loginInFlight } = useAppInit();
+  const {
+    model,
+    initializing,
+    authenticated,
+    error,
+    loginNotice,
+    resetStartupError,
+    login,
+    glueAuth,
+    hasLocalInstance,
+    loginInFlight,
+  } = useAppInit();
 
   useFotosShareInboxAutoDrain(model, authenticated && !initializing && !error);
 
@@ -285,14 +367,29 @@ export default function RootLayout() {
           justifyContent: 'center',
           backgroundColor: palette.surface,
           padding: 24,
+          gap: 16,
         }}
       >
         <Text style={{ fontSize: 22, fontWeight: '700', color: palette.danger }}>
           Startup Failed
         </Text>
-        <Text style={{ marginTop: 10, color: palette.textMuted, textAlign: 'center' }}>
+        <Text style={{ color: palette.textMuted, textAlign: 'center' }}>
           {error}
         </Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => void resetStartupError()}
+          style={{
+            borderRadius: 14,
+            backgroundColor: palette.accent,
+            paddingHorizontal: 20,
+            paddingVertical: 12,
+          }}
+        >
+          <Text style={{ color: '#ffffff', fontSize: 15, fontWeight: '700' }}>
+            Return to Sign In
+          </Text>
+        </Pressable>
       </View>
     );
   }
@@ -320,7 +417,13 @@ export default function RootLayout() {
     return (
       <>
         <StatusBar style="dark" />
-        <LoginScreen busy={loginInFlight} onLogin={login} onGlueLogin={glueLogin} />
+        <LoginScreen
+          busy={loginInFlight}
+          notice={loginNotice}
+          onLogin={login}
+          onGlueAuth={glueAuth}
+          hasLocalInstance={hasLocalInstance}
+        />
       </>
     );
   }
