@@ -8,7 +8,7 @@ type PhotoKitImageProps = ViewProps & MediaExpoImageProps;
 let PhotoKitImage: ComponentType<PhotoKitImageProps> | undefined;
 
 export function FotosGalleryImage({
-    item, resizeMode = 'cover', allowNetworkAccess = false,
+    item, resizeMode = 'cover', allowNetworkAccess,
 }: {
     item: {asset?: Pick<NonNullable<FotosGalleryItem['asset']>, 'id'>; entry?: FotosGalleryItem['entry']};
     resizeMode?: 'cover' | 'contain';
@@ -16,6 +16,7 @@ export function FotosGalleryImage({
 }) {
     const thumb = item.entry?.thumb;
     const assetId = item.asset?.id;
+    const effectiveNetworkAccess = allowNetworkAccess ?? (resizeMode === 'cover');
     const [thumbnail, setThumbnail] = useState<{hash: string; uri: string}>();
     useEffect(() => {
         if (!thumb || assetId) return;
@@ -29,7 +30,7 @@ export function FotosGalleryImage({
 
     if (assetId) {
         PhotoKitImage ??= requireMediaExpoImage<PhotoKitImageProps>();
-        return <PhotoKitImage style={StyleSheet.absoluteFill} assetId={assetId} resizeMode={resizeMode} allowNetworkAccess={allowNetworkAccess} />;
+        return <PhotoKitImage style={StyleSheet.absoluteFill} assetId={assetId} resizeMode={resizeMode} allowNetworkAccess={effectiveNetworkAccess} />;
     }
     if (thumbnail && thumbnail.hash === thumb) {
         return <Image accessible={false} style={StyleSheet.absoluteFill} source={{uri: thumbnail.uri}} resizeMode={resizeMode} />;
