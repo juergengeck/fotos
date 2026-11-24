@@ -265,6 +265,7 @@ async function initModules(
       ...withProfile,
       ...updateGlueIdentityBinding(withProfile, nativeEnrollment.personId, DEFAULT_GLUE_CONNECTION_BINDING_ID),
       syncEnabled: true,
+      sameOwnerIoMEnabled: true,
     } });
     await markFotosNativeGlueEnrollmentInstalled(enrollAccountId, nativeEnrollment);
   }
@@ -379,6 +380,8 @@ async function initModules(
       return () => window.removeEventListener('beforeunload', cb);
     };
     browserGlueModule.getLocalTransportCapabilities = async () => ['webrtc', 'commserver-relay'];
+    browserGlueModule.preparePeerSyncAccess = (ownId, remotePersonId, remotePublicKeyHex) =>
+      nextConnectionModule.preparePeerSyncAccess(ownId as any, remotePersonId as any, remotePublicKeyHex as any);
     browserGlueModule.connectToPeerByKey = (key, ownId, capabilities, remoteId, relayUrl) =>
       nextConnectionModule.connectToPeerByKey(key, ownId as any, capabilities, remoteId as any, undefined, relayUrl);
     browserGlueModule.connectToPeerDirectByKey = (key, ownId, capabilities, remoteId, peerPublicKey) =>
@@ -413,6 +416,8 @@ async function initModules(
       getPresenceStoredSnapshot: limit => browserGlueModule.getPresenceStoredSnapshot(limit),
       getPresenceTrace: limit => browserGlueModule.getPresenceTrace(limit),
     });
+    nextConnectionModule.setKnownPersonKeysAuthority(browserGlueModule.authorizeKnownPersonKeys);
+    nextConnectionModule.setPeerIdentityEvidenceExchange(browserGlueModule.peerIdentityEvidenceExchange);
 
     registry.register(glueModule);
   }

@@ -25,7 +25,17 @@ const runtime = vi.hoisted(() => ({
   shutdown: vi.fn(),
   connect: vi.fn(),
   constructed: vi.fn(),
-  glueModule: null as {publishOwnPresence: boolean} | null,
+  connectionModule: null as {
+    setKnownPersonKeysAuthority: ReturnType<typeof vi.fn>;
+    setPeerIdentityEvidenceExchange: ReturnType<typeof vi.fn>;
+    preparePeerSyncAccess: ReturnType<typeof vi.fn>;
+  } | null,
+  glueModule: null as {
+    publishOwnPresence: boolean;
+    authorizeKnownPersonKeys: unknown;
+    peerIdentityEvidenceExchange: unknown;
+    preparePeerSyncAccess?: (ownId: string, remotePersonId: string, remotePublicKeyHex: string) => Promise<void>;
+  } | null,
 }));
 
 vi.mock('@glueone/auth.core', async importOriginal => ({
@@ -100,6 +110,10 @@ vi.mock('@refinio/trust.me/services', () => ({preparePersonalTrustStorage: runti
 vi.mock('@vger/vger.core/modules/ConnectionModule.js', () => ({
   ConnectionModule: class {
     connectionsModel = {};
+    setKnownPersonKeysAuthority = vi.fn();
+    setPeerIdentityEvidenceExchange = vi.fn();
+    preparePeerSyncAccess = vi.fn().mockResolvedValue(undefined);
+    constructor() { runtime.connectionModule = this; }
     addChumSyncRuntimeObjectTypes() {}
     setManagedOutgoingConnections() {}
     setUnknownPeerIdentityMatcher() {}
@@ -112,6 +126,8 @@ vi.mock('@vger/vger.core/plans/ExportPlan.js', () => ({ExportPlan: class {}}));
 vi.mock('@vger/vger.glue', () => ({
   GlueModule: class {
     publishOwnPresence = true;
+    authorizeKnownPersonKeys = vi.fn();
+    peerIdentityEvidenceExchange = {prepare: vi.fn(), accept: vi.fn()};
     constructor() { runtime.glueModule = this; }
     async activateForIdentity() {}
   },
@@ -161,6 +177,7 @@ describe('Fotos runtime ownership', () => {
     runtime.ownerId = 'owner';
     runtime.settingsValues = {};
     runtime.updateSettings.mockResolvedValue(undefined);
+    runtime.connectionModule = null;
     runtime.glueModule = null;
     runtime.credentials.mockResolvedValue({creds: {email: 'visitor@fotos.one', secret: 'local-secret', instanceName: 'visitor'}});
     runtime.login.mockResolvedValue(undefined);
@@ -342,6 +359,14 @@ describe('Fotos runtime ownership', () => {
     const model = await bootFotosModel();
     expect(model.headlessConnected).toBe(true);
     expect(runtime.glueModule?.publishOwnPresence).toBe(false);
+    expect(runtime.connectionModule?.setKnownPersonKeysAuthority).toHaveBeenCalledWith(
+      runtime.glueModule?.authorizeKnownPersonKeys,
+    );
+    expect(runtime.connectionModule?.setPeerIdentityEvidenceExchange).toHaveBeenCalledWith(
+      runtime.glueModule?.peerIdentityEvidenceExchange,
+    );
+    await runtime.glueModule?.preparePeerSyncAccess?.('owner', 'peer', 'ab'.repeat(32));
+    expect(runtime.connectionModule?.preparePeerSyncAccess).toHaveBeenCalledWith('owner', 'peer', 'ab'.repeat(32));
   });
 
   it('ignores a late connection completion from a previous runtime', async () => {
