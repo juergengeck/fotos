@@ -16,6 +16,8 @@ import {createFotosMediaVariant} from './media-model.js';
 import {createCryptoHash, sha256} from '@refinio/one.core/lib/system/crypto-helpers.js';
 import {uint8arrayToHexString} from '@refinio/one.core/lib/util/arraybuffer-to-and-from-hex-string.js';
 import {getFotosEntryProjectionVersion, projectFotosEntryReferences, type FotosEntryReference} from './fotos-entry-projection.js';
+import {readVerifiedOriginalRange} from './original-ranges.js';
+import {assertReadRange} from '@refinio/filer.core/reads';
 
 export const FOTOS_THUMBNAIL_MAX_EDGE = 512;
 export const FOTOS_THUMBNAIL_MAX_BYTES = 2 * 1024 * 1024;
@@ -176,10 +178,11 @@ export class FotosFileSystem {
 
     /** Read a bounded part of the original file. */
     async readFileInChunks(path: string, length: number, position: number) {
-        if (!Number.isSafeInteger(length) || length < 0 || !Number.isSafeInteger(position) || position < 0) {
-            throw new Error('Invalid Fotos read range');
-        }
-        return {content: (await this.readFile(path)).content.slice(position, position + length)};
+        assertReadRange(position, length);
+        path = this.path(path);
+        const item = (await this.entries()).find(item => item.path === path);
+        if (!item) throw new Error(`Fotos file does not exist: ${path}`);
+        return readFotosOriginalRange(item.entry, position, length);
     }
 
     /** Chunk requests are supported by the projection. */
@@ -268,6 +271,19 @@ export class FotosFileSystem {
     async rename(_src: string, _dest: string): Promise<number> { throw new Error('Fotos files are read-only'); }
     /** Permissions are defined by the projection. */
     async chmod(_path: string, _mode: number): Promise<number> { throw new Error('Fotos permissions are fixed'); }
+}
+
+/** Read bounded ranges of a locally stored original without invoking a whole-file adapter. */
+export async function readFotosOriginalRange(entry: FotosEntry, position: number, length: number): Promise<{content: ArrayBuffer}> {
+    assertReadRange(position, length);
+    for (const hash of entry.variants ?? []) {
+        const variant = await getObject(hash);
+        if (variant.role === 'original' && variant.contentHash === entry.contentHash) {
+            if (!variant.blob) break;
+            return {content: await readVerifiedOriginalRange(variant.blob, entry.contentHash, entry.size, position, length)};
+        }
+    }
+    throw new Error(`Fotos original is unavailable for local range reads: ${entry.contentHash}`);
 }
 
 /** Resolve and verify an original from the exact entry selected by a manifest. */

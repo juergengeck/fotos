@@ -2,7 +2,8 @@ import type {OneObjectTypeNames} from '@refinio/one.core/lib/recipes.js';
 import {calculateHashOfObj} from '@refinio/one.core/lib/util/object.js';
 import {createCryptoHash} from '@refinio/one.core/lib/system/crypto-helpers.js';
 import {projectReceivedFotosShares} from './received-shares.js';
-import {readFotosOriginal} from './fotos-file-system.js';
+import {readFotosOriginal, readFotosOriginalRange} from './fotos-file-system.js';
+import {assertReadRange} from '@refinio/filer.core/reads';
 import {getFotosEntryProjectionVersion, projectFotosEntryReferences, type FotosEntryReference} from './fotos-entry-projection.js';
 import type {FotosEntry} from './recipes/FotosRecipes.js';
 export {FotosRecipes} from './recipes/FotosRecipes.js';
@@ -259,8 +260,16 @@ export class SharedFotosFileSystem {
   }
   /** Materialize bounded original ranges through the same authorized entry. */
   async readFileInChunks(value: string, length: number, position: number) {
-    if (!Number.isSafeInteger(length) || length < 0 || !Number.isSafeInteger(position) || position < 0) failure(-22, 'Invalid Fotos range');
-    return {content: (await this.readFile(value)).content.slice(position, position + length)};
+    assertReadRange(position, length);
+    const target = canonical(value);
+    for (;;) {
+      const {tree, generation} = await this.tree();
+      const photo = tree.photos.find(photo => photo.path === target);
+      if (!photo) failure(tree.directories.has(target) ? -21 : -2, 'Shared Fotos file does not exist');
+      const chunk = await readFotosOriginalRange(photo.entry, position, length);
+      if (this.disposed) failure(-5, 'Shared Fotos filesystem is disposed');
+      if (this.generation === generation) return chunk;
+    }
   }
   /** Native providers can hydrate the original in ranges. */
   supportsChunkedReading(): boolean { return true; }

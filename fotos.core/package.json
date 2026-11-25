@@ -81,12 +81,14 @@
     "@refinio/provenance.core": "workspace:*"
   },
   "devDependencies": {
+    "@refinio/filer.core": "workspace:*",
     "@refinio/sync.core": "workspace:*",
     "@types/node": "catalog:",
     "typescript": "^5.4.0",
     "vitest": "catalog:"
   },
   "peerDependencies": {
+    "@refinio/filer.core": "*",
     "@refinio/sync.core": "*"
   }
 }
